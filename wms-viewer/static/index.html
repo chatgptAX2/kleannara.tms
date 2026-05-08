@@ -237,12 +237,15 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .dlv-section-header{padding:7px 14px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .dlv-section-header h3{font-size:12px;font-weight:700;color:var(--text2)}
 .dlv-list-table-wrap{overflow:auto;flex:1;min-height:0}
-.dlv-list-table{border-collapse:collapse;font-size:12px;width:100%}
-.dlv-list-table thead th{position:sticky;top:0;background:#1a2744;padding:8px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap}
+.dlv-list-table{border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed}
+.dlv-list-table thead th{position:sticky;top:0;background:#1a2744;padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none;position:sticky;top:0}
+.dlv-list-table thead th .th-cell{padding:8px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.dlv-list-table thead th .col-rz{position:absolute;right:0;top:0;bottom:0;width:5px;cursor:col-resize;z-index:1;background:transparent}
+.dlv-list-table thead th .col-rz:hover,.dlv-list-table thead th .col-rz.rz-active{background:var(--primary);opacity:.7}
 .dlv-list-table tbody tr{border-bottom:1px solid #1a2535;cursor:pointer}
 .dlv-list-table tbody tr:hover{background:#1e2a3a}
 .dlv-list-table tbody tr.selected{background:#1e3a5f;border-left:3px solid var(--primary)}
-.dlv-list-table tbody td{padding:7px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;border-right:1px solid #1a2535;font-size:12px}
+.dlv-list-table tbody td{padding:7px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid #1a2535;font-size:12px}
 .dlv-form-wrap{padding:16px 20px}
 .dlv-form{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 12px}
 .dlv-form-section-title{grid-column:1/-1;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;padding:6px 0 2px;border-bottom:1px solid var(--border)}
@@ -296,12 +299,15 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .vhc-section-hdr{padding:5px 12px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .vhc-section-hdr h3{font-size:12px;font-weight:700;color:var(--text2)}
 .vhc-list-wrap{overflow:auto;flex:1;min-height:0}
-.vhc-table{border-collapse:collapse;font-size:12px;width:100%}
-.vhc-table thead th{position:sticky;top:0;background:#1a2744;padding:7px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap}
+.vhc-table{border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed}
+.vhc-table thead th{position:sticky;top:0;background:#1a2744;padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:700;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none}
+.vhc-table thead th .th-cell{padding:7px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.vhc-table thead th .col-rz{position:absolute;right:0;top:0;bottom:0;width:5px;cursor:col-resize;z-index:1;background:transparent}
+.vhc-table thead th .col-rz:hover,.vhc-table thead th .col-rz.rz-active{background:var(--primary);opacity:.7}
 .vhc-table tbody tr{border-bottom:1px solid #1a2535;cursor:pointer;transition:.1s}
 .vhc-table tbody tr:hover{background:#1e2a3a}
 .vhc-table tbody tr.selected{background:#172554;border-left:3px solid var(--primary)}
-.vhc-table tbody td{padding:6px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;border-right:1px solid #1a2535;font-size:12px;vertical-align:middle}
+.vhc-table tbody td{padding:6px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid #1a2535;font-size:12px;vertical-align:middle}
 .vhc-pagination{padding:5px 12px;border-top:1px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px}
 /* 차량 등록/수정 폼 */
 .vhc-form-box{flex:1;overflow-y:auto;min-height:0}
@@ -350,19 +356,19 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 
 /* ── MULTI-SELECT DROPDOWN ── */
 .ms-wrap{position:relative}
-.ms-trigger{background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:5px 9px;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:130px;white-space:nowrap;user-select:none;transition:.15s}
+.ms-trigger{background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:5px 9px;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:130px;white-space:nowrap;user-select:none;transition:.15s;width:100%}
 .ms-trigger:hover{border-color:var(--primary)}
 .ms-trigger.open{border-color:var(--primary);border-radius:5px 5px 0 0}
 .ms-trigger .ms-arrow{font-size:10px;opacity:.6;transition:.2s}
 .ms-trigger.open .ms-arrow{transform:rotate(180deg)}
-.ms-dropdown{position:absolute;top:100%;left:0;right:0;z-index:500;background:var(--surface);border:1px solid var(--primary);border-top:none;border-radius:0 0 6px 6px;max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.ms-dropdown{position:absolute;top:100%;left:0;z-index:500;background:var(--surface);border:1px solid var(--primary);border-top:none;border-radius:0 0 6px 6px;max-height:260px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.5);min-width:max-content;width:max-content}
 .ms-dropdown .ms-search{padding:6px 8px;border-bottom:1px solid var(--border)}
 .ms-dropdown .ms-search input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 8px;font-size:11px;outline:none}
 .ms-dropdown .ms-search input:focus{border-color:var(--primary)}
 .ms-option{display:flex;align-items:center;gap:8px;padding:6px 10px;cursor:pointer;font-size:12px;transition:.1s}
 .ms-option:hover{background:var(--surface2)}
 .ms-option input[type=checkbox]{width:13px;height:13px;accent-color:var(--primary);cursor:pointer;flex-shrink:0}
-.ms-option label{cursor:pointer;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ms-option label{cursor:pointer;flex:1;white-space:nowrap}
 .ms-option.all-opt{border-bottom:1px solid var(--border);font-weight:700;color:var(--text2)}
 .ms-count-badge{background:var(--primary);color:#fff;border-radius:10px;padding:0 6px;font-size:10px;font-weight:700;min-width:16px;text-align:center}
 
@@ -943,7 +949,7 @@ function tblToggleHide() {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   컬럼 WIDTH 드래그 리사이저
+   컬럼 WIDTH 드래그 리사이저 (일반 테이블 — main-table)
 ═══════════════════════════════════════════════════════════ */
 const _colWidths = {}; // {colName: px}
 (function(){
@@ -969,10 +975,8 @@ const _colWidths = {}; // {colName: px}
     const delta = e.clientX - _crStartX;
     const newW  = Math.max(60, _crStartW + delta);
     _colWidths[_crCol] = newW;
-    // th / td 모두 width 적용 (table-layout:fixed 없이 직접 제어)
     const th = document.querySelector(`thead th[data-col="${_crCol}"]`);
     if (th) { th.style.width = newW + 'px'; th.style.minWidth = newW + 'px'; }
-    // td도 같은 컬럼 인덱스에 적용
     const thIdx = th ? [...th.parentElement.children].indexOf(th) : -1;
     if (thIdx >= 0) {
       document.querySelectorAll(`#main-table tbody tr`).forEach(tr => {
@@ -989,6 +993,73 @@ const _colWidths = {}; // {colName: px}
     document.querySelectorAll('.col-resizer').forEach(r => r.classList.remove('resizing'));
     document.removeEventListener('mousemove', _crMove);
     document.removeEventListener('mouseup', _crUp);
+  }
+})();
+
+/* ═══════════════════════════════════════════════════════════
+   컬럼 WIDTH 드래그 리사이저 (납품처 List / 차량 List 공통)
+   tableResizerDown(e, colId, tableSelector)
+═══════════════════════════════════════════════════════════ */
+const _dlvColW = {}; // 납품처 리스트 컬럼 너비 저장
+const _vhcColW = {}; // 차량 리스트 컬럼 너비 저장
+
+(function(){
+  let _dragging = false;
+  let _colId    = null;
+  let _tblSel   = null;   // '.dlv-list-table' | '.vhc-list-table'
+  let _startX   = 0;
+  let _startW   = 0;
+  let _store    = null;   // _dlvColW or _vhcColW
+
+  window.tableResizerDown = function(e, colId, tableSelector) {
+    e.stopPropagation();
+    e.preventDefault();
+    _dragging  = true;
+    _colId     = colId;
+    _tblSel    = tableSelector;
+    _store     = tableSelector === '.dlv-list-table' ? _dlvColW : _vhcColW;
+    _startX    = e.clientX;
+
+    // 현재 th 실제 너비 읽기
+    const th = document.querySelector(`${tableSelector} thead th[data-rzid="${colId}"]`);
+    _startW = th ? th.getBoundingClientRect().width : (_store[colId] || 100);
+
+    // 활성 핸들 표시
+    document.querySelectorAll(`${tableSelector} .col-rz`).forEach(r => r.classList.remove('rz-active'));
+    if (th) th.querySelector('.col-rz')?.classList.add('rz-active');
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', _onMove);
+    document.addEventListener('mouseup',   _onUp);
+  };
+
+  function _onMove(e) {
+    if (!_dragging || !_colId || !_tblSel) return;
+    const newW = Math.max(40, _startW + (e.clientX - _startX));
+    _store[_colId] = newW;
+
+    // th 너비 적용
+    const th = document.querySelector(`${_tblSel} thead th[data-rzid="${_colId}"]`);
+    if (th) { th.style.width = newW + 'px'; th.style.minWidth = newW + 'px'; }
+
+    // 같은 인덱스의 tbody td 너비 적용
+    if (th) {
+      const thIdx = [...th.parentElement.children].indexOf(th);
+      document.querySelectorAll(`${_tblSel} tbody tr`).forEach(tr => {
+        const td = tr.children[thIdx];
+        if (td) { td.style.width = newW + 'px'; td.style.maxWidth = newW + 'px'; }
+      });
+    }
+  }
+
+  function _onUp() {
+    _dragging = false;
+    document.body.style.cursor    = '';
+    document.body.style.userSelect = '';
+    document.querySelectorAll('.col-rz').forEach(r => r.classList.remove('rz-active'));
+    document.removeEventListener('mousemove', _onMove);
+    document.removeEventListener('mouseup',   _onUp);
   }
 })();
 
@@ -1482,12 +1553,12 @@ function buildDeliveryUI() {
     </div>
     <div class="dlv-search-group">
       <label>플랜트 <span id="dlv-werks-badge" class="ms-count-badge" style="display:none"></span></label>
-      <div class="ms-wrap" id="dlv-werks-wrap" style="min-width:110px;max-width:160px">
-        <div class="ms-trigger" id="dlv-werks-trigger" onclick="dlvToggleWerks(event)" style="min-width:0;max-width:160px;overflow:hidden">
-          <span id="dlv-werks-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px;display:inline-block">전체</span>
+      <div class="ms-wrap" id="dlv-werks-wrap" style="min-width:160px;max-width:280px">
+        <div class="ms-trigger" id="dlv-werks-trigger" onclick="dlvToggleWerks(event)">
+          <span id="dlv-werks-label" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">전체</span>
           <span class="ms-arrow" style="flex-shrink:0">▾</span>
         </div>
-        <div class="ms-dropdown" id="dlv-werks-dd" style="display:none;min-width:200px;left:0">
+        <div class="ms-dropdown" id="dlv-werks-dd" style="display:none">
           <div class="ms-option all-opt" onclick="dlvWerksAll()">
             <input type="checkbox" id="dlv-werks-all-chk"> <label for="dlv-werks-all-chk">전체 선택</label>
           </div>
@@ -1812,8 +1883,11 @@ function dlvUpdateWerksLabel() {
     if (badge) badge.style.display = 'none';
     if (allChk) allChk.checked = true;
   } else {
-    // 트리거 안에는 선택 건수만 표시해 너비 절약
-    lbl.textContent = `${vals.length}개 선택`;
+    // 선택된 플랜트 명칭 전체 표시 (폭이 충분하므로)
+    lbl.textContent = vals.map(v => {
+      const o = dlvState.codes['LOTA02']?.find(x => x.value === v);
+      return o ? `${o.value} ${o.label}` : v;
+    }).join(', ');
     if (badge) { badge.textContent = vals.length; badge.style.display = ''; }
     if (allChk) allChk.checked = false;
   }
@@ -2005,29 +2079,38 @@ function renderDeliveryList(data) {
 
   const skug05Map = Object.fromEntries(dlvState.codes['SKUG05'].map(o => [o.value, o.label]));
 
-  let html = `<table class="dlv-list-table">
-    <thead><tr>
-      <th style="min-width:100px">납품처코드</th>
-      <th style="min-width:160px">납품처명</th>
-      <th style="min-width:80px">출하지점</th>
-      <th style="min-width:70px">제품군</th>
-      <th style="min-width:200px">주소</th>
-      <th style="min-width:80px">권역</th>
-      <th style="min-width:70px">TMS등록</th>
-    </tr></thead><tbody>`;
+  // 납품처 리스트 컬럼 정의 (id, label, defaultW)
+  const dlvCols = [
+    {id:'dlv-c0', label:'납품처코드', w: _dlvColW['dlv-c0']||100},
+    {id:'dlv-c1', label:'납품처명',   w: _dlvColW['dlv-c1']||160},
+    {id:'dlv-c2', label:'출하지점',   w: _dlvColW['dlv-c2']|| 90},
+    {id:'dlv-c3', label:'제품군',     w: _dlvColW['dlv-c3']|| 80},
+    {id:'dlv-c4', label:'주소',       w: _dlvColW['dlv-c4']||220},
+    {id:'dlv-c5', label:'권역',       w: _dlvColW['dlv-c5']|| 80},
+    {id:'dlv-c6', label:'TMS등록',    w: _dlvColW['dlv-c6']|| 72},
+  ];
+  const dlvThHtml = dlvCols.map(c =>
+    `<th data-rzid="${c.id}" style="width:${c.w}px;min-width:40px;position:sticky;top:0">` +
+    `<span class="th-cell">${c.label}</span>` +
+    `<span class="col-rz" onmousedown="tableResizerDown(event,'${c.id}','.dlv-list-table')"></span></th>`
+  ).join('');
+
+  let html = `<table class="dlv-list-table" id="dlv-list-table">
+    <thead><tr>${dlvThHtml}</tr></thead><tbody>`;
 
   data.rows.forEach((row, idx) => {
     const isSelected = dlvState.selectedRow?.PTNRKY === row.PTNRKY;
     const skuLabel   = skug05Map[row.ITEM_GROUP] || row.ITEM_GROUP || '';
     const hasDtl     = row.HAS_DETAIL === 'Y';
+    const dw = (id, def) => { const w = _dlvColW[id]||def; return `width:${w}px;max-width:${w}px;`; };
     html += `<tr class="${isSelected ? 'selected' : ''}" onclick="selectDeliveryRow(${idx}, this)" data-idx="${idx}">
-      <td style="color:#fbbf24;font-family:monospace;font-weight:600">${row.PTNRKY}</td>
-      <td style="font-weight:600">${row.NAME01 || '-'}</td>
-      <td style="color:var(--text3)">${row.WAREKY || '-'}</td>
-      <td>${skuLabel ? `<span style="font-size:10px;background:var(--surface2);padding:1px 6px;border-radius:3px">${skuLabel}</span>` : '-'}</td>
-      <td style="color:var(--text3);max-width:220px" title="${row.ADDR01||''} ${row.ADDR02||''}">${(row.ADDR01||'') + (row.ADDR02 ? ' '+row.ADDR02 : '') || '-'}</td>
-      <td>${row.AREA_CD || '-'}</td>
-      <td style="text-align:center">${hasDtl ? '<span class="badge-reg">등록</span>' : '<span class="badge-none">미등록</span>'}</td>
+      <td style="${dw('dlv-c0',100)}color:#fbbf24;font-family:monospace;font-weight:600" title="${row.PTNRKY}">${row.PTNRKY}</td>
+      <td style="${dw('dlv-c1',160)}font-weight:600" title="${row.NAME01||''}">${row.NAME01 || '-'}</td>
+      <td style="${dw('dlv-c2',90)}color:var(--text3)">${row.WAREKY || '-'}</td>
+      <td style="${dw('dlv-c3',80)}">${skuLabel ? `<span style="font-size:10px;background:var(--surface2);padding:1px 6px;border-radius:3px">${skuLabel}</span>` : '-'}</td>
+      <td style="${dw('dlv-c4',220)}color:var(--text3)" title="${row.ADDR01||''} ${row.ADDR02||''}">${(row.ADDR01||'') + (row.ADDR02 ? ' '+row.ADDR02 : '') || '-'}</td>
+      <td style="${dw('dlv-c5',80)}">${row.AREA_CD || '-'}</td>
+      <td style="${dw('dlv-c6',72)}text-align:center">${hasDtl ? '<span class="badge-reg">등록</span>' : '<span class="badge-none">미등록</span>'}</td>
     </tr>`;
   });
   html += '</tbody></table>';
@@ -2751,37 +2834,46 @@ function renderVehicleList(data) {
   const skuMap   = Object.fromEntries(vhcState.codes['SKUG05'].map(o => [o.value, o.label]));
   const tColor   = {일반:'#93c5fd', 냉동:'#6ee7b7', 냉장:'#c4b5fd'};
 
-  let html = `<table class="vhc-table">
-    <thead><tr>
-      <th style="min-width:110px">차량번호</th>
-      <th style="min-width:80px">출하지점</th>
-      <th style="min-width:90px">제품군</th>
-      <th style="min-width:70px">배송구역</th>
-      <th style="min-width:110px">운송사</th>
-      <th style="min-width:70px">차량구분</th>
-      <th style="min-width:70px">차종</th>
-      <th style="min-width:60px">차형</th>
-      <th style="min-width:100px">기사명</th>
-      <th style="min-width:130px">연락처</th>
-      <th style="min-width:50px">사용</th>
-    </tr></thead><tbody>`;
+  // 차량 리스트 컬럼 정의 (id, label, defaultW)
+  const vhcCols = [
+    {id:'vhc-c0',  label:'차량번호', w: _vhcColW['vhc-c0'] ||110},
+    {id:'vhc-c1',  label:'출하지점', w: _vhcColW['vhc-c1'] || 80},
+    {id:'vhc-c2',  label:'제품군',   w: _vhcColW['vhc-c2'] || 90},
+    {id:'vhc-c3',  label:'배송구역', w: _vhcColW['vhc-c3'] || 75},
+    {id:'vhc-c4',  label:'운송사',   w: _vhcColW['vhc-c4'] ||110},
+    {id:'vhc-c5',  label:'차량구분', w: _vhcColW['vhc-c5'] || 70},
+    {id:'vhc-c6',  label:'차종',     w: _vhcColW['vhc-c6'] || 70},
+    {id:'vhc-c7',  label:'차형',     w: _vhcColW['vhc-c7'] || 60},
+    {id:'vhc-c8',  label:'기사명',   w: _vhcColW['vhc-c8'] ||100},
+    {id:'vhc-c9',  label:'연락처',   w: _vhcColW['vhc-c9'] ||130},
+    {id:'vhc-c10', label:'사용',     w: _vhcColW['vhc-c10']|| 55},
+  ];
+  const vhcThHtml = vhcCols.map(c =>
+    `<th data-rzid="${c.id}" style="width:${c.w}px;min-width:40px;position:sticky;top:0">` +
+    `<span class="th-cell">${c.label}</span>` +
+    `<span class="col-rz" onmousedown="tableResizerDown(event,'${c.id}','.vhc-table')"></span></th>`
+  ).join('');
+
+  let html = `<table class="vhc-table" id="vhc-list-table">
+    <thead><tr>${vhcThHtml}</tr></thead><tbody>`;
 
   data.rows.forEach((row, idx) => {
     const isSel   = vhcState.selectedRow?.VEHICLE_NO === row.VEHICLE_NO;
     const skuLbl  = skuMap[row.PRODUCT_GROUP] || row.PRODUCT_GROUP || '-';
     const tc      = tColor[row.VEHICLE_TYPE] || '#94a3b8';
+    const vw = (id, def) => { const w = _vhcColW[id]||def; return `width:${w}px;max-width:${w}px;`; };
     html += `<tr class="${isSel?'selected':''}" onclick="selectVehicleRow(${idx},this)" data-idx="${idx}">
-      <td style="font-family:monospace;font-weight:700;color:#fbbf24">${row.VEHICLE_NO||'-'}</td>
-      <td style="color:var(--text3)">${row.SHIP_POINT||'-'}</td>
-      <td>${skuLbl}</td>
-      <td>${row.DELIVERY_ZONE||'-'}</td>
-      <td>${row.CARRIER||'-'}</td>
-      <td><span style="font-size:10px;font-weight:700;padding:2px 5px;border-radius:3px;background:var(--surface2);color:${tc}">${row.VEHICLE_TYPE||'-'}</span></td>
-      <td>${row.VEHICLE_KIND||'-'}</td>
-      <td style="color:#a78bfa;font-weight:600">${row.VEHICLE_CLASS||'-'}</td>
-      <td style="font-weight:600">${row.DRIVER_NAME||'-'}</td>
-      <td style="color:var(--text3);font-family:monospace;font-size:11px">${row.CONTACT_NO||'-'}</td>
-      <td style="text-align:center">${row.USE_YN==='Y'
+      <td style="${vw('vhc-c0',110)}font-family:monospace;font-weight:700;color:#fbbf24" title="${row.VEHICLE_NO||''}">${row.VEHICLE_NO||'-'}</td>
+      <td style="${vw('vhc-c1',80)}color:var(--text3)">${row.SHIP_POINT||'-'}</td>
+      <td style="${vw('vhc-c2',90)}" title="${skuLbl}">${skuLbl}</td>
+      <td style="${vw('vhc-c3',75)}">${row.DELIVERY_ZONE||'-'}</td>
+      <td style="${vw('vhc-c4',110)}" title="${row.CARRIER||''}">${row.CARRIER||'-'}</td>
+      <td style="${vw('vhc-c5',70)}"><span style="font-size:10px;font-weight:700;padding:2px 5px;border-radius:3px;background:var(--surface2);color:${tc}">${row.VEHICLE_TYPE||'-'}</span></td>
+      <td style="${vw('vhc-c6',70)}">${row.VEHICLE_KIND||'-'}</td>
+      <td style="${vw('vhc-c7',60)}color:#a78bfa;font-weight:600">${row.VEHICLE_CLASS||'-'}</td>
+      <td style="${vw('vhc-c8',100)}font-weight:600" title="${row.DRIVER_NAME||''}">${row.DRIVER_NAME||'-'}</td>
+      <td style="${vw('vhc-c9',130)}color:var(--text3);font-family:monospace;font-size:11px">${row.CONTACT_NO||'-'}</td>
+      <td style="${vw('vhc-c10',55)}text-align:center">${row.USE_YN==='Y'
         ?'<span class="vhc-badge use-y">사용</span>'
         :'<span class="vhc-badge use-n">미사용</span>'}</td>
     </tr>`;
