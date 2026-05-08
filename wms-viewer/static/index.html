@@ -419,6 +419,8 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .mmgr-edit-input{flex:1;background:var(--surface2);border:1px solid var(--primary);border-radius:4px;color:var(--text);padding:2px 7px;font-size:12px;outline:none}
 .mmgr-btn-edit{padding:2px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);cursor:pointer;font-size:10px;transition:.15s;white-space:nowrap}
 .mmgr-btn-edit:hover{border-color:var(--primary);color:var(--primary)}
+.mmgr-btn-del{padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:#94a3b8;cursor:pointer;font-size:10px;transition:.15s;white-space:nowrap}
+.mmgr-btn-del:hover{border-color:#ef4444;color:#ef4444;background:#1a0a0a}
 .mmgr-sep{height:1px;background:var(--border);margin:4px 0}
 </style>
 </head>
@@ -3740,6 +3742,7 @@ function renderMmgrBody() {
         <span class="mmgr-drag-handle">⠿</span>
         <span class="mmgr-label" id="mmgr-lbl-${idx}" style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.5px;text-transform:uppercase">${item.label}</span>
         <button class="mmgr-btn-edit" onclick="mmgrStartEdit(${idx})">✏️</button>
+        <button class="mmgr-btn-del" onclick="mmgrDelete(${idx})" title="삭제">✕</button>
       </div>`;
     } else {
       html += `<div class="mmgr-item" draggable="true"
@@ -3750,6 +3753,7 @@ function renderMmgrBody() {
         <span style="font-size:13px">${item.icon || '▪'}</span>
         <span class="mmgr-label" id="mmgr-lbl-${idx}">${item.label}</span>
         <button class="mmgr-btn-edit" onclick="mmgrStartEdit(${idx})">✏️</button>
+        <button class="mmgr-btn-del" onclick="mmgrDelete(${idx})" title="삭제">✕</button>
       </div>`;
     }
     // 섹션 사이 구분선
@@ -3789,6 +3793,17 @@ function mmgrFinishEdit(idx, val) {
 }
 function mmgrCancelEdit(idx) {
   renderMmgrBody();
+}
+
+/* ── 메뉴 항목 삭제 ── */
+function mmgrDelete(idx) {
+  const item = _mmgrCfg[idx];
+  if (!item) return;
+  const name = item.label || (item.type === 'section' ? '섹션' : '메뉴');
+  if (!confirm(`'${name}'을(를) 삭제하시겠습니까?\n삭제 후 적용 버튼을 눌러야 반영됩니다.`)) return;
+  _mmgrCfg.splice(idx, 1);
+  renderMmgrBody();
+  showToast(`'${name}' 삭제됨 (적용 버튼으로 저장)`);
 }
 
 /* ── 드래그앤드롭 ── */
