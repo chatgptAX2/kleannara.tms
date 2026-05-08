@@ -66,9 +66,11 @@ thead th{
   border-right:1px solid var(--border);
   white-space:nowrap;
   user-select:none;
-  min-width:120px;
-  max-width:120px;
+  min-width:60px;
+  max-width:none;
   width:120px;
+  overflow:hidden;
+  position:relative;
 }
 thead th .th-inner{
   display:flex;flex-direction:column;padding:8px 10px;gap:2px;overflow:hidden;
@@ -78,6 +80,13 @@ thead th .th-col{font-size:10px;font-weight:400;opacity:.6;overflow:hidden;text-
 thead th.pk-col .th-label{color:var(--warning)}
 thead th.pk-col .th-col{color:var(--warning);opacity:.7}
 thead th:hover .th-label{color:var(--primary)}
+
+/* 컬럼 드래그 리사이저 핸들 */
+thead th .col-resizer{
+  position:absolute;right:0;top:0;bottom:0;width:5px;cursor:col-resize;
+  background:transparent;z-index:30;
+}
+thead th .col-resizer:hover,thead th .col-resizer.resizing{background:var(--primary);opacity:.7}
 
 /* PK 컬럼 고정 */
 thead th.sticky-col{position:sticky;left:0;z-index:20;background:#1a2744}
@@ -91,8 +100,8 @@ tbody td{
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
-  min-width:120px;
-  max-width:120px;
+  min-width:60px;
+  max-width:none;
   width:120px;
   border-right:1px solid #1a2535;
   vertical-align:middle;
@@ -365,6 +374,46 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 @keyframes spin{to{transform:rotate(360deg)}}
 .empty-state{padding:50px;text-align:center;color:var(--text3)}
 .empty-state .icon{font-size:44px;margin-bottom:10px;opacity:.3}
+
+/* ── 메뉴 관리자 버튼 ── */
+.menu-mgr-btn{
+  margin:8px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);
+  background:var(--surface2);color:var(--text3);cursor:pointer;font-size:11px;
+  font-weight:600;width:calc(100% - 16px);display:flex;align-items:center;gap:6px;
+  transition:.15s;
+}
+.menu-mgr-btn:hover{border-color:var(--primary);color:var(--primary)}
+
+/* ── 메뉴 관리자 모달 ── */
+.mmgr-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:600;display:flex;align-items:center;justify-content:center;padding:20px}
+.mmgr-modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;width:520px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.6)}
+.mmgr-hdr{padding:13px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0}
+.mmgr-hdr h3{font-size:14px;font-weight:700;flex:1}
+.mmgr-body{padding:12px;overflow-y:auto;flex:1}
+.mmgr-foot{padding:10px 14px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;background:var(--surface2)}
+/* 메뉴 트리 아이템 */
+.mmgr-section{
+  padding:5px 10px;font-size:10px;font-weight:700;color:var(--text3);
+  letter-spacing:.8px;text-transform:uppercase;margin-top:4px;
+  display:flex;align-items:center;gap:6px;cursor:grab;border-radius:5px;
+  user-select:none;
+}
+.mmgr-section:hover{background:var(--surface2)}
+.mmgr-section.drag-over{background:rgba(59,130,246,.15);border:1px dashed var(--primary)}
+.mmgr-item{
+  display:flex;align-items:center;gap:6px;padding:6px 10px 6px 22px;
+  border-radius:5px;cursor:grab;font-size:12px;color:var(--text2);
+  user-select:none;margin:1px 0;
+}
+.mmgr-item:hover{background:var(--surface2)}
+.mmgr-item.drag-over{background:rgba(59,130,246,.15);border:1px dashed var(--primary)}
+.mmgr-item.dragging,.mmgr-section.dragging{opacity:.4}
+.mmgr-drag-handle{color:var(--text3);cursor:grab;font-size:13px;flex-shrink:0}
+.mmgr-label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mmgr-edit-input{flex:1;background:var(--surface2);border:1px solid var(--primary);border-radius:4px;color:var(--text);padding:2px 7px;font-size:12px;outline:none}
+.mmgr-btn-edit{padding:2px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);cursor:pointer;font-size:10px;transition:.15s;white-space:nowrap}
+.mmgr-btn-edit:hover{border-color:var(--primary);color:var(--primary)}
+.mmgr-sep{height:1px;background:var(--border);margin:4px 0}
 </style>
 </head>
 <body>
@@ -430,6 +479,24 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
   </div>
   <div class="nav-item" onclick="showPage('sql')" id="nav-sql">
     <span class="icon">💾</span> SQL 콘솔
+  </div>
+  <div style="flex:1"></div>
+  <button class="menu-mgr-btn" onclick="openMenuMgr()">⚙️ 메뉴 관리</button>
+</div>
+
+<!-- 메뉴 관리자 모달 -->
+<div class="mmgr-overlay" id="mmgr-overlay" style="display:none" onclick="if(event.target===this)closeMenuMgr()">
+  <div class="mmgr-modal">
+    <div class="mmgr-hdr">
+      <h3>⚙️ 메뉴 관리</h3>
+      <span style="font-size:11px;color:var(--text3)">드래그로 순서 변경 · ✏️ 클릭으로 이름 수정</span>
+      <button style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;padding:4px" onclick="closeMenuMgr()">✕</button>
+    </div>
+    <div class="mmgr-body" id="mmgr-body"></div>
+    <div class="mmgr-foot">
+      <button class="crud-btn cancel" onclick="mmgrReset()">↺ 초기화</button>
+      <button class="crud-btn save" onclick="mmgrApply()">✓ 적용</button>
+    </div>
   </div>
 </div>
 
@@ -744,17 +811,20 @@ function renderTableFromCache(){
   const start = (page - 1) * size + 1;
   const end   = Math.min(page * size, total);
 
-  // thead
+  // thead (컬럼 드래그 리사이저 핸들 포함)
   let stickyOffset = 0;
   let thead = '<thead><tr>';
   cols.forEach((col, ci) => {
     const isPk   = pkCols.includes(col);
     const sticky = isPk ? ' sticky-col' : '';
-    thead += `<th class="${isPk ? 'pk-col' : ''}${sticky}">
+    const colW   = _colWidths[col] ? `style="width:${_colWidths[col]}px;min-width:${_colWidths[col]}px"` : '';
+    thead += `<th class="${isPk ? 'pk-col' : ''}${sticky}" data-col="${col}" ${colW}>
       <div class="th-inner">
         <span class="th-label">${labels[col] || col}</span>
         <span class="th-col">${col}</span>
-      </div></th>`;
+      </div>
+      <div class="col-resizer" onmousedown="colResizerDown(event,'${col}')"></div>
+      </th>`;
   });
   thead += '</tr></thead>';
 
@@ -871,6 +941,56 @@ function tblToggleHide() {
     if (ebtn) ebtn.style.display = '';
   }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   컬럼 WIDTH 드래그 리사이저
+═══════════════════════════════════════════════════════════ */
+const _colWidths = {}; // {colName: px}
+(function(){
+  let _crDragging = false, _crCol = null, _crStartX = 0, _crStartW = 0;
+
+  window.colResizerDown = function(e, col) {
+    e.stopPropagation();
+    e.preventDefault();
+    _crDragging = true;
+    _crCol = col;
+    _crStartX = e.clientX;
+    const th = document.querySelector(`thead th[data-col="${col}"]`);
+    _crStartW = th ? th.getBoundingClientRect().width : (_colWidths[col] || 120);
+    document.querySelectorAll('.col-resizer').forEach(r => r.classList.remove('resizing'));
+    if (th) th.querySelector('.col-resizer')?.classList.add('resizing');
+    document.body.style.cursor = 'col-resize';
+    document.addEventListener('mousemove', _crMove);
+    document.addEventListener('mouseup', _crUp);
+  };
+
+  function _crMove(e) {
+    if (!_crDragging || !_crCol) return;
+    const delta = e.clientX - _crStartX;
+    const newW  = Math.max(60, _crStartW + delta);
+    _colWidths[_crCol] = newW;
+    // th / td 모두 width 적용 (table-layout:fixed 없이 직접 제어)
+    const th = document.querySelector(`thead th[data-col="${_crCol}"]`);
+    if (th) { th.style.width = newW + 'px'; th.style.minWidth = newW + 'px'; }
+    // td도 같은 컬럼 인덱스에 적용
+    const thIdx = th ? [...th.parentElement.children].indexOf(th) : -1;
+    if (thIdx >= 0) {
+      document.querySelectorAll(`#main-table tbody tr`).forEach(tr => {
+        const td = tr.children[thIdx];
+        if (td) { td.style.width = newW + 'px'; td.style.minWidth = newW + 'px'; td.style.maxWidth = newW + 'px'; }
+      });
+    }
+  }
+
+  function _crUp() {
+    _crDragging = false;
+    _crCol = null;
+    document.body.style.cursor = '';
+    document.querySelectorAll('.col-resizer').forEach(r => r.classList.remove('resizing'));
+    document.removeEventListener('mousemove', _crMove);
+    document.removeEventListener('mouseup', _crUp);
+  }
+})();
 
 /* ═══════════════════════════════════════════════════════════
    DETAIL MODAL (읽기 전용 — 기존 유지)
@@ -1315,8 +1435,8 @@ async function renderDelivery() {
   const codeKeys = ['LOTA02','SKUG05','TMS_ROUTE','TMS_UNLOADTIME','TMS_MAXHEIGHT','TMS_INBOUNDTIME'];
   const results  = await Promise.all(codeKeys.map(k => fetch(`/api/codes/${k}`).then(r=>r.json())));
   codeKeys.forEach((k,i) => dlvState.codes[k] = results[i]);
-  // WAREKY 목록 (출하지점 select용)
-  dlvState.codes['WAREKY'] = await fetch('/api/delivery/wareky').then(r=>r.json());
+  // TMS_SHPPOINT 목록 (출하지점 select용)
+  dlvState.codes['TMS_SHPPOINT'] = await fetch('/api/delivery/shppoint').then(r=>r.json());
 
   // 납품처 개수 뱃지
   const cntEl = document.getElementById('cnt-delivery');
@@ -1333,10 +1453,10 @@ function buildDeliveryUI() {
   const c = document.getElementById('content');
   c.style.overflowY = 'hidden';
 
-  // 출하지점 select: DB의 실제 WAREKY 값 목록
-  const warehouseList = dlvState.codes['WAREKY'] || [];
-  const shpOpts = warehouseList.map(o=>
-    `<option value="${o.value}">${o.value} (${o.cnt}건)</option>`).join('');
+  // 출하지점 select: TMS_SHPPOINT 코드 기반
+  const shpList = dlvState.codes['TMS_SHPPOINT'] || [];
+  const shpOpts = shpList.map(o=>
+    `<option value="${o.value}">${o.value} — ${o.label}${o.cnt ? ' ('+o.cnt+'건)' : ''}</option>`).join('');
 
   const skug05Opts = dlvState.codes['SKUG05'].map(o=>`<option value="${o.value}">${o.value} ${o.label}</option>`).join('');
 
@@ -1345,7 +1465,7 @@ function buildDeliveryUI() {
   const plantMsOpts = plantList.map(o=>`
     <div class="ms-option" data-val="${o.value}">
       <input type="checkbox" id="dlv-werks-${o.value}" value="${o.value}" onchange="dlvWerksChange()">
-      <label for="dlv-werks-${o.value}">${o.value} ${o.label}</label>
+      <label for="dlv-werks-${o.value}">${o.value} — ${o.label}</label>
     </div>`).join('');
 
   c.innerHTML = `
@@ -1355,20 +1475,19 @@ function buildDeliveryUI() {
   <div class="dlv-search-bar">
     <div class="dlv-search-group">
       <label>출하지점</label>
-      <select id="dlv-s-vstel" onchange="dlvSearchChange()" style="min-width:150px">
+      <select id="dlv-s-vstel" onchange="dlvSearchChange()" style="min-width:170px">
         <option value="">전체</option>
         ${shpOpts}
       </select>
     </div>
     <div class="dlv-search-group">
       <label>플랜트 <span id="dlv-werks-badge" class="ms-count-badge" style="display:none"></span></label>
-      <div class="ms-wrap" id="dlv-werks-wrap">
-        <div class="ms-trigger" id="dlv-werks-trigger" onclick="dlvToggleWerks(event)">
-          <span id="dlv-werks-label">전체</span>
-          <span class="ms-arrow">▾</span>
+      <div class="ms-wrap" id="dlv-werks-wrap" style="min-width:110px;max-width:160px">
+        <div class="ms-trigger" id="dlv-werks-trigger" onclick="dlvToggleWerks(event)" style="min-width:0;max-width:160px;overflow:hidden">
+          <span id="dlv-werks-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px;display:inline-block">전체</span>
+          <span class="ms-arrow" style="flex-shrink:0">▾</span>
         </div>
-        <div class="ms-dropdown" id="dlv-werks-dd" style="display:none">
-          <div class="ms-search"><input type="text" placeholder="검색..." oninput="dlvWerksFilter(this.value)"></div>
+        <div class="ms-dropdown" id="dlv-werks-dd" style="display:none;min-width:200px;left:0">
           <div class="ms-option all-opt" onclick="dlvWerksAll()">
             <input type="checkbox" id="dlv-werks-all-chk"> <label for="dlv-werks-all-chk">전체 선택</label>
           </div>
@@ -1693,10 +1812,8 @@ function dlvUpdateWerksLabel() {
     if (badge) badge.style.display = 'none';
     if (allChk) allChk.checked = true;
   } else {
-    lbl.textContent = vals.map(v => {
-      const o = dlvState.codes['LOTA02']?.find(x=>x.value===v);
-      return o ? `${v} ${o.label}` : v;
-    }).join(', ');
+    // 트리거 안에는 선택 건수만 표시해 너비 절약
+    lbl.textContent = `${vals.length}개 선택`;
     if (badge) { badge.textContent = vals.length; badge.style.display = ''; }
     if (allChk) allChk.checked = false;
   }
@@ -1851,22 +1968,21 @@ async function searchDelivery(page) {
   if (!wrap) return;
   wrap.innerHTML = `<div class="loading"><div class="spinner"></div>조회 중...</div>`;
 
-  // 출하지점 select 값 (vstel → WAREKY 직접 필터)
+  // 출하지점 select 값 (TMS_SHPPOINT 코드 → WAREKY 직접 필터)
   const vstelVal   = (document.getElementById('dlv-s-vstel')?.value || '').trim();
-  // 플랜트 multi-select 값 (wareky 복수 → WAREKY IN(...) 필터)
+  // 플랜트 multi-select 값 (LOTA02 코드 → werks 복수 파라미터)
   const warekyVals = dlvGetWerks();
 
   const params = new URLSearchParams({
     page:   dlvState.page,
     size:   dlvState.size,
-    vstel:  vstelVal,
     skug05: document.getElementById('dlv-s-skug05')?.value || '',
     ptnrky: (document.getElementById('dlv-s-ptnrky')?.value || '').trim(),
   });
-  // 출하지점이 선택된 경우 vstel만 사용, 아니면 플랜트 multi-select 적용
-  if (!vstelVal) {
-    warekyVals.forEach(v => params.append('wareky', v));
-  }
+  // 출하지점이 선택된 경우 vstel 파라미터로 전달
+  if (vstelVal) params.set('vstel', vstelVal);
+  // 플랜트 multi-select는 출하지점과 별도로 werks 복수 파라미터로 전달
+  warekyVals.forEach(v => params.append('werks', v));
 
   const data = await fetch(`/api/delivery/list?${params}`).then(r => r.json());
   dlvState.total = data.total;
@@ -3414,8 +3530,205 @@ async function runSQL(){
 }
 
 /* ═══════════════════════════════════════════════════════════
+   LNB 메뉴 관리자 (드래그 순서 변경 + 이름 수정)
+═══════════════════════════════════════════════════════════ */
+const MMGR_STORE_KEY = 'wms_menu_config';
+
+// 기본 메뉴 구조 (sidebar HTML 기반)
+function mmgrDefaultConfig() {
+  return [
+    { type:'section', id:'sec-dashboard', label:'대시보드' },
+    { type:'item',    id:'nav-dashboard', label:'대시보드',        icon:'🏠', page:'dashboard' },
+    { type:'section', id:'sec-master',    label:'마스터' },
+    { type:'item',    id:'nav-CMCDM',     label:'공통코드헤더',    icon:'📋', page:'CMCDM',    cnt:true },
+    { type:'item',    id:'nav-CMCDV',     label:'공통코드값',      icon:'📌', page:'CMCDV',    cnt:true },
+    { type:'item',    id:'nav-SKUMA',     label:'상품(SKU)',       icon:'📦', page:'SKUMA',    cnt:true },
+    { type:'item',    id:'nav-BZPTN',     label:'거래처',          icon:'🏢', page:'BZPTN',    cnt:true },
+    { type:'item',    id:'nav-MEASI',     label:'단위구성',        icon:'📐', page:'MEASI',    cnt:true },
+    { type:'section', id:'sec-outbound',  label:'출고' },
+    { type:'item',    id:'nav-SHPDH',     label:'출고문서헤더',    icon:'🚚', page:'SHPDH',    cnt:true },
+    { type:'item',    id:'nav-SHPDI',     label:'출고문서아이템',  icon:'📄', page:'SHPDI',    cnt:true },
+    { type:'section', id:'sec-interface', label:'인터페이스' },
+    { type:'item',    id:'nav-IFWMS113',  label:'ERP출고오더',     icon:'🔄', page:'IFWMS113', cnt:true },
+    { type:'section', id:'sec-tms-dlv',   label:'TMS 납품처' },
+    { type:'item',    id:'nav-delivery',  label:'납품처 관리',     icon:'📍', page:'delivery', cnt:true },
+    { type:'section', id:'sec-tms-base',  label:'TMS 기준정보' },
+    { type:'item',    id:'nav-vehicle',   label:'차량관리',        icon:'🚛', page:'vehicle',  cnt:true },
+    { type:'section', id:'sec-tms-disp',  label:'TMS 배차' },
+    { type:'item',    id:'nav-BZPTN_DETAIL', label:'납품처 상세',  icon:'🗺️', page:'BZPTN_DETAIL', cnt:true },
+    { type:'item',    id:'nav-VHCMA',     label:'차량 마스터',     icon:'🚛', page:'VHCMA',    cnt:true },
+    { type:'item',    id:'nav-ROUTE_COST',label:'운송경로 비용',   icon:'💰', page:'ROUTE_COST',cnt:true },
+    { type:'section', id:'sec-tools',     label:'도구' },
+    { type:'item',    id:'nav-schema',    label:'테이블 스키마',   icon:'🗂️', page:'schema' },
+    { type:'item',    id:'nav-sql',       label:'SQL 콘솔',        icon:'💾', page:'sql' },
+  ];
+}
+
+function mmgrLoadConfig() {
+  try {
+    const s = localStorage.getItem(MMGR_STORE_KEY);
+    return s ? JSON.parse(s) : mmgrDefaultConfig();
+  } catch(e) { return mmgrDefaultConfig(); }
+}
+
+function mmgrSaveConfig(cfg) {
+  localStorage.setItem(MMGR_STORE_KEY, JSON.stringify(cfg));
+}
+
+// 사이드바를 저장된 설정으로 재구성
+function mmgrApplySidebar() {
+  const cfg = mmgrLoadConfig();
+  const sidebar = document.getElementById('sidebar');
+  // 기존 nav-item / nav-section 제거 (logo·btn 유지)
+  [...sidebar.children].forEach(el => {
+    if (el.classList.contains('nav-item') || el.classList.contains('nav-section') || el.style.flex === '1') {
+      el.remove();
+    }
+  });
+
+  // 순서대로 재삽입 (⚙️ 버튼 앞에)
+  const mgBtn = sidebar.querySelector('.menu-mgr-btn');
+  cfg.forEach(item => {
+    if (item.type === 'section') {
+      const el = document.createElement('div');
+      el.className = 'nav-section';
+      el.id = item.id;
+      el.textContent = item.label;
+      sidebar.insertBefore(el, mgBtn);
+    } else {
+      const el = document.createElement('div');
+      el.className = 'nav-item';
+      el.id = item.id;
+      el.onclick = () => showPage(item.page);
+      el.innerHTML = `<span class="icon">${item.icon || '▪'}</span> ${item.label}${item.cnt ? `<span class="cnt" id="cnt-${item.page}">-</span>` : ''}`;
+      sidebar.insertBefore(el, mgBtn);
+    }
+  });
+
+  // flex spacer
+  const spacer = document.createElement('div');
+  spacer.style.flex = '1';
+  sidebar.insertBefore(spacer, mgBtn);
+}
+
+/* ── 메뉴 관리자 모달 열기/닫기 ── */
+let _mmgrCfg = [];
+let _mmgrDragSrc = null;
+
+function openMenuMgr() {
+  _mmgrCfg = JSON.parse(JSON.stringify(mmgrLoadConfig()));
+  renderMmgrBody();
+  document.getElementById('mmgr-overlay').style.display = 'flex';
+}
+function closeMenuMgr() {
+  document.getElementById('mmgr-overlay').style.display = 'none';
+}
+function mmgrReset() {
+  if (!confirm('메뉴를 기본값으로 초기화하시겠습니까?')) return;
+  _mmgrCfg = mmgrDefaultConfig();
+  renderMmgrBody();
+}
+function mmgrApply() {
+  mmgrSaveConfig(_mmgrCfg);
+  mmgrApplySidebar();
+  closeMenuMgr();
+  showToast('메뉴 설정이 저장되었습니다');
+}
+
+/* ── 메뉴 관리자 트리 렌더 ── */
+function renderMmgrBody() {
+  const body = document.getElementById('mmgr-body');
+  let html = '';
+  _mmgrCfg.forEach((item, idx) => {
+    if (item.type === 'section') {
+      html += `<div class="mmgr-section" draggable="true"
+          ondragstart="mmgrDragStart(event,${idx})" ondragover="mmgrDragOver(event,${idx})"
+          ondragleave="mmgrDragLeave(event)" ondrop="mmgrDrop(event,${idx})"
+          id="mmgr-row-${idx}">
+        <span class="mmgr-drag-handle">⠿</span>
+        <span class="mmgr-label" id="mmgr-lbl-${idx}" style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.5px;text-transform:uppercase">${item.label}</span>
+        <button class="mmgr-btn-edit" onclick="mmgrStartEdit(${idx})">✏️</button>
+      </div>`;
+    } else {
+      html += `<div class="mmgr-item" draggable="true"
+          ondragstart="mmgrDragStart(event,${idx})" ondragover="mmgrDragOver(event,${idx})"
+          ondragleave="mmgrDragLeave(event)" ondrop="mmgrDrop(event,${idx})"
+          id="mmgr-row-${idx}">
+        <span class="mmgr-drag-handle">⠿</span>
+        <span style="font-size:13px">${item.icon || '▪'}</span>
+        <span class="mmgr-label" id="mmgr-lbl-${idx}">${item.label}</span>
+        <button class="mmgr-btn-edit" onclick="mmgrStartEdit(${idx})">✏️</button>
+      </div>`;
+    }
+    // 섹션 사이 구분선
+    if (item.type === 'section' && idx > 0) {
+      // 삽입 없음 (시각적으로 충분)
+    }
+  });
+  body.innerHTML = html;
+}
+
+/* ── 이름 수정 인라인 ── */
+function mmgrStartEdit(idx) {
+  const item = _mmgrCfg[idx];
+  const row  = document.getElementById(`mmgr-row-${idx}`);
+  const lbl  = document.getElementById(`mmgr-lbl-${idx}`);
+  if (!lbl) return;
+  const input = document.createElement('input');
+  input.className = 'mmgr-edit-input';
+  input.value = item.label;
+  input.onkeydown = e => {
+    if (e.key === 'Enter') mmgrFinishEdit(idx, input.value);
+    if (e.key === 'Escape') mmgrCancelEdit(idx);
+  };
+  lbl.replaceWith(input);
+  input.focus(); input.select();
+  // 수정 버튼 → 확인 버튼
+  const editBtn = row.querySelector('.mmgr-btn-edit');
+  if (editBtn) {
+    editBtn.textContent = '✓';
+    editBtn.onclick = () => mmgrFinishEdit(idx, input.value);
+  }
+}
+function mmgrFinishEdit(idx, val) {
+  val = val.trim();
+  if (val) _mmgrCfg[idx].label = val;
+  renderMmgrBody();
+}
+function mmgrCancelEdit(idx) {
+  renderMmgrBody();
+}
+
+/* ── 드래그앤드롭 ── */
+function mmgrDragStart(e, idx) {
+  _mmgrDragSrc = idx;
+  e.dataTransfer.effectAllowed = 'move';
+  document.getElementById(`mmgr-row-${idx}`)?.classList.add('dragging');
+}
+function mmgrDragOver(e, idx) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  document.getElementById(`mmgr-row-${idx}`)?.classList.add('drag-over');
+}
+function mmgrDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+function mmgrDrop(e, idx) {
+  e.preventDefault();
+  document.getElementById(`mmgr-row-${idx}`)?.classList.remove('drag-over');
+  if (_mmgrDragSrc === null || _mmgrDragSrc === idx) return;
+  const moved = _mmgrCfg.splice(_mmgrDragSrc, 1)[0];
+  const target = _mmgrDragSrc < idx ? idx - 1 : idx;
+  _mmgrCfg.splice(target, 0, moved);
+  _mmgrDragSrc = null;
+  renderMmgrBody();
+}
+
+/* ═══════════════════════════════════════════════════════════
    BOOT
 ═══════════════════════════════════════════════════════════ */
+// 저장된 메뉴 설정 적용 후 초기화
+mmgrApplySidebar();
 init();
 </script>
 </body>

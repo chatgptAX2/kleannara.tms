@@ -713,16 +713,27 @@ def api_codes(cmcdky):
     } for r in rows])
 
 
-@app.route('/api/delivery/wareky')
-def api_delivery_wareky():
-    """납품처 상세의 WAREKY(출하창고) 목록 반환"""
+@app.route('/api/delivery/shppoint')
+def api_delivery_shppoint():
+    """출하지점 목록 반환: CMCDV.CMCDKY='TMS_SHPPOINT' + BZPTN_DETAIL 건수 포함"""
     conn = get_conn()
-    rows = conn.execute(
-        "SELECT DISTINCT WAREKY, COUNT(*) as cnt FROM BZPTN_DETAIL "
-        "WHERE WAREKY IS NOT NULL AND WAREKY != '' GROUP BY WAREKY ORDER BY WAREKY"
+    # TMS_SHPPOINT 코드 목록
+    codes = conn.execute(
+        "SELECT CMCDVL, CDESC1 FROM CMCDV WHERE CMCDKY='TMS_SHPPOINT' ORDER BY CMCDVL"
+    ).fetchall()
+    # BZPTN_DETAIL 의 WAREKY 별 건수
+    cnts = conn.execute(
+        "SELECT WAREKY, COUNT(*) as cnt FROM BZPTN_DETAIL "
+        "WHERE WAREKY IS NOT NULL AND WAREKY != '' GROUP BY WAREKY"
     ).fetchall()
     conn.close()
-    return jsonify([{"value": r["WAREKY"], "label": r["WAREKY"], "cnt": r["cnt"]} for r in rows])
+    cnt_map = {r["WAREKY"]: r["cnt"] for r in cnts}
+    result = []
+    for c in codes:
+        v = c["CMCDVL"]
+        label = (c["CDESC1"] or "").strip() or v
+        result.append({"value": v, "label": label, "cnt": cnt_map.get(v, 0)})
+    return jsonify(result)
 
 
 @app.route('/api/delivery/list')
@@ -730,10 +741,9 @@ def api_delivery_list():
     """납품처 목록 조회 (BZPTN + BZPTN_DETAIL LEFT JOIN)"""
     page      = int(request.args.get('page', 1))
     size      = int(request.args.get('size', 50))
-    vstel     = request.args.get('vstel', '').strip()       # 출하지점 WAREKY (TMS_SHPPOINT select)
-    wareky    = request.args.getlist('wareky')              # 출하창고 multi-select (WAREKY 직접)
-    wareky    = [w.strip() for w in wareky if w.strip()]
-    lgort     = request.args.get('lgort', '').strip()       # 납품처코드/명 자유검색 (저장위치 필드 재활용)
+    vstel     = request.args.get('vstel', '').strip()       # 출하지점 (TMS_SHPPOINT CMCDVL = WAREKY 값)
+    werks     = request.args.getlist('werks')               # 플랜트 multi-select (LOTA02 코드, 현재 미사용 필드)
+    werks     = [w.strip() for w in werks if w.strip()]
     skug05    = request.args.get('skug05', '').strip()      # 제품군 (SKUG05 = ITEM_GROUP)
     ptnrky    = request.args.get('ptnrky', '').strip()      # 납품처 코드/명칭
     q         = request.args.get('q', '').strip()           # 통합 검색
@@ -741,17 +751,10 @@ def api_delivery_list():
     where_parts, params = ["b.PTNRTY = 'CT'"], []
 
     if vstel:
-        # TMS_SHPPOINT는 출하창고(WAREKY)와 동일 값으로 필터 (W001, W002, W003, W004)
+        # TMS_SHPPOINT 코드 = BZPTN_DETAIL.WAREKY 와 동일값(W001~W004)으로 필터
         where_parts.append("d.WAREKY = ?")
         params.append(vstel)
-    if wareky:
-        placeholders = ','.join(['?'] * len(wareky))
-        where_parts.append(f"d.WAREKY IN ({placeholders})")
-        params.extend(wareky)
-    if lgort:
-        # 저장위치 자유검색을 납품처명/코드 부가검색으로 활용
-        where_parts.append("(b.PTNRKY LIKE ? OR b.NAME01 LIKE ?)")
-        params.extend([f"%{lgort}%", f"%{lgort}%"])
+    # werks(플랜트)는 BZPTN_DETAIL에 직접 대응 컬럼이 없어 현재 무시 (향후 확장용)
     if skug05:
         where_parts.append("d.ITEM_GROUP = ?")
         params.append(skug05)
