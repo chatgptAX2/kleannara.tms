@@ -135,6 +135,47 @@ tbody td{
 tbody td.num{color:#93c5fd;text-align:right}
 tbody td.empty{color:var(--text3)}
 
+/* ── DRAG-COPY SELECTION ── */
+tbody td.dc-selecting{
+  background:rgba(59,130,246,.22) !important;
+  outline:1px solid rgba(59,130,246,.55);
+  outline-offset:-1px;
+}
+tbody td.dc-copied{
+  background:rgba(34,197,94,.18) !important;
+  outline:1px solid rgba(34,197,94,.5);
+  outline-offset:-1px;
+  transition:background .35s,outline .35s;
+}
+/* 전용 테이블(납품처/차량/WAHMA)에도 동일 적용 */
+.dlv-list-table tbody td.dc-selecting,
+.vhc-table tbody td.dc-selecting,
+.wahma-table tbody td.dc-selecting{
+  background:rgba(59,130,246,.22) !important;
+  outline:1px solid rgba(59,130,246,.55);
+  outline-offset:-1px;
+}
+.dlv-list-table tbody td.dc-copied,
+.vhc-table tbody td.dc-copied,
+.wahma-table tbody td.dc-copied{
+  background:rgba(34,197,94,.18) !important;
+  outline:1px solid rgba(34,197,94,.5);
+  outline-offset:-1px;
+  transition:background .35s,outline .35s;
+}
+/* 드래그 중 텍스트 선택 방지 */
+body.dc-dragging{user-select:none !important;-webkit-user-select:none !important;}
+/* 복사 카운트 배지 */
+#dc-badge{
+  position:fixed;pointer-events:none;z-index:9999;
+  background:#1e40af;color:#bfdbfe;
+  font-size:11px;padding:3px 9px;border-radius:12px;
+  border:1px solid #3b82f6;
+  white-space:nowrap;opacity:0;transition:opacity .15s;
+  transform:translate(12px,-50%);
+}
+#dc-badge.show{opacity:1;}
+
 /* ── PAGINATION ── */
 .pagination{padding:8px 14px;border-top:1px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px}
 .pagination .info{font-size:11px;color:var(--text3);white-space:nowrap}
@@ -1228,6 +1269,236 @@ const _vhcColW = {}; // 차량 리스트 컬럼 너비 저장
     document.removeEventListener('mousemove', _onMove);
     document.removeEventListener('mouseup',   _onUp);
   }
+})();
+
+/* ═══════════════════════════════════════════════════════════
+   DRAG-TO-COPY  —  테이블 셀 드래그 → 클립보드 복사
+   · 감시 대상: #table-outer, #dlv-list-wrap, #vhc-list-wrap, #wahma-list-wrap
+   · 드래그 방향: 단일 셀, 단일 행, 다중 행·열 모두 지원
+   · 출력 형식: TSV (탭 구분, 줄바꿈 행 구분) — Excel 붙여넣기 호환
+═══════════════════════════════════════════════════════════ */
+(function () {
+  /* ── 감시 컨테이너 셀렉터 (joined → closest 한 번에) ── */
+  const CONTAINER_SEL = '#table-outer, #dlv-list-wrap, #vhc-list-wrap, #wahma-list-wrap';
+  const SEL_CLS       = 'dc-selecting';
+  const COPY_CLS      = 'dc-copied';
+  const DRAG_MIN_PX   = 4;   // 이 픽셀 이상 움직여야 드래그로 간주
+
+  /* ── 상태 ── */
+  let _pending   = false;  // mousedown 후 아직 드래그 판정 전
+  let _active    = false;  // 드래그 확정 후
+  let _startTd   = null;
+  let _lastEnd   = null;
+  let _startX    = 0;
+  let _startY    = 0;
+  let _badgeEl   = null;
+  let _copyTimer = null;
+
+  /* ── 배지 ── */
+  function _initBadge() {
+    if (_badgeEl) return;
+    _badgeEl = document.createElement('div');
+    _badgeEl.id = 'dc-badge';
+    document.body.appendChild(_badgeEl);
+  }
+  function _showBadge(x, y, text) {
+    _badgeEl.textContent = text;
+    _badgeEl.style.left  = (x + 14) + 'px';
+    _badgeEl.style.top   = (y - 10) + 'px';
+    _badgeEl.classList.add('show');
+  }
+  function _hideBadge() { _badgeEl.classList.remove('show'); }
+
+  /* ── td 위치 (행·열 인덱스) ── */
+  function _tdPos(td) {
+    return {
+      row: [...td.closest('tbody').rows].indexOf(td.parentElement),
+      col: td.cellIndex,
+    };
+  }
+
+  /* ── 범위 내 td 2D 배열 수집 ── */
+  function _getCells(a, b) {
+    if (!a || !b) return [];
+    const tbodyA = a.closest('tbody');
+    if (!tbodyA || tbodyA !== b.closest('tbody')) return [];
+    const pa = _tdPos(a), pb = _tdPos(b);
+    const r1 = Math.min(pa.row, pb.row), r2 = Math.max(pa.row, pb.row);
+    const c1 = Math.min(pa.col, pb.col), c2 = Math.max(pa.col, pb.col);
+    const grid = [];
+    const allRows = [...tbodyA.rows];
+    for (let r = r1; r <= r2; r++) {
+      const tds = [...allRows[r].cells];
+      const rowCells = [];
+      for (let c = c1; c <= c2; c++) {
+        if (tds[c]) rowCells.push(tds[c]);
+      }
+      if (rowCells.length) grid.push(rowCells);
+    }
+    return grid;
+  }
+
+  /* ── 하이라이트 갱신 ── */
+  function _highlight(a, b) {
+    document.querySelectorAll('.' + SEL_CLS)
+            .forEach(el => el.classList.remove(SEL_CLS));
+    const grid = _getCells(a, b);
+    grid.forEach(row => row.forEach(td => td.classList.add(SEL_CLS)));
+    return grid;
+  }
+
+  /* ── 셀 텍스트 (title > textContent, '-' → '') ── */
+  function _cellText(td) {
+    // 버튼·아이콘 등 자식 요소 제외하고 순수 텍스트만
+    const raw = td.getAttribute('title') || td.textContent || '';
+    const t   = raw.trim();
+    return t === '-' ? '' : t;
+  }
+
+  /* ── TSV 생성 ── */
+  function _toTSV(grid) {
+    return grid.map(row => row.map(_cellText).join('\t')).join('\n');
+  }
+
+  /* ── 클립보드 복사 (Clipboard API + execCommand 폴백) ── */
+  async function _copy(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      const ta = Object.assign(document.createElement('textarea'), {
+        value: text,
+        style: 'position:fixed;opacity:0;pointer-events:none',
+      });
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    }
+  }
+
+  /* ── 복사 완료 초록 플래시 ── */
+  function _flashCopied(grid) {
+    clearTimeout(_copyTimer);
+    document.querySelectorAll('.' + COPY_CLS)
+            .forEach(el => el.classList.remove(COPY_CLS));
+    grid.forEach(row => row.forEach(td => {
+      td.classList.remove(SEL_CLS);
+      td.classList.add(COPY_CLS);
+    }));
+    _copyTimer = setTimeout(() => {
+      document.querySelectorAll('.' + COPY_CLS)
+              .forEach(el => el.classList.remove(COPY_CLS));
+    }, 900);
+  }
+
+  /* ── 상태 초기화 ── */
+  function _reset() {
+    _pending = false;
+    _active  = false;
+    _startTd = null;
+    _lastEnd = null;
+    document.body.classList.remove('dc-dragging');
+    _hideBadge();
+    document.querySelectorAll('.' + SEL_CLS)
+            .forEach(el => el.classList.remove(SEL_CLS));
+  }
+
+  /* ════════════════════════════════
+     단일 mousedown — document 위임
+     ════════════════════════════════ */
+  document.addEventListener('mousedown', function (e) {
+    if (e.button !== 0) return;
+    if (e.target.closest('.col-resizer,.col-rz,button,a,input,select,textarea')) return;
+    if (!e.target.closest(CONTAINER_SEL)) return;
+    const td = e.target.closest('tbody td');
+    if (!td) return;
+
+    _pending = true;
+    _active  = false;
+    _startTd = td;
+    _lastEnd = td;
+    _startX  = e.clientX;
+    _startY  = e.clientY;
+  });
+
+  /* ── mousemove: DRAG_MIN_PX 초과 시 드래그 확정 ── */
+  document.addEventListener('mousemove', function (e) {
+    if (_active) {
+      /* 배지 위치만 갱신 */
+      _badgeEl.style.left = (e.clientX + 14) + 'px';
+      _badgeEl.style.top  = (e.clientY - 10) + 'px';
+      return;
+    }
+    if (!_pending || !_startTd) return;
+    const dx = Math.abs(e.clientX - _startX);
+    const dy = Math.abs(e.clientY - _startY);
+    if (dx < DRAG_MIN_PX && dy < DRAG_MIN_PX) return;
+
+    /* 드래그 확정 */
+    _active  = true;
+    _pending = false;
+    document.body.classList.add('dc-dragging');
+    _highlight(_startTd, _startTd);
+    _showBadge(e.clientX, e.clientY, '1 셀');
+  });
+
+  /* ── mouseover: 드래그 중 셀 확장 ── */
+  document.addEventListener('mouseover', function (e) {
+    if (!_active || !_startTd) return;
+    const td = e.target.closest('tbody td');
+    if (!td || td === _lastEnd) return;
+    if (td.closest('tbody') !== _startTd.closest('tbody')) return;
+    if (!td.closest(CONTAINER_SEL)) return;
+
+    _lastEnd       = td;
+    const grid     = _highlight(_startTd, _lastEnd);
+    const nRows    = grid.length;
+    const nCols    = grid[0]?.length || 0;
+    const nCells   = grid.reduce((s, r) => s + r.length, 0);
+    _showBadge(e.clientX, e.clientY,
+      nRows > 1 || nCols > 1 ? `${nRows}행 × ${nCols}열` : '1 셀');
+  });
+
+  /* ── mouseup: 복사 실행 ── */
+  document.addEventListener('mouseup', async function (e) {
+    if (!_active && !_pending) return;
+
+    const wasDragging = _active;
+    const startTd     = _startTd;
+    const endTd       = _lastEnd;
+    _reset();
+
+    /* 클릭(드래그 없음)이면 행 클릭 이벤트에 위임 */
+    if (!wasDragging) return;
+
+    const grid = _getCells(startTd, endTd || startTd);
+    if (!grid.length) return;
+
+    const tsv   = _toTSV(grid);
+    const nRows = grid.length;
+    const nCols = grid[0]?.length || 0;
+    const nCells= grid.reduce((s, r) => s + r.length, 0);
+
+    const ok = await _copy(tsv);
+    if (ok) {
+      _flashCopied(grid);
+      const msg = (nRows > 1 || nCols > 1)
+        ? `📋 ${nRows}행 × ${nCols}열 (${nCells}셀) 복사됨`
+        : `📋 "${tsv.slice(0, 50)}${tsv.length > 50 ? '…' : ''}" 복사됨`;
+      showToast(msg);
+    } else {
+      showToast('⚠️ 클립보드 복사 실패 (브라우저 권한 확인)');
+    }
+  });
+
+  /* ── ESC: 선택 취소 ── */
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') _reset();
+  });
+
+  _initBadge();
 })();
 
 /* ═══════════════════════════════════════════════════════════
