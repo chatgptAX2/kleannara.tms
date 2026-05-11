@@ -7,6 +7,7 @@ DB_PATH = "/home/user/webapp/wms-viewer/wms.db"
 TABLE_META = {
     "CMCDM":        {"desc":"공통코드 헤더",        "pk":["CMCDKY"],                               "group":"WMS 마스터"},
     "CMCDV":        {"desc":"공통코드 아이템",       "pk":["CMCDKY","CMCDVL"],                      "group":"WMS 마스터"},
+    "WAHMA":        {"desc":"물류센터(Warehouse)",   "pk":["WAREKY"],                               "group":"WMS 마스터"},
     "SKUMA":        {"desc":"상품(SKU) 마스터",      "pk":["OWNRKY","SKUKEY"],                      "group":"WMS 마스터"},
     "BZPTN":        {"desc":"거래처",               "pk":["PTNRKY","PTNRTY","OWNRKY"],             "group":"WMS 마스터"},
     "MEASI":        {"desc":"단위구성 아이템",        "pk":["WAREKY","MEASKY","ITEMNO"],             "group":"WMS 마스터"},
@@ -160,6 +161,14 @@ COL_LABELS = {
     "SINGLE_HEIGHT":"단수조정높이","DYNAMIC_YN":"동적유무","LTL_YN":"혼적유무",
     "PRIORITY_YN":"우선배차유무","MIN_QTSIWH":"최소납품수량",
     "LATITUDE":"위도(GPS)","LONGITUDE":"경도(GPS)","DEL_YN":"삭제여부",
+    # ── VHCMA (TMS 차량 마스터)
+    # ── WAHMA (물류센터)
+    "WAREKY":"창고코드","COMPKY":"회사코드","TSPKEY":"태스크분할키",
+    "CHKSHA":"출하지역확인","WADN01":"창고담당자명","WADT01":"담당자전화1",
+    "WADT02":"담당자전화2","WADM01":"담당자이메일","EXCOMK":"외부회사키",
+    "INDOVA":"과배분허용","PLOCOV":"과배분기본위치","INDUAC":"미배분처리여부",
+    "DSORKY":"기본정렬키","DRECLO":"기본입고위치",
+    "WHTT01":"위도","WHTT02":"경도",
     # ── VHCMA (TMS 차량 마스터)
     "VEHICLE_NO":"차량번호","SHIP_POINT":"출하지점","PRODUCT_GROUP":"제품군",
     # ── ROUTE_COST (TMS 운송경로별 비용)
@@ -713,13 +722,100 @@ def api_codes(cmcdky):
     } for r in rows])
 
 
+@app.route('/api/wahma/list')
+def api_wahma_list():
+    """물류센터(WAHMA) 목록 조회"""
+    q        = request.args.get('q', '').strip()
+    page     = int(request.args.get('page', 1))
+    size     = int(request.args.get('size', 50))
+    where_parts, params = [], []
+    if q:
+        where_parts.append("(WAREKY LIKE ? OR NAME01 LIKE ? OR ADDR01 LIKE ? OR TELN01 LIKE ?)")
+        params += [f"%{q}%"] * 4
+    where_sql = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+    offset = (page - 1) * size
+    conn  = get_conn()
+    total = conn.execute(f"SELECT COUNT(*) FROM WAHMA {where_sql}", params).fetchone()[0]
+    rows  = conn.execute(
+        f"SELECT WAREKY, COMPKY, NAME01, ADDR01, POSTCD, NATNKY, TELN01, FAXTL1, "
+        f"WADN01, WADT01, WADM01, DELMAK, CREDAT, LMODAT, LMOUSR, WHTT01, WHTT02 "
+        f"FROM WAHMA {where_sql} ORDER BY WAREKY LIMIT ? OFFSET ?",
+        params + [size, offset]
+    ).fetchall()
+    conn.close()
+    return jsonify({
+        "total": total, "page": page, "size": size,
+        "pages": math.ceil(total / size) if total else 1,
+        "rows": [dict(r) for r in rows],
+    })
+
+
+@app.route('/api/wahma/detail/<wareky>')
+def api_wahma_detail(wareky):
+    """물류센터 단건 상세 조회"""
+    conn = get_conn()
+    row  = conn.execute("SELECT * FROM WAHMA WHERE WAREKY=?", [wareky]).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(dict(row))
+
+
+@app.route('/api/wahma/save', methods=['POST'])
+def api_wahma_save():
+    """물류센터 저장/수정 (UPSERT)"""
+    import datetime
+    body   = request.get_json() or {}
+    wareky = (body.get('WAREKY') or '').strip()
+    if not wareky:
+        return jsonify({"error": "창고코드(WAREKY)는 필수입니다"}), 400
+    now = datetime.datetime.now()
+    nd, nt = now.strftime('%Y%m%d'), now.strftime('%H%M%S')
+    fields = ['COMPKY','TSPKEY','DELMAK','CHKSHA','NAME01','NAME02','NAME03',
+              'ADDR01','ADDR02','ADDR03','ADDR04','ADDR05','CITY01','REGN01',
+              'POSTCD','NATNKY','TELN01','TELN02','TELN03','FAXTL1','FAXTL2',
+              'TAXCD1','TAXCD2','VATREG','POBOX1','POBPC1','WADN01','WADT01',
+              'WADT02','WADM01','EXCOMK','INDOVA','PLOCOV','INDUAC','DSORKY',
+              'DRECLO','INDBZL','INDARC','WHTT01','WHTT02']
+    conn = get_conn()
+    existing = conn.execute("SELECT 1 FROM WAHMA WHERE WAREKY=?", [wareky]).fetchone()
+    try:
+        if existing:
+            set_parts = [f"{f}=?" for f in fields] + ["LMODAT=?","LMOTIM=?","LMOUSR=?","UPDCHK=UPDCHK+1"]
+            vals = [body.get(f,'').strip() if isinstance(body.get(f,''), str) else body.get(f,'')
+                    for f in fields] + [nd, nt, 'WEB', wareky]
+            conn.execute(f"UPDATE WAHMA SET {', '.join(set_parts)} WHERE WAREKY=?", vals)
+            action = 'updated'
+        else:
+            all_fields = ['WAREKY'] + fields + ['CREDAT','CRETIM','CREUSR','LMODAT','LMOTIM','LMOUSR','UPDCHK']
+            vals = [wareky] + [body.get(f,'').strip() if isinstance(body.get(f,''), str) else body.get(f,'')
+                               for f in fields] + [nd, nt, 'WEB', nd, nt, 'WEB', 0]
+            ph = ','.join(['?']*len(all_fields))
+            conn.execute(f"INSERT INTO WAHMA ({','.join(all_fields)}) VALUES ({ph})", vals)
+            action = 'created'
+            # 신규 창고는 CMCDV TMS_SHPPOINT 에도 등록
+            name01 = (body.get('NAME01') or wareky).strip()
+            conn.execute(
+                "INSERT OR REPLACE INTO CMCDV (CMCDKY,CMCDVL,CDESC1,CDESC2,USARG1,USARG2,USARG3,USARG4,USARG5,"
+                "CREDAT,CRETIM,CREUSR,LMODAT,LMOTIM,LMOUSR,INDBZL,INDARC,UPDCHK) VALUES "
+                "('TMS_SHPPOINT',?,?,'',' ',' ',' ',' ',' ',?,?,'WEB',?,?,'WEB',' ',' ',0)",
+                [wareky, name01, nd, nt, nd, nt]
+            )
+        conn.commit()
+        conn.close()
+        return jsonify({"ok": True, "action": action})
+    except Exception as e:
+        conn.close()
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/delivery/shppoint')
 def api_delivery_shppoint():
-    """출하지점 목록 반환: CMCDV.CMCDKY='TMS_SHPPOINT' + BZPTN_DETAIL 건수 포함"""
+    """출하지점 목록 반환: WAHMA 테이블 기반 + BZPTN_DETAIL 건수 포함"""
     conn = get_conn()
-    # TMS_SHPPOINT 코드 목록
+    # WAHMA 전체 목록
     codes = conn.execute(
-        "SELECT CMCDVL, CDESC1 FROM CMCDV WHERE CMCDKY='TMS_SHPPOINT' ORDER BY CMCDVL"
+        "SELECT WAREKY, NAME01 FROM WAHMA WHERE DELMAK=' ' OR DELMAK='' ORDER BY WAREKY"
     ).fetchall()
     # BZPTN_DETAIL 의 WAREKY 별 건수
     cnts = conn.execute(
@@ -730,8 +826,8 @@ def api_delivery_shppoint():
     cnt_map = {r["WAREKY"]: r["cnt"] for r in cnts}
     result = []
     for c in codes:
-        v = c["CMCDVL"]
-        label = (c["CDESC1"] or "").strip() or v
+        v = c["WAREKY"]
+        label = (c["NAME01"] or "").strip() or v
         result.append({"value": v, "label": label, "cnt": cnt_map.get(v, 0)})
     return jsonify(result)
 
@@ -930,8 +1026,10 @@ def api_vehicle_list():
         params + [size, offset]
     ).fetchall()
 
-    # 필터용 유니크 목록
-    ship_points   = [r[0] for r in conn.execute("SELECT DISTINCT SHIP_POINT   FROM VHCMA WHERE SHIP_POINT   IS NOT NULL ORDER BY SHIP_POINT").fetchall()]
+    # 필터용 유니크 목록 (출하지점은 WAHMA 기준)
+    ship_points   = [{"value": r[0], "label": r[1]} for r in conn.execute(
+        "SELECT WAREKY, NAME01 FROM WAHMA WHERE DELMAK=' ' OR DELMAK='' ORDER BY WAREKY"
+    ).fetchall()]
     prod_groups   = [r[0] for r in conn.execute("SELECT DISTINCT PRODUCT_GROUP FROM VHCMA WHERE PRODUCT_GROUP IS NOT NULL ORDER BY PRODUCT_GROUP").fetchall()]
     zones         = [r[0] for r in conn.execute("SELECT DISTINCT DELIVERY_ZONE FROM VHCMA WHERE DELIVERY_ZONE IS NOT NULL ORDER BY DELIVERY_ZONE").fetchall()]
     carriers      = [r[0] for r in conn.execute("SELECT DISTINCT CARRIER       FROM VHCMA WHERE CARRIER       IS NOT NULL ORDER BY CARRIER").fetchall()]

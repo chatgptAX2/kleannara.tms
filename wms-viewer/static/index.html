@@ -337,6 +337,42 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .vhc-badge.type-일반{background:#1e3a5f;color:#93c5fd}
 .vhc-badge.type-냉동{background:#1e3a2f;color:#6ee7b7}
 .vhc-badge.type-냉장{background:#2d1e5f;color:#c4b5fd}
+/* ── WAHMA 물류센터 관리 ── */
+.wahma-layout{display:flex;flex-direction:column;height:100%;overflow:hidden;background:var(--bg)}
+.wahma-toolbar{padding:6px 12px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:6px;flex-shrink:0}
+.wahma-btn{padding:5px 12px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;font-size:12px;font-weight:600;transition:.15s;white-space:nowrap}
+.wahma-btn:hover{border-color:var(--primary);color:var(--primary)}
+.wahma-btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.wahma-btn.primary:hover{background:var(--primary-dark)}
+.wahma-btn.success{background:#166534;border-color:#16a34a;color:#86efac}
+.wahma-btn.danger{background:#7f1d1d;border-color:#dc2626;color:#fca5a5}
+.wahma-search-bar{padding:8px 14px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0}
+.wahma-search-bar input{background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:5px 9px;font-size:12px;width:280px}
+.wahma-body{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
+.wahma-list-section{flex:0 0 auto;max-height:45%;display:flex;flex-direction:column;border-bottom:2px solid var(--primary)}
+.wahma-detail-section{flex:1;overflow-y:auto;min-height:0;background:var(--bg)}
+.wahma-list-wrap{overflow:auto;flex:1;min-height:0}
+.wahma-table{border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed}
+.wahma-table thead th{position:sticky;top:0;background:#1a2744;padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:700;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none}
+.wahma-table thead th .th-cell{padding:8px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.wahma-table tbody tr{border-bottom:1px solid #1a2535;cursor:pointer}
+.wahma-table tbody tr:hover{background:#1e2a3a}
+.wahma-table tbody tr.selected{background:#1e3a5f;border-left:3px solid var(--primary)}
+.wahma-table tbody td{padding:7px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid #1a2535;font-size:12px}
+.wahma-pg{padding:5px 12px;border-top:1px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px}
+.wahma-form-wrap{padding:16px 20px}
+.wahma-form{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 12px}
+.wahma-hdr{padding:7px 14px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.wahma-hdr h3{font-size:12px;font-weight:700;color:var(--text2)}
+.wahma-fg{display:flex;flex-direction:column;gap:3px}
+.wahma-fg label{font-size:10px;font-weight:700;color:var(--warning);white-space:nowrap}
+.wahma-fg label.req::after{content:" *";color:var(--danger)}
+.wahma-fg input,.wahma-fg select{background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 7px;font-size:12px;width:100%}
+.wahma-fg input:focus,.wahma-fg select:focus{outline:none;border-color:var(--primary)}
+.wahma-fg input[readonly]{opacity:.55;cursor:not-allowed}
+.wahma-span2{grid-column:span 2}
+.wahma-span4{grid-column:span 4}
+
 /* ── PANEL RESIZER (드래그 높이 조절) ── */
 .panel-resizer{height:6px;background:var(--border);cursor:ns-resize;flex-shrink:0;position:relative;display:flex;align-items:center;justify-content:center;transition:.15s}
 .panel-resizer:hover,.panel-resizer.dragging{background:var(--primary)}
@@ -442,6 +478,9 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
   </div>
   <div class="nav-item" onclick="showPage('CMCDV')" id="nav-CMCDV">
     <span class="icon">📌</span> 공통코드값<span class="cnt" id="cnt-CMCDV">-</span>
+  </div>
+  <div class="nav-item" onclick="showPage('wahma')" id="nav-wahma">
+    <span class="icon">🏭</span> 물류센터(창고)<span class="cnt" id="cnt-wahma">-</span>
   </div>
   <div class="nav-item" onclick="showPage('SKUMA')" id="nav-SKUMA">
     <span class="icon">📦</span> 상품(SKU)<span class="cnt" id="cnt-SKUMA">-</span>
@@ -684,6 +723,13 @@ function showPage(p){
     psize.style.display = 'none';
     toolbar.style.display = 'none';
     renderVehicle();
+  } else if(p === 'wahma') {
+    document.getElementById('page-title').textContent = '물류센터(창고) 관리';
+    document.getElementById('topbar-badge').textContent = 'WAHMA';
+    srch.style.display = 'none';
+    psize.style.display = 'none';
+    toolbar.style.display = 'none';
+    renderWahma();
   } else if(p === 'ROUTE_COST') {
     state.table = p;
     document.getElementById('page-title').textContent = '운송경로별 비용';
@@ -1019,7 +1065,9 @@ const _vhcColW = {}; // 차량 리스트 컬럼 너비 저장
     _dragging  = true;
     _colId     = colId;
     _tblSel    = tableSelector;
-    _store     = tableSelector === '.dlv-list-table' ? _dlvColW : _vhcColW;
+    _store     = tableSelector === '.dlv-list-table' ? _dlvColW
+               : tableSelector === '.wahma-table'    ? _wahmaColW
+               : _vhcColW;
     _startX    = e.clientX;
 
     // 현재 th 실제 너비 읽기
@@ -2382,7 +2430,10 @@ function buildVehicleUI() {
   const fo           = vhcState.filterOpts;
   const zoneOpts     = (fo.zones||[]).map(v=>`<option value="${v}">${v}</option>`).join('');
   const vtypeOpts    = (fo.vtypes||[]).map(v=>`<option value="${v}">${v}</option>`).join('');
-  const spOpts       = (fo.ship_points||[]).map(v=>`<option value="${v}">${v}</option>`).join('');
+  const spOpts       = (fo.ship_points||[]).map(o=>{
+    const v = o.value||o; const l = o.label||v;
+    return `<option value="${v}">${v} — ${l}</option>`;
+  }).join('');
 
   c.innerHTML = `
 <div class="vhc-layout">
@@ -2504,7 +2555,10 @@ function buildVehicleForm() {
     `<option value="${o.label}">${o.label}</option>`).join('');
   const fo           = vhcState.filterOpts;
   const zoneOpts     = (fo.zones||[]).map(v=>`<option value="${v}">${v}</option>`).join('');
-  const spOpts       = (fo.ship_points||[]).map(v=>`<option value="${v}">${v}</option>`).join('');
+  const spOpts       = (fo.ship_points||[]).map(o=>{
+    const v = o.value||o; const l = o.label||v;
+    return `<option value="${v}">${v} — ${l}</option>`;
+  }).join('');
   const vtypeOpts    = (fo.vtypes||[]).map(v=>`<option value="${v}">${v}</option>`).join('');
 
   return `
@@ -3624,6 +3678,297 @@ async function runSQL(){
 }
 
 /* ═══════════════════════════════════════════════════════════
+   WAHMA 물류센터(창고) 관리
+═══════════════════════════════════════════════════════════ */
+const wahmaState = { page:1, size:50, total:0, selectedRow:null, mode:'new', rows:[] };
+const _wahmaColW = {};
+
+async function renderWahma() {
+  const c = document.getElementById('content');
+  c.style.overflowY = 'hidden';
+  c.innerHTML = `<div class="loading"><div class="spinner"></div>로딩 중...</div>`;
+  buildWahmaUI();
+  await searchWahma();
+}
+
+function buildWahmaUI() {
+  const c = document.getElementById('content');
+  c.innerHTML = `
+<div class="wahma-layout">
+  <div class="wahma-toolbar">
+    <button class="wahma-btn" onclick="wahmaClearSearch()">↺ 초기화</button>
+    <button class="wahma-btn primary" onclick="searchWahma()">🔍 조회</button>
+    <button class="wahma-btn success" onclick="wahmaSave()">💾 저장</button>
+    <span id="wahma-total-badge" style="font-size:11px;color:var(--text3);margin-left:6px"></span>
+    <button class="wahma-btn" style="margin-left:auto" onclick="wahmaNewForm()">➕ 신규</button>
+  </div>
+  <div class="wahma-search-bar">
+    <label style="font-size:11px;color:var(--text3);white-space:nowrap">🔎 검색</label>
+    <input id="wahma-q" type="text" placeholder="창고코드 / 창고명 / 주소 / 전화" oninput="searchWahma(1)">
+  </div>
+  <div class="wahma-body">
+    <div class="wahma-list-section" id="wahma-list-section">
+      <div class="wahma-hdr">
+        <h3>🏭 물류센터 목록</h3>
+        <div id="wahma-pg-info" style="font-size:11px;color:var(--text3)"></div>
+      </div>
+      <div class="wahma-list-wrap" id="wahma-list-wrap"></div>
+      <div class="wahma-pg" id="wahma-pg"></div>
+    </div>
+    <div class="wahma-detail-section" id="wahma-detail-section">
+      <div class="wahma-hdr">
+        <h3 id="wahma-form-title">➕ 신규 물류센터 등록</h3>
+        <div style="display:flex;gap:6px">
+          <button class="wahma-btn" onclick="wahmaNewForm()">초기화</button>
+          <button class="wahma-btn success" onclick="wahmaSave()">💾 저장</button>
+        </div>
+      </div>
+      <div class="wahma-form-wrap">
+        <div class="wahma-form">
+          <div class="wahma-fg">
+            <label class="req">창고코드 (WAREKY)</label>
+            <input id="wf-WAREKY" placeholder="예) 1100" maxlength="10">
+          </div>
+          <div class="wahma-fg">
+            <label>회사코드 (COMPKY)</label>
+            <input id="wf-COMPKY" value="KN" maxlength="10">
+          </div>
+          <div class="wahma-fg wahma-span2">
+            <label class="req">창고명 (NAME01)</label>
+            <input id="wf-NAME01" placeholder="예) 청주공장창고">
+          </div>
+          <div class="wahma-fg wahma-span4">
+            <label>주소 (ADDR01)</label>
+            <input id="wf-ADDR01" placeholder="예) 충청북도 청주시 흥덕구...">
+          </div>
+          <div class="wahma-fg">
+            <label>우편번호</label>
+            <input id="wf-POSTCD" maxlength="30">
+          </div>
+          <div class="wahma-fg">
+            <label>국가코드</label>
+            <input id="wf-NATNKY" value="KR" maxlength="3">
+          </div>
+          <div class="wahma-fg">
+            <label>전화1 (TELN01)</label>
+            <input id="wf-TELN01" placeholder="예) 043-230-7228">
+          </div>
+          <div class="wahma-fg">
+            <label>팩스 (FAXTL1)</label>
+            <input id="wf-FAXTL1">
+          </div>
+          <div class="wahma-fg">
+            <label>담당자명 (WADN01)</label>
+            <input id="wf-WADN01">
+          </div>
+          <div class="wahma-fg">
+            <label>담당자전화 (WADT01)</label>
+            <input id="wf-WADT01">
+          </div>
+          <div class="wahma-fg wahma-span2">
+            <label>담당자이메일 (WADM01)</label>
+            <input id="wf-WADM01">
+          </div>
+          <div class="wahma-fg">
+            <label>위도 (WHTT01)</label>
+            <input id="wf-WHTT01" placeholder="예) 36.5678">
+          </div>
+          <div class="wahma-fg">
+            <label>경도 (WHTT02)</label>
+            <input id="wf-WHTT02" placeholder="예) 127.4567">
+          </div>
+          <div class="wahma-fg">
+            <label>삭제표시 (DELMAK)</label>
+            <select id="wf-DELMAK">
+              <option value=" ">정상</option>
+              <option value="X">삭제</option>
+            </select>
+          </div>
+          <div class="wahma-fg">
+            <label>생성일자</label>
+            <input id="wf-CREDAT" readonly>
+          </div>
+          <div class="wahma-fg">
+            <label>수정자</label>
+            <input id="wf-LMOUSR" readonly>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>`;
+}
+
+function wahmaClearSearch() {
+  const q = document.getElementById('wahma-q');
+  if (q) q.value = '';
+  wahmaState.page = 1;
+  searchWahma();
+}
+
+async function searchWahma(page) {
+  if (page !== undefined) wahmaState.page = page;
+  const q = document.getElementById('wahma-q')?.value.trim() || '';
+  const params = new URLSearchParams({page: wahmaState.page, size: wahmaState.size});
+  if (q) params.set('q', q);
+  const data = await fetch(`/api/wahma/list?${params}`).then(r=>r.json());
+  wahmaState.total = data.total;
+  const badge = document.getElementById('wahma-total-badge');
+  if (badge) badge.textContent = `총 ${fmtNum(data.total)}건`;
+  const cntEl = document.getElementById('cnt-wahma');
+  if (cntEl) cntEl.textContent = fmtNum(data.total);
+  renderWahmaList(data);
+  renderWahmaPagination(data);
+}
+
+function renderWahmaList(data) {
+  const wrap = document.getElementById('wahma-list-wrap');
+  if (!wrap) return;
+  if (!data.rows?.length) {
+    wrap.innerHTML = `<div class="empty-state"><div class="icon">🏭</div><div>조회 결과가 없습니다</div></div>`;
+    return;
+  }
+  const cols = [
+    {id:'wh-c0', label:'창고코드',  w: _wahmaColW['wh-c0']||90},
+    {id:'wh-c1', label:'창고명',    w: _wahmaColW['wh-c1']||140},
+    {id:'wh-c2', label:'주소',      w: _wahmaColW['wh-c2']||300},
+    {id:'wh-c3', label:'우편번호',  w: _wahmaColW['wh-c3']||80},
+    {id:'wh-c4', label:'전화',      w: _wahmaColW['wh-c4']||130},
+    {id:'wh-c5', label:'담당자',    w: _wahmaColW['wh-c5']||90},
+    {id:'wh-c6', label:'수정일',    w: _wahmaColW['wh-c6']||90},
+    {id:'wh-c7', label:'상태',      w: _wahmaColW['wh-c7']||60},
+  ];
+  const thHtml = cols.map(c=>
+    `<th data-rzid="${c.id}" style="width:${c.w}px;min-width:40px;position:sticky;top:0">` +
+    `<span class="th-cell">${c.label}</span>` +
+    `<span class="col-rz" onmousedown="tableResizerDown(event,'${c.id}','.wahma-table')"></span></th>`
+  ).join('');
+  const ww = (id,def) => { const w=_wahmaColW[id]||def; return `width:${w}px;max-width:${w}px;`; };
+  let html = `<table class="wahma-table" id="wahma-list-table">
+    <thead><tr>${thHtml}</tr></thead><tbody>`;
+  data.rows.forEach((row, idx) => {
+    const isSel = wahmaState.selectedRow?.WAREKY === row.WAREKY;
+    const isDel = (row.DELMAK||'').trim() === 'X';
+    html += `<tr class="${isSel?'selected':''} ${isDel?'style="opacity:.5"':''}" onclick="selectWahmaRow(${idx},this)" data-idx="${idx}">
+      <td style="${ww('wh-c0',90)}color:#fbbf24;font-family:monospace;font-weight:700">${row.WAREKY||'-'}</td>
+      <td style="${ww('wh-c1',140)}font-weight:600" title="${row.NAME01||''}">${row.NAME01||'-'}</td>
+      <td style="${ww('wh-c2',300)}color:var(--text3)" title="${row.ADDR01||''}">${row.ADDR01||'-'}</td>
+      <td style="${ww('wh-c3',80)}">${row.POSTCD||'-'}</td>
+      <td style="${ww('wh-c4',130)}font-family:monospace;font-size:11px">${row.TELN01||'-'}</td>
+      <td style="${ww('wh-c5',90)}">${row.WADN01?.trim()||'-'}</td>
+      <td style="${ww('wh-c6',90)}color:var(--text3);font-size:11px">${fmtDate8(row.LMODAT)||row.CREDAT||'-'}</td>
+      <td style="${ww('wh-c7',60)};text-align:center">${isDel?'<span style="font-size:10px;color:#ef4444">삭제</span>':'<span style="font-size:10px;color:#22c55e">정상</span>'}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+  wrap._rows = data.rows;
+  wahmaState.rows = data.rows;
+  if (wahmaState.selectedRow) {
+    const idx = data.rows.findIndex(r => r.WAREKY === wahmaState.selectedRow.WAREKY);
+    if (idx >= 0) wrap.querySelector(`tr[data-idx="${idx}"]`)?.classList.add('selected');
+  }
+}
+
+function fmtDate8(v) {
+  if (!v || v==='00000000') return '';
+  return v.length===8 ? `${v.slice(0,4)}-${v.slice(4,6)}-${v.slice(6,8)}` : v;
+}
+
+function renderWahmaPagination(data) {
+  const pg = document.getElementById('wahma-pg');
+  if (!pg) return;
+  const { page, pages, total, size } = data;
+  const start = (page-1)*size+1, end = Math.min(page*size, total);
+  const from = Math.max(1,page-3), to = Math.min(pages,page+3);
+  let btns = '';
+  if (from>1) btns += `<button class="btn btn-sm" onclick="searchWahma(1)">1</button>`;
+  if (from>2) btns += `<span style="color:#64748b;padding:0 3px">…</span>`;
+  for (let i=from;i<=to;i++) btns += `<button class="btn btn-sm ${i===page?'active':''}" onclick="searchWahma(${i})">${i}</button>`;
+  if (to<pages-1) btns += `<span style="color:#64748b;padding:0 3px">…</span>`;
+  if (to<pages) btns += `<button class="btn btn-sm" onclick="searchWahma(${pages})">${pages}</button>`;
+  pg.innerHTML = `
+    <div style="font-size:11px;color:var(--text3)">총 <strong>${fmtNum(total)}</strong>건 &nbsp;|&nbsp; ${fmtNum(start)}–${fmtNum(end)}행</div>
+    <div style="display:flex;gap:3px;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="searchWahma(${page-1})" ${page<=1?'disabled':''}>◀</button>
+      ${btns}
+      <button class="btn btn-sm" onclick="searchWahma(${page+1})" ${page>=pages?'disabled':''}>▶</button>
+    </div>`;
+}
+
+async function selectWahmaRow(idx, tr) {
+  document.querySelectorAll('.wahma-table tbody tr').forEach(r=>r.classList.remove('selected'));
+  tr.classList.add('selected');
+  const wrap = document.getElementById('wahma-list-wrap');
+  const row = wrap._rows[idx];
+  wahmaState.selectedRow = row;
+  wahmaState.mode = 'edit';
+  // 상세 조회
+  const data = await fetch(`/api/wahma/detail/${encodeURIComponent(row.WAREKY)}`).then(r=>r.json());
+  if (data.error) { showToast(data.error); return; }
+  fillWahmaForm(data);
+  const titleEl = document.getElementById('wahma-form-title');
+  if (titleEl) titleEl.textContent = `✏️ 수정 — ${row.WAREKY} ${row.NAME01||''}`;
+}
+
+function fillWahmaForm(row) {
+  const fields = ['WAREKY','COMPKY','NAME01','ADDR01','POSTCD','NATNKY',
+    'TELN01','FAXTL1','WADN01','WADT01','WADM01','WHTT01','WHTT02','DELMAK','CREDAT','LMOUSR'];
+  fields.forEach(f => {
+    const el = document.getElementById(`wf-${f}`);
+    if (!el) return;
+    el.value = (row[f]||'').trim ? (row[f]||'').trim() : (row[f]||'');
+  });
+  const wkEl = document.getElementById('wf-WAREKY');
+  if (wkEl) { wkEl.readOnly = true; wkEl.style.opacity='0.55'; }
+}
+
+function wahmaNewForm() {
+  wahmaState.selectedRow = null;
+  wahmaState.mode = 'new';
+  const fields = ['WAREKY','COMPKY','NAME01','ADDR01','POSTCD','NATNKY',
+    'TELN01','FAXTL1','WADN01','WADT01','WADM01','WHTT01','WHTT02','CREDAT','LMOUSR'];
+  fields.forEach(f => { const el=document.getElementById(`wf-${f}`); if(el){el.value='';el.readOnly=false;el.style.opacity='1';} });
+  const compEl = document.getElementById('wf-COMPKY'); if(compEl) compEl.value='KN';
+  const natEl  = document.getElementById('wf-NATNKY'); if(natEl)  natEl.value='KR';
+  const delEl  = document.getElementById('wf-DELMAK'); if(delEl)  delEl.value=' ';
+  const wkEl   = document.getElementById('wf-WAREKY'); if(wkEl){wkEl.readOnly=false;wkEl.style.opacity='1';}
+  const titleEl= document.getElementById('wahma-form-title'); if(titleEl) titleEl.textContent='➕ 신규 물류센터 등록';
+  document.querySelectorAll('.wahma-table tbody tr').forEach(r=>r.classList.remove('selected'));
+}
+
+async function wahmaSave() {
+  const wareky = (document.getElementById('wf-WAREKY')?.value||'').trim();
+  if (!wareky) { showToast('창고코드(WAREKY)를 입력하세요'); return; }
+  const getVal = id => (document.getElementById(id)?.value||'');
+  const body = {
+    WAREKY: wareky,
+    COMPKY: getVal('wf-COMPKY')||'KN',
+    NAME01: getVal('wf-NAME01'),
+    ADDR01: getVal('wf-ADDR01'),
+    POSTCD: getVal('wf-POSTCD'),
+    NATNKY: getVal('wf-NATNKY')||'KR',
+    TELN01: getVal('wf-TELN01'),
+    FAXTL1: getVal('wf-FAXTL1'),
+    WADN01: getVal('wf-WADN01'),
+    WADT01: getVal('wf-WADT01'),
+    WADM01: getVal('wf-WADM01'),
+    WHTT01: getVal('wf-WHTT01'),
+    WHTT02: getVal('wf-WHTT02'),
+    DELMAK: getVal('wf-DELMAK')||' ',
+  };
+  const res = await fetch('/api/wahma/save', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  const data = await res.json();
+  if (data.error) { showToast('저장 실패: '+data.error); return; }
+  showToast(data.action==='created'?'✅ 신규 등록 완료':'✅ 수정 완료');
+  wahmaState.selectedRow = {WAREKY: wareky};
+  await searchWahma(wahmaState.page);
+  // 출하지점 드롭다운 갱신
+  if (typeof dlvState !== 'undefined') dlvState.shppoints = null;
+  if (typeof vhcState !== 'undefined') vhcState.filterOpts = null;
+}
+
+/* ═══════════════════════════════════════════════════════════
    LNB 메뉴 관리자 (드래그 순서 변경 + 이름 수정)
 ═══════════════════════════════════════════════════════════ */
 const MMGR_STORE_KEY = 'wms_menu_config';
@@ -3636,6 +3981,7 @@ function mmgrDefaultConfig() {
     { type:'section', id:'sec-master',    label:'마스터' },
     { type:'item',    id:'nav-CMCDM',     label:'공통코드헤더',    icon:'📋', page:'CMCDM',    cnt:true },
     { type:'item',    id:'nav-CMCDV',     label:'공통코드값',      icon:'📌', page:'CMCDV',    cnt:true },
+    { type:'item',    id:'nav-wahma',     label:'물류센터(창고)',  icon:'🏭', page:'wahma',    cnt:true },
     { type:'item',    id:'nav-SKUMA',     label:'상품(SKU)',       icon:'📦', page:'SKUMA',    cnt:true },
     { type:'item',    id:'nav-BZPTN',     label:'거래처',          icon:'🏢', page:'BZPTN',    cnt:true },
     { type:'item',    id:'nav-MEASI',     label:'단위구성',        icon:'📐', page:'MEASI',    cnt:true },
