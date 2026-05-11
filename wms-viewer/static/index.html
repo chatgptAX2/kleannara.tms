@@ -30,9 +30,24 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 #main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
 
 /* ── TOPBAR ── */
-.topbar{padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--surface);flex-shrink:0}
+.topbar{padding:8px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--surface);flex-shrink:0;flex-direction:column;align-items:stretch}
+.topbar-row1{display:flex;align-items:center;gap:10px}
 .topbar h2{font-size:15px;font-weight:700;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .topbar .badge{background:var(--surface2);border:1px solid var(--border);padding:3px 10px;border-radius:20px;font-size:11px;color:var(--text2);white-space:nowrap}
+/* ── BREADCRUMB ── */
+.breadcrumb{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text3);padding:2px 0 4px}
+.breadcrumb-sep{color:var(--border);font-size:10px}
+.breadcrumb-item{color:var(--text3);cursor:pointer;padding:1px 4px;border-radius:3px;transition:.12s}
+.breadcrumb-item:hover{color:var(--text2);background:var(--surface2)}
+.breadcrumb-item.active{color:var(--primary);font-weight:600;cursor:default}
+.breadcrumb-item.active:hover{background:none}
+/* ── SORT ── */
+.sort-th{cursor:pointer;user-select:none}
+.sort-th:hover .th-cell{color:var(--primary)}
+.sort-icon{font-size:9px;color:var(--text3);margin-left:2px;vertical-align:middle}
+.sort-th.sort-asc .sort-icon::after{content:'▲';color:var(--primary)}
+.sort-th.sort-desc .sort-icon::after{content:'▼';color:var(--primary)}
+.sort-th:not(.sort-asc):not(.sort-desc) .sort-icon::after{content:'⇅'}
 .search-box{display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:5px 10px;width:220px;flex-shrink:0}
 .search-box input{background:none;border:none;outline:none;color:var(--text);font-size:12px;flex:1;min-width:0}
 select.page-size{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:12px;cursor:pointer;flex-shrink:0}
@@ -272,6 +287,8 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .badge-N{background:#450a0a;color:#fca5a5;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700}
 .badge-reg{background:#1e3a5f;color:#93c5fd;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700}
 .badge-none{background:var(--surface2);color:var(--text3);padding:2px 7px;border-radius:3px;font-size:10px}
+.row-del-btn{background:none;border:1px solid transparent;color:var(--text3);cursor:pointer;font-size:13px;padding:2px 5px;border-radius:4px;line-height:1;transition:.12s}
+.row-del-btn:hover{border-color:#ef4444;color:#ef4444;background:#1a0a0a}
 
 /* ── VEHICLE MGMT (기준정보_차량관리) ── */
 .vhc-layout{display:flex;flex-direction:column;height:100%;overflow:hidden;background:var(--bg)}
@@ -486,7 +503,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
     <span class="icon">📦</span> 상품(SKU)<span class="cnt" id="cnt-SKUMA">-</span>
   </div>
   <div class="nav-item" onclick="showPage('BZPTN')" id="nav-BZPTN">
-    <span class="icon">🏢</span> 거래처<span class="cnt" id="cnt-BZPTN">-</span>
+    <span class="icon">🏢</span> 납품처<span class="cnt" id="cnt-BZPTN">-</span>
   </div>
   <div class="nav-item" onclick="showPage('MEASI')" id="nav-MEASI">
     <span class="icon">📐</span> 단위구성<span class="cnt" id="cnt-MEASI">-</span>
@@ -550,6 +567,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 <!-- MAIN -->
 <div id="main">
   <div class="topbar">
+    <div class="topbar-row1">
     <h2 id="page-title">대시보드</h2>
     <div class="badge" id="topbar-badge">WMS Database</div>
     <div class="search-box" id="search-wrap" style="display:none">
@@ -563,6 +581,8 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
       <option value="100">100행</option>
       <option value="200">200행</option>
     </select>
+    </div><!-- /topbar-row1 -->
+    <nav class="breadcrumb" id="breadcrumb" style="display:none"></nav>
   </div>
 
   <!-- 컬럼 표시 토글 툴바 (테이블뷰에서만 표시) -->
@@ -672,6 +692,39 @@ async function init(){
 /* ═══════════════════════════════════════════════════════════
    NAVIGATION
 ═══════════════════════════════════════════════════════════ */
+/* ── 페이지별 메타 (breadcrumb 경로 + 제목) ── */
+const PAGE_META = {
+  dashboard:     { title:'대시보드',         badge:'Overview',       crumb:['홈','대시보드'] },
+  schema:        { title:'테이블 스키마',     badge:'Schema',         crumb:['홈','도구','테이블 스키마'] },
+  sql:           { title:'SQL 콘솔',          badge:'Query Console',  crumb:['홈','도구','SQL 콘솔'] },
+  delivery:      { title:'납품처 관리',       badge:'BZPTN_DETAIL',   crumb:['홈','TMS 납품처','납품처 관리'] },
+  vehicle:       { title:'차량관리',          badge:'VHCMA',          crumb:['홈','TMS 기준정보','차량관리'] },
+  wahma:         { title:'물류센터(창고) 관리', badge:'WAHMA',         crumb:['홈','마스터','물류센터(창고)'] },
+  ROUTE_COST:    { title:'운송경로별 비용',   badge:'ROUTE_COST',     crumb:['홈','TMS 배차','운송경로 비용'] },
+  CMCDM:         { title:'공통코드 헤더',     badge:'CMCDM',          crumb:['홈','마스터','공통코드 헤더'] },
+  CMCDV:         { title:'공통코드 값',       badge:'CMCDV',          crumb:['홈','마스터','공통코드 값'] },
+  SKUMA:         { title:'상품(SKU)',          badge:'SKUMA',          crumb:['홈','마스터','상품(SKU)'] },
+  BZPTN:         { title:'납품처',            badge:'BZPTN',          crumb:['홈','마스터','납품처'] },
+  MEASI:         { title:'단위구성',          badge:'MEASI',          crumb:['홈','마스터','단위구성'] },
+  SHPDH:         { title:'출고문서 헤더',     badge:'SHPDH',          crumb:['홈','출고','출고문서 헤더'] },
+  SHPDI:         { title:'출고문서 아이템',   badge:'SHPDI',          crumb:['홈','출고','출고문서 아이템'] },
+  IFWMS113:      { title:'ERP 출고오더',      badge:'IFWMS113',       crumb:['홈','인터페이스','ERP 출고오더'] },
+  BZPTN_DETAIL:  { title:'납품처 상세',       badge:'BZPTN_DETAIL',   crumb:['홈','TMS 배차','납품처 상세'] },
+  VHCMA:         { title:'차량 마스터',       badge:'VHCMA',          crumb:['홈','TMS 배차','차량 마스터'] },
+};
+
+function updateBreadcrumb(crumbs) {
+  const nav = document.getElementById('breadcrumb');
+  if (!nav) return;
+  if (!crumbs || crumbs.length === 0) { nav.style.display = 'none'; return; }
+  nav.style.display = 'flex';
+  nav.innerHTML = crumbs.map((c, i) => {
+    const isLast = i === crumbs.length - 1;
+    const sep = i > 0 ? `<span class="breadcrumb-sep">›</span>` : '';
+    return `${sep}<span class="breadcrumb-item${isLast ? ' active' : ''}">${c}</span>`;
+  }).join('');
+}
+
 function showPage(p){
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   const navEl = document.getElementById(`nav-${p}`);
@@ -688,60 +741,59 @@ function showPage(p){
   if(si) si.value = '';
   document.getElementById('search-clear').style.display = 'none';
 
+  // 메타 적용 (제목 + breadcrumb)
+  const meta = PAGE_META[p];
+  const titleEl = document.getElementById('page-title');
+  const badgeEl = document.getElementById('topbar-badge');
+  if (meta) {
+    if (titleEl) titleEl.textContent = meta.title;
+    if (badgeEl) badgeEl.textContent = meta.badge;
+    updateBreadcrumb(meta.crumb);
+  } else {
+    const desc = TABLE_DESC[p] || p;
+    if (titleEl) titleEl.textContent = desc;
+    if (badgeEl) badgeEl.textContent = p;
+    updateBreadcrumb(['홈', desc]);
+  }
+
   if(p === 'dashboard'){
-    document.getElementById('page-title').textContent = '대시보드';
-    document.getElementById('topbar-badge').textContent = 'Overview';
     srch.style.display = 'none';
     psize.style.display = 'none';
     toolbar.style.display = 'none';
     renderDashboard();
   } else if(p === 'schema'){
-    document.getElementById('page-title').textContent = '테이블 스키마';
-    document.getElementById('topbar-badge').textContent = 'Schema';
     srch.style.display = 'none';
     psize.style.display = 'none';
     toolbar.style.display = 'none';
     renderSchema();
   } else if(p === 'sql'){
-    document.getElementById('page-title').textContent = 'SQL 콘솔';
-    document.getElementById('topbar-badge').textContent = 'Query Console';
     srch.style.display = 'none';
     psize.style.display = 'none';
     toolbar.style.display = 'none';
     renderSQL();
   } else if(p === 'delivery') {
-    document.getElementById('page-title').textContent = '납품처 관리';
-    document.getElementById('topbar-badge').textContent = 'BZPTN_DETAIL';
     srch.style.display = 'none';
     psize.style.display = 'none';
     toolbar.style.display = 'none';
     renderDelivery();
   } else if(p === 'vehicle') {
-    document.getElementById('page-title').textContent = '기준정보_차량관리';
-    document.getElementById('topbar-badge').textContent = 'VHCMA';
     srch.style.display = 'none';
     psize.style.display = 'none';
     toolbar.style.display = 'none';
     renderVehicle();
   } else if(p === 'wahma') {
-    document.getElementById('page-title').textContent = '물류센터(창고) 관리';
-    document.getElementById('topbar-badge').textContent = 'WAHMA';
     srch.style.display = 'none';
     psize.style.display = 'none';
     toolbar.style.display = 'none';
     renderWahma();
   } else if(p === 'ROUTE_COST') {
     state.table = p;
-    document.getElementById('page-title').textContent = '운송경로별 비용';
-    document.getElementById('topbar-badge').textContent = 'ROUTE_COST';
     srch.style.display = 'none';
     psize.style.display = 'none';
     toolbar.style.display = 'none';
     renderRouteCost();
   } else {
     state.table = p;
-    document.getElementById('page-title').textContent = TABLE_DESC[p] || p;
-    document.getElementById('topbar-badge').textContent = p;
     srch.style.display = 'flex';
     psize.style.display = 'flex';
     toolbar.style.display = 'none';
@@ -1543,8 +1595,9 @@ async function renderDashboard(){
 const dlvState = {
   page: 1, size: 50, total: 0,
   selectedRow: null,
-  codes: {},   // { LOTA02:[], SKUG05:[], TMS_ROUTE:[], TMS_UNLOADTIME:[], TMS_MAXHEIGHT:[], TMS_INBOUNDTIME:[] }
-  mode: 'new', // 'new' | 'edit'
+  codes: {},
+  mode: 'new',
+  sortCol: 'PTNRKY', sortDir: 'ASC',
 };
 
 async function renderDelivery() {
@@ -1553,7 +1606,7 @@ async function renderDelivery() {
   c.innerHTML = `<div class="loading"><div class="spinner"></div>공통코드 로딩 중...</div>`;
 
   // 공통코드 병렬 로드
-  const codeKeys = ['LOTA02','SKUG05','TMS_ROUTE','TMS_UNLOADTIME','TMS_MAXHEIGHT','TMS_INBOUNDTIME'];
+  const codeKeys = ['LOTA02','SKUG05','TMS_ROUTE','TMS_UNLOADTIME','TMS_MAXHEIGHT','TMS_INBOUNDTIME','TMS_REGION'];
   const results  = await Promise.all(codeKeys.map(k => fetch(`/api/codes/${k}`).then(r=>r.json())));
   codeKeys.forEach((k,i) => dlvState.codes[k] = results[i]);
   // TMS_SHPPOINT 목록 (출하지점 select용)
@@ -1715,7 +1768,9 @@ function buildDeliveryForm() {
     </div>
     <div class="form-group">
       <label>권역</label>
-      <input id="f-AREA_CD" type="text" placeholder="예) 서울, 경기남">
+      <select id="f-AREA_CD">
+        <option value="">선택</option>
+      </select>
     </div>
 
     <div class="form-group form-col2">
@@ -1893,6 +1948,13 @@ function buildDeliveryForm() {
   if (fWareky) {
     fWareky.innerHTML = '<option value="">선택</option>' +
       shpList.map(o => `<option value="${o.value}">${o.value} — ${o.label}</option>`).join('');
+  }
+  // 권역 폼 select 옵션 채우기 (TMS_REGION 기반)
+  const fAreaCd = document.getElementById('f-AREA_CD');
+  if (fAreaCd) {
+    fAreaCd.innerHTML = '<option value="">선택</option>' +
+      (dlvState.codes['TMS_REGION']||[]).map(o =>
+        `<option value="${o.value}">${o.value} — ${o.label}</option>`).join('');
   }
 }
 
@@ -2107,14 +2169,14 @@ async function searchDelivery(page) {
   const warekyVals = dlvGetWerks();
 
   const params = new URLSearchParams({
-    page:   dlvState.page,
-    size:   dlvState.size,
-    skug05: document.getElementById('dlv-s-skug05')?.value || '',
-    ptnrky: (document.getElementById('dlv-s-ptnrky')?.value || '').trim(),
+    page:     dlvState.page,
+    size:     dlvState.size,
+    skug05:   document.getElementById('dlv-s-skug05')?.value || '',
+    ptnrky:   (document.getElementById('dlv-s-ptnrky')?.value || '').trim(),
+    sort_col: dlvState.sortCol,
+    sort_dir: dlvState.sortDir,
   });
-  // 출하지점이 선택된 경우 vstel 파라미터로 전달
   if (vstelVal) params.set('vstel', vstelVal);
-  // 플랜트 multi-select는 출하지점과 별도로 werks 복수 파라미터로 전달
   warekyVals.forEach(v => params.append('werks', v));
 
   const data = await fetch(`/api/delivery/list?${params}`).then(r => r.json());
@@ -2138,21 +2200,27 @@ function renderDeliveryList(data) {
 
   const skug05Map = Object.fromEntries(dlvState.codes['SKUG05'].map(o => [o.value, o.label]));
 
-  // 납품처 리스트 컬럼 정의 (id, label, defaultW)
+  // 납품처 리스트 컬럼 정의 (id, label, sortKey, defaultW)
   const dlvCols = [
-    {id:'dlv-c0', label:'납품처코드', w: _dlvColW['dlv-c0']||100},
-    {id:'dlv-c1', label:'납품처명',   w: _dlvColW['dlv-c1']||160},
-    {id:'dlv-c2', label:'출하지점',   w: _dlvColW['dlv-c2']|| 90},
-    {id:'dlv-c3', label:'제품군',     w: _dlvColW['dlv-c3']|| 80},
-    {id:'dlv-c4', label:'주소',       w: _dlvColW['dlv-c4']||220},
-    {id:'dlv-c5', label:'권역',       w: _dlvColW['dlv-c5']|| 80},
-    {id:'dlv-c6', label:'TMS등록',    w: _dlvColW['dlv-c6']|| 72},
+    {id:'dlv-c0', label:'납품처코드', sk:'PTNRKY',    w: _dlvColW['dlv-c0']||100},
+    {id:'dlv-c1', label:'납품처명',   sk:'NAME01',    w: _dlvColW['dlv-c1']||160},
+    {id:'dlv-c2', label:'출하지점',   sk:'WAREKY',    w: _dlvColW['dlv-c2']|| 90},
+    {id:'dlv-c3', label:'제품군',     sk:'ITEM_GROUP',w: _dlvColW['dlv-c3']|| 80},
+    {id:'dlv-c4', label:'주소',       sk:'ADDR01',    w: _dlvColW['dlv-c4']||220},
+    {id:'dlv-c5', label:'권역',       sk:'AREA_CD',   w: _dlvColW['dlv-c5']|| 80},
+    {id:'dlv-c6', label:'TMS등록',    sk:'',          w: _dlvColW['dlv-c6']|| 72},
+    {id:'dlv-c7', label:'',           sk:'',          w: _dlvColW['dlv-c7']|| 56},
   ];
-  const dlvThHtml = dlvCols.map(c =>
-    `<th data-rzid="${c.id}" style="width:${c.w}px;min-width:40px;position:sticky;top:0">` +
-    `<span class="th-cell">${c.label}</span>` +
-    `<span class="col-rz" onmousedown="tableResizerDown(event,'${c.id}','.dlv-list-table')"></span></th>`
-  ).join('');
+  const dlvThHtml = dlvCols.map(c => {
+    const isSortable = !!c.sk;
+    const isAsc  = dlvState.sortCol === c.sk && dlvState.sortDir === 'ASC';
+    const isDesc = dlvState.sortCol === c.sk && dlvState.sortDir === 'DESC';
+    const sortCls = isSortable ? `sort-th${isAsc?' sort-asc':isDesc?' sort-desc':''}` : '';
+    const onClick = isSortable ? `onclick="dlvSortBy('${c.sk}')"` : '';
+    return `<th data-rzid="${c.id}" class="${sortCls}" style="width:${c.w}px;min-width:36px;position:sticky;top:0" ${onClick}>` +
+      `<span class="th-cell">${c.label}${isSortable?'<span class="sort-icon"></span>':''}</span>` +
+      `<span class="col-rz" onmousedown="tableResizerDown(event,'${c.id}','.dlv-list-table')"></span></th>`;
+  }).join('');
 
   let html = `<table class="dlv-list-table" id="dlv-list-table">
     <thead><tr>${dlvThHtml}</tr></thead><tbody>`;
@@ -2170,6 +2238,9 @@ function renderDeliveryList(data) {
       <td style="${dw('dlv-c4',220)}color:var(--text3)" title="${row.ADDR01||''} ${row.ADDR02||''}">${(row.ADDR01||'') + (row.ADDR02 ? ' '+row.ADDR02 : '') || '-'}</td>
       <td style="${dw('dlv-c5',80)}">${row.AREA_CD || '-'}</td>
       <td style="${dw('dlv-c6',72)}text-align:center">${hasDtl ? '<span class="badge-reg">등록</span>' : '<span class="badge-none">미등록</span>'}</td>
+      <td style="${dw('dlv-c7',56)}text-align:center;padding:3px">
+        <button class="row-del-btn" title="삭제" onclick="event.stopPropagation();dlvDeleteRow('${row.PTNRKY}','${row.PTNRTY||'CT'}','${row.OWNRKY||'KN'}')">🗑</button>
+      </td>
     </tr>`;
   });
   html += '</tbody></table>';
@@ -2185,6 +2256,34 @@ function renderDeliveryList(data) {
       if (tr) tr.classList.add('selected');
     }
   }
+}
+
+/* 납품처 리스트 정렬 */
+function dlvSortBy(col) {
+  if (dlvState.sortCol === col) {
+    dlvState.sortDir = dlvState.sortDir === 'ASC' ? 'DESC' : 'ASC';
+  } else {
+    dlvState.sortCol = col;
+    dlvState.sortDir = 'ASC';
+  }
+  dlvState.page = 1;
+  searchDelivery();
+}
+
+/* 납품처 행 삭제 */
+async function dlvDeleteRow(ptnrky, ptnrty, ownrky) {
+  if (!confirm(`납품처 [${ptnrky}]의 TMS 배송 정보를 삭제(DEL_YN=Y) 처리하시겠습니까?`)) return;
+  try {
+    const res  = await fetch('/api/delivery/delete', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({PTNRKY: ptnrky, PTNRTY: ptnrty, OWNRKY: ownrky}),
+    });
+    const data = await res.json();
+    if (data.error) { showToast('삭제 실패: ' + data.error); return; }
+    showToast(`✅ [${ptnrky}] 삭제 처리 완료`);
+    if (dlvState.selectedRow?.PTNRKY === ptnrky) dlvState.selectedRow = null;
+    await searchDelivery();
+  } catch(e) { showToast('오류: ' + e.message); }
 }
 
 function renderDlvPagination(data) {
@@ -2397,9 +2496,10 @@ const vhcState = {
   page:1, size:50, total:0,
   selectedRow: null,
   mode: 'new',
-  codes: {},        // 공통코드 캐시
-  filterOpts: {},   // 리스트에서 가져온 드롭다운 옵션
-  ynVals: {},       // Y/N 토글 상태
+  codes: {},
+  filterOpts: {},
+  ynVals: {},
+  sortCol: '', sortDir: 'ASC',
 };
 
 async function renderVehicle() {
@@ -2408,7 +2508,7 @@ async function renderVehicle() {
   c.innerHTML = `<div class="loading"><div class="spinner"></div>공통코드 로딩 중...</div>`;
 
   // 공통코드 병렬 로드 (CMCDV 기반)
-  const codeKeys = ['SKUG05','TMS_CARKIND','TMS_CARCLASS','TMS_CARRIER','TMS_AXLETYPE','TMS_FLOORTYPE','LOTA02'];
+  const codeKeys = ['SKUG05','TMS_CARKIND','TMS_CARCLASS','TMS_CARRIER','TMS_AXLETYPE','TMS_FLOORTYPE','LOTA02','TMS_REGION'];
   const results  = await Promise.all(codeKeys.map(k => fetch(`/api/codes/${k}`).then(r=>r.json())));
   codeKeys.forEach((k,i) => vhcState.codes[k] = results[i]);
 
@@ -2437,7 +2537,8 @@ function buildVehicleUI() {
   const classOpts    = vhcState.codes['TMS_CARCLASS'].map(o=>
     `<option value="${o.label}">${o.label}</option>`).join('');
   const fo           = vhcState.filterOpts;
-  const zoneOpts     = (fo.zones||[]).map(v=>`<option value="${v}">${v}</option>`).join('');
+  const regionOpts   = (vhcState.codes['TMS_REGION']||[]).map(o=>
+    `<option value="${o.value}">${o.value} — ${o.label}</option>`).join('');
   const vtypeOpts    = (fo.vtypes||[]).map(v=>`<option value="${v}">${v}</option>`).join('');
   const spOpts       = (fo.ship_points||[]).map(o=>{
     const v = o.value||o; const l = o.label||v;
@@ -2476,7 +2577,7 @@ function buildVehicleUI() {
       <div class="vhc-sg">
         <label>배송구역</label>
         <select id="vs-delivery_zone" onchange="vhcSearchChange()">
-          <option value="">전체</option>${zoneOpts}
+          <option value="">전체</option>${regionOpts}
         </select>
       </div>
       <div class="vhc-sg">
@@ -2563,7 +2664,8 @@ function buildVehicleForm() {
   const floorOpts    = vhcState.codes['TMS_FLOORTYPE'].map(o=>
     `<option value="${o.label}">${o.label}</option>`).join('');
   const fo           = vhcState.filterOpts;
-  const zoneOpts     = (fo.zones||[]).map(v=>`<option value="${v}">${v}</option>`).join('');
+  const regionOpts   = (vhcState.codes['TMS_REGION']||[]).map(o=>
+    `<option value="${o.value}">${o.value} — ${o.label}</option>`).join('');
   const spOpts       = (fo.ship_points||[]).map(o=>{
     const v = o.value||o; const l = o.label||v;
     return `<option value="${v}">${v} — ${l}</option>`;
@@ -2594,7 +2696,7 @@ function buildVehicleForm() {
       <div class="vhc-fg">
         <label>배송구역</label>
         <select id="vf-DELIVERY_ZONE">
-          <option value="">선택</option>${zoneOpts}
+          <option value="">선택</option>${regionOpts}
         </select>
       </div>
       <div class="vhc-fg">
@@ -2881,6 +2983,8 @@ async function searchVehicle(page) {
     vehicle_kind:  document.getElementById('vs-vehicle_kind')?.value  || '',
     vehicle_class: document.getElementById('vs-vehicle_class')?.value || '',
     vehicle_no:    document.getElementById('vs-vehicle_no')?.value    || '',
+    sort_col:      vhcState.sortCol,
+    sort_dir:      vhcState.sortDir,
   });
 
   const data = await fetch(`/api/vehicle/list?${params}`).then(r => r.json());
@@ -2906,25 +3010,31 @@ function renderVehicleList(data) {
   const skuMap   = Object.fromEntries(vhcState.codes['SKUG05'].map(o => [o.value, o.label]));
   const tColor   = {일반:'#93c5fd', 냉동:'#6ee7b7', 냉장:'#c4b5fd'};
 
-  // 차량 리스트 컬럼 정의 (id, label, defaultW)
+  // 차량 리스트 컬럼 정의 (id, label, sortKey, defaultW)
   const vhcCols = [
-    {id:'vhc-c0',  label:'차량번호', w: _vhcColW['vhc-c0'] ||110},
-    {id:'vhc-c1',  label:'출하지점', w: _vhcColW['vhc-c1'] || 80},
-    {id:'vhc-c2',  label:'제품군',   w: _vhcColW['vhc-c2'] || 90},
-    {id:'vhc-c3',  label:'배송구역', w: _vhcColW['vhc-c3'] || 75},
-    {id:'vhc-c4',  label:'운송사',   w: _vhcColW['vhc-c4'] ||110},
-    {id:'vhc-c5',  label:'차량구분', w: _vhcColW['vhc-c5'] || 70},
-    {id:'vhc-c6',  label:'차종',     w: _vhcColW['vhc-c6'] || 70},
-    {id:'vhc-c7',  label:'차형',     w: _vhcColW['vhc-c7'] || 60},
-    {id:'vhc-c8',  label:'기사명',   w: _vhcColW['vhc-c8'] ||100},
-    {id:'vhc-c9',  label:'연락처',   w: _vhcColW['vhc-c9'] ||130},
-    {id:'vhc-c10', label:'사용',     w: _vhcColW['vhc-c10']|| 55},
+    {id:'vhc-c0',  label:'차량번호', sk:'VEHICLE_NO',   w: _vhcColW['vhc-c0'] ||110},
+    {id:'vhc-c1',  label:'출하지점', sk:'SHIP_POINT',   w: _vhcColW['vhc-c1'] || 80},
+    {id:'vhc-c2',  label:'제품군',   sk:'PRODUCT_GROUP',w: _vhcColW['vhc-c2'] || 90},
+    {id:'vhc-c3',  label:'배송구역', sk:'DELIVERY_ZONE',w: _vhcColW['vhc-c3'] || 75},
+    {id:'vhc-c4',  label:'운송사',   sk:'CARRIER',      w: _vhcColW['vhc-c4'] ||110},
+    {id:'vhc-c5',  label:'차량구분', sk:'VEHICLE_TYPE', w: _vhcColW['vhc-c5'] || 70},
+    {id:'vhc-c6',  label:'차종',     sk:'VEHICLE_KIND', w: _vhcColW['vhc-c6'] || 70},
+    {id:'vhc-c7',  label:'차형',     sk:'VEHICLE_CLASS',w: _vhcColW['vhc-c7'] || 60},
+    {id:'vhc-c8',  label:'기사명',   sk:'DRIVER_NAME',  w: _vhcColW['vhc-c8'] ||100},
+    {id:'vhc-c9',  label:'연락처',   sk:'',             w: _vhcColW['vhc-c9'] ||130},
+    {id:'vhc-c10', label:'사용',     sk:'USE_YN',       w: _vhcColW['vhc-c10']|| 55},
+    {id:'vhc-c11', label:'',         sk:'',             w: _vhcColW['vhc-c11']|| 56},
   ];
-  const vhcThHtml = vhcCols.map(c =>
-    `<th data-rzid="${c.id}" style="width:${c.w}px;min-width:40px;position:sticky;top:0">` +
-    `<span class="th-cell">${c.label}</span>` +
-    `<span class="col-rz" onmousedown="tableResizerDown(event,'${c.id}','.vhc-table')"></span></th>`
-  ).join('');
+  const vhcThHtml = vhcCols.map(c => {
+    const isSortable = !!c.sk;
+    const isAsc  = vhcState.sortCol === c.sk && vhcState.sortDir === 'ASC';
+    const isDesc = vhcState.sortCol === c.sk && vhcState.sortDir === 'DESC';
+    const sortCls = isSortable ? `sort-th${isAsc?' sort-asc':isDesc?' sort-desc':''}` : '';
+    const onClick = isSortable ? `onclick="vhcSortBy('${c.sk}')"` : '';
+    return `<th data-rzid="${c.id}" class="${sortCls}" style="width:${c.w}px;min-width:36px;position:sticky;top:0" ${onClick}>` +
+      `<span class="th-cell">${c.label}${isSortable?'<span class="sort-icon"></span>':''}</span>` +
+      `<span class="col-rz" onmousedown="tableResizerDown(event,'${c.id}','.vhc-table')"></span></th>`;
+  }).join('');
 
   let html = `<table class="vhc-table" id="vhc-list-table">
     <thead><tr>${vhcThHtml}</tr></thead><tbody>`;
@@ -2948,11 +3058,42 @@ function renderVehicleList(data) {
       <td style="${vw('vhc-c10',55)}text-align:center">${row.USE_YN==='Y'
         ?'<span class="vhc-badge use-y">사용</span>'
         :'<span class="vhc-badge use-n">미사용</span>'}</td>
+      <td style="${vw('vhc-c11',56)}text-align:center;padding:3px">
+        <button class="row-del-btn" title="삭제" onclick="event.stopPropagation();vhcDeleteRow('${row.VEHICLE_NO}','${row.OWNRKY||'KN'}')">🗑</button>
+      </td>
     </tr>`;
   });
   html += '</tbody></table>';
   wrap.innerHTML = html;
   wrap._rows = data.rows;
+}
+
+/* 차량 리스트 정렬 */
+function vhcSortBy(col) {
+  if (vhcState.sortCol === col) {
+    vhcState.sortDir = vhcState.sortDir === 'ASC' ? 'DESC' : 'ASC';
+  } else {
+    vhcState.sortCol = col;
+    vhcState.sortDir = 'ASC';
+  }
+  vhcState.page = 1;
+  searchVehicle();
+}
+
+/* 차량 행 삭제 */
+async function vhcDeleteRow(vno, ownrky) {
+  if (!confirm(`차량번호 [${vno}]을 삭제(DEL_YN=Y) 처리하시겠습니까?`)) return;
+  try {
+    const res  = await fetch('/api/vehicle/delete', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({VEHICLE_NO: vno, OWNRKY: ownrky}),
+    });
+    const data = await res.json();
+    if (data.error) { showToast('삭제 실패: ' + data.error); return; }
+    showToast(`✅ [​${vno}] 삭제 처리 완료`);
+    if (vhcState.selectedRow?.VEHICLE_NO === vno) { vhcState.selectedRow = null; vhcNewForm(); }
+    await searchVehicle();
+  } catch(e) { showToast('오류: ' + e.message); }
 }
 
 function renderVhcPagination(data) {
@@ -3697,7 +3838,7 @@ async function runSQL(){
 /* ═══════════════════════════════════════════════════════════
    WAHMA 물류센터(창고) 관리
 ═══════════════════════════════════════════════════════════ */
-const wahmaState = { page:1, size:50, total:0, selectedRow:null, mode:'new', rows:[] };
+const wahmaState = { page:1, size:50, total:0, selectedRow:null, mode:'new', rows:[], sortCol:'', sortDir:'ASC' };
 const _wahmaColW = {};
 
 async function renderWahma() {
@@ -3828,6 +3969,10 @@ async function searchWahma(page) {
   const q = document.getElementById('wahma-q')?.value.trim() || '';
   const params = new URLSearchParams({page: wahmaState.page, size: wahmaState.size});
   if (q) params.set('q', q);
+  if (wahmaState.sortCol) {
+    params.set('sort_col', wahmaState.sortCol);
+    params.set('sort_dir', wahmaState.sortDir);
+  }
   const data = await fetch(`/api/wahma/list?${params}`).then(r=>r.json());
   wahmaState.total = data.total;
   const badge = document.getElementById('wahma-total-badge');
@@ -3846,27 +3991,35 @@ function renderWahmaList(data) {
     return;
   }
   const cols = [
-    {id:'wh-c0', label:'창고코드',  w: _wahmaColW['wh-c0']||90},
-    {id:'wh-c1', label:'창고명',    w: _wahmaColW['wh-c1']||140},
-    {id:'wh-c2', label:'주소',      w: _wahmaColW['wh-c2']||300},
-    {id:'wh-c3', label:'우편번호',  w: _wahmaColW['wh-c3']||80},
-    {id:'wh-c4', label:'전화',      w: _wahmaColW['wh-c4']||130},
-    {id:'wh-c5', label:'담당자',    w: _wahmaColW['wh-c5']||90},
-    {id:'wh-c6', label:'수정일',    w: _wahmaColW['wh-c6']||90},
-    {id:'wh-c7', label:'상태',      w: _wahmaColW['wh-c7']||60},
+    {id:'wh-c0', label:'창고코드', sk:'WAREKY',  w: _wahmaColW['wh-c0']||90},
+    {id:'wh-c1', label:'창고명',   sk:'NAME01',  w: _wahmaColW['wh-c1']||140},
+    {id:'wh-c2', label:'주소',     sk:'ADDR01',  w: _wahmaColW['wh-c2']||300},
+    {id:'wh-c3', label:'우편번호', sk:'POSTCD',  w: _wahmaColW['wh-c3']||80},
+    {id:'wh-c4', label:'전화',     sk:'TELN01',  w: _wahmaColW['wh-c4']||130},
+    {id:'wh-c5', label:'담당자',   sk:'WADN01',  w: _wahmaColW['wh-c5']||90},
+    {id:'wh-c6', label:'수정일',   sk:'LMODAT',  w: _wahmaColW['wh-c6']||90},
+    {id:'wh-c7', label:'상태',     sk:'DELMAK',  w: _wahmaColW['wh-c7']||60},
+    {id:'wh-c8', label:'',         sk:'',        w: 56},
   ];
-  const thHtml = cols.map(c=>
-    `<th data-rzid="${c.id}" style="width:${c.w}px;min-width:40px;position:sticky;top:0">` +
-    `<span class="th-cell">${c.label}</span>` +
-    `<span class="col-rz" onmousedown="tableResizerDown(event,'${c.id}','.wahma-table')"></span></th>`
-  ).join('');
+  const thHtml = cols.map(c => {
+    if (!c.sk) {
+      return `<th data-rzid="${c.id}" style="width:${c.w}px;min-width:40px;position:sticky;top:0">` +
+             `<span class="th-cell"></span></th>`;
+    }
+    const isActive = wahmaState.sortCol === c.sk;
+    const sortCls  = isActive ? (wahmaState.sortDir === 'ASC' ? 'sort-asc' : 'sort-desc') : '';
+    return `<th data-rzid="${c.id}" class="sort-th ${sortCls}" style="width:${c.w}px;min-width:40px;position:sticky;top:0" onclick="wahmaSortBy('${c.sk}')">` +
+           `<span class="th-cell">${c.label}</span><span class="sort-icon"></span>` +
+           `<span class="col-rz" onmousedown="tableResizerDown(event,'${c.id}','.wahma-table')"></span></th>`;
+  }).join('');
   const ww = (id,def) => { const w=_wahmaColW[id]||def; return `width:${w}px;max-width:${w}px;`; };
   let html = `<table class="wahma-table" id="wahma-list-table">
     <thead><tr>${thHtml}</tr></thead><tbody>`;
   data.rows.forEach((row, idx) => {
     const isSel = wahmaState.selectedRow?.WAREKY === row.WAREKY;
     const isDel = (row.DELMAK||'').trim() === 'X';
-    html += `<tr class="${isSel?'selected':''} ${isDel?'style="opacity:.5"':''}" onclick="selectWahmaRow(${idx},this)" data-idx="${idx}">
+    const warekyEsc = (row.WAREKY||'').replace(/'/g,"\\'");
+    html += `<tr class="${isSel?'selected':''}" style="${isDel?'opacity:.5':''}" onclick="selectWahmaRow(${idx},this)" data-idx="${idx}">
       <td style="${ww('wh-c0',90)}color:#fbbf24;font-family:monospace;font-weight:700">${row.WAREKY||'-'}</td>
       <td style="${ww('wh-c1',140)}font-weight:600" title="${row.NAME01||''}">${row.NAME01||'-'}</td>
       <td style="${ww('wh-c2',300)}color:var(--text3)" title="${row.ADDR01||''}">${row.ADDR01||'-'}</td>
@@ -3875,6 +4028,7 @@ function renderWahmaList(data) {
       <td style="${ww('wh-c5',90)}">${row.WADN01?.trim()||'-'}</td>
       <td style="${ww('wh-c6',90)}color:var(--text3);font-size:11px">${fmtDate8(row.LMODAT)||row.CREDAT||'-'}</td>
       <td style="${ww('wh-c7',60)};text-align:center">${isDel?'<span style="font-size:10px;color:#ef4444">삭제</span>':'<span style="font-size:10px;color:#22c55e">정상</span>'}</td>
+      <td style="width:56px;max-width:56px;text-align:center"><button class="row-del-btn" title="삭제" onclick="event.stopPropagation();wahmaDeleteRow('${warekyEsc}')">🗑</button></td>
     </tr>`;
   });
   html += '</tbody></table>';
@@ -3885,6 +4039,36 @@ function renderWahmaList(data) {
     const idx = data.rows.findIndex(r => r.WAREKY === wahmaState.selectedRow.WAREKY);
     if (idx >= 0) wrap.querySelector(`tr[data-idx="${idx}"]`)?.classList.add('selected');
   }
+}
+
+function wahmaSortBy(col) {
+  if (wahmaState.sortCol === col) {
+    wahmaState.sortDir = wahmaState.sortDir === 'ASC' ? 'DESC' : 'ASC';
+  } else {
+    wahmaState.sortCol = col;
+    wahmaState.sortDir = 'ASC';
+  }
+  wahmaState.page = 1;
+  searchWahma();
+}
+
+async function wahmaDeleteRow(wareky) {
+  if (!confirm(`물류센터 [${wareky}] 를 삭제(DELMAK=X) 처리하시겠습니까?`)) return;
+  const res = await fetch('/api/wahma/delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({WAREKY: wareky}),
+  });
+  const data = await res.json();
+  if (data.error) { showToast('삭제 실패: ' + data.error); return; }
+  showToast(`✅ [${wareky}] 삭제 처리 완료`);
+  if (wahmaState.selectedRow?.WAREKY === wareky) {
+    wahmaState.selectedRow = null;
+    wahmaState.mode = 'new';
+    const formWrap = document.getElementById('wahma-form-wrap');
+    if (formWrap) formWrap.style.display = 'none';
+  }
+  await searchWahma();
 }
 
 function fmtDate8(v) {
@@ -4000,7 +4184,7 @@ function mmgrDefaultConfig() {
     { type:'item',    id:'nav-CMCDV',     label:'공통코드값',      icon:'📌', page:'CMCDV',    cnt:true },
     { type:'item',    id:'nav-wahma',     label:'물류센터(창고)',  icon:'🏭', page:'wahma',    cnt:true },
     { type:'item',    id:'nav-SKUMA',     label:'상품(SKU)',       icon:'📦', page:'SKUMA',    cnt:true },
-    { type:'item',    id:'nav-BZPTN',     label:'거래처',          icon:'🏢', page:'BZPTN',    cnt:true },
+    { type:'item',    id:'nav-BZPTN',     label:'납품처',          icon:'🏢', page:'BZPTN',    cnt:true },
     { type:'item',    id:'nav-MEASI',     label:'단위구성',        icon:'📐', page:'MEASI',    cnt:true },
     { type:'section', id:'sec-outbound',  label:'출고' },
     { type:'item',    id:'nav-SHPDH',     label:'출고문서헤더',    icon:'🚚', page:'SHPDH',    cnt:true },

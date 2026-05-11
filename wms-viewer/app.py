@@ -729,6 +729,15 @@ def api_wahma_list():
     q        = request.args.get('q', '').strip()
     page     = int(request.args.get('page', 1))
     size     = int(request.args.get('size', 50))
+    sort_col = request.args.get('sort_col', '').strip()
+    sort_dir = request.args.get('sort_dir', 'ASC').strip().upper()
+    if sort_dir not in ('ASC', 'DESC'):
+        sort_dir = 'ASC'
+    _wahma_sort_allowed = {
+        'WAREKY', 'NAME01', 'ADDR01', 'POSTCD', 'TELN01', 'WADN01', 'LMODAT', 'DELMAK'
+    }
+    order_expr = f"{sort_col} {sort_dir}" if sort_col in _wahma_sort_allowed \
+                 else "WAREKY ASC"
     where_parts, params = [], []
     if q:
         where_parts.append("(WAREKY LIKE ? OR NAME01 LIKE ? OR ADDR01 LIKE ? OR TELN01 LIKE ?)")
@@ -740,7 +749,7 @@ def api_wahma_list():
     rows  = conn.execute(
         f"SELECT WAREKY, COMPKY, NAME01, ADDR01, POSTCD, NATNKY, TELN01, FAXTL1, "
         f"WADN01, WADT01, WADM01, DELMAK, CREDAT, LMODAT, LMOUSR, WHTT01, WHTT02 "
-        f"FROM WAHMA {where_sql} ORDER BY WAREKY LIMIT ? OFFSET ?",
+        f"FROM WAHMA {where_sql} ORDER BY {order_expr} LIMIT ? OFFSET ?",
         params + [size, offset]
     ).fetchall()
     conn.close()
@@ -838,20 +847,26 @@ def api_delivery_list():
     """납품처 목록 조회 (BZPTN + BZPTN_DETAIL LEFT JOIN)"""
     page      = int(request.args.get('page', 1))
     size      = int(request.args.get('size', 50))
-    vstel     = request.args.get('vstel', '').strip()       # 출하지점 (TMS_SHPPOINT CMCDVL = WAREKY 값)
-    werks     = request.args.getlist('werks')               # 플랜트 multi-select (LOTA02 코드, 현재 미사용 필드)
+    vstel     = request.args.get('vstel', '').strip()
+    werks     = request.args.getlist('werks')
     werks     = [w.strip() for w in werks if w.strip()]
-    skug05    = request.args.get('skug05', '').strip()      # 제품군 (SKUG05 = ITEM_GROUP)
-    ptnrky    = request.args.get('ptnrky', '').strip()      # 납품처 코드/명칭
-    q         = request.args.get('q', '').strip()           # 통합 검색
+    skug05    = request.args.get('skug05', '').strip()
+    ptnrky    = request.args.get('ptnrky', '').strip()
+    q         = request.args.get('q', '').strip()
+    sort_col  = request.args.get('sort_col', 'b.PTNRKY').strip()
+    sort_dir  = request.args.get('sort_dir', 'ASC').strip().upper()
+    if sort_dir not in ('ASC', 'DESC'): sort_dir = 'ASC'
+    # 허용 컬럼만 정렬에 사용
+    _dlv_sort_map = {
+        'PTNRKY':'b.PTNRKY','NAME01':'b.NAME01','WAREKY':'d.WAREKY',
+        'ITEM_GROUP':'d.ITEM_GROUP','ADDR01':'b.ADDR01','AREA_CD':'d.AREA_CD',
+    }
+    order_expr = _dlv_sort_map.get(sort_col, 'b.PTNRKY')
 
     where_parts, params = ["b.PTNRTY = 'CT'"], []
-
     if vstel:
-        # TMS_SHPPOINT 코드 = BZPTN_DETAIL.WAREKY 와 동일값(W001~W004)으로 필터
         where_parts.append("d.WAREKY = ?")
         params.append(vstel)
-    # werks(플랜트)는 BZPTN_DETAIL에 직접 대응 컬럼이 없어 현재 무시 (향후 확장용)
     if skug05:
         where_parts.append("d.ITEM_GROUP = ?")
         params.append(skug05)
@@ -866,13 +881,10 @@ def api_delivery_list():
     offset    = (page - 1) * size
 
     conn = get_conn()
-    count_sql = f"""
-        SELECT COUNT(*)
-        FROM BZPTN b
-        LEFT JOIN BZPTN_DETAIL d ON b.PTNRKY=d.PTNRKY AND b.PTNRTY=d.PTNRTY AND b.OWNRKY=d.OWNRKY
-        {where_sql}
-    """
-    total = conn.execute(count_sql, params).fetchone()[0]
+    total = conn.execute(
+        f"SELECT COUNT(*) FROM BZPTN b LEFT JOIN BZPTN_DETAIL d ON b.PTNRKY=d.PTNRKY AND b.PTNRTY=d.PTNRTY AND b.OWNRKY=d.OWNRKY {where_sql}",
+        params
+    ).fetchone()[0]
 
     data_sql = f"""
         SELECT b.PTNRKY, b.NAME01, b.PTNRTY, b.OWNRKY,
@@ -884,18 +896,17 @@ def api_delivery_list():
         FROM BZPTN b
         LEFT JOIN BZPTN_DETAIL d ON b.PTNRKY=d.PTNRKY AND b.PTNRTY=d.PTNRTY AND b.OWNRKY=d.OWNRKY
         {where_sql}
-        ORDER BY b.PTNRKY
+        ORDER BY {order_expr} {sort_dir}
         LIMIT ? OFFSET ?
     """
     rows = conn.execute(data_sql, params + [size, offset]).fetchall()
     conn.close()
 
     return jsonify({
-        "total": total,
-        "page":  page,
-        "size":  size,
+        "total": total, "page": page, "size": size,
         "pages": math.ceil(total / size) if total else 1,
         "rows":  [dict(r) for r in rows],
+        "sort_col": sort_col, "sort_dir": sort_dir,
     })
 
 
@@ -1006,6 +1017,14 @@ def api_vehicle_list():
     vehicle_kind = request.args.get('vehicle_kind', '').strip()
     vehicle_class= request.args.get('vehicle_class', '').strip()
     vehicle_no   = request.args.get('vehicle_no', '').strip()
+    sort_col     = request.args.get('sort_col', '').strip()
+    sort_dir     = request.args.get('sort_dir', 'ASC').strip().upper()
+    if sort_dir not in ('ASC', 'DESC'): sort_dir = 'ASC'
+    _vhc_sort_allowed = {'VEHICLE_NO','SHIP_POINT','PRODUCT_GROUP','DELIVERY_ZONE',
+                         'CARRIER','VEHICLE_TYPE','VEHICLE_KIND','VEHICLE_CLASS',
+                         'DRIVER_NAME','USE_YN','FIX_YN'}
+    order_expr = f"{sort_col} {sort_dir}" if sort_col in _vhc_sort_allowed \
+                 else "SHIP_POINT ASC, VEHICLE_NO ASC"
 
     where_parts, params = [], []
     if ship_point:    where_parts.append("SHIP_POINT = ?");          params.append(ship_point)
@@ -1023,7 +1042,7 @@ def api_vehicle_list():
     conn  = get_conn()
     total = conn.execute(f"SELECT COUNT(*) FROM VHCMA {where_sql}", params).fetchone()[0]
     rows  = conn.execute(
-        f"SELECT * FROM VHCMA {where_sql} ORDER BY SHIP_POINT, VEHICLE_NO LIMIT ? OFFSET ?",
+        f"SELECT * FROM VHCMA {where_sql} ORDER BY {order_expr} LIMIT ? OFFSET ?",
         params + [size, offset]
     ).fetchall()
 
@@ -1046,6 +1065,7 @@ def api_vehicle_list():
         "ship_points": ship_points, "prod_groups": prod_groups,
         "zones": zones, "carriers": carriers,
         "vtypes": vtypes, "vkinds": vkinds, "vclasses": vclasses,
+        "sort_col": sort_col, "sort_dir": sort_dir,
     })
 
 
@@ -1132,6 +1152,47 @@ def api_vehicle_delete():
     conn.execute(
         "UPDATE VHCMA SET DEL_YN='Y', LMODAT=?, LMOTIM=?, LMOUSR=? WHERE VEHICLE_NO=? AND OWNRKY=?",
         [now.strftime('%Y%m%d'), now.strftime('%H%M%S'), 'WEB', vno, ownrky]
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route('/api/delivery/delete', methods=['POST'])
+def api_delivery_delete():
+    """납품처 TMS 상세(BZPTN_DETAIL) 삭제 (DEL_YN='Y')"""
+    import datetime
+    body   = request.get_json() or {}
+    ptnrky = (body.get('PTNRKY') or '').strip()
+    ptnrty = (body.get('PTNRTY') or 'CT').strip()
+    ownrky = (body.get('OWNRKY') or 'KN').strip()
+    if not ptnrky:
+        return jsonify({"error": "PTNRKY 필수"}), 400
+    now = datetime.datetime.now()
+    conn = get_conn()
+    conn.execute(
+        "UPDATE BZPTN_DETAIL SET DEL_YN='Y', LMODAT=?, LMOTIM=?, LMOUSR=? "
+        "WHERE PTNRKY=? AND PTNRTY=? AND OWNRKY=?",
+        [now.strftime('%Y%m%d'), now.strftime('%H%M%S'), 'WEB', ptnrky, ptnrty, ownrky]
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route('/api/wahma/delete', methods=['POST'])
+def api_wahma_delete():
+    """물류센터(WAHMA) 삭제 표시 (DELMAK='X')"""
+    import datetime
+    body   = request.get_json() or {}
+    wareky = (body.get('WAREKY') or '').strip()
+    if not wareky:
+        return jsonify({"error": "WAREKY 필수"}), 400
+    now = datetime.datetime.now()
+    conn = get_conn()
+    conn.execute(
+        "UPDATE WAHMA SET DELMAK='X', LMODAT=?, LMOTIM=?, LMOUSR=? WHERE WAREKY=?",
+        [now.strftime('%Y%m%d'), now.strftime('%H%M%S'), 'WEB', wareky]
     )
     conn.commit()
     conn.close()
