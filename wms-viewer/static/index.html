@@ -42,12 +42,18 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .breadcrumb-item.active{color:var(--primary);font-weight:600;cursor:default}
 .breadcrumb-item.active:hover{background:none}
 /* ── SORT ── */
-.sort-th{cursor:pointer;user-select:none}
+.sort-th{cursor:n-resize;user-select:none}
 .sort-th:hover .th-cell{color:var(--primary)}
-.sort-icon{font-size:9px;color:var(--text3);margin-left:2px;vertical-align:middle}
+.sort-th:hover{background:rgba(99,102,241,.07)}
+.sort-icon{font-size:9px;color:var(--text3);margin-left:3px;vertical-align:middle;transition:color .15s}
 .sort-th.sort-asc .sort-icon::after{content:'▲';color:var(--primary)}
 .sort-th.sort-desc .sort-icon::after{content:'▼';color:var(--primary)}
-.sort-th:not(.sort-asc):not(.sort-desc) .sort-icon::after{content:'⇅'}
+.sort-th:not(.sort-asc):not(.sort-desc) .sort-icon::after{content:'⇅';opacity:.5}
+.sort-th::after{content:'더블클릭으로 정렬';position:absolute;bottom:-26px;left:50%;transform:translateX(-50%);
+  background:#1e293b;color:#e2e8f0;font-size:10px;padding:3px 7px;border-radius:4px;white-space:nowrap;
+  pointer-events:none;opacity:0;transition:opacity .15s;z-index:99}
+.sort-th{position:relative}
+.sort-th:hover::after{opacity:1}
 .search-box{display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:5px 10px;width:220px;flex-shrink:0}
 .search-box input{background:none;border:none;outline:none;color:var(--text);font-size:12px;flex:1;min-width:0}
 select.page-size{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:12px;cursor:pointer;flex-shrink:0}
@@ -2216,8 +2222,8 @@ function renderDeliveryList(data) {
     const isAsc  = dlvState.sortCol === c.sk && dlvState.sortDir === 'ASC';
     const isDesc = dlvState.sortCol === c.sk && dlvState.sortDir === 'DESC';
     const sortCls = isSortable ? `sort-th${isAsc?' sort-asc':isDesc?' sort-desc':''}` : '';
-    const onClick = isSortable ? `onclick="dlvSortBy('${c.sk}')"` : '';
-    return `<th data-rzid="${c.id}" class="${sortCls}" style="width:${c.w}px;min-width:36px;position:sticky;top:0" ${onClick}>` +
+    const onDblClick = isSortable ? `ondblclick="dlvSortBy('${c.sk}')"` : '';
+    return `<th data-rzid="${c.id}" class="${sortCls}" style="width:${c.w}px;min-width:36px;position:sticky;top:0" ${onDblClick}>` +
       `<span class="th-cell">${c.label}${isSortable?'<span class="sort-icon"></span>':''}</span>` +
       `<span class="col-rz" onmousedown="tableResizerDown(event,'${c.id}','.dlv-list-table')"></span></th>`;
   }).join('');
@@ -3030,8 +3036,8 @@ function renderVehicleList(data) {
     const isAsc  = vhcState.sortCol === c.sk && vhcState.sortDir === 'ASC';
     const isDesc = vhcState.sortCol === c.sk && vhcState.sortDir === 'DESC';
     const sortCls = isSortable ? `sort-th${isAsc?' sort-asc':isDesc?' sort-desc':''}` : '';
-    const onClick = isSortable ? `onclick="vhcSortBy('${c.sk}')"` : '';
-    return `<th data-rzid="${c.id}" class="${sortCls}" style="width:${c.w}px;min-width:36px;position:sticky;top:0" ${onClick}>` +
+    const onDblClick = isSortable ? `ondblclick="vhcSortBy('${c.sk}')"` : '';
+    return `<th data-rzid="${c.id}" class="${sortCls}" style="width:${c.w}px;min-width:36px;position:sticky;top:0" ${onDblClick}>` +
       `<span class="th-cell">${c.label}${isSortable?'<span class="sort-icon"></span>':''}</span>` +
       `<span class="col-rz" onmousedown="tableResizerDown(event,'${c.id}','.vhc-table')"></span></th>`;
   }).join('');
@@ -4008,7 +4014,7 @@ function renderWahmaList(data) {
     }
     const isActive = wahmaState.sortCol === c.sk;
     const sortCls  = isActive ? (wahmaState.sortDir === 'ASC' ? 'sort-asc' : 'sort-desc') : '';
-    return `<th data-rzid="${c.id}" class="sort-th ${sortCls}" style="width:${c.w}px;min-width:40px;position:sticky;top:0" onclick="wahmaSortBy('${c.sk}')">` +
+    return `<th data-rzid="${c.id}" class="sort-th ${sortCls}" style="width:${c.w}px;min-width:40px;position:sticky;top:0" ondblclick="wahmaSortBy('${c.sk}')">` +
            `<span class="th-cell">${c.label}</span><span class="sort-icon"></span>` +
            `<span class="col-rz" onmousedown="tableResizerDown(event,'${c.id}','.wahma-table')"></span></th>`;
   }).join('');
