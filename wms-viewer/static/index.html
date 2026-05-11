@@ -2017,7 +2017,7 @@ async function renderDelivery() {
   c.innerHTML = `<div class="loading"><div class="spinner"></div>공통코드 로딩 중...</div>`;
 
   // 공통코드 병렬 로드
-  const codeKeys = ['LOTA02','SKUG05','TMS_ROUTE','TMS_UNLOADTIME','TMS_MAXHEIGHT','TMS_INBOUNDTIME','TMS_REGION'];
+  const codeKeys = ['LOTA02','SKUG05','TMS_ROUTE','TMS_UNLOADTIME','TMS_MAXHEIGHT','TMS_INBOUNDTIME','TMS_REGION','TMS_AUTOPLT'];
   const results  = await Promise.all(codeKeys.map(k => fetch(`/api/codes/${k}`).then(r=>r.json())));
   codeKeys.forEach((k,i) => dlvState.codes[k] = results[i]);
   // TMS_SHPPOINT 목록 (출하지점 select용)
@@ -2145,6 +2145,8 @@ function buildDeliveryForm() {
   const unloadOpts     = dlvState.codes['TMS_UNLOADTIME'].map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
   const maxHOpts       = dlvState.codes['TMS_MAXHEIGHT'].map(o=>`<option value="${o.value}">${o.value} (${o.label}cm)</option>`).join('');
   const inbTimeOpts    = dlvState.codes['TMS_INBOUNDTIME'].map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
+  // TMS_AUTOPLT: CMCDVL=값, CDESC1=표시텍스트 (1~24)
+  const autoPltOpts    = (dlvState.codes['TMS_AUTOPLT']||[]).map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
 
   return `
     <!-- 기본정보 -->
@@ -2234,7 +2236,7 @@ function buildDeliveryForm() {
       <label>자동설정PLT</label>
       <select id="f-AUTO_PLT">
         <option value="">선택</option>
-        ${skug05Opts}
+        ${autoPltOpts}
       </select>
     </div>
 
@@ -2785,7 +2787,16 @@ function fillDeliveryForm(data) {
   setSel('f-ROUTE_CD',       d.ROUTE_CD);
   setSel('f-ITEM_GROUP',     d.ITEM_GROUP);
   setSel('f-UNLOAD_TIME',    d.UNLOAD_TIME != null ? String(d.UNLOAD_TIME) : '');
-  setSel('f-AUTO_PLT',       d.AUTO_PLT != null ? String(d.AUTO_PLT) : '');
+  // AUTO_PLT: DB값이 REAL일 수도 있고 '01'~'24' 문자열일 수도 있음 → TMS_AUTOPLT value(01~24) 형식으로 정규화
+  (function(){
+    const v = d.AUTO_PLT;
+    if (v == null || v === '') return;
+    // 정수 혹은 실수 → 정수 변환 후 2자리 패딩, 문자열이면 그대로 시도
+    const num = parseInt(v, 10);
+    const code = !isNaN(num) ? String(num).padStart(2, '0') : String(v);
+    const sel = document.getElementById('f-AUTO_PLT');
+    if (sel) sel.value = code;
+  })();
   setSel('f-MAX_HEIGHT',     d.MAX_HEIGHT ? 'H'+String(Math.round(d.MAX_HEIGHT)).padStart(3,'0') : '');
   setSel('f-INB_TIME_FROM1', d.INB_TIME_FROM1);
   setSel('f-INB_TIME_TO1',   d.INB_TIME_TO1);
@@ -2854,7 +2865,7 @@ async function dlvSave() {
     MAX_HEIGHT:     maxHNum,
     FORKLIFT_YN:    getYN('FORKLIFT_YN'),
     HANDWORK_YN:    getYN('HANDWORK_YN'),
-    AUTO_PLT:       parseFloat(document.getElementById('f-AUTO_PLT')?.value)||null,
+    AUTO_PLT:       document.getElementById('f-AUTO_PLT')?.value || null,
     MAX_BOX_QTY:    parseInt(document.getElementById('f-MAX_BOX_QTY')?.value)||null,
     AUTO_ALLOC_YN:  getYN('AUTO_ALLOC_YN'),
     SINGLE_ITEM_YN: getYN('SINGLE_ITEM_YN'),
