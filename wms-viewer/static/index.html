@@ -54,8 +54,13 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   pointer-events:none;opacity:0;transition:opacity .15s;z-index:99}
 .sort-th{position:relative}
 .sort-th:hover::after{opacity:1}
-.search-box{display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:5px 10px;width:220px;flex-shrink:0}
-.search-box input{background:none;border:none;outline:none;color:var(--text);font-size:12px;flex:1;min-width:0}
+.search-box{display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:5px 10px;min-width:180px;max-width:380px;width:auto;flex-shrink:0}
+.search-box input{background:none;border:none;outline:none;color:var(--text);font-size:12px;flex:1;min-width:120px}
+/* 검색 힌트 뱃지 */
+.srch-hint{font-size:10px;color:var(--text3);background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:1px 7px;white-space:nowrap;flex-shrink:0}
+/* 정렬 상태 표시 칩 */
+#sort-indicator{display:none;align-items:center;gap:5px;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.3);border-radius:20px;padding:2px 10px;font-size:11px;color:#93c5fd;cursor:pointer;white-space:nowrap;flex-shrink:0}
+#sort-indicator:hover{background:rgba(59,130,246,.22)}
 select.page-size{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:12px;cursor:pointer;flex-shrink:0}
 
 /* ── TOOLBAR (컬럼 토글 영역) ── */
@@ -578,8 +583,13 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
     <div class="badge" id="topbar-badge">WMS Database</div>
     <div class="search-box" id="search-wrap" style="display:none">
       <span style="color:var(--text3);font-size:13px">🔍</span>
-      <input type="text" id="search-input" placeholder="전체 검색..." oninput="onSearch()">
+      <input type="text" id="search-input" placeholder="검색..." oninput="onSearch()">
+      <span id="srch-hint-badge" class="srch-hint" style="display:none"></span>
       <span id="search-clear" style="color:var(--text3);cursor:pointer;font-size:13px;display:none" onclick="clearSearch()">✕</span>
+    </div>
+    <div id="sort-indicator" onclick="tblClearSort()">
+      <span id="sort-indicator-text"></span>
+      <span style="font-size:10px;opacity:.7">✕ 정렬 초기화</span>
     </div>
     <select class="page-size" id="page-size-sel" onchange="onPageSizeChange()" style="display:none">
       <option value="25">25행</option>
@@ -660,6 +670,9 @@ const state = {
   pkCols: [],
   labels: {},
   lastRows: [],
+  sortCol: '',       // 공통 테이블 정렬 컬럼
+  sortDir: 'ASC',    // 공통 테이블 정렬 방향
+  searchCols: [],    // 테이블별 검색 대상 컬럼 (API 반환)
 };
 let searchTimer = null;
 
@@ -803,7 +816,30 @@ function showPage(p){
     srch.style.display = 'flex';
     psize.style.display = 'flex';
     toolbar.style.display = 'none';
+    buildTableSearchUI(p);
     loadTable(p, 1, true);
+  }
+}
+
+/* 테이블별 검색 UI 설정 */
+const TABLE_SEARCH_META = {
+  CMCDM:    { placeholder: '코드명 검색...', hint: '코드키 / 코드명' },
+  CMCDV:    { placeholder: '코드명 검색...', hint: '코드키 / 설명(코드명)' },
+  SKUMA:    { placeholder: '품목코드 / 품목명 검색...', hint: '품목코드(SKUKEY) / 품목명(DESC01)' },
+  BZPTN:    { placeholder: '거래처코드 / 거래처명 검색...', hint: '거래처코드(PTNRKY) / 거래처명(NAME01)' },
+  MEASI:    { placeholder: '단위구성키 검색...', hint: '단위구성키(MEASKY)' },
+};
+function buildTableSearchUI(tbl) {
+  const inp   = document.getElementById('search-input');
+  const hint  = document.getElementById('srch-hint-badge');
+  const meta  = TABLE_SEARCH_META[tbl];
+  if (meta) {
+    inp.placeholder  = meta.placeholder;
+    hint.textContent = meta.hint;
+    hint.style.display = 'inline';
+  } else {
+    inp.placeholder  = '전체 검색...';
+    hint.style.display = 'none';
   }
 }
 
@@ -887,24 +923,43 @@ async function loadTable(tbl, page, initCols = false){
   const q    = state.search;
   let url    = `/api/data/${tbl}?page=${page}&size=${size}`;
   if(q) url += `&q=${encodeURIComponent(q)}`;
+  if(state.sortCol) {
+    url += `&sort_col=${encodeURIComponent(state.sortCol)}&sort_dir=${state.sortDir}`;
+  }
 
   const res  = await fetch(url);
   const data = await res.json();
   if(data.error){ c.innerHTML = `<div class="loading">오류: ${data.error}</div>`; return; }
 
-  state.total    = data.total;
-  state.allCols  = data.columns;
-  state.pkCols   = data.pk_cols;
-  state.labels   = data.labels;
-  state.lastRows = data.rows;
+  state.total      = data.total;
+  state.allCols    = data.columns;
+  state.pkCols     = data.pk_cols;
+  state.labels     = data.labels;
+  state.lastRows   = data.rows;
+  state.searchCols = data.search_cols || [];
 
   // 첫 로드시 전체 컬럼 표시, 이후 유지
   if(initCols){
     state.visibleCols = [...state.allCols];
+    state.sortCol = '';
+    state.sortDir = 'ASC';
   }
 
   buildColToolbar();
   renderTableFromCache();
+  updateSortIndicator();
+}
+
+/* 공통 테이블 헤더 더블클릭 정렬 */
+function tblSortBy(col) {
+  if (state.sortCol === col) {
+    state.sortDir = state.sortDir === 'ASC' ? 'DESC' : 'ASC';
+  } else {
+    state.sortCol = col;
+    state.sortDir = 'ASC';
+  }
+  state.currentPage = 1;
+  loadTable(state.table, 1, false);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -923,17 +978,21 @@ function renderTableFromCache(){
   const start = (page - 1) * size + 1;
   const end   = Math.min(page * size, total);
 
-  // thead (컬럼 드래그 리사이저 핸들 포함)
+  // thead (컬럼 드래그 리사이저 핸들 포함 + 더블클릭 정렬)
   let stickyOffset = 0;
   let thead = '<thead><tr>';
   cols.forEach((col, ci) => {
-    const isPk   = pkCols.includes(col);
-    const sticky = isPk ? ' sticky-col' : '';
-    const colW   = _colWidths[col] ? `style="width:${_colWidths[col]}px;min-width:${_colWidths[col]}px"` : '';
-    thead += `<th class="${isPk ? 'pk-col' : ''}${sticky}" data-col="${col}" ${colW}>
+    const isPk    = pkCols.includes(col);
+    const sticky  = isPk ? ' sticky-col' : '';
+    const colW    = _colWidths[col] ? `style="width:${_colWidths[col]}px;min-width:${_colWidths[col]}px"` : '';
+    const isAsc   = state.sortCol === col && state.sortDir === 'ASC';
+    const isDesc  = state.sortCol === col && state.sortDir === 'DESC';
+    const sortCls = isAsc ? ' sort-asc' : isDesc ? ' sort-desc' : '';
+    thead += `<th class="sort-th${isPk?' pk-col':''}${sticky}${sortCls}" data-col="${col}" ${colW} ondblclick="tblSortBy('${col}')">
       <div class="th-inner">
         <span class="th-label">${labels[col] || col}</span>
         <span class="th-col">${col}</span>
+        <span class="sort-icon"></span>
       </div>
       <div class="col-resizer" onmousedown="colResizerDown(event,'${col}')"></div>
       </th>`;
@@ -1475,6 +1534,27 @@ function clearSearch(){
 function onPageSizeChange(){
   state.pageSize = parseInt(document.getElementById('page-size-sel').value);
   if(state.table) loadTable(state.table, 1, false);
+}
+
+/* 정렬 상태 칩 업데이트 */
+function updateSortIndicator() {
+  const el   = document.getElementById('sort-indicator');
+  const text = document.getElementById('sort-indicator-text');
+  if (!el) return;
+  if (state.sortCol) {
+    const label = state.labels[state.sortCol] || state.sortCol;
+    const arrow = state.sortDir === 'ASC' ? '▲' : '▼';
+    text.textContent = `정렬: ${label} ${arrow}`;
+    el.style.display = 'flex';
+  } else {
+    el.style.display = 'none';
+  }
+}
+function tblClearSort() {
+  state.sortCol = '';
+  state.sortDir = 'ASC';
+  updateSortIndicator();
+  if (state.table) loadTable(state.table, state.currentPage, false);
 }
 
 /* ═══════════════════════════════════════════════════════════

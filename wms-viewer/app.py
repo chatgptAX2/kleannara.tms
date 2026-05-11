@@ -238,6 +238,15 @@ def api_schema(table):
         "label": COL_LABELS.get(c[1], c[1])
     } for c in cols])
 
+# ── 테이블별 검색 대상 컬럼 (q 파라미터 사용 시 이 컬럼들만 LIKE 검색) ──
+TABLE_SEARCH_COLS = {
+    "CMCDM":    ["CMCDKY", "SHORTX"],                      # 코드키, 코드명
+    "CMCDV":    ["CMCDKY", "CDESC1"],                      # 코드키, 설명1(코드명)
+    "SKUMA":    ["SKUKEY", "DESC01"],                      # 품목코드, 품목명
+    "BZPTN":    ["PTNRKY", "NAME01"],                      # 거래처코드, 거래처명
+    "MEASI":    ["MEASKY"],                                # 단위구성키
+}
+
 @app.route('/api/data/<table>')
 def api_data(table):
     if table not in TABLE_META:
@@ -248,6 +257,10 @@ def api_data(table):
     search     = request.args.get('q', '').strip()
     col_filter = request.args.get('col', '').strip()
     val_filter = request.args.get('val', '').strip()
+    sort_col   = request.args.get('sort_col', '').strip()
+    sort_dir   = request.args.get('sort_dir', 'ASC').strip().upper()
+    if sort_dir not in ('ASC', 'DESC'):
+        sort_dir = 'ASC'
 
     offset = (page - 1) * size
 
@@ -255,18 +268,27 @@ def api_data(table):
     all_cols = get_table_cols(table)
     pk_cols  = TABLE_META[table]["pk"]
 
-    # 검색: PK컬럼 + 앞쪽 주요 컬럼 최대 8개까지 LIKE 검색
+    # 정렬: 허용 컬럼(실제 테이블 컬럼) 화이트리스트 검사
+    if sort_col and sort_col in all_cols:
+        order_expr = f"{sort_col} {sort_dir}"
+    else:
+        order_expr = f"{pk_cols[0]} ASC"
+
+    # 검색: 테이블별 지정 컬럼 우선, 없으면 PK + 앞쪽 컬럼 최대 8개
     search_cols = []
     if search:
-        # PK 우선, 이후 앞 컬럼 순으로 최대 8개
-        seen = set()
-        for c in pk_cols:
-            if c in all_cols:
-                search_cols.append(c); seen.add(c)
-        for c in all_cols:
-            if len(search_cols) >= 8: break
-            if c not in seen:
-                search_cols.append(c); seen.add(c)
+        if table in TABLE_SEARCH_COLS:
+            # 지정된 컬럼만 검색 (실제 존재하는 컬럼만)
+            search_cols = [c for c in TABLE_SEARCH_COLS[table] if c in all_cols]
+        else:
+            seen = set()
+            for c in pk_cols:
+                if c in all_cols:
+                    search_cols.append(c); seen.add(c)
+            for c in all_cols:
+                if len(search_cols) >= 8: break
+                if c not in seen:
+                    search_cols.append(c); seen.add(c)
 
     where_parts, params = [], []
     if search and search_cols:
@@ -282,21 +304,24 @@ def api_data(table):
     conn = get_conn()
     total = conn.execute(f"SELECT COUNT(*) FROM {table} {where_sql}", params).fetchone()[0]
     rows  = conn.execute(
-        f"SELECT * FROM {table} {where_sql} LIMIT ? OFFSET ?",
+        f"SELECT * FROM {table} {where_sql} ORDER BY {order_expr} LIMIT ? OFFSET ?",
         params + [size, offset]
     ).fetchall()
     conn.close()
 
     return jsonify({
-        "table":   table,
-        "total":   total,
-        "page":    page,
-        "size":    size,
-        "pages":   math.ceil(total / size) if total else 1,
-        "columns": all_cols,
-        "pk_cols": pk_cols,
-        "labels":  {c: COL_LABELS.get(c, c) for c in all_cols},
-        "rows":    [dict(r) for r in rows]
+        "table":    table,
+        "total":    total,
+        "page":     page,
+        "size":     size,
+        "pages":    math.ceil(total / size) if total else 1,
+        "columns":  all_cols,
+        "pk_cols":  pk_cols,
+        "labels":   {c: COL_LABELS.get(c, c) for c in all_cols},
+        "rows":     [dict(r) for r in rows],
+        "sort_col": sort_col,
+        "sort_dir": sort_dir,
+        "search_cols": TABLE_SEARCH_COLS.get(table, []),  # 프론트에 전달
     })
 
 @app.route('/api/detail/<table>')
