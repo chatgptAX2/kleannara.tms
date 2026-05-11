@@ -6,10 +6,49 @@
 <title>WMS DB 뷰어</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{
+
+/* ═══════════════════════════════════════════════
+   THEME VARIABLES
+   dark  (default) : data-theme="dark"
+   light           : data-theme="light"
+═══════════════════════════════════════════════ */
+:root, [data-theme="dark"] {
   --bg:#0f172a;--surface:#1e293b;--surface2:#263449;--border:#334155;
   --primary:#3b82f6;--primary-dark:#2563eb;--success:#22c55e;--warning:#f59e0b;
   --danger:#ef4444;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;
+  /* 테이블 전용 */
+  --th-bg:#1a2744;--tr-hover:#1e2a3a;--tr-border:#1a2535;
+  --tr-selected:#1e3a5f;--tr-selected-vhc:#172554;
+  --td-num:#93c5fd;--empty-fg:#475569;
+  /* 배지 */
+  --badge-blue-bg:#1e3a5f;--badge-blue-fg:#93c5fd;
+  /* 드래그 복사 배지 */
+  --dc-badge-bg:#1e40af;--dc-badge-fg:#bfdbfe;--dc-badge-border:#3b82f6;
+  /* 툴팁 */
+  --tooltip-bg:#1e293b;--tooltip-fg:#e2e8f0;
+  /* input focus */
+  --input-focus-bg:#1e3a5f;
+  /* 테마 버튼 */
+  --theme-btn-icon:"☀️";
+}
+[data-theme="light"] {
+  --bg:#f1f5f9;--surface:#ffffff;--surface2:#f8fafc;--border:#cbd5e1;
+  --primary:#2563eb;--primary-dark:#1d4ed8;--success:#16a34a;--warning:#d97706;
+  --danger:#dc2626;--text:#0f172a;--text2:#475569;--text3:#94a3b8;
+  /* 테이블 전용 */
+  --th-bg:#e2e8f0;--tr-hover:#f0f4ff;--tr-border:#e2e8f0;
+  --tr-selected:#dbeafe;--tr-selected-vhc:#bfdbfe;
+  --td-num:#2563eb;--empty-fg:#94a3b8;
+  /* 배지 */
+  --badge-blue-bg:#dbeafe;--badge-blue-fg:#1d4ed8;
+  /* 드래그 복사 배지 */
+  --dc-badge-bg:#2563eb;--dc-badge-fg:#eff6ff;--dc-badge-border:#93c3fd;
+  /* 툴팁 */
+  --tooltip-bg:#1e293b;--tooltip-fg:#f8fafc;
+  /* input focus */
+  --input-focus-bg:#eff6ff;
+  /* 테마 버튼 */
+  --theme-btn-icon:"🌙";
 }
 body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;height:100vh;display:flex;overflow:hidden}
 
@@ -50,7 +89,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .sort-th.sort-desc .sort-icon::after{content:'▼';color:var(--primary)}
 .sort-th:not(.sort-asc):not(.sort-desc) .sort-icon::after{content:'⇅';opacity:.5}
 .sort-th::after{content:'더블클릭으로 정렬';position:absolute;bottom:-26px;left:50%;transform:translateX(-50%);
-  background:#1e293b;color:#e2e8f0;font-size:10px;padding:3px 7px;border-radius:4px;white-space:nowrap;
+  background:var(--tooltip-bg);color:var(--tooltip-fg);font-size:10px;padding:3px 7px;border-radius:4px;white-space:nowrap;
   pointer-events:none;opacity:0;transition:opacity .15s;z-index:99}
 .sort-th{position:relative}
 .sort-th:hover::after{opacity:1}
@@ -59,7 +98,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 /* 검색 힌트 뱃지 */
 .srch-hint{font-size:10px;color:var(--text3);background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:1px 7px;white-space:nowrap;flex-shrink:0}
 /* 정렬 상태 표시 칩 */
-#sort-indicator{display:none;align-items:center;gap:5px;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.3);border-radius:20px;padding:2px 10px;font-size:11px;color:#93c5fd;cursor:pointer;white-space:nowrap;flex-shrink:0}
+#sort-indicator{display:none;align-items:center;gap:5px;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.3);border-radius:20px;padding:2px 10px;font-size:11px;color:var(--td-num);cursor:pointer;white-space:nowrap;flex-shrink:0}
 #sort-indicator:hover{background:rgba(59,130,246,.22)}
 select.page-size{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:12px;cursor:pointer;flex-shrink:0}
 
@@ -84,7 +123,7 @@ table{border-collapse:collapse;font-size:12px;table-layout:fixed}
 table.full-width{width:100%}
 thead th{
   position:sticky;top:0;z-index:10;
-  background:#1a2744;
+  background:var(--th-bg);
   padding:0;
   text-align:left;
   font-weight:600;font-size:11px;color:var(--text2);
@@ -115,12 +154,12 @@ thead th .col-resizer{
 thead th .col-resizer:hover,thead th .col-resizer.resizing{background:var(--primary);opacity:.7}
 
 /* PK 컬럼 고정 */
-thead th.sticky-col{position:sticky;left:0;z-index:20;background:#1a2744}
+thead th.sticky-col{position:sticky;left:0;z-index:20;background:var(--th-bg)}
 tbody td.sticky-col{position:sticky;left:0;z-index:5;background:var(--bg)}
-tbody tr:hover td.sticky-col{background:#1e2a3a}
+tbody tr:hover td.sticky-col{background:var(--tr-hover)}
 
-tbody tr{border-bottom:1px solid #1a2535}
-tbody tr:hover{background:#1e2a3a;cursor:pointer}
+tbody tr{border-bottom:1px solid var(--tr-border)}
+tbody tr:hover{background:var(--tr-hover);cursor:pointer}
 tbody td{
   padding:7px 10px;
   white-space:nowrap;
@@ -129,10 +168,10 @@ tbody td{
   min-width:60px;
   max-width:none;
   width:120px;
-  border-right:1px solid #1a2535;
+  border-right:1px solid var(--tr-border);
   vertical-align:middle;
 }
-tbody td.num{color:#93c5fd;text-align:right}
+tbody td.num{color:var(--td-num);text-align:right}
 tbody td.empty{color:var(--text3)}
 
 /* ── DRAG-COPY SELECTION ── */
@@ -168,9 +207,9 @@ body.dc-dragging{user-select:none !important;-webkit-user-select:none !important
 /* 복사 카운트 배지 */
 #dc-badge{
   position:fixed;pointer-events:none;z-index:9999;
-  background:#1e40af;color:#bfdbfe;
+  background:var(--dc-badge-bg);color:var(--dc-badge-fg);
   font-size:11px;padding:3px 9px;border-radius:12px;
-  border:1px solid #3b82f6;
+  border:1px solid var(--dc-badge-border);
   white-space:nowrap;opacity:0;transition:opacity .15s;
   transform:translate(12px,-50%);
 }
@@ -204,6 +243,15 @@ body.dc-dragging{user-select:none !important;-webkit-user-select:none !important
 .bar-row .val{width:55px;text-align:right;color:var(--text);font-weight:600}
 
 /* ── MODAL ── */
+/* ── THEME TOGGLE BUTTON ── */
+#theme-toggle-btn{
+  margin:8px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);
+  background:var(--surface2);color:var(--text2);cursor:pointer;font-size:11px;
+  font-weight:600;width:calc(100% - 16px);display:flex;align-items:center;gap:6px;
+  transition:.15s;
+}
+#theme-toggle-btn:hover{border-color:var(--primary);color:var(--primary)}
+
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px}
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;width:860px;max-width:95vw;max-height:88vh;display:flex;flex-direction:column;overflow:hidden}
 .modal-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
@@ -224,7 +272,7 @@ body.dc-dragging{user-select:none !important;-webkit-user-select:none !important
 .crud-header h3{font-size:14px;font-weight:700;flex:1}
 .crud-header .mode-badge{padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700}
 .crud-header .mode-badge.new-mode{background:#14532d;color:#86efac;border:1px solid #16a34a}
-.crud-header .mode-badge.edit-mode{background:#1e3a5f;color:#93c5fd;border:1px solid #3b82f6}
+.crud-header .mode-badge.edit-mode{background:var(--badge-blue-bg);color:var(--badge-blue-fg);border:1px solid var(--primary)}
 .crud-toolbar{padding:8px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--surface2);flex-shrink:0}
 .crud-btn{padding:6px 16px;border-radius:7px;border:1px solid var(--border);font-size:12px;font-weight:600;cursor:pointer;transition:.15s;white-space:nowrap}
 .crud-btn.save{background:#166534;border-color:#16a34a;color:#86efac}
@@ -260,7 +308,7 @@ body.dc-dragging{user-select:none !important;-webkit-user-select:none !important
 .sql-editor{background:var(--surface);border:1px solid var(--border);border-radius:9px;overflow:hidden;flex-shrink:0}
 .sql-editor-toolbar{padding:7px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--surface2)}
 .sql-editor-toolbar span{font-size:11px;color:var(--text3)}
-textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg);border:none;outline:none;resize:vertical;font-family:'Consolas','Monaco',monospace;font-size:12px;color:#93c5fd;line-height:1.6}
+textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg);border:none;outline:none;resize:vertical;font-family:'Consolas','Monaco',monospace;font-size:12px;color:var(--td-num);line-height:1.6}
 .sql-result{background:var(--surface);border:1px solid var(--border);border-radius:9px;overflow:auto;flex:1;min-height:60px}
 .sql-result-ctrl{display:flex;align-items:center;gap:6px;padding:4px 0;flex-shrink:0}
 .examples{display:flex;flex-wrap:wrap;gap:6px}
@@ -282,7 +330,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .schema-detail{background:var(--surface);border:1px solid var(--border);border-radius:9px;overflow-y:auto}
 .col-tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;margin-right:3px}
 .col-tag.pk{background:#78350f;color:#fef3c7}
-.col-tag.nn{background:#1e3a5f;color:#93c5fd}
+.col-tag.nn{background:var(--badge-blue-bg);color:var(--badge-blue-fg)}
 
 /* ── DELIVERY MGMT ── */
 .dlv-layout{display:flex;flex-direction:column;height:100%;overflow:hidden}
@@ -305,14 +353,14 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .dlv-section-header h3{font-size:12px;font-weight:700;color:var(--text2)}
 .dlv-list-table-wrap{overflow:auto;flex:1;min-height:0}
 .dlv-list-table{border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed}
-.dlv-list-table thead th{position:sticky;top:0;background:#1a2744;padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none;position:sticky;top:0}
+.dlv-list-table thead th{position:sticky;top:0;background:var(--th-bg);padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none;position:sticky;top:0}
 .dlv-list-table thead th .th-cell{padding:8px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
 .dlv-list-table thead th .col-rz{position:absolute;right:0;top:0;bottom:0;width:5px;cursor:col-resize;z-index:1;background:transparent}
 .dlv-list-table thead th .col-rz:hover,.dlv-list-table thead th .col-rz.rz-active{background:var(--primary);opacity:.7}
-.dlv-list-table tbody tr{border-bottom:1px solid #1a2535;cursor:pointer}
-.dlv-list-table tbody tr:hover{background:#1e2a3a}
-.dlv-list-table tbody tr.selected{background:#1e3a5f;border-left:3px solid var(--primary)}
-.dlv-list-table tbody td{padding:7px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid #1a2535;font-size:12px}
+.dlv-list-table tbody tr{border-bottom:1px solid var(--tr-border);cursor:pointer}
+.dlv-list-table tbody tr:hover{background:var(--tr-hover)}
+.dlv-list-table tbody tr.selected{background:var(--tr-selected);border-left:3px solid var(--primary)}
+.dlv-list-table tbody td{padding:7px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border);font-size:12px}
 .dlv-form-wrap{padding:16px 20px}
 .dlv-form{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 12px}
 .dlv-form-section-title{grid-column:1/-1;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;padding:6px 0 2px;border-bottom:1px solid var(--border)}
@@ -320,7 +368,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .form-group label{font-size:10px;font-weight:600;color:var(--text3)}
 .form-group label.required::after{content:" *";color:var(--danger)}
 .form-group input,.form-group select,.form-group textarea{background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:6px 9px;font-size:12px;transition:.15s}
-.form-group input:focus,.form-group select:focus{outline:none;border-color:var(--primary);background:#1e3a5f}
+.form-group input:focus,.form-group select:focus{outline:none;border-color:var(--primary);background:var(--input-focus-bg)}
 .form-group input[readonly]{opacity:.55;cursor:not-allowed;background:var(--bg)}
 .form-col2{grid-column:span 2}
 .form-col3{grid-column:span 3}
@@ -337,7 +385,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .dlv-form-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px;padding-top:6px;border-top:1px solid var(--border);margin-top:4px}
 .badge-Y{background:#166534;color:#86efac;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700}
 .badge-N{background:#450a0a;color:#fca5a5;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700}
-.badge-reg{background:#1e3a5f;color:#93c5fd;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700}
+.badge-reg{background:var(--badge-blue-bg);color:var(--badge-blue-fg);padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700}
 .badge-none{background:var(--surface2);color:var(--text3);padding:2px 7px;border-radius:3px;font-size:10px}
 .row-del-btn{background:none;border:1px solid transparent;color:var(--text3);cursor:pointer;font-size:13px;padding:2px 5px;border-radius:4px;line-height:1;transition:.12s}
 .row-del-btn:hover{border-color:#ef4444;color:#ef4444;background:#1a0a0a}
@@ -369,14 +417,14 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .vhc-section-hdr h3{font-size:12px;font-weight:700;color:var(--text2)}
 .vhc-list-wrap{overflow:auto;flex:1;min-height:0}
 .vhc-table{border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed}
-.vhc-table thead th{position:sticky;top:0;background:#1a2744;padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:700;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none}
+.vhc-table thead th{position:sticky;top:0;background:var(--th-bg);padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:700;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none}
 .vhc-table thead th .th-cell{padding:7px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
 .vhc-table thead th .col-rz{position:absolute;right:0;top:0;bottom:0;width:5px;cursor:col-resize;z-index:1;background:transparent}
 .vhc-table thead th .col-rz:hover,.vhc-table thead th .col-rz.rz-active{background:var(--primary);opacity:.7}
-.vhc-table tbody tr{border-bottom:1px solid #1a2535;cursor:pointer;transition:.1s}
-.vhc-table tbody tr:hover{background:#1e2a3a}
-.vhc-table tbody tr.selected{background:#172554;border-left:3px solid var(--primary)}
-.vhc-table tbody td{padding:6px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid #1a2535;font-size:12px;vertical-align:middle}
+.vhc-table tbody tr{border-bottom:1px solid var(--tr-border);cursor:pointer;transition:.1s}
+.vhc-table tbody tr:hover{background:var(--tr-hover)}
+.vhc-table tbody tr.selected{background:var(--tr-selected-vhc);border-left:3px solid var(--primary)}
+.vhc-table tbody td{padding:6px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border);font-size:12px;vertical-align:middle}
 .vhc-pagination{padding:5px 12px;border-top:1px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px}
 /* 차량 등록/수정 폼 */
 .vhc-form-box{flex:1;overflow-y:auto;min-height:0}
@@ -388,7 +436,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .vhc-fg label{font-size:10px;font-weight:700;color:var(--warning);background:rgba(245,158,11,.08);padding:2px 5px;border-radius:3px;white-space:nowrap}
 .vhc-fg label.req::after{content:" *";color:var(--danger)}
 .vhc-fg input,.vhc-fg select{background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 7px;font-size:12px;width:100%;transition:.15s}
-.vhc-fg input:focus,.vhc-fg select:focus{outline:none;border-color:var(--primary);background:#1e3a5f}
+.vhc-fg input:focus,.vhc-fg select:focus{outline:none;border-color:var(--primary);background:var(--input-focus-bg)}
 .vhc-fg input[readonly]{opacity:.55;cursor:not-allowed;background:var(--bg)}
 .vhc-span2{grid-column:span 2}
 .vhc-span3{grid-column:span 3}
@@ -403,7 +451,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .vhc-badge{padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700}
 .vhc-badge.use-y{background:#166534;color:#86efac}
 .vhc-badge.use-n{background:#7f1d1d;color:#fca5a5}
-.vhc-badge.type-일반{background:#1e3a5f;color:#93c5fd}
+.vhc-badge.type-일반{background:var(--badge-blue-bg);color:var(--badge-blue-fg)}
 .vhc-badge.type-냉동{background:#1e3a2f;color:#6ee7b7}
 .vhc-badge.type-냉장{background:#2d1e5f;color:#c4b5fd}
 /* ── WAHMA 물류센터 관리 ── */
@@ -422,12 +470,12 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .wahma-detail-section{flex:1;overflow-y:auto;min-height:0;background:var(--bg)}
 .wahma-list-wrap{overflow:auto;flex:1;min-height:0}
 .wahma-table{border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed}
-.wahma-table thead th{position:sticky;top:0;background:#1a2744;padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:700;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none}
+.wahma-table thead th{position:sticky;top:0;background:var(--th-bg);padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:700;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none}
 .wahma-table thead th .th-cell{padding:8px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
-.wahma-table tbody tr{border-bottom:1px solid #1a2535;cursor:pointer}
-.wahma-table tbody tr:hover{background:#1e2a3a}
-.wahma-table tbody tr.selected{background:#1e3a5f;border-left:3px solid var(--primary)}
-.wahma-table tbody td{padding:7px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid #1a2535;font-size:12px}
+.wahma-table tbody tr{border-bottom:1px solid var(--tr-border);cursor:pointer}
+.wahma-table tbody tr:hover{background:var(--tr-hover)}
+.wahma-table tbody tr.selected{background:var(--tr-selected);border-left:3px solid var(--primary)}
+.wahma-table tbody td{padding:7px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border);font-size:12px}
 .wahma-pg{padding:5px 12px;border-top:1px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px}
 .wahma-form-wrap{padding:16px 20px}
 .wahma-form{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 12px}
@@ -478,7 +526,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .ms-count-badge{background:var(--primary);color:#fff;border-radius:10px;padding:0 6px;font-size:10px;font-weight:700;min-width:16px;text-align:center}
 
 /* ── UTIL ── */
-.toast{position:fixed;bottom:18px;right:18px;background:#1e293b;border:1px solid var(--border);border-radius:9px;padding:10px 16px;font-size:12px;z-index:999;opacity:0;transition:.3s;pointer-events:none}
+.toast{position:fixed;bottom:18px;right:18px;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:10px 16px;font-size:12px;z-index:999;opacity:0;transition:.3s;pointer-events:none}
 .toast.show{opacity:1}
 .loading{display:flex;align-items:center;justify-content:center;padding:40px;color:var(--text3);gap:8px;font-size:13px}
 .spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .6s linear infinite;flex-shrink:0}
@@ -597,6 +645,10 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
     <span class="icon">💾</span> SQL 콘솔
   </div>
   <div style="flex:1"></div>
+  <button id="theme-toggle-btn" onclick="toggleTheme()">
+    <span id="theme-icon">☀️</span>
+    <span id="theme-label">라이트 모드</span>
+  </button>
   <button class="menu-mgr-btn" onclick="openMenuMgr()">⚙️ 메뉴 관리</button>
 </div>
 
@@ -909,7 +961,8 @@ function buildColToolbar(){
     const btn = document.createElement('button');
     btn.id = 'crud-new-btn';
     btn.className = 'toolbar-btn';
-    btn.style.cssText = 'background:#166534;border-color:#16a34a;color:#86efac;font-weight:700;margin-left:6px';
+    btn.className = 'toolbar-btn crud-btn save';
+    btn.style.cssText = 'font-weight:700;margin-left:6px';
     btn.textContent = '+ 신규 입력';
     btn.onclick = () => openCrudNew(tbl);
     toolbar.appendChild(btn);
@@ -1101,10 +1154,10 @@ function renderTableFromCache(){
       </div>
     </div>`;
 
-  // 행 클릭 이벤트 → CRUD 편집 모달
+  // 행 더블클릭 이벤트 → CRUD 편집 모달 (단일 클릭은 드래그 복사 전용)
   document.querySelectorAll('#main-table tbody tr').forEach((tr, i) => {
     tr._rowData = rows[i];
-    tr.onclick  = () => openCrudEdit(tr);
+    tr.ondblclick = () => openCrudEdit(tr);
   });
 }
 
@@ -1572,7 +1625,8 @@ function injectCrudNewBtn(tbl){
   const btn = document.createElement('button');
   btn.id = 'crud-new-btn';
   btn.className = 'toolbar-btn';
-  btn.style.cssText = 'background:#166534;border-color:#16a34a;color:#86efac;font-weight:700';
+  btn.className = 'toolbar-btn crud-btn save';
+  btn.style.cssText = 'font-weight:700';
   btn.textContent = '+ 신규 입력';
   btn.onclick = () => openCrudNew(tbl);
   toolbar.appendChild(btn);
@@ -2588,7 +2642,7 @@ function renderDeliveryList(data) {
     const hasDtl     = row.HAS_DETAIL === 'Y';
     const dw = (id, def) => { const w = _dlvColW[id]||def; return `width:${w}px;max-width:${w}px;`; };
     html += `<tr class="${isSelected ? 'selected' : ''}" onclick="selectDeliveryRow(${idx}, this)" data-idx="${idx}">
-      <td style="${dw('dlv-c0',100)}color:#fbbf24;font-family:monospace;font-weight:600" title="${row.PTNRKY}">${row.PTNRKY}</td>
+      <td style="${dw('dlv-c0',100)}color:var(--warning);font-family:monospace;font-weight:600" title="${row.PTNRKY}">${row.PTNRKY}</td>
       <td style="${dw('dlv-c1',160)}font-weight:600" title="${row.NAME01||''}">${row.NAME01 || '-'}</td>
       <td style="${dw('dlv-c2',90)}color:var(--text3)">${row.WAREKY || '-'}</td>
       <td style="${dw('dlv-c3',80)}">${skuLabel ? `<span style="font-size:10px;background:var(--surface2);padding:1px 6px;border-radius:3px">${skuLabel}</span>` : '-'}</td>
@@ -3365,7 +3419,13 @@ function renderVehicleList(data) {
   }
 
   const skuMap   = Object.fromEntries(vhcState.codes['SKUG05'].map(o => [o.value, o.label]));
-  const tColor   = {일반:'#93c5fd', 냉동:'#6ee7b7', 냉장:'#c4b5fd'};
+  /* CSS 변수에서 동적 색상 참조 */
+  const cs     = getComputedStyle(document.documentElement);
+  const tColor = {
+    일반: cs.getPropertyValue('--td-num').trim()   || '#93c5fd',
+    냉동: cs.getPropertyValue('--success').trim() || '#22c55e',
+    냉장: '#c4b5fd',
+  };
 
   // 차량 리스트 컬럼 정의 (id, label, sortKey, defaultW)
   const vhcCols = [
@@ -3402,14 +3462,14 @@ function renderVehicleList(data) {
     const tc      = tColor[row.VEHICLE_TYPE] || '#94a3b8';
     const vw = (id, def) => { const w = _vhcColW[id]||def; return `width:${w}px;max-width:${w}px;`; };
     html += `<tr class="${isSel?'selected':''}" onclick="selectVehicleRow(${idx},this)" data-idx="${idx}">
-      <td style="${vw('vhc-c0',110)}font-family:monospace;font-weight:700;color:#fbbf24" title="${row.VEHICLE_NO||''}">${row.VEHICLE_NO||'-'}</td>
+      <td style="${vw('vhc-c0',110)}font-family:monospace;font-weight:700;color:var(--warning)" title="${row.VEHICLE_NO||''}">${row.VEHICLE_NO||'-'}</td>
       <td style="${vw('vhc-c1',80)}color:var(--text3)">${row.SHIP_POINT||'-'}</td>
       <td style="${vw('vhc-c2',90)}" title="${skuLbl}">${skuLbl}</td>
       <td style="${vw('vhc-c3',75)}">${row.DELIVERY_ZONE||'-'}</td>
       <td style="${vw('vhc-c4',110)}" title="${row.CARRIER||''}">${row.CARRIER||'-'}</td>
       <td style="${vw('vhc-c5',70)}"><span style="font-size:10px;font-weight:700;padding:2px 5px;border-radius:3px;background:var(--surface2);color:${tc}">${row.VEHICLE_TYPE||'-'}</span></td>
       <td style="${vw('vhc-c6',70)}">${row.VEHICLE_KIND||'-'}</td>
-      <td style="${vw('vhc-c7',60)}color:#a78bfa;font-weight:600">${row.VEHICLE_CLASS||'-'}</td>
+      <td style="${vw('vhc-c7',60)}color:var(--primary);font-weight:600">${row.VEHICLE_CLASS||'-'}</td>
       <td style="${vw('vhc-c8',100)}font-weight:600" title="${row.DRIVER_NAME||''}">${row.DRIVER_NAME||'-'}</td>
       <td style="${vw('vhc-c9',130)}color:var(--text3);font-family:monospace;font-size:11px">${row.CONTACT_NO||'-'}</td>
       <td style="${vw('vhc-c10',55)}text-align:center">${row.USE_YN==='Y'
@@ -3812,9 +3872,9 @@ function renderRouteCostPivot(data){
   // 바디
   let tbody = '<tbody>';
   data.rows.forEach(row => {
-    tbody += `<tr style="border-bottom:1px solid #1a2535;cursor:default">
+    tbody += `<tr style="border-bottom:1px solid var(--tr-border);cursor:default">
       <td style="${tdBase()}color:var(--text3)">${row.SHPPT||'-'}</td>
-      <td style="${tdBase()}font-weight:600;color:#93c5fd">${row.ROUTE}</td>
+      <td style="${tdBase()}font-weight:600;color:var(--td-num)">${row.ROUTE}</td>
       <td style="${tdBase()}">${row.PTNRKY}</td>
       <td style="${tdBase()}color:var(--text3)">${fmtDate8(row.DATE_START)}</td>
       <td style="${tdBase()}color:var(--text3)">${fmtDate8(row.DATE_END)}</td>
@@ -3823,7 +3883,7 @@ function renderRouteCostPivot(data){
       const v = row[cc];
       const s = v != null ? '₩' + Number(v).toLocaleString('ko-KR') : '-';
       tbody += `<td style="${tdBase()}text-align:right;font-family:monospace;
-        color:${v!=null ? '#6ee7b7' : 'var(--text3)'}">${s}</td>`;
+        color:${v!=null ? 'var(--success)' : 'var(--text3)'}">${s}</td>`;
     });
     tbody += '</tr>';
   });
@@ -3860,16 +3920,16 @@ function renderRouteCostList(data){
 
   let tbody = '<tbody>';
   data.rows.forEach(row => {
-    tbody += '<tr style="border-bottom:1px solid #1a2535">';
+    tbody += '<tr style="border-bottom:1px solid var(--tr-border)">';
     cols.forEach(c => {
       let s = row[c];
       if(c==='COST') s = s!=null ? '₩'+Number(s).toLocaleString('ko-KR') : '-';
       else if(c==='DATE_START'||c==='DATE_END') s = fmtDate8(s);
       else s = s||'-';
       const isNum = c==='COST';
-      const color = c==='ROUTE'?'color:#93c5fd;font-weight:600;':''
-                  + (c==='CARCLASS'?`color:${RC_CC_COLORS[row.CARCLASS]||'#e2e8f0'};font-weight:600;`:'');
-      tbody += `<td style="${tdBase()}${isNum?'text-align:right;font-family:monospace;color:#6ee7b7;':''}${color}">${s}</td>`;
+      const color = c==='ROUTE'?'color:var(--td-num);font-weight:600;':''
+                  + (c==='CARCLASS'?`color:${RC_CC_COLORS[row.CARCLASS]||'var(--text)'};font-weight:600;`:'');
+      tbody += `<td style="${tdBase()}${isNum?'text-align:right;font-family:monospace;color:var(--success);':''}${color}">${s}</td>`;
     });
     tbody += '</tr>';
   });
@@ -3910,14 +3970,20 @@ function rcGoPage(p){
 
 // 공통 스타일 헬퍼
 function thBase(){
-  return 'position:sticky;top:0;z-index:10;background:#1a2744;padding:9px 10px;'
-       + 'text-align:left;font-size:11px;color:var(--text2);font-weight:600;'
-       + 'border-bottom:2px solid var(--border);border-right:1px solid var(--border);'
+  const s = getComputedStyle(document.documentElement);
+  const thBg = s.getPropertyValue('--th-bg').trim() || '#1a2744';
+  const border = s.getPropertyValue('--border').trim() || '#334155';
+  const text2  = s.getPropertyValue('--text2').trim()  || '#94a3b8';
+  return `position:sticky;top:0;z-index:10;background:${thBg};padding:9px 10px;`
+       + `text-align:left;font-size:11px;color:${text2};font-weight:600;`
+       + `border-bottom:2px solid ${border};border-right:1px solid ${border};`
        + 'white-space:nowrap;';
 }
 function tdBase(){
+  const s = getComputedStyle(document.documentElement);
+  const trBorder = s.getPropertyValue('--tr-border').trim() || '#1a2535';
   return 'padding:7px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
-       + 'max-width:160px;border-right:1px solid #1a2535;vertical-align:middle;';
+       + `max-width:160px;border-right:1px solid ${trBorder};vertical-align:middle;`;
 }
 function fmtDate8(v){
   if(!v) return '-';
@@ -3968,7 +4034,7 @@ async function loadSchema(tbl){
     <button class="btn" onclick="showPage('${tbl}')">📊 데이터 보기</button>
   </div>
   <table style="width:100%;border-collapse:collapse;font-size:12px">
-    <thead><tr style="background:#1a2744">
+    <thead><tr style="background:var(--th-bg)">
       <th style="padding:9px 12px;text-align:left;color:var(--text3);font-size:11px">#</th>
       <th style="padding:9px 12px;text-align:left;color:var(--text3);font-size:11px">컬럼명</th>
       <th style="padding:9px 12px;text-align:left;color:var(--text3);font-size:11px">한글명</th>
@@ -3977,11 +4043,11 @@ async function loadSchema(tbl){
     </tr></thead><tbody>`;
 
   cols.forEach(col => {
-    html += `<tr style="border-bottom:1px solid #1e2a3a">
+    html += `<tr style="border-bottom:1px solid var(--tr-hover)">
       <td style="padding:7px 12px;color:var(--text3)">${col.cid+1}</td>
-      <td style="padding:7px 12px;font-family:monospace;color:${col.pk?'#fbbf24':'#93c5fd'}">${col.name}</td>
+      <td style="padding:7px 12px;font-family:monospace;color:${col.pk?'var(--warning)':'var(--td-num)'}">${col.name}</td>
       <td style="padding:7px 12px;color:var(--text2)">${col.label}</td>
-      <td style="padding:7px 12px;color:#a78bfa">${col.type}</td>
+      <td style="padding:7px 12px;color:var(--primary)">${col.type}</td>
       <td style="padding:7px 12px">
         ${col.pk?'<span class="col-tag pk">PK</span>':''}
         ${col.notnull?'<span class="col-tag nn">NOT NULL</span>':''}
@@ -4134,7 +4200,7 @@ async function runSQL(){
     const data = await res.json();
 
     if(data.error){
-      wrap.innerHTML = `<div style="padding:14px;color:#ef4444;background:#450a0a;border-radius:8px;margin:10px;font-size:12px">⚠️ ${data.error}</div>`;
+      wrap.innerHTML = `<div style="padding:14px;color:var(--danger);background:rgba(220,38,38,.12);border:1px solid var(--danger);border-radius:8px;margin:10px;font-size:12px">⚠️ ${data.error}</div>`;
       return;
     }
 
@@ -4173,22 +4239,22 @@ async function runSQL(){
     <table style="width:100%;border-collapse:collapse;font-size:11px">
       <thead><tr>`;
     columns.forEach(col => {
-      html += `<th style="position:sticky;top:0;background:#1a2744;padding:8px 10px;text-align:left;font-size:11px;color:var(--text2);white-space:nowrap;border-right:1px solid var(--border)">${col}</th>`;
+      html += `<th style="position:sticky;top:0;background:var(--th-bg);padding:8px 10px;text-align:left;font-size:11px;color:var(--text2);white-space:nowrap;border-right:1px solid var(--border)">${col}</th>`;
     });
     html += '</tr></thead><tbody>';
     rows.forEach(row => {
-      html += '<tr style="border-bottom:1px solid #1e2a3a">';
+      html += '<tr style="border-bottom:1px solid var(--tr-border)">';
       row.forEach((v) => {
         const s   = fmtVal(v);
         const num = typeof v === 'number';
-        html += `<td style="padding:6px 10px;${num?'text-align:right;color:#93c5fd;':''}white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis;border-right:1px solid #1a2535" title="${String(s).replace(/"/g,'&quot;')}">${s || '<span style=\'color:#475569\'>-</span>'}</td>`;
+        html += `<td style="padding:6px 10px;${num?'text-align:right;color:var(--td-num);':''}white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border)" title="${String(s).replace(/"/g,'&quot;')}">${s || '<span style=\'color:var(--text3)\'>-</span>'}</td>`;
       });
       html += '</tr>';
     });
     html += '</tbody></table></div>';
     wrap.innerHTML = html;
   } catch(e){
-    wrap.innerHTML = `<div style="padding:14px;color:#ef4444">오류: ${e.message}</div>`;
+    wrap.innerHTML = `<div style="padding:14px;color:var(--danger)">오류: ${e.message}</div>`;
   }
 }
 
@@ -4377,7 +4443,7 @@ function renderWahmaList(data) {
     const isDel = (row.DELMAK||'').trim() === 'X';
     const warekyEsc = (row.WAREKY||'').replace(/'/g,"\\'");
     html += `<tr class="${isSel?'selected':''}" style="${isDel?'opacity:.5':''}" onclick="selectWahmaRow(${idx},this)" data-idx="${idx}">
-      <td style="${ww('wh-c0',90)}color:#fbbf24;font-family:monospace;font-weight:700">${row.WAREKY||'-'}</td>
+      <td style="${ww('wh-c0',90)}color:var(--warning);font-family:monospace;font-weight:700">${row.WAREKY||'-'}</td>
       <td style="${ww('wh-c1',140)}font-weight:600" title="${row.NAME01||''}">${row.NAME01||'-'}</td>
       <td style="${ww('wh-c2',300)}color:var(--text3)" title="${row.ADDR01||''}">${row.ADDR01||'-'}</td>
       <td style="${ww('wh-c3',80)}">${row.POSTCD||'-'}</td>
@@ -4734,6 +4800,56 @@ function mmgrDrop(e, idx) {
   _mmgrDragSrc = null;
   renderMmgrBody();
 }
+
+/* ═══════════════════════════════════════════════════════════
+   THEME  —  쿠키 기반 다크/라이트 모드 (만료 없음)
+═══════════════════════════════════════════════════════════ */
+const THEME_COOKIE = 'wms_theme';
+
+function _setCookie(name, value) {
+  // max-age를 설정하지 않고 expires를 멀리 지정 → 사실상 영구 쿠키
+  const far = new Date('2099-12-31').toUTCString();
+  document.cookie = `${name}=${encodeURIComponent(value)};expires=${far};path=/;SameSite=Lax`;
+}
+
+function _getCookie(name) {
+  const m = document.cookie.match(new RegExp('(?:^|;)\\s*' + name + '=([^;]*)'));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+function _applyTheme(theme) {
+  /* html 요소에 data-theme 적용 */
+  document.documentElement.setAttribute('data-theme', theme);
+
+  /* 버튼 아이콘/레이블 갱신 */
+  const icon  = document.getElementById('theme-icon');
+  const label = document.getElementById('theme-label');
+  if (icon && label) {
+    if (theme === 'light') {
+      icon.textContent  = '🌙';
+      label.textContent = '다크 모드';
+    } else {
+      icon.textContent  = '☀️';
+      label.textContent = '라이트 모드';
+    }
+  }
+
+  /* 테마 변경 시 thBase/tdBase 캐시 무효화를 위해 빈 강제 리페인트 */
+  document.documentElement.style.colorScheme = (theme === 'light') ? 'light' : 'dark';
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  const next    = current === 'dark' ? 'light' : 'dark';
+  _applyTheme(next);
+  _setCookie(THEME_COOKIE, next);
+}
+
+/* ─ 페이지 로드 시 저장된 테마 복원 ─ */
+(function initTheme() {
+  const saved = _getCookie(THEME_COOKIE) || 'dark';
+  _applyTheme(saved);
+})();
 
 /* ═══════════════════════════════════════════════════════════
    BOOT
