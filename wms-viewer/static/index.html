@@ -1701,7 +1701,9 @@ function buildDeliveryForm() {
 
     <div class="form-group">
       <label>출하지점</label>
-      <input id="f-WAREKY" type="text" placeholder="예) W001">
+      <select id="f-WAREKY">
+        <option value="">선택</option>
+      </select>
     </div>
     <div class="form-group">
       <label>주문공장</label>
@@ -1885,6 +1887,13 @@ function buildDeliveryForm() {
       <button class="dlv-btn" onclick="dlvResetForm()">🗑 초기화</button>
     </div>
   `;
+
+  // 출하지점 폼 select 옵션 채우기 (WAHMA 기반)
+  const fWareky = document.getElementById('f-WAREKY');
+  if (fWareky) {
+    fWareky.innerHTML = '<option value="">선택</option>' +
+      shpList.map(o => `<option value="${o.value}">${o.value} — ${o.label}</option>`).join('');
+  }
 }
 
 // Y/N 토글 버튼 상태 관리
@@ -2712,6 +2721,13 @@ function buildVehicleForm() {
         </div>
       </div>
       <div class="vhc-fg">
+        <label>고정차량여부</label>
+        <div class="vhc-yn" id="vyn-FIX_YN">
+          <button class="vhc-yn-btn" onclick="vhcSetYN('FIX_YN','Y',this)">Y</button>
+          <button class="vhc-yn-btn" onclick="vhcSetYN('FIX_YN','N',this)">N</button>
+        </div>
+      </div>
+      <div class="vhc-fg">
         <label>삭제여부</label>
         <div class="vhc-yn" id="vyn-DEL_YN">
           <button class="vhc-yn-btn" onclick="vhcSetYN('DEL_YN','Y',this)">Y</button>
@@ -3001,7 +3017,7 @@ function fillVehicleForm(row) {
    'CARGO_HEIGHT','DRIVER_NAME','CONTACT_NO','DLV_TIME_FROM','DLV_TIME_TO',
    'DELIVERY_CUSTOMER_1','DELIVERY_CUSTOMER_2'].forEach(f => setVal(`vf-${f}`, row[f]));
 
-  ['USE_YN','OPERABLE_YN','DEL_YN'].forEach(f => vhcInitYN(f, row[f]));
+  ['USE_YN','OPERABLE_YN','FIX_YN','DEL_YN'].forEach(f => vhcInitYN(f, row[f]));
 }
 
 function vhcNewForm() {
@@ -3025,7 +3041,7 @@ function vhcNewForm() {
    'vf-FLOOR_TYPE'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
-  ['USE_YN','OPERABLE_YN','DEL_YN'].forEach(f => vhcInitYN(f, null));
+  ['USE_YN','OPERABLE_YN','FIX_YN','DEL_YN'].forEach(f => vhcInitYN(f, null));
   document.querySelectorAll('.vhc-table tbody tr').forEach(r => r.classList.remove('selected'));
 }
 
@@ -3062,6 +3078,7 @@ async function vhcSave() {
     DELIVERY_CUSTOMER_2: getVal('vf-DELIVERY_CUSTOMER_2'),
     USE_YN:              vhcGetYN('USE_YN'),
     OPERABLE_YN:         vhcGetYN('OPERABLE_YN'),
+    FIX_YN:              vhcGetYN('FIX_YN'),
     DEL_YN:              vhcGetYN('DEL_YN'),
   };
 

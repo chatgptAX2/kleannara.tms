@@ -182,6 +182,7 @@ COL_LABELS = {
     "FLOOR_TYPE":"바닥형태","USE_YN":"사용여부","OPERABLE_YN":"운행가능여부",
     "DLV_TIME_FROM":"배송가능시작","DLV_TIME_TO":"배송가능종료","VEHICLE_YEAR":"차량연식",
     "DELIVERY_CUSTOMER_1":"배송납품처1","DELIVERY_CUSTOMER_2":"배송납품처2",
+    "FIX_YN":"고정차량",
 }
 
 # 각 테이블의 전체 컬럼 목록을 DB에서 읽어 캐싱
@@ -1082,7 +1083,7 @@ def api_vehicle_save():
         'VEHICLE_TYPE', 'VEHICLE_KIND', 'VEHICLE_CLASS', 'DRIVER_NAME', 'CONTACT_NO',
         'AXLE_TYPE', 'LOAD_VOLUME', 'LOAD_WEIGHT', 'PALLET_QTY',
         'CARGO_LENGTH', 'CARGO_WIDTH', 'CARGO_HEIGHT',
-        'FLOOR_TYPE', 'USE_YN', 'OPERABLE_YN',
+        'FLOOR_TYPE', 'USE_YN', 'OPERABLE_YN', 'FIX_YN',
         'DLV_TIME_FROM', 'DLV_TIME_TO', 'VEHICLE_YEAR',
         'DELIVERY_CUSTOMER_1', 'DELIVERY_CUSTOMER_2', 'DEL_YN',
     ]
