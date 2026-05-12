@@ -357,7 +357,7 @@ body.dc-dragging{user-select:none !important;-webkit-user-select:none !important
 .sql-editor-toolbar{padding:7px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--surface2)}
 .sql-editor-toolbar span{font-size:11px;color:var(--text3)}
 textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg);border:none;outline:none;resize:vertical;font-family:'Consolas','Monaco',monospace;font-size:12px;color:var(--td-num);line-height:1.6}
-.sql-result{background:var(--surface);border:1px solid var(--border);border-radius:9px;overflow:auto;flex:1;min-height:60px}
+.sql-result{background:var(--surface);border:1px solid var(--border);border-radius:9px;overflow:hidden;flex:1;min-height:60px;display:flex;flex-direction:column}
 .sql-result-ctrl{display:flex;align-items:center;gap:6px;padding:4px 0;flex-shrink:0}
 .examples{display:flex;flex-wrap:wrap;gap:6px}
 .example-btn{background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:5px 10px;font-size:11px;color:var(--text2);cursor:pointer;transition:.15s}
@@ -582,6 +582,73 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .empty-state{padding:50px;text-align:center;color:var(--text3)}
 .empty-state .icon{font-size:44px;margin-bottom:10px;opacity:.3}
 
+/* ══════════════════════════════════════════
+   TAB BAR (상단 탭 시스템)
+══════════════════════════════════════════ */
+#tab-bar{
+  display:flex;align-items:stretch;gap:0;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  flex-shrink:0;overflow-x:auto;overflow-y:hidden;
+  scrollbar-width:none;min-height:36px;
+}
+#tab-bar::-webkit-scrollbar{display:none}
+.tab-item{
+  display:flex;align-items:center;gap:6px;
+  padding:0 12px;min-width:120px;max-width:180px;
+  cursor:pointer;font-size:12px;color:var(--text3);
+  border-right:1px solid var(--border);
+  position:relative;flex-shrink:0;
+  transition:background .12s,color .12s;
+  user-select:none;white-space:nowrap;overflow:hidden;
+}
+.tab-item:hover{background:var(--surface2);color:var(--text)}
+.tab-item.active{
+  background:var(--bg);color:var(--text);font-weight:600;
+  border-bottom:2px solid var(--primary);
+}
+.tab-item.active::before{
+  content:'';position:absolute;bottom:-1px;left:0;right:0;
+  height:2px;background:var(--primary);
+}
+.tab-icon{font-size:13px;flex-shrink:0}
+.tab-label{flex:1;overflow:hidden;text-overflow:ellipsis;font-size:11px}
+.tab-close{
+  flex-shrink:0;width:16px;height:16px;
+  border-radius:50%;border:none;background:none;
+  color:var(--text3);cursor:pointer;font-size:12px;
+  display:flex;align-items:center;justify-content:center;
+  transition:.12s;padding:0;line-height:1;
+}
+.tab-close:hover{background:rgba(239,68,68,.25);color:#ef4444}
+.tab-item.active .tab-close{color:var(--text2)}
+/* 탭 없을때 빈 공간 */
+#tab-bar-empty{
+  display:flex;align-items:center;padding:0 14px;
+  font-size:11px;color:var(--text3);
+}
+
+/* ══════════════════════════════════════════
+   컬럼 헤더 드래그 순서 변경 스타일
+══════════════════════════════════════════ */
+thead th.col-drag-over-left{box-shadow:inset 3px 0 0 var(--primary)}
+thead th.col-drag-over-right{box-shadow:inset -3px 0 0 var(--primary)}
+thead th.col-dragging{opacity:.4;cursor:grabbing}
+thead th .th-drag-handle{
+  display:inline-block;cursor:grab;opacity:.35;
+  font-size:9px;margin-right:2px;flex-shrink:0;
+  transition:opacity .12s;
+}
+thead th:hover .th-drag-handle{opacity:.8}
+/* 컬럼 순서 저장 뱃지 */
+#col-order-reset-btn{
+  display:none;padding:2px 8px;border-radius:4px;
+  border:1px solid var(--warning);background:transparent;
+  color:var(--warning);cursor:pointer;font-size:10px;
+  margin-left:6px;transition:.12s;white-space:nowrap;
+}
+#col-order-reset-btn:hover{background:rgba(245,158,11,.12)}
+#col-order-reset-btn.visible{display:inline-block}
+
 /* ── 메뉴 관리자 버튼 ── */
 .menu-mgr-btn{
   margin:8px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);
@@ -718,6 +785,8 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 
 <!-- MAIN -->
 <div id="main">
+  <!-- 상단 탭바 -->
+  <div id="tab-bar"><div id="tab-bar-empty">메뉴를 클릭하면 탭이 열립니다</div></div>
   <div class="topbar">
     <div class="topbar-row1">
     <h2 id="page-title">대시보드</h2>
@@ -757,6 +826,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
       <button class="toolbar-btn" onclick="toggleAllCols(true)">전체</button>
       <button class="toolbar-btn" onclick="toggleAllCols(false)">숨기기</button>
       <button class="toolbar-btn" onclick="togglePkOnly()">PK만</button>
+      <button id="col-order-reset-btn" onclick="resetColOrder()" title="컬럼 순서를 기본값으로 초기화">↺ 순서초기화</button>
     </div>
   </div>
 
@@ -855,7 +925,8 @@ async function init(){
       if(el) el.textContent = fmtNum(info.count);
     });
   } catch(e){ console.warn(e); }
-  showPage('dashboard');
+  // 대시보드는 탭 없이 직접 렌더 (초기화면)
+  _doShowPage('dashboard');
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -894,10 +965,100 @@ function updateBreadcrumb(crumbs) {
   }).join('');
 }
 
-function showPage(p){
+/* ═══════════════════════════════════════════════════════════
+   TAB SYSTEM  ─  최대 10개 탭, LNB 연동
+═══════════════════════════════════════════════════════════ */
+const TAB_MAX = 10;
+let _tabs      = [];   // [{id, page, title, icon}]
+let _activeTab = null; // 현재 활성 탭 id
+
+/* 페이지 메타에서 탭 아이콘 추출 */
+const PAGE_ICON = {
+  dashboard:'🏠', schema:'🗂️', sql:'💾',
+  delivery:'📍', vehicle:'🚛', wahma:'🏭',
+  CMCDM:'📋', CMCDV:'📌', SKUMA:'📦', BZPTN:'🏢',
+  MEASI:'📐', SHPDH:'🚚', SHPDI:'📄', IFWMS113:'🔄',
+  BZPTN_DETAIL:'🗺️', VHCMA:'🚛', ROUTE_COST:'💰',
+};
+
+function _tabTitle(p) {
+  const meta = PAGE_META[p];
+  if (meta) return meta.title;
+  return TABLE_DESC[p] || p;
+}
+
+function _renderTabBar() {
+  const bar = document.getElementById('tab-bar');
+  if (!bar) return;
+  if (_tabs.length === 0) {
+    bar.innerHTML = '<div id="tab-bar-empty">메뉴를 클릭하면 탭이 열립니다</div>';
+    return;
+  }
+  bar.innerHTML = _tabs.map(t => `
+    <div class="tab-item${t.id === _activeTab ? ' active' : ''}"
+         id="tabitem-${t.id}" onclick="switchTab('${t.id}')" title="${t.title}">
+      <span class="tab-icon">${PAGE_ICON[t.page] || '▪'}</span>
+      <span class="tab-label">${t.title}</span>
+      <button class="tab-close" onclick="event.stopPropagation();closeTab('${t.id}')" title="탭 닫기">✕</button>
+    </div>`).join('');
+}
+
+function openTab(page) {
+  // 이미 열린 탭이면 활성화만
+  const existing = _tabs.find(t => t.page === page);
+  if (existing) {
+    switchTab(existing.id);
+    return;
+  }
+  // 최대 10개 제한
+  if (_tabs.length >= TAB_MAX) {
+    showToast(`탭은 최대 ${TAB_MAX}개까지 열 수 있습니다. 탭을 닫아주세요.`);
+    return;
+  }
+  const id    = 'tab_' + page + '_' + Date.now();
+  const title = _tabTitle(page);
+  _tabs.push({ id, page, title });
+  _activeTab = id;
+  _renderTabBar();
+  _doShowPage(page);
+}
+
+function switchTab(id) {
+  const t = _tabs.find(t => t.id === id);
+  if (!t) return;
+  _activeTab = id;
+  _renderTabBar();
+  _doShowPage(t.page);
+}
+
+function closeTab(id) {
+  const idx = _tabs.findIndex(t => t.id === id);
+  if (idx < 0) return;
+  _tabs.splice(idx, 1);
+  if (_activeTab === id) {
+    // 인접 탭 활성화
+    if (_tabs.length === 0) {
+      _activeTab = null;
+      _renderTabBar();
+      // 대시보드로 fallback (탭 없이)
+      _doShowPage('dashboard');
+      return;
+    }
+    const next = _tabs[Math.min(idx, _tabs.length - 1)];
+    _activeTab = next.id;
+    _renderTabBar();
+    _doShowPage(next.page);
+  } else {
+    _renderTabBar();
+  }
+}
+
+/* 실제 페이지 렌더링 (탭 조작 없이 순수 렌더만) */
+function _doShowPage(p) {
+  // LNB 활성화
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   const navEl = document.getElementById(`nav-${p}`);
-  if(navEl) navEl.classList.add('active');
+  if (navEl) navEl.classList.add('active');
 
   const srch    = document.getElementById('search-wrap');
   const psize   = document.getElementById('page-size-sel');
@@ -907,11 +1068,11 @@ function showPage(p){
   state.currentPage = 1;
   state.search = '';
   const si = document.getElementById('search-input');
-  if(si) si.value = '';
+  if (si) si.value = '';
   document.getElementById('search-clear').style.display = 'none';
 
-  // 메타 적용 (제목 + breadcrumb)
-  const meta = PAGE_META[p];
+  // 메타 적용
+  const meta    = PAGE_META[p];
   const titleEl = document.getElementById('page-title');
   const badgeEl = document.getElementById('topbar-badge');
   if (meta) {
@@ -925,50 +1086,39 @@ function showPage(p){
     updateBreadcrumb(['홈', desc]);
   }
 
-  if(p === 'dashboard'){
-    srch.style.display = 'none';
-    psize.style.display = 'none';
-    toolbar.style.display = 'none';
+  if (p === 'dashboard') {
+    srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderDashboard();
-  } else if(p === 'schema'){
-    srch.style.display = 'none';
-    psize.style.display = 'none';
-    toolbar.style.display = 'none';
+  } else if (p === 'schema') {
+    srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderSchema();
-  } else if(p === 'sql'){
-    srch.style.display = 'none';
-    psize.style.display = 'none';
-    toolbar.style.display = 'none';
+  } else if (p === 'sql') {
+    srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderSQL();
-  } else if(p === 'delivery') {
-    srch.style.display = 'none';
-    psize.style.display = 'none';
-    toolbar.style.display = 'none';
+  } else if (p === 'delivery') {
+    srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderDelivery();
-  } else if(p === 'vehicle') {
-    srch.style.display = 'none';
-    psize.style.display = 'none';
-    toolbar.style.display = 'none';
+  } else if (p === 'vehicle') {
+    srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderVehicle();
-  } else if(p === 'wahma') {
-    srch.style.display = 'none';
-    psize.style.display = 'none';
-    toolbar.style.display = 'none';
+  } else if (p === 'wahma') {
+    srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderWahma();
-  } else if(p === 'ROUTE_COST') {
+  } else if (p === 'ROUTE_COST') {
     state.table = p;
-    srch.style.display = 'none';
-    psize.style.display = 'none';
-    toolbar.style.display = 'none';
+    srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderRouteCost();
   } else {
     state.table = p;
-    srch.style.display = 'flex';
-    psize.style.display = 'flex';
-    toolbar.style.display = 'none';
+    srch.style.display = 'flex'; psize.style.display = 'flex'; toolbar.style.display = 'none';
     buildTableSearchUI(p);
     loadTable(p, 1, true);
   }
+}
+
+/* 기존 showPage → openTab으로 위임 (하위 호환) */
+function showPage(p) {
+  openTab(p);
 }
 
 /* 테이블별 검색 UI 설정 */
@@ -1120,11 +1270,26 @@ async function loadTable(tbl, page, initCols = false){
   state.lastRows   = data.rows;
   state.searchCols = data.search_cols || [];
 
-  // 첫 로드시 전체 컬럼 표시, 이후 유지
+  // 첫 로드시: 저장된 컬럼 순서 적용, 없으면 전체 표시
   if(initCols){
-    state.visibleCols = [...state.allCols];
     state.sortCol = '';
     state.sortDir = 'ASC';
+    const savedOrder = loadColOrder(tbl);
+    if (savedOrder && savedOrder.length > 0) {
+      // 저장된 순서 적용 (DB에 없는 컬럼 제거, 새 컬럼 뒤에 추가)
+      const valid   = savedOrder.filter(c => state.allCols.includes(c));
+      const newCols = state.allCols.filter(c => !valid.includes(c));
+      state.visibleCols = [...valid, ...newCols];
+    } else {
+      state.visibleCols = [...state.allCols];
+    }
+  }
+
+  // 순서 초기화 버튼 표시 여부 갱신
+  const orBtn = document.getElementById('col-order-reset-btn');
+  if (orBtn) {
+    const hasCustom = !!loadColOrder(tbl);
+    orBtn.classList.toggle('visible', hasCustom);
   }
 
   buildColToolbar();
@@ -1160,8 +1325,7 @@ function renderTableFromCache(){
   const start = (page - 1) * size + 1;
   const end   = Math.min(page * size, total);
 
-  // thead (컬럼 드래그 리사이저 핸들 포함 + 더블클릭 정렬)
-  let stickyOffset = 0;
+  // thead (컬럼 드래그 리사이저 핸들 + 더블클릭 정렬 + 드래그 순서 변경)
   let thead = '<thead><tr>';
   cols.forEach((col, ci) => {
     const isPk    = pkCols.includes(col);
@@ -1170,8 +1334,16 @@ function renderTableFromCache(){
     const isAsc   = state.sortCol === col && state.sortDir === 'ASC';
     const isDesc  = state.sortCol === col && state.sortDir === 'DESC';
     const sortCls = isAsc ? ' sort-asc' : isDesc ? ' sort-desc' : '';
-    thead += `<th class="sort-th${isPk?' pk-col':''}${sticky}${sortCls}" data-col="${col}" ${colW} ondblclick="tblSortBy('${col}')">
+    thead += `<th class="sort-th${isPk?' pk-col':''}${sticky}${sortCls}" data-col="${col}" ${colW}
+      draggable="true"
+      ondragstart="colOrderDragStart(event,'${col}')"
+      ondragover="colOrderDragOver(event,'${col}')"
+      ondragleave="colOrderDragLeave(event)"
+      ondrop="colOrderDrop(event,'${col}')"
+      ondragend="colOrderDragEnd(event)"
+      ondblclick="tblSortBy('${col}')">
       <div class="th-inner">
+        <span class="th-drag-handle" title="드래그하여 순서 변경">⠿</span>
         <span class="th-label">${labels[col] || col}</span>
         <span class="th-col">${col}</span>
         <span class="sort-icon"></span>
@@ -1342,6 +1514,113 @@ const _colWidths = {}; // {colName: px}
     document.removeEventListener('mouseup', _crUp);
   }
 })();
+
+/* ═══════════════════════════════════════════════════════════
+   컬럼 순서 드래그 변경 + localStorage 사용자별 저장
+═══════════════════════════════════════════════════════════ */
+const COL_ORDER_LS_PREFIX = 'wms_col_order_'; // + tableName
+
+function _colOrderKey(tbl) { return COL_ORDER_LS_PREFIX + tbl; }
+
+/* 저장된 컬럼 순서 불러오기 */
+function loadColOrder(tbl) {
+  try {
+    const s = localStorage.getItem(_colOrderKey(tbl));
+    return s ? JSON.parse(s) : null;
+  } catch(e) { return null; }
+}
+
+/* 현재 visibleCols 순서를 저장 */
+function saveColOrder(tbl, cols) {
+  try {
+    localStorage.setItem(_colOrderKey(tbl), JSON.stringify(cols));
+    const btn = document.getElementById('col-order-reset-btn');
+    if (btn) btn.classList.add('visible');
+  } catch(e) {}
+}
+
+/* 순서 초기화 */
+function resetColOrder() {
+  const tbl = state.table;
+  if (!tbl) return;
+  localStorage.removeItem(_colOrderKey(tbl));
+  state.visibleCols = [...state.allCols];
+  buildColToolbar();
+  renderTableFromCache();
+  const btn = document.getElementById('col-order-reset-btn');
+  if (btn) btn.classList.remove('visible');
+  showToast('컬럼 순서가 초기화되었습니다');
+}
+
+/* 드래그 상태 */
+let _colDragSrc = null;
+
+function colOrderDragStart(e, col) {
+  _colDragSrc = col;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', col);
+  // 현재 th에 dragging 클래스
+  e.currentTarget.classList.add('col-dragging');
+}
+
+function colOrderDragOver(e, col) {
+  if (!_colDragSrc || _colDragSrc === col) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  // 드롭 위치 표시 (좌/우)
+  const th   = e.currentTarget;
+  const rect = th.getBoundingClientRect();
+  const mid  = rect.left + rect.width / 2;
+  document.querySelectorAll('thead th').forEach(t => {
+    t.classList.remove('col-drag-over-left','col-drag-over-right');
+  });
+  if (e.clientX < mid) {
+    th.classList.add('col-drag-over-left');
+  } else {
+    th.classList.add('col-drag-over-right');
+  }
+}
+
+function colOrderDragLeave(e) {
+  e.currentTarget.classList.remove('col-drag-over-left','col-drag-over-right');
+}
+
+function colOrderDrop(e, targetCol) {
+  e.preventDefault();
+  if (!_colDragSrc || _colDragSrc === targetCol) return;
+
+  const cols    = [...state.visibleCols];
+  const srcIdx  = cols.indexOf(_colDragSrc);
+  const tgtIdx  = cols.indexOf(targetCol);
+  if (srcIdx < 0 || tgtIdx < 0) return;
+
+  // 드롭 방향 판단
+  const th   = e.currentTarget;
+  const rect = th.getBoundingClientRect();
+  const mid  = rect.left + rect.width / 2;
+  let insertIdx = tgtIdx;
+  if (e.clientX >= mid && srcIdx < tgtIdx) insertIdx = tgtIdx;
+  else if (e.clientX < mid && srcIdx > tgtIdx) insertIdx = tgtIdx;
+  else if (e.clientX >= mid) insertIdx = tgtIdx + 1;
+  else insertIdx = tgtIdx;
+
+  // 순서 변경
+  cols.splice(srcIdx, 1);
+  const finalIdx = srcIdx < insertIdx ? insertIdx - 1 : insertIdx;
+  cols.splice(Math.max(0, Math.min(finalIdx, cols.length)), 0, _colDragSrc);
+
+  state.visibleCols = cols;
+  saveColOrder(state.table, cols);
+  renderTableFromCache();
+  buildColToolbar();
+}
+
+function colOrderDragEnd(e) {
+  _colDragSrc = null;
+  document.querySelectorAll('thead th').forEach(t => {
+    t.classList.remove('col-dragging','col-drag-over-left','col-drag-over-right');
+  });
+}
 
 /* ═══════════════════════════════════════════════════════════
    컬럼 WIDTH 드래그 리사이저 (납품처 List / 차량 List 공통)
@@ -4329,27 +4608,33 @@ async function runSQL(){
       wrap.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text3)">결과가 없습니다 (0행)</div>`;
       return;
     }
-    let html = `<div style="padding:6px 12px;font-size:11px;color:var(--text3);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
-      <span>📊 <strong style="color:var(--text)">${fmtNum(rows.length)}</strong>행 반환</span>
-      ${rows.length>=500?'<span style="color:#f59e0b">⚠️ 최대 500행까지 표시</span>':''}
-    </div>
-    <div style="overflow:auto">
-    <table style="width:100%;border-collapse:collapse;font-size:11px">
-      <thead><tr>`;
+    // SQL 결과: 헤더 고정 + 본문 스크롤 구조
+    let html = `
+    <div style="display:flex;flex-direction:column;height:100%;min-height:0">
+      <div style="padding:6px 12px;font-size:11px;color:var(--text3);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;background:var(--surface2)">
+        <span>📊 <strong style="color:var(--text)">${fmtNum(rows.length)}</strong>행 반환</span>
+        <span style="color:var(--text3)">|</span>
+        <span>${columns.length}개 컬럼</span>
+        ${rows.length>=500?'<span style="color:#f59e0b;margin-left:4px">⚠️ 최대 500행까지 표시</span>':''}
+      </div>
+      <div style="overflow:auto;flex:1;min-height:0">
+        <table style="border-collapse:collapse;font-size:11px;min-width:100%">
+          <thead><tr>`;
     columns.forEach(col => {
-      html += `<th style="position:sticky;top:0;background:var(--th-bg);padding:8px 10px;text-align:left;font-size:11px;color:var(--text2);white-space:nowrap;border-right:1px solid var(--border)">${col}</th>`;
+      html += `<th style="position:sticky;top:0;z-index:2;background:var(--th-bg);padding:8px 10px;text-align:left;font-size:11px;color:var(--text2);white-space:nowrap;border-right:1px solid var(--border);border-bottom:2px solid var(--border)">${col}</th>`;
     });
     html += '</tr></thead><tbody>';
-    rows.forEach(row => {
-      html += '<tr style="border-bottom:1px solid var(--tr-border)">';
+    rows.forEach((row, ri) => {
+      html += `<tr style="border-bottom:1px solid var(--tr-border)${ri%2===1?';background:var(--surface2)':''}">`;
       row.forEach((v) => {
         const s   = fmtVal(v);
         const num = typeof v === 'number';
-        html += `<td style="padding:6px 10px;${num?'text-align:right;color:var(--td-num);':''}white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border)" title="${String(s).replace(/"/g,'&quot;')}">${s || '<span style=\'color:var(--text3)\'>-</span>'}</td>`;
+        const empty = s === '';
+        html += `<td style="padding:6px 10px;${num?'text-align:right;color:var(--td-num);':''}${empty?'color:var(--text3);':''}white-space:nowrap;max-width:300px;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border)" title="${String(s).replace(/"/g,'&quot;')}">${s || '-'}</td>`;
       });
       html += '</tr>';
     });
-    html += '</tbody></table></div>';
+    html += '</tbody></table></div></div>';
     wrap.innerHTML = html;
   } catch(e){
     wrap.innerHTML = `<div style="padding:14px;color:var(--danger)">오류: ${e.message}</div>`;
