@@ -103,7 +103,46 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 select.page-size{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:12px;cursor:pointer;flex-shrink:0}
 
 /* ── TOOLBAR (컬럼 토글 영역) ── */
-.tbl-toolbar{padding:6px 12px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0}
+.tbl-toolbar{
+  padding:0 12px;
+  border-bottom:1px solid var(--border);
+  background:var(--surface);
+  display:flex;align-items:stretch;
+  gap:0;flex-shrink:0;
+  overflow:hidden;
+}
+/* 좌측 고정: 접기 토글 버튼 */
+.tbl-toolbar-toggle{
+  display:flex;align-items:center;gap:6px;
+  padding:5px 10px 5px 0;
+  cursor:pointer;user-select:none;
+  flex-shrink:0;
+  border-right:1px solid var(--border);
+  margin-right:10px;
+  transition:.15s;
+  white-space:nowrap;
+}
+.tbl-toolbar-toggle:hover{color:var(--primary)}
+.tbl-toolbar-toggle .toggle-arrow{
+  font-size:10px;transition:transform .2s;display:inline-block;
+}
+.tbl-toolbar.collapsed .toggle-arrow{transform:rotate(-90deg)}
+/* 접히는 영역 */
+.tbl-toolbar-body{
+  display:flex;align-items:center;gap:8px;flex:1;
+  overflow:hidden;
+  /* 펼침: max-height + opacity 애니메이션 */
+  max-height:120px;
+  opacity:1;
+  transition:max-height .22s ease, opacity .18s ease;
+  padding:5px 0;
+}
+.tbl-toolbar.collapsed .tbl-toolbar-body{
+  max-height:0;
+  opacity:0;
+  padding:0;
+  pointer-events:none;
+}
 .tbl-toolbar-label{font-size:11px;color:var(--text3);white-space:nowrap}
 .col-toggle-wrap{display:flex;gap:4px;flex-wrap:wrap;flex:1}
 .col-tag-btn{padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text3);transition:.15s;white-space:nowrap}
@@ -113,6 +152,15 @@ select.page-size{background:var(--surface2);border:1px solid var(--border);color
 .col-tag-btn.pk-tag.on{background:var(--warning);color:#000}
 .toolbar-btn{padding:3px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-size:11px;white-space:nowrap;transition:.15s}
 .toolbar-btn:hover{border-color:var(--primary);color:var(--primary)}
+/* 접힌 상태에서 표시되는 컬럼 수 뱃지 */
+.col-count-badge{
+  display:none;
+  font-size:10px;font-weight:700;
+  background:var(--primary);color:#fff;
+  border-radius:10px;padding:1px 7px;
+  margin-left:4px;
+}
+.tbl-toolbar.collapsed .col-count-badge{display:inline-block}
 
 /* ── CONTENT ── */
 #content{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0}
@@ -696,11 +744,20 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 
   <!-- 컬럼 표시 토글 툴바 (테이블뷰에서만 표시) -->
   <div class="tbl-toolbar" id="col-toolbar" style="display:none">
-    <span class="tbl-toolbar-label">표시 컬럼:</span>
-    <div class="col-toggle-wrap" id="col-toggle-wrap"></div>
-    <button class="toolbar-btn" onclick="toggleAllCols(true)">전체 표시</button>
-    <button class="toolbar-btn" onclick="toggleAllCols(false)">전체 숨기기</button>
-    <button class="toolbar-btn" onclick="togglePkOnly()">PK만</button>
+    <!-- 좌측 고정: 접기/펼치기 버튼 -->
+    <div class="tbl-toolbar-toggle" onclick="colToolbarToggle()" title="컬럼 영역 접기/펼치기">
+      <span class="toggle-arrow">▾</span>
+      <span style="font-size:11px;font-weight:600;color:var(--text2)">컬럼</span>
+      <span class="col-count-badge" id="col-count-badge">0</span>
+    </div>
+    <!-- 접히는 본문 영역 -->
+    <div class="tbl-toolbar-body" id="col-toolbar-body">
+      <span class="tbl-toolbar-label">표시:</span>
+      <div class="col-toggle-wrap" id="col-toggle-wrap"></div>
+      <button class="toolbar-btn" onclick="toggleAllCols(true)">전체</button>
+      <button class="toolbar-btn" onclick="toggleAllCols(false)">숨기기</button>
+      <button class="toolbar-btn" onclick="togglePkOnly()">PK만</button>
+    </div>
   </div>
 
   <div id="content"></div>
@@ -937,8 +994,38 @@ function buildTableSearchUI(tbl) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   COLUMN TOGGLE
+   COLUMN TOGGLE  +  TOOLBAR COLLAPSE
 ═══════════════════════════════════════════════════════════ */
+const COL_TOOLBAR_LS_KEY = 'wms_col_toolbar_collapsed';
+
+/* 접기/펼치기 토글 */
+function colToolbarToggle() {
+  const bar = document.getElementById('col-toolbar');
+  if (!bar) return;
+  const collapsed = bar.classList.toggle('collapsed');
+  localStorage.setItem(COL_TOOLBAR_LS_KEY, collapsed ? '1' : '0');
+}
+
+/* 저장된 상태 복원 (buildColToolbar 호출 후 실행) */
+function _colToolbarRestoreState() {
+  const bar = document.getElementById('col-toolbar');
+  if (!bar) return;
+  const saved = localStorage.getItem(COL_TOOLBAR_LS_KEY);
+  if (saved === '1') {
+    bar.classList.add('collapsed');
+  } else {
+    bar.classList.remove('collapsed');
+  }
+}
+
+/* 접힘 상태일 때 뱃지 숫자 갱신 */
+function _updateColCountBadge() {
+  const badge = document.getElementById('col-count-badge');
+  if (badge) {
+    badge.textContent = `${state.visibleCols.length} / ${state.allCols.length}`;
+  }
+}
+
 function buildColToolbar(){
   const wrap = document.getElementById('col-toggle-wrap');
   wrap.innerHTML = '';
@@ -954,20 +1041,20 @@ function buildColToolbar(){
     wrap.appendChild(btn);
   });
   document.getElementById('col-toolbar').style.display = 'flex';
-  // 신규 입력 버튼 삽입 (중복 방지)
+  _colToolbarRestoreState();   // 접힘 상태 복원
+  _updateColCountBadge();      // 뱃지 갱신
+  // 신규 입력 버튼 삽입 (중복 방지) — tbl-toolbar-body 안에 넣기
+  const body = document.getElementById('col-toolbar-body');
   if(!document.getElementById('crud-new-btn')){
     const tbl = state.table;
-    const toolbar = document.getElementById('col-toolbar');
     const btn = document.createElement('button');
     btn.id = 'crud-new-btn';
-    btn.className = 'toolbar-btn';
     btn.className = 'toolbar-btn crud-btn save';
-    btn.style.cssText = 'font-weight:700;margin-left:6px';
+    btn.style.cssText = 'font-weight:700;margin-left:6px;flex-shrink:0';
     btn.textContent = '+ 신규 입력';
     btn.onclick = () => openCrudNew(tbl);
-    toolbar.appendChild(btn);
+    body.appendChild(btn);
   } else {
-    // 테이블이 바뀌었을 수도 있으므로 onclick 갱신
     const tbl = state.table;
     document.getElementById('crud-new-btn').onclick = () => openCrudNew(tbl);
   }
@@ -989,6 +1076,7 @@ function toggleCol(col, btn){
     state.visibleCols.splice(insertAt, 0, col);
     btn.classList.add('on');
   }
+  _updateColCountBadge();
   renderTableFromCache();
 }
 
@@ -1618,18 +1706,17 @@ const crudState = {
 
 /* 테이블뷰 상단 툴바에 [+ 신규] 버튼 삽입 */
 function injectCrudNewBtn(tbl){
-  const toolbar = document.getElementById('col-toolbar');
-  if(!toolbar) return;
   // 중복 방지
   if(document.getElementById('crud-new-btn')) return;
+  const body = document.getElementById('col-toolbar-body') || document.getElementById('col-toolbar');
+  if(!body) return;
   const btn = document.createElement('button');
   btn.id = 'crud-new-btn';
-  btn.className = 'toolbar-btn';
   btn.className = 'toolbar-btn crud-btn save';
-  btn.style.cssText = 'font-weight:700';
+  btn.style.cssText = 'font-weight:700;flex-shrink:0';
   btn.textContent = '+ 신규 입력';
   btn.onclick = () => openCrudNew(tbl);
-  toolbar.appendChild(btn);
+  body.appendChild(btn);
 }
 
 /* 편집 모달 열기 (행 클릭) */
