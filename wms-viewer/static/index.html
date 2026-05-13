@@ -431,10 +431,13 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .dlv-section-header h3{font-size:12px;font-weight:700;color:var(--text2)}
 .dlv-list-table-wrap{overflow:auto;flex:1;min-height:0}
 .dlv-list-table{border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed}
-.dlv-list-table thead th{position:sticky;top:0;background:var(--th-bg);padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none;position:sticky;top:0}
-.dlv-list-table thead th .th-cell{padding:8px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
-.dlv-list-table thead th .col-rz{position:absolute;right:0;top:0;bottom:0;width:5px;cursor:col-resize;z-index:1;background:transparent}
+.dlv-list-table thead th{position:sticky;top:0;background:var(--th-bg);padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none;cursor:grab}
+.dlv-list-table thead th .th-cell{padding:6px 10px 6px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px}
+.dlv-list-table thead th .col-rz{position:absolute;right:0;top:0;bottom:0;width:5px;cursor:col-resize;z-index:2;background:transparent}
 .dlv-list-table thead th .col-rz:hover,.dlv-list-table thead th .col-rz.rz-active{background:var(--primary);opacity:.7}
+.dlv-list-table thead th.tbl-col-dragging{opacity:.35;cursor:grabbing}
+.dlv-list-table thead th.tbl-drag-over-left{box-shadow:inset 3px 0 0 var(--primary)}
+.dlv-list-table thead th.tbl-drag-over-right{box-shadow:inset -3px 0 0 var(--primary)}
 .dlv-list-table tbody tr{border-bottom:1px solid var(--tr-border);cursor:pointer}
 .dlv-list-table tbody tr:hover{background:var(--tr-hover)}
 .dlv-list-table tbody tr.selected{background:var(--tr-selected);border-left:3px solid var(--primary)}
@@ -495,10 +498,13 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .vhc-section-hdr h3{font-size:12px;font-weight:700;color:var(--text2)}
 .vhc-list-wrap{overflow:auto;flex:1;min-height:0}
 .vhc-table{border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed}
-.vhc-table thead th{position:sticky;top:0;background:var(--th-bg);padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:700;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none}
-.vhc-table thead th .th-cell{padding:7px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
-.vhc-table thead th .col-rz{position:absolute;right:0;top:0;bottom:0;width:5px;cursor:col-resize;z-index:1;background:transparent}
+.vhc-table thead th{position:sticky;top:0;background:var(--th-bg);padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:700;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none;cursor:grab}
+.vhc-table thead th .th-cell{padding:6px 10px 6px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px}
+.vhc-table thead th .col-rz{position:absolute;right:0;top:0;bottom:0;width:5px;cursor:col-resize;z-index:2;background:transparent}
 .vhc-table thead th .col-rz:hover,.vhc-table thead th .col-rz.rz-active{background:var(--primary);opacity:.7}
+.vhc-table thead th.tbl-col-dragging{opacity:.35;cursor:grabbing}
+.vhc-table thead th.tbl-drag-over-left{box-shadow:inset 3px 0 0 var(--primary)}
+.vhc-table thead th.tbl-drag-over-right{box-shadow:inset -3px 0 0 var(--primary)}
 .vhc-table tbody tr{border-bottom:1px solid var(--tr-border);cursor:pointer;transition:.1s}
 .vhc-table tbody tr:hover{background:var(--tr-hover)}
 .vhc-table tbody tr.selected{background:var(--tr-selected-vhc);border-left:3px solid var(--primary)}
@@ -669,6 +675,16 @@ thead th .th-drag-handle{
   transition:opacity .12s;
 }
 thead th:hover .th-drag-handle{opacity:.8}
+
+/* ── 납품처/차량 테이블 전용 드래그 핸들 ── */
+.dlv-list-table thead th .tbl-drag-handle,
+.vhc-table thead th .tbl-drag-handle{
+  display:inline-block;cursor:grab;opacity:.3;
+  font-size:9px;flex-shrink:0;transition:opacity .12s;
+}
+.dlv-list-table thead th:hover .tbl-drag-handle,
+.vhc-table thead th:hover .tbl-drag-handle{opacity:.75}
+
 /* 컬럼 순서 저장 뱃지 */
 #col-order-reset-btn{
   display:none;padding:2px 8px;border-radius:4px;
@@ -1727,6 +1743,94 @@ const _vhcColW = {}; // 차량 리스트 컬럼 너비 저장
 })();
 
 /* ═══════════════════════════════════════════════════════════
+   컬럼 순서 드래그 (납품처 / 차량 테이블 공통 헬퍼)
+═══════════════════════════════════════════════════════════ */
+(function(){
+  function _makeDragHandlers(getState, getCols, renderFn, tableSelector) {
+    let _src = null;
+
+    function _clearClasses() {
+      document.querySelectorAll(`${tableSelector} thead th`).forEach(th => {
+        th.classList.remove('tbl-col-dragging','tbl-drag-over-left','tbl-drag-over-right');
+      });
+    }
+
+    return {
+      start(e, colId) {
+        // col-rz 핸들 위에서 발생한 dragstart 무시 (width 리사이저와 충돌 방지)
+        if (e.target.classList.contains('col-rz')) { e.preventDefault(); return; }
+        _src = colId;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', colId);
+        const th = document.querySelector(`${tableSelector} thead th[data-colid="${colId}"]`);
+        if (th) th.classList.add('tbl-col-dragging');
+      },
+      over(e, colId) {
+        if (!_src || _src === colId) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        _clearClasses();
+        const th   = document.querySelector(`${tableSelector} thead th[data-colid="${colId}"]`);
+        if (!th) return;
+        const mid  = th.getBoundingClientRect().left + th.getBoundingClientRect().width / 2;
+        th.classList.add(e.clientX < mid ? 'tbl-drag-over-left' : 'tbl-drag-over-right');
+      },
+      leave(e) {
+        const th = e.currentTarget;
+        th.classList.remove('tbl-drag-over-left','tbl-drag-over-right');
+      },
+      drop(e, colId) {
+        e.preventDefault();
+        if (!_src || _src === colId) { _clearClasses(); _src = null; return; }
+        const st   = getState();
+        const cols = [...st.colOrder];
+        const si   = cols.indexOf(_src);
+        const ti   = cols.indexOf(colId);
+        if (si < 0 || ti < 0) { _clearClasses(); _src = null; return; }
+        const th   = document.querySelector(`${tableSelector} thead th[data-colid="${colId}"]`);
+        const mid  = th ? th.getBoundingClientRect().left + th.getBoundingClientRect().width / 2 : 0;
+        let ins    = (e.clientX >= mid) ? ti + 1 : ti;
+        cols.splice(si, 1);
+        const fi   = si < ins ? ins - 1 : ins;
+        cols.splice(Math.max(0, Math.min(fi, cols.length)), 0, _src);
+        st.colOrder = cols;
+        _clearClasses(); _src = null;
+        renderFn();
+      },
+      end() {
+        _clearClasses(); _src = null;
+      },
+    };
+  }
+
+  // ── 납품처 ──
+  const _dlvDrag = _makeDragHandlers(
+    () => dlvState,
+    () => dlvState.colOrder,
+    () => { const w = document.getElementById('dlv-list-wrap'); if (w?._rows) renderDeliveryList({rows: w._rows, total: dlvState.total}); },
+    '.dlv-list-table'
+  );
+  window.dlvColDragStart = (e, id) => _dlvDrag.start(e, id);
+  window.dlvColDragOver  = (e, id) => _dlvDrag.over(e, id);
+  window.dlvColDragLeave = (e)     => _dlvDrag.leave(e);
+  window.dlvColDrop      = (e, id) => _dlvDrag.drop(e, id);
+  window.dlvColDragEnd   = (e)     => _dlvDrag.end();
+
+  // ── 차량 ──
+  const _vhcDrag = _makeDragHandlers(
+    () => vhcState,
+    () => vhcState.colOrder,
+    () => { const w = document.getElementById('vhc-list-wrap'); if (w?._rows) renderVehicleList({rows: w._rows, total: vhcState.total}); },
+    '.vhc-table'
+  );
+  window.vhcColDragStart = (e, id) => _vhcDrag.start(e, id);
+  window.vhcColDragOver  = (e, id) => _vhcDrag.over(e, id);
+  window.vhcColDragLeave = (e)     => _vhcDrag.leave(e);
+  window.vhcColDrop      = (e, id) => _vhcDrag.drop(e, id);
+  window.vhcColDragEnd   = (e)     => _vhcDrag.end();
+})();
+
+/* ═══════════════════════════════════════════════════════════
    DRAG-TO-COPY  —  테이블 셀 드래그 → 클립보드 복사
    · 감시 대상: #table-outer, #dlv-list-wrap, #vhc-list-wrap, #wahma-list-wrap
    · 드래그 방향: 단일 셀, 단일 행, 다중 행·열 모두 지원
@@ -2410,6 +2514,7 @@ const dlvState = {
   codes: {},
   mode: 'new',
   sortCol: 'PTNRKY', sortDir: 'ASC',
+  colOrder: null,   // null = 기본순서, 드래그 변경 시 배열로 저장
 };
 
 async function renderDelivery() {
@@ -3008,7 +3113,7 @@ function renderDeliveryList(data) {
   const skug05Map = Object.fromEntries(dlvState.codes['SKUG05'].map(o => [o.value, o.label]));
 
   // 납품처 리스트 컬럼 정의 (id, label, sortKey, defaultW)
-  const dlvCols = [
+  const _dlvColDefs = [
     {id:'dlv-c0', label:'납품처코드', sk:'PTNRKY',    w: _dlvColW['dlv-c0']||100},
     {id:'dlv-c1', label:'납품처명',   sk:'NAME01',    w: _dlvColW['dlv-c1']||160},
     {id:'dlv-c2', label:'출하지점',   sk:'WAREKY',    w: _dlvColW['dlv-c2']|| 90},
@@ -3018,14 +3123,27 @@ function renderDeliveryList(data) {
     {id:'dlv-c6', label:'TMS등록',    sk:'',          w: _dlvColW['dlv-c6']|| 72},
     {id:'dlv-c7', label:'',           sk:'',          w: _dlvColW['dlv-c7']|| 56},
   ];
+  // colOrder 순서로 정렬 (드래그 후 순서 유지)
+  const dlvColMap = Object.fromEntries(_dlvColDefs.map(c => [c.id, c]));
+  if (!dlvState.colOrder) dlvState.colOrder = _dlvColDefs.map(c => c.id);
+  const dlvCols = dlvState.colOrder.map(id => dlvColMap[id]).filter(Boolean);
+
   const dlvThHtml = dlvCols.map(c => {
     const isSortable = !!c.sk;
     const isAsc  = dlvState.sortCol === c.sk && dlvState.sortDir === 'ASC';
     const isDesc = dlvState.sortCol === c.sk && dlvState.sortDir === 'DESC';
     const sortCls = isSortable ? `sort-th${isAsc?' sort-asc':isDesc?' sort-desc':''}` : '';
     const onDblClick = isSortable ? `ondblclick="dlvSortBy('${c.sk}')"` : '';
-    return `<th data-rzid="${c.id}" class="${sortCls}" style="width:${c.w}px;min-width:36px;position:sticky;top:0" ${onDblClick}>` +
-      `<span class="th-cell">${c.label}${isSortable?'<span class="sort-icon"></span>':''}</span>` +
+    const handle = c.id !== 'dlv-c7' ? `<span class="tbl-drag-handle" title="드래그하여 순서 변경">⠿</span>` : '';
+    return `<th data-rzid="${c.id}" data-colid="${c.id}" class="${sortCls}" style="width:${c.w}px;min-width:36px;position:sticky;top:0"
+      draggable="true"
+      ondragstart="dlvColDragStart(event,'${c.id}')"
+      ondragover="dlvColDragOver(event,'${c.id}')"
+      ondragleave="dlvColDragLeave(event)"
+      ondrop="dlvColDrop(event,'${c.id}')"
+      ondragend="dlvColDragEnd(event)"
+      ${onDblClick}>` +
+      `<span class="th-cell">${handle}${c.label}${isSortable?'<span class="sort-icon"></span>':''}</span>` +
       `<span class="col-rz" onmousedown="tableResizerDown(event,'${c.id}','.dlv-list-table')"></span></th>`;
   }).join('');
 
@@ -3037,18 +3155,20 @@ function renderDeliveryList(data) {
     const skuLabel   = skug05Map[row.ITEM_GROUP] || row.ITEM_GROUP || '';
     const hasDtl     = row.HAS_DETAIL === 'Y';
     const dw = (id, def) => { const w = _dlvColW[id]||def; return `width:${w}px;max-width:${w}px;`; };
-    html += `<tr class="${isSelected ? 'selected' : ''}" onclick="selectDeliveryRow(${idx}, this)" data-idx="${idx}">
-      <td style="${dw('dlv-c0',100)}color:var(--warning);font-family:monospace;font-weight:600" title="${row.PTNRKY}">${row.PTNRKY}</td>
-      <td style="${dw('dlv-c1',160)}font-weight:600" title="${row.NAME01||''}">${row.NAME01 || '-'}</td>
-      <td style="${dw('dlv-c2',90)}color:var(--text3)">${row.WAREKY || '-'}</td>
-      <td style="${dw('dlv-c3',80)}">${skuLabel ? `<span style="font-size:10px;background:var(--surface2);padding:1px 6px;border-radius:3px">${skuLabel}</span>` : '-'}</td>
-      <td style="${dw('dlv-c4',220)}color:var(--text3)" title="${row.ADDR01||''} ${row.ADDR02||''}">${(row.ADDR01||'') + (row.ADDR02 ? ' '+row.ADDR02 : '') || '-'}</td>
-      <td style="${dw('dlv-c5',80)}">${row.AREA_CD || '-'}</td>
-      <td style="${dw('dlv-c6',72)}text-align:center">${hasDtl ? '<span class="badge-reg">등록</span>' : '<span class="badge-none">미등록</span>'}</td>
-      <td style="${dw('dlv-c7',56)}text-align:center;padding:3px">
-        <button class="row-del-btn" title="삭제" onclick="event.stopPropagation();dlvDeleteRow('${row.PTNRKY}','${row.PTNRTY||'CT'}','${row.OWNRKY||'KN'}')">🗑</button>
-      </td>
-    </tr>`;
+    // colOrder 순서대로 td 생성
+    const _dlvTdMap = {
+      'dlv-c0': `<td style="${dw('dlv-c0',100)}color:var(--warning);font-family:monospace;font-weight:600" title="${row.PTNRKY}">${row.PTNRKY}</td>`,
+      'dlv-c1': `<td style="${dw('dlv-c1',160)}font-weight:600" title="${row.NAME01||''}">${row.NAME01||'-'}</td>`,
+      'dlv-c2': `<td style="${dw('dlv-c2',90)}color:var(--text3)">${row.WAREKY||'-'}</td>`,
+      'dlv-c3': `<td style="${dw('dlv-c3',80)}">${skuLabel?`<span style="font-size:10px;background:var(--surface2);padding:1px 6px;border-radius:3px">${skuLabel}</span>`:'-'}</td>`,
+      'dlv-c4': `<td style="${dw('dlv-c4',220)}color:var(--text3)" title="${(row.ADDR01||'')+' '+(row.ADDR02||'')}">${(row.ADDR01||'')+(row.ADDR02?' '+row.ADDR02:'')||'-'}</td>`,
+      'dlv-c5': `<td style="${dw('dlv-c5',80)}">${row.AREA_CD||'-'}</td>`,
+      'dlv-c6': `<td style="${dw('dlv-c6',72)}text-align:center">${hasDtl?'<span class="badge-reg">등록</span>':'<span class="badge-none">미등록</span>'}</td>`,
+      'dlv-c7': `<td style="${dw('dlv-c7',56)}text-align:center;padding:3px"><button class="row-del-btn" title="삭제" onclick="event.stopPropagation();dlvDeleteRow('${row.PTNRKY}','${row.PTNRTY||'CT'}','${row.OWNRKY||'KN'}')">🗑</button></td>`,
+    };
+    html += `<tr class="${isSelected?'selected':''}" onclick="selectDeliveryRow(${idx},this)" data-idx="${idx}">`
+      + dlvCols.map(c => _dlvTdMap[c.id]||'').join('')
+      + '</tr>';
   });
   html += '</tbody></table>';
 
@@ -3313,6 +3433,7 @@ const vhcState = {
   filterOpts: {},
   ynVals: {},
   sortCol: '', sortDir: 'ASC',
+  colOrder: null,   // null = 기본순서, 드래그 변경 시 배열로 저장
 };
 
 async function renderVehicle() {
@@ -3847,7 +3968,7 @@ function renderVehicleList(data) {
   };
 
   // 차량 리스트 컬럼 정의 (id, label, sortKey, defaultW)
-  const vhcCols = [
+  const _vhcColDefs = [
     {id:'vhc-c0',  label:'차량번호', sk:'VEHICLE_NO',   w: _vhcColW['vhc-c0'] ||110},
     {id:'vhc-c1',  label:'출하지점', sk:'SHIP_POINT',   w: _vhcColW['vhc-c1'] || 80},
     {id:'vhc-c2',  label:'제품군',   sk:'PRODUCT_GROUP',w: _vhcColW['vhc-c2'] || 90},
@@ -3861,14 +3982,27 @@ function renderVehicleList(data) {
     {id:'vhc-c10', label:'사용',     sk:'USE_YN',       w: _vhcColW['vhc-c10']|| 55},
     {id:'vhc-c11', label:'',         sk:'',             w: _vhcColW['vhc-c11']|| 56},
   ];
+  // colOrder 순서로 정렬 (드래그 후 순서 유지)
+  const vhcColMap = Object.fromEntries(_vhcColDefs.map(c => [c.id, c]));
+  if (!vhcState.colOrder) vhcState.colOrder = _vhcColDefs.map(c => c.id);
+  const vhcCols = vhcState.colOrder.map(id => vhcColMap[id]).filter(Boolean);
+
   const vhcThHtml = vhcCols.map(c => {
     const isSortable = !!c.sk;
     const isAsc  = vhcState.sortCol === c.sk && vhcState.sortDir === 'ASC';
     const isDesc = vhcState.sortCol === c.sk && vhcState.sortDir === 'DESC';
     const sortCls = isSortable ? `sort-th${isAsc?' sort-asc':isDesc?' sort-desc':''}` : '';
     const onDblClick = isSortable ? `ondblclick="vhcSortBy('${c.sk}')"` : '';
-    return `<th data-rzid="${c.id}" class="${sortCls}" style="width:${c.w}px;min-width:36px;position:sticky;top:0" ${onDblClick}>` +
-      `<span class="th-cell">${c.label}${isSortable?'<span class="sort-icon"></span>':''}</span>` +
+    const handle = c.id !== 'vhc-c11' ? `<span class="tbl-drag-handle" title="드래그하여 순서 변경">⠿</span>` : '';
+    return `<th data-rzid="${c.id}" data-colid="${c.id}" class="${sortCls}" style="width:${c.w}px;min-width:36px;position:sticky;top:0"
+      draggable="true"
+      ondragstart="vhcColDragStart(event,'${c.id}')"
+      ondragover="vhcColDragOver(event,'${c.id}')"
+      ondragleave="vhcColDragLeave(event)"
+      ondrop="vhcColDrop(event,'${c.id}')"
+      ondragend="vhcColDragEnd(event)"
+      ${onDblClick}>` +
+      `<span class="th-cell">${handle}${c.label}${isSortable?'<span class="sort-icon"></span>':''}</span>` +
       `<span class="col-rz" onmousedown="tableResizerDown(event,'${c.id}','.vhc-table')"></span></th>`;
   }).join('');
 
@@ -3880,24 +4014,24 @@ function renderVehicleList(data) {
     const skuLbl  = skuMap[row.PRODUCT_GROUP] || row.PRODUCT_GROUP || '-';
     const tc      = tColor[row.VEHICLE_TYPE] || '#94a3b8';
     const vw = (id, def) => { const w = _vhcColW[id]||def; return `width:${w}px;max-width:${w}px;`; };
-    html += `<tr class="${isSel?'selected':''}" onclick="selectVehicleRow(${idx},this)" data-idx="${idx}">
-      <td style="${vw('vhc-c0',110)}font-family:monospace;font-weight:700;color:var(--warning)" title="${row.VEHICLE_NO||''}">${row.VEHICLE_NO||'-'}</td>
-      <td style="${vw('vhc-c1',80)}color:var(--text3)">${row.SHIP_POINT||'-'}</td>
-      <td style="${vw('vhc-c2',90)}" title="${skuLbl}">${skuLbl}</td>
-      <td style="${vw('vhc-c3',75)}">${row.DELIVERY_ZONE||'-'}</td>
-      <td style="${vw('vhc-c4',110)}" title="${row.CARRIER||''}">${row.CARRIER||'-'}</td>
-      <td style="${vw('vhc-c5',70)}"><span style="font-size:10px;font-weight:700;padding:2px 5px;border-radius:3px;background:var(--surface2);color:${tc}">${row.VEHICLE_TYPE||'-'}</span></td>
-      <td style="${vw('vhc-c6',70)}">${row.VEHICLE_KIND||'-'}</td>
-      <td style="${vw('vhc-c7',60)}color:var(--primary);font-weight:600">${row.VEHICLE_CLASS||'-'}</td>
-      <td style="${vw('vhc-c8',100)}font-weight:600" title="${row.DRIVER_NAME||''}">${row.DRIVER_NAME||'-'}</td>
-      <td style="${vw('vhc-c9',130)}color:var(--text3);font-family:monospace;font-size:11px">${row.CONTACT_NO||'-'}</td>
-      <td style="${vw('vhc-c10',55)}text-align:center">${row.USE_YN==='Y'
-        ?'<span class="vhc-badge use-y">사용</span>'
-        :'<span class="vhc-badge use-n">미사용</span>'}</td>
-      <td style="${vw('vhc-c11',56)}text-align:center;padding:3px">
-        <button class="row-del-btn" title="삭제" onclick="event.stopPropagation();vhcDeleteRow('${row.VEHICLE_NO}','${row.OWNRKY||'KN'}')">🗑</button>
-      </td>
-    </tr>`;
+    // colOrder 순서대로 td 생성
+    const _vhcTdMap = {
+      'vhc-c0':  `<td style="${vw('vhc-c0',110)}font-family:monospace;font-weight:700;color:var(--warning)" title="${row.VEHICLE_NO||''}">${row.VEHICLE_NO||'-'}</td>`,
+      'vhc-c1':  `<td style="${vw('vhc-c1',80)}color:var(--text3)">${row.SHIP_POINT||'-'}</td>`,
+      'vhc-c2':  `<td style="${vw('vhc-c2',90)}" title="${skuLbl}">${skuLbl}</td>`,
+      'vhc-c3':  `<td style="${vw('vhc-c3',75)}">${row.DELIVERY_ZONE||'-'}</td>`,
+      'vhc-c4':  `<td style="${vw('vhc-c4',110)}" title="${row.CARRIER||''}">${row.CARRIER||'-'}</td>`,
+      'vhc-c5':  `<td style="${vw('vhc-c5',70)}"><span style="font-size:10px;font-weight:700;padding:2px 5px;border-radius:3px;background:var(--surface2);color:${tc}">${row.VEHICLE_TYPE||'-'}</span></td>`,
+      'vhc-c6':  `<td style="${vw('vhc-c6',70)}">${row.VEHICLE_KIND||'-'}</td>`,
+      'vhc-c7':  `<td style="${vw('vhc-c7',60)}color:var(--primary);font-weight:600">${row.VEHICLE_CLASS||'-'}</td>`,
+      'vhc-c8':  `<td style="${vw('vhc-c8',100)}font-weight:600" title="${row.DRIVER_NAME||''}">${row.DRIVER_NAME||'-'}</td>`,
+      'vhc-c9':  `<td style="${vw('vhc-c9',130)}color:var(--text3);font-family:monospace;font-size:11px">${row.CONTACT_NO||'-'}</td>`,
+      'vhc-c10': `<td style="${vw('vhc-c10',55)}text-align:center">${row.USE_YN==='Y'?'<span class="vhc-badge use-y">사용</span>':'<span class="vhc-badge use-n">미사용</span>'}</td>`,
+      'vhc-c11': `<td style="${vw('vhc-c11',56)}text-align:center;padding:3px"><button class="row-del-btn" title="삭제" onclick="event.stopPropagation();vhcDeleteRow('${row.VEHICLE_NO}','${row.OWNRKY||'KN'}')">🗑</button></td>`,
+    };
+    html += `<tr class="${isSel?'selected':''}" onclick="selectVehicleRow(${idx},this)" data-idx="${idx}">`
+      + vhcCols.map(c => _vhcTdMap[c.id]||'').join('')
+      + '</tr>';
   });
   html += '</tbody></table>';
   wrap.innerHTML = html;
