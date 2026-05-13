@@ -3286,7 +3286,7 @@ async function renderVehicle() {
   c.innerHTML = `<div class="loading"><div class="spinner"></div>공통코드 로딩 중...</div>`;
 
   // 공통코드 병렬 로드 (CMCDV 기반)
-  const codeKeys = ['SKUG05','TMS_CARKIND','TMS_CARCLASS','TMS_CARRIER','TMS_AXLETYPE','TMS_FLOORTYPE','LOTA02','TMS_REGION','TMS_CARART'];
+  const codeKeys = ['SKUG05','TMS_CARKIND','TMS_CARCLASS','TMS_CARRIER','TMS_AXLETYPE','TMS_FLOORTYPE','LOTA02','TMS_REGION','TMS_CARART','TMS_INBOUNDTIME'];
   const results  = await Promise.all(codeKeys.map(k => fetch(`/api/codes/${k}`).then(r=>r.json())));
   codeKeys.forEach((k,i) => vhcState.codes[k] = results[i]);
 
@@ -3518,19 +3518,33 @@ function buildVehicleForm() {
       </div>
       <div class="vhc-fg">
         <label>배송가능시작</label>
-        <input id="vf-DLV_TIME_FROM" type="text" placeholder="09:00">
+        <select id="vf-DLV_TIME_FROM">
+          <option value="">선택</option>${dlvTimeOpts}
+        </select>
       </div>
       <div class="vhc-fg">
         <label>배송가능종료</label>
-        <input id="vf-DLV_TIME_TO" type="text" placeholder="18:00">
+        <select id="vf-DLV_TIME_TO">
+          <option value="">선택</option>${dlvTimeOpts}
+        </select>
       </div>
       <div class="vhc-fg">
         <label>배송납품처1</label>
-        <input id="vf-DELIVERY_CUSTOMER_1" type="text" placeholder="납품처코드">
+        <div style="display:flex;gap:4px;align-items:center">
+          <input id="vf-DELIVERY_CUSTOMER_1" type="text" placeholder="납품처코드" readonly
+                 style="flex:1;opacity:.85;cursor:default;background:var(--surface2)">
+          <button type="button" onclick="openPtnrPopup(1)"
+                  style="flex-shrink:0;padding:0 8px;height:30px;font-size:13px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer" title="납품처 검색">🔍</button>
+        </div>
       </div>
       <div class="vhc-fg">
         <label>배송납품처2</label>
-        <input id="vf-DELIVERY_CUSTOMER_2" type="text" placeholder="납품처코드">
+        <div style="display:flex;gap:4px;align-items:center">
+          <input id="vf-DELIVERY_CUSTOMER_2" type="text" placeholder="납품처코드" readonly
+                 style="flex:1;opacity:.85;cursor:default;background:var(--surface2)">
+          <button type="button" onclick="openPtnrPopup(2)"
+                  style="flex-shrink:0;padding:0 8px;height:30px;font-size:13px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer" title="납품처 검색">🔍</button>
+        </div>
       </div>
       <div class="vhc-fg">
         <label>차량연식</label>
@@ -3939,8 +3953,20 @@ function fillVehicleForm(row) {
   ['SHIP_POINT','PRODUCT_GROUP','DELIVERY_ZONE','CARRIER','VEHICLE_TYPE',
    'VEHICLE_KIND','VEHICLE_CLASS','AXLE_TYPE','FLOOR_TYPE','VEHICLE_YEAR',
    'PALLET_QTY','LOAD_VOLUME','LOAD_WEIGHT','CARGO_LENGTH','CARGO_WIDTH',
-   'CARGO_HEIGHT','DRIVER_NAME','CONTACT_NO','DLV_TIME_FROM','DLV_TIME_TO',
+   'CARGO_HEIGHT','DRIVER_NAME','CONTACT_NO',
    'DELIVERY_CUSTOMER_1','DELIVERY_CUSTOMER_2'].forEach(f => setVal(`vf-${f}`, row[f]));
+
+  // 배송가능시작/종료 — select value는 HH:00 형식
+  const _setDlvTime = (id, v) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const hhmm = (v||'').trim();
+    // DB 저장값이 "HH:00" 또는 "H:00" 형식 모두 처리
+    const norm = hhmm.includes(':') ? hhmm.replace(/^(\d):/, '0$1:') : '';
+    el.value = norm;
+  };
+  _setDlvTime('vf-DLV_TIME_FROM', row.DLV_TIME_FROM);
+  _setDlvTime('vf-DLV_TIME_TO',   row.DLV_TIME_TO);
 
   ['USE_YN','OPERABLE_YN','FIX_YN','DEL_YN'].forEach(f => vhcInitYN(f, row[f]));
 }
@@ -3957,13 +3983,13 @@ function vhcNewForm() {
 
   ['vf-VEHICLE_NO','vf-VEHICLE_YEAR','vf-PALLET_QTY','vf-LOAD_VOLUME',
    'vf-LOAD_WEIGHT','vf-CARGO_LENGTH','vf-CARGO_WIDTH','vf-CARGO_HEIGHT',
-   'vf-DRIVER_NAME','vf-CONTACT_NO','vf-DLV_TIME_FROM','vf-DLV_TIME_TO',
+   'vf-DRIVER_NAME','vf-CONTACT_NO',
    'vf-DELIVERY_CUSTOMER_1','vf-DELIVERY_CUSTOMER_2'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   ['vf-SHIP_POINT','vf-PRODUCT_GROUP','vf-DELIVERY_ZONE','vf-CARRIER',
    'vf-VEHICLE_TYPE','vf-VEHICLE_KIND','vf-VEHICLE_CLASS','vf-AXLE_TYPE',
-   'vf-FLOOR_TYPE'].forEach(id => {
+   'vf-FLOOR_TYPE','vf-DLV_TIME_FROM','vf-DLV_TIME_TO'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   ['USE_YN','OPERABLE_YN','FIX_YN','DEL_YN'].forEach(f => vhcInitYN(f, null));
@@ -5230,6 +5256,152 @@ function toggleTheme() {
 // 저장된 메뉴 설정 적용 후 초기화
 mmgrApplySidebar();
 init();
+</script>
+
+<!-- ══════════════════════════════════════════════════════
+     납품처 검색 팝업
+══════════════════════════════════════════════════════ -->
+<div id="ptnr-popup-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;width:660px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.4)">
+
+    <!-- 팝업 헤더 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <span style="font-size:14px;font-weight:700;color:var(--text)">🔍 납품처 검색</span>
+      <button onclick="closePtnrPopup()" style="background:none;border:none;font-size:18px;color:var(--text3);cursor:pointer;line-height:1">✕</button>
+    </div>
+
+    <!-- 검색바 -->
+    <div style="display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);flex-shrink:0;align-items:center">
+      <input id="ptnr-popup-q" type="text" placeholder="납품처 코드 또는 명칭 검색..."
+             style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:12px"
+             oninput="ptnrPopupSearch()" onkeydown="if(event.key==='Enter')ptnrPopupSearch()">
+      <button onclick="ptnrPopupSearch()"
+              style="padding:7px 14px;font-size:12px;border-radius:6px;border:none;background:var(--primary);color:#fff;cursor:pointer">🔍 조회</button>
+      <button onclick="ptnrPopupClear()"
+              style="padding:7px 10px;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">↺</button>
+    </div>
+
+    <!-- 결과 안내 -->
+    <div id="ptnr-popup-info" style="padding:4px 16px;font-size:11px;color:var(--text3);flex-shrink:0"></div>
+
+    <!-- 결과 테이블 -->
+    <div style="overflow:auto;flex:1;min-height:0;padding:0 16px 12px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px" id="ptnr-popup-table">
+        <thead>
+          <tr style="position:sticky;top:0;z-index:1;background:var(--surface2)">
+            <th style="padding:7px 8px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;white-space:nowrap">납품처코드</th>
+            <th style="padding:7px 8px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600">납품처명</th>
+            <th style="padding:7px 8px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;white-space:nowrap">권역</th>
+            <th style="padding:7px 8px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;white-space:nowrap">출하지점</th>
+          </tr>
+        </thead>
+        <tbody id="ptnr-popup-body">
+          <tr><td colspan="4" style="padding:20px;text-align:center;color:var(--text3)">검색어를 입력하세요</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 안내 -->
+    <div style="padding:8px 16px;border-top:1px solid var(--border);flex-shrink:0;font-size:11px;color:var(--text3)">
+      💡 행을 더블클릭하면 납품처 코드가 입력됩니다
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════
+   납품처 검색 팝업 JS
+═══════════════════════════════════════ */
+let _ptnrPopupTarget = 1;   // 1 or 2 (배송납품처1 / 2)
+let _ptnrPopupTimer  = null;
+
+function openPtnrPopup(slotNo) {
+  _ptnrPopupTarget = slotNo;
+  const ov = document.getElementById('ptnr-popup-overlay');
+  ov.style.display = 'flex';
+  const qEl = document.getElementById('ptnr-popup-q');
+  if (qEl) { qEl.value = ''; qEl.focus(); }
+  document.getElementById('ptnr-popup-info').textContent = '';
+  document.getElementById('ptnr-popup-body').innerHTML =
+    '<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--text3)">검색어를 입력하세요</td></tr>';
+}
+
+function closePtnrPopup() {
+  document.getElementById('ptnr-popup-overlay').style.display = 'none';
+}
+
+// ESC 키로 닫기
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const ov = document.getElementById('ptnr-popup-overlay');
+    if (ov && ov.style.display !== 'none') closePtnrPopup();
+  }
+});
+// 오버레이 클릭으로 닫기
+document.getElementById('ptnr-popup-overlay').addEventListener('click', function(e) {
+  if (e.target === this) closePtnrPopup();
+});
+
+function ptnrPopupClear() {
+  const qEl = document.getElementById('ptnr-popup-q');
+  if (qEl) { qEl.value = ''; qEl.focus(); }
+  document.getElementById('ptnr-popup-info').textContent = '';
+  document.getElementById('ptnr-popup-body').innerHTML =
+    '<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--text3)">검색어를 입력하세요</td></tr>';
+}
+
+function ptnrPopupSearch() {
+  clearTimeout(_ptnrPopupTimer);
+  _ptnrPopupTimer = setTimeout(_ptnrPopupDoSearch, 300);
+}
+
+async function _ptnrPopupDoSearch() {
+  const q = (document.getElementById('ptnr-popup-q')?.value || '').trim();
+  const tbody = document.getElementById('ptnr-popup-body');
+  const info  = document.getElementById('ptnr-popup-info');
+
+  tbody.innerHTML = '<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--text3)"><div class="spinner" style="width:18px;height:18px;margin:auto"></div></td></tr>';
+
+  try {
+    const params = new URLSearchParams({ page: 1, size: 100 });
+    if (q) params.set('ptnrky', q);
+    const res  = await fetch(`/api/delivery/list?${params}`);
+    const data = await res.json();
+    const rows = data.rows || [];
+
+    info.textContent = `총 ${rows.length}건 (최대 100건)`;
+
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--text3)">검색 결과가 없습니다</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rows.map(r => `
+      <tr ondblclick="ptnrPopupSelect('${(r.PTNRKY||'').replace(/'/g,"\\'")}','${(r.NAME01||'').replace(/'/g,"\\'")}')"}
+          style="cursor:pointer;border-bottom:1px solid var(--border)"
+          onmouseenter="this.style.background='var(--surface2)'"
+          onmouseleave="this.style.background=''">
+        <td style="padding:7px 8px;white-space:nowrap;font-weight:600;color:var(--primary)">${r.PTNRKY||'-'}</td>
+        <td style="padding:7px 8px">${r.NAME01||'-'}</td>
+        <td style="padding:7px 8px;white-space:nowrap">${r.AREA_CD||'-'}</td>
+        <td style="padding:7px 8px;white-space:nowrap">${r.WAREKY||'-'}</td>
+      </tr>`).join('');
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="4" style="padding:16px;text-align:center;color:#ef4444">조회 오류: ' + e.message + '</td></tr>';
+  }
+}
+
+function ptnrPopupSelect(ptnrky, name01) {
+  const inputId = `vf-DELIVERY_CUSTOMER_${_ptnrPopupTarget}`;
+  const el = document.getElementById(inputId);
+  if (el) {
+    el.value = ptnrky;
+    // 입력 표시용 툴팁 (title에 명칭 표시)
+    el.title = `${ptnrky} — ${name01}`;
+  }
+  showToast(`배송납품처${_ptnrPopupTarget}: ${ptnrky} (${name01}) 선택됨`);
+  closePtnrPopup();
+}
 </script>
 </body>
 </html>
