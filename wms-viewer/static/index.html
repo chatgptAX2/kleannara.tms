@@ -68,24 +68,25 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 /* ── SIDEBAR (LNB) ── */
 #sidebar{width:220px;min-width:220px;background:var(--lnb-bg);border-right:1px solid var(--lnb-border);display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden}
-.logo{padding:14px 16px;border-bottom:1px solid var(--lnb-border);flex-shrink:0;display:flex;align-items:center;gap:0}
-.logo-brand{display:flex;flex-direction:column;gap:1px}
+.logo{padding:12px 16px;border-bottom:1px solid var(--lnb-border);flex-shrink:0;display:flex;align-items:center;gap:0}
+.logo-brand{display:flex;flex-direction:column;gap:3px;width:100%}
 .logo-name{
-  display:flex;align-items:baseline;gap:6px;
+  display:flex;align-items:center;gap:8px;line-height:1;
 }
 .logo-kleannara{
-  font-size:11px;font-weight:300;letter-spacing:1.5px;
-  color:rgba(255,255,255,.55);font-family:'Segoe UI',system-ui,sans-serif;
-  text-transform:lowercase;
+  font-size:10px;font-weight:300;letter-spacing:2px;
+  color:rgba(255,255,255,.45);font-family:'Segoe UI',system-ui,sans-serif;
+  text-transform:lowercase;padding-top:2px;
 }
 .logo-tms{
-  font-size:20px;font-weight:800;letter-spacing:1px;
+  font-size:26px;font-weight:900;letter-spacing:2px;
   color:#ffffff;font-family:'Segoe UI',system-ui,sans-serif;
-  line-height:1;
+  line-height:1;text-shadow:0 0 18px rgba(96,165,250,.35);
 }
 .logo-sub{
-  font-size:9px;font-weight:400;color:rgba(255,255,255,.32);
-  letter-spacing:2px;text-transform:uppercase;padding-left:1px;
+  font-size:8.5px;font-weight:400;color:rgba(255,255,255,.28);
+  letter-spacing:2.5px;text-transform:uppercase;
+  border-top:1px solid rgba(255,255,255,.08);padding-top:4px;margin-top:1px;
 }
 .nav-section{padding:10px 8px 3px;font-size:10px;font-weight:700;color:var(--lnb-text3);letter-spacing:1px;text-transform:uppercase;flex-shrink:0}
 .nav-item{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;cursor:pointer;margin:1px 8px;transition:.15s;font-size:12px;color:var(--lnb-text2);flex-shrink:0}
