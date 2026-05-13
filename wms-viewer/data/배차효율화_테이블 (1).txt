@@ -1,0 +1,138 @@
+-- 납품처 상세정보 (TMS)
+CREATE TABLE KNRAWMS.BZPTN_DETAIL
+(
+    /* =========================
+       PK (거래처 + 출하지점)
+    ========================= */
+    PTNRKY      VARCHAR2(20) NOT NULL,  -- 거래처코드
+    PTNRTY      VARCHAR2(4)  NOT NULL,  -- 거래처구분 (CT: 납품처)
+    OWNRKY      VARCHAR2(10) NOT NULL,  -- 화주
+    WAREKY  	VARCHAR2(4)	 NOT NULL,  -- 거점 
+
+    /* =========================
+       라벨 기준 컬럼 (라벨ID 사용)
+       ※ 실제 라벨ID로 치환 필요
+    ========================= */
+
+    ROUTE_CD        VARCHAR2(10),   -- 유통경로
+    ITEM_GROUP      VARCHAR2(10),   -- 제품군
+    UNLOAD_TIME     NUMBER(5),      -- 하차대기시간
+
+    INB_TIME_FROM1  VARCHAR2(5),    -- 입차가능시간 시작1
+    INB_TIME_TO1    VARCHAR2(5),    -- 입차가능시간 종료1
+
+    AREA_CD         VARCHAR2(20),   -- 권역
+    MAX_HEIGHT      NUMBER(5,2),    -- 최대진입높이
+    FORKLIFT_YN     VARCHAR2(1),    -- 지게차여부
+    HANDWORK_YN     VARCHAR2(1),    -- 수작업여부
+
+    AUTO_PLT     	NUMBER(5,2),    -- 자동설정PLT
+    MAX_BOX_QTY     NUMBER(10),     -- 최대토수
+    AUTO_ALLOC_YN   VARCHAR2(1),    -- 자동배차여부
+
+    SINGLE_ITEM_YN  VARCHAR2(1),    -- 단수조정품목
+    NY_TYPE         VARCHAR2(1),    -- N/Y타입
+    SINGLE_HEIGHT   NUMBER(5,2),    -- 단수조정높이
+	
+	
+	DYNAMIC_YN		VARCHAR2(1),    -- 동적유무	// +동적유무 Y인 경우: 지역 또는 납품처 복수개 설정
+	LTL_YN			VARCHAR2(1),    -- 혼적유무
+	PRIORITY_YN		VARCHAR2(1),    -- 우선배차유무
+	MIN_QTSIWH		NUMBER(5,2),    -- 최소납품수량		
+	
+
+    /* =========================
+       라벨에 없는 항목 → 한글 컬럼
+    ========================= */
+
+    LATITUDE		NUMBER(12,8),   -- GPS 위도
+    LONGITUDE		NUMBER(12,8),   -- GPS 경도
+
+    /* =========================
+       공통 컬럼
+    ========================= */
+
+    DEL_YN     VARCHAR2(1) DEFAULT 'N',
+    CREDAT     VARCHAR2(8),
+    CRETIM     VARCHAR2(6),
+    CREUSR     VARCHAR2(20),
+    LMODAT     VARCHAR2(8),
+    LMOTIM     VARCHAR2(6),
+    LMOUSR     VARCHAR2(20),
+
+    CONSTRAINT PK_BZPTN_TMS 
+    PRIMARY KEY (PTNRKY, PTNRTY, OWNRKY, WAREKY)
+);
+
+-- 차량 마스터 (TMS)
+CREATE TABLE KNRAWMS.VHCMA
+(
+    /* =========================
+       PK
+    ========================= */
+    VEHICLE_NO        VARCHAR2(20) NOT NULL,   -- 차량번호
+    OWNRKY            VARCHAR2(10) NOT NULL,   -- 화주
+
+    /* =========================
+       기본 정보
+    ========================= */
+    SHIP_POINT        VARCHAR2(10),            -- 출하지점
+    PRODUCT_GROUP     VARCHAR2(10),            -- 제품군
+    DELIVERY_ZONE     VARCHAR2(20),            -- 배송구역
+    CARRIER           VARCHAR2(50),            -- 운송사
+
+    VEHICLE_TYPE      VARCHAR2(20),            -- 차량구분 (일반/냉동 등)
+    VEHICLE_KIND      VARCHAR2(20),            -- 차종 (윙바디/탑차 등)
+    VEHICLE_CLASS     VARCHAR2(20),            -- 차형 (1톤/5톤/18톤)
+
+    DRIVER_NAME       VARCHAR2(50),            -- 기사명
+    CONTACT_NO        VARCHAR2(20),            -- 연락처
+    AXLE_TYPE         VARCHAR2(20),            -- 축형식 (장축/단축 등)
+
+    /* =========================
+       적재 정보
+    ========================= */
+    LOAD_VOLUME       NUMBER(10),              -- 적재용적
+    LOAD_WEIGHT       NUMBER(10,2),            -- 적재중량 (kg)
+    PALLET_QTY        NUMBER(10),              -- 적재파렛트수
+
+    CARGO_LENGTH      NUMBER(10,2),            -- 적재함길이
+    CARGO_WIDTH       NUMBER(10,2),            -- 적재함너비
+    CARGO_HEIGHT      NUMBER(10,2),            -- 적재함높이
+
+    FLOOR_TYPE        VARCHAR2(20),            -- 바닥형태
+
+    /* =========================
+       운영 여부
+    ========================= */
+    USE_YN            VARCHAR2(1),             -- 사용여부 (Y/N)
+    OPERABLE_YN       VARCHAR2(1),             -- 동작가능유무 (Y/N)
+
+	DLV_TIME_FROM  VARCHAR2(5),    				-- 배송가능시간 시작 (09:00)
+    DLV_TIME_TO    VARCHAR2(5),    				-- 배송가능시간 종료 (18:00)
+    VEHICLE_YEAR      VARCHAR2(4),             -- 차량연식
+
+    /* =========================
+       추가 (라벨 외 항목)
+    ========================= */
+    DELIVERY_CUSTOMER_1 VARCHAR2(20),          -- 배송납품처1
+    DELIVERY_CUSTOMER_2 VARCHAR2(20),          -- 배송납품처2 
+
+    /* =========================
+       공통 관리 컬럼
+    ========================= */
+    DEL_YN     VARCHAR2(1) DEFAULT 'N',        -- 삭제여부
+    CREDAT     VARCHAR2(8),                   -- 생성일자 (YYYYMMDD)
+    CRETIM     VARCHAR2(6),                   -- 생성시간 (HH24MISS)
+    CREUSR     VARCHAR2(20),                  -- 생성자
+    LMODAT     VARCHAR2(8),                   -- 수정일자
+    LMOTIM     VARCHAR2(6),                   -- 수정시간
+    LMOUSR     VARCHAR2(20),                  -- 수정자
+
+    /* =========================
+       PK
+    ========================= */
+    CONSTRAINT PK_TMS_VEHICLE 
+    PRIMARY KEY (CARNO, OWNRKY)
+);
+

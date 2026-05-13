@@ -1,0 +1,28 @@
+CREATE TABLE KNRAWMS.ROUTE_COST
+(
+    /* =========================
+       PK
+    ========================= */
+	SHPPT        VARCHAR2(20) NOT NULL,   -- 운송경로유형 
+    ROUTE        VARCHAR2(20) NOT NULL,   -- 운송경로 
+	PTNRKY       VARCHAR2(20) NOT NULL,   -- 납품처
+	CARCLASS	 VARCHAR2(10) NOT NULL,   -- 차량톤수
+    
+
+    /* =========================
+       기본 정보
+    ========================= */
+    COST		NUMBER(10,2), 	-- 비용
+	UNIT		VARCHAR(20),	-- 단위
+	
+	DATE_START	VARCHAR(8),		-- 효력 시작일
+	DATE_END	VARCHAR(8),		-- 효력 종료일
+	
+
+    /* =========================
+       PK
+    ========================= */
+    CONSTRAINT PK_TMS_ROUTE_COST
+    PRIMARY KEY (ROUTE, PTNRKY, CARCLASS)
+);
+

@@ -1,0 +1,9 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# DB (용량 큰 SQLite는 제외)
+wms.db
+*.db
+*.sqlite
