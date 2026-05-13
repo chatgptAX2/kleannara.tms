@@ -2503,6 +2503,8 @@ function buildDeliveryUI() {
     </div>
   </div>
 </div>`;
+  // DOM 삽입 후 출하지점 select 옵션 채우기
+  _dlvFillSelects();
 }
 
 function buildDeliveryForm() {
@@ -2513,6 +2515,9 @@ function buildDeliveryForm() {
   const inbTimeOpts    = dlvState.codes['TMS_INBOUNDTIME'].map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
   // TMS_AUTOPLT: CMCDVL=값, CDESC1=표시텍스트 (1~24)
   const autoPltOpts    = (dlvState.codes['TMS_AUTOPLT']||[]).map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
+  // 권역 옵션: [광역시도] 지역명 형식으로 HTML string에 직접 포함
+  const regionOpts     = (dlvState.codes['TMS_REGION']||[]).map(o=>
+    `<option value="${o.value}">${o.desc2 ? '['+o.desc2+'] ' : ''}${o.label}</option>`).join('');
 
   return `
     <!-- 기본정보 -->
@@ -2542,13 +2547,10 @@ function buildDeliveryForm() {
       <input id="f-PTNRTY" type="text" value="CT" readonly style="opacity:.6;cursor:not-allowed">
     </div>
     <div class="form-group">
-      <label>권역코드</label>
-      <input id="f-OWNRKY" type="text" value="KN" readonly style="opacity:.6;cursor:not-allowed">
-    </div>
-    <div class="form-group">
       <label>권역</label>
       <select id="f-AREA_CD">
         <option value="">선택</option>
+        ${regionOpts}
       </select>
     </div>
 
@@ -2716,19 +2718,15 @@ function buildDeliveryForm() {
     </div>
 
   `;
+}
 
+function _dlvFillSelects() {
   // 출하지점 폼 select 옵션 채우기 (WAHMA 기반)
+  const shpList = dlvState.codes['TMS_SHPPOINT'] || [];
   const fWareky = document.getElementById('f-WAREKY');
   if (fWareky) {
     fWareky.innerHTML = '<option value="">선택</option>' +
       shpList.map(o => `<option value="${o.value}">${o.value} — ${o.label}</option>`).join('');
-  }
-  // 권역 폼 select 옵션 채우기 (TMS_REGION 기반)
-  const fAreaCd = document.getElementById('f-AREA_CD');
-  if (fAreaCd) {
-    fAreaCd.innerHTML = '<option value="">선택</option>' +
-      (dlvState.codes['TMS_REGION']||[]).map(o =>
-        `<option value="${o.value}">${o.desc2 ? '['+o.desc2+'] ' : ''}${o.label}</option>`).join('');
   }
 }
 
@@ -3125,7 +3123,6 @@ function fillDeliveryForm(data) {
   setVal('f-FAXTL1', b.FAXTL1);
   setVal('f-EMAIL1', b.EMAIL1);
   setVal('f-PTNRTY', b.PTNRTY || 'CT');
-  setVal('f-OWNRKY', b.OWNRKY || 'KN');
 
   // TMS 상세 (편집 가능)
   setVal('f-WAREKY',       d.WAREKY);
@@ -3185,10 +3182,8 @@ function dlvResetForm() {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
-  ['f-PTNRTY','f-OWNRKY'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = id === 'f-PTNRTY' ? 'CT' : 'KN';
-  });
+  const elPtnrty = document.getElementById('f-PTNRTY');
+  if (elPtnrty) elPtnrty.value = 'CT';
   ['f-ROUTE_CD','f-ITEM_GROUP','f-UNLOAD_TIME','f-AUTO_PLT',
    'f-MAX_HEIGHT','f-INB_TIME_FROM1','f-INB_TIME_TO1'].forEach(id => {
     const el = document.getElementById(id);
@@ -3215,7 +3210,7 @@ async function dlvSave() {
   const payload = {
     PTNRKY:         ptnrky,
     PTNRTY:         document.getElementById('f-PTNRTY')?.value || 'CT',
-    OWNRKY:         document.getElementById('f-OWNRKY')?.value || 'KN',
+    OWNRKY:         'KN',
     WAREKY:         document.getElementById('f-WAREKY')?.value || '',
     ROUTE_CD:       document.getElementById('f-ROUTE_CD')?.value || null,
     ITEM_GROUP:     document.getElementById('f-ITEM_GROUP')?.value || null,
