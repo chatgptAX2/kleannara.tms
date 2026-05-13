@@ -3449,6 +3449,9 @@ function buildVehicleForm() {
     return `<option value="${v}">${v} — ${l}</option>`;
   }).join('');
   const vtypeOpts    = (vhcState.codes['TMS_CARART']||[]).map(o=>`<option value="${o.label}">${o.label}</option>`).join('');
+  const dlvTimeOpts  = (vhcState.codes['TMS_INBOUNDTIME']||[])
+    .slice().sort((a,b)=>parseInt(a.value)-parseInt(b.value))
+    .map(o=>{ const hh=String(parseInt(o.value)).padStart(2,'0'); return `<option value="${hh}:00">${o.label}</option>`; }).join('');
 
   return `
   <!-- 기본정보 섹션 -->
