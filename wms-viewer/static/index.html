@@ -2628,7 +2628,7 @@ function buildDeliveryForm() {
       </div>
     </div>
     <div class="form-group">
-      <label>최대토수</label>
+      <label>최대톤수</label>
       <input id="f-MAX_BOX_QTY" type="number" placeholder="0" min="0">
     </div>
 
@@ -2695,7 +2695,7 @@ function buildDeliveryForm() {
       <input id="f-SINGLE_HEIGHT" type="number" placeholder="0.00" step="0.01">
     </div>
     <div class="form-group">
-      <label>최소납품수량</label>
+      <label>최소납품수량(BOX/KG)</label>
       <input id="f-MIN_QTSIWH" type="number" placeholder="0.00" step="0.01">
     </div>
     <div class="form-group">
@@ -2715,11 +2715,6 @@ function buildDeliveryForm() {
       </div>
     </div>
 
-    <!-- 저장 버튼 -->
-    <div class="dlv-form-actions">
-      <button class="dlv-btn success" onclick="dlvSave()">💾 저장</button>
-      <button class="dlv-btn" onclick="dlvResetForm()">🗑 초기화</button>
-    </div>
   `;
 
   // 출하지점 폼 select 옵션 채우기 (WAHMA 기반)
@@ -2733,7 +2728,7 @@ function buildDeliveryForm() {
   if (fAreaCd) {
     fAreaCd.innerHTML = '<option value="">선택</option>' +
       (dlvState.codes['TMS_REGION']||[]).map(o =>
-        `<option value="${o.value}">${o.value} — ${o.label}</option>`).join('');
+        `<option value="${o.value}">${o.desc2 ? '['+o.desc2+'] ' : ''}${o.label}</option>`).join('');
   }
 }
 
@@ -4452,7 +4447,7 @@ const SQL_EXAMPLES = [
   {label:'[TMS] 차량 마스터 전체',  sql:`SELECT *\nFROM VHCMA\nORDER BY VEHICLE_NO\nLIMIT 50`},
   {label:'[TMS] 권역별 납품처 집계',sql:`SELECT AREA_CD as 권역,\n  COUNT(*) as 납품처수,\n  AVG(UNLOAD_TIME) as 평균하차시간,\n  SUM(CASE WHEN AUTO_ALLOC_YN='Y' THEN 1 ELSE 0 END) as 자동배차수\nFROM BZPTN_DETAIL\nGROUP BY AREA_CD\nORDER BY 납품처수 DESC`},
   {label:'[TMS] 운송사별 차량현황', sql:`SELECT CARRIER as 운송사,\n  VEHICLE_CLASS as 차형,\n  COUNT(*) as 차량수,\n  SUM(PALLET_QTY) as 총파렛트수,\n  SUM(LOAD_WEIGHT) as 총적재중량\nFROM VHCMA\nGROUP BY CARRIER, VEHICLE_CLASS\nORDER BY 운송사, 차량수 DESC`},
-  {label:'[TMS] 납품처+거래처 조인',sql:`SELECT b.PTNRKY, bp.NAME01 as 거래처명, b.AREA_CD as 권역,\n  b.ROUTE_CD as 유통경로, b.UNLOAD_TIME as 하차시간,\n  b.MAX_BOX_QTY as 최대토수, b.AUTO_ALLOC_YN as 자동배차,\n  b.LATITUDE as 위도, b.LONGITUDE as 경도\nFROM BZPTN_DETAIL b\nLEFT JOIN BZPTN bp ON b.PTNRKY=bp.PTNRKY AND bp.PTNRTY='CT'\nORDER BY b.AREA_CD, b.PTNRKY`},
+  {label:'[TMS] 납품처+거래처 조인',sql:`SELECT b.PTNRKY, bp.NAME01 as 거래처명, b.AREA_CD as 권역,\n  b.ROUTE_CD as 유통경로, b.UNLOAD_TIME as 하차시간,\n  b.MAX_BOX_QTY as 최대톤수, b.AUTO_ALLOC_YN as 자동배차,\n  b.LATITUDE as 위도, b.LONGITUDE as 경도\nFROM BZPTN_DETAIL b\nLEFT JOIN BZPTN bp ON b.PTNRKY=bp.PTNRKY AND bp.PTNRTY='CT'\nORDER BY b.AREA_CD, b.PTNRKY`},
   {label:'[TMS] 경로별 비용 전체',sql:`SELECT SHPPT, ROUTE, PTNRKY, CARCLASS, COST, UNIT, DATE_START, DATE_END\nFROM ROUTE_COST\nORDER BY ROUTE, PTNRKY, CARCLASS\nLIMIT 200`},
   {label:'[TMS] 경로별 평균비용',sql:`SELECT ROUTE,\n  COUNT(DISTINCT PTNRKY) as 납품처수,\n  ROUND(AVG(COST),0) as 평균비용,\n  MIN(COST) as 최저비용,\n  MAX(COST) as 최고비용\nFROM ROUTE_COST\nGROUP BY ROUTE\nORDER BY 평균비용 DESC`},
   {label:'[TMS] 차량톤수별 비용통계',sql:`SELECT CARCLASS as 차량톤수,\n  COUNT(*) as 건수,\n  ROUND(AVG(COST),0) as 평균비용,\n  MIN(COST) as 최저비용,\n  MAX(COST) as 최고비용\nFROM ROUTE_COST\nGROUP BY CARCLASS\nORDER BY CARCLASS`},

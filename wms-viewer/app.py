@@ -765,16 +765,17 @@ def api_codes(cmcdky):
     """공통코드 값 목록 반환 (CMCDKY 기준)"""
     conn = get_conn()
     rows = conn.execute(
-        "SELECT CMCDVL, CDESC1, USARG1, USARG2, USARG3 "
+        "SELECT CMCDVL, CDESC1, CDESC2, USARG1, USARG2, USARG3 "
         "FROM CMCDV WHERE CMCDKY=? ORDER BY CMCDVL", [cmcdky]
     ).fetchall()
     conn.close()
     return jsonify([{
-        "value": r["CMCDVL"],
-        "label": (r["CDESC1"] or "").strip() or r["CMCDVL"],
-        "arg1":  (r["USARG1"] or "").strip(),
-        "arg2":  (r["USARG2"] or "").strip(),
-        "arg3":  (r["USARG3"] or "").strip(),
+        "value":  r["CMCDVL"],
+        "label":  (r["CDESC1"] or "").strip() or r["CMCDVL"],
+        "desc2":  (r["CDESC2"] or "").strip(),
+        "arg1":   (r["USARG1"] or "").strip(),
+        "arg2":   (r["USARG2"] or "").strip(),
+        "arg3":   (r["USARG3"] or "").strip(),
     } for r in rows])
 
 
