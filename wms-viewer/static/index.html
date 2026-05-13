@@ -3286,7 +3286,7 @@ async function renderVehicle() {
   c.innerHTML = `<div class="loading"><div class="spinner"></div>공통코드 로딩 중...</div>`;
 
   // 공통코드 병렬 로드 (CMCDV 기반)
-  const codeKeys = ['SKUG05','TMS_CARKIND','TMS_CARCLASS','TMS_CARRIER','TMS_AXLETYPE','TMS_FLOORTYPE','LOTA02','TMS_REGION'];
+  const codeKeys = ['SKUG05','TMS_CARKIND','TMS_CARCLASS','TMS_CARRIER','TMS_AXLETYPE','TMS_FLOORTYPE','LOTA02','TMS_REGION','TMS_CARART'];
   const results  = await Promise.all(codeKeys.map(k => fetch(`/api/codes/${k}`).then(r=>r.json())));
   codeKeys.forEach((k,i) => vhcState.codes[k] = results[i]);
 
@@ -3317,7 +3317,7 @@ function buildVehicleUI() {
   const fo           = vhcState.filterOpts;
   const regionOpts   = (vhcState.codes['TMS_REGION']||[]).map(o=>
     `<option value="${o.label}">${o.label}</option>`).join('');
-  const vtypeOpts    = (fo.vtypes||[]).map(v=>`<option value="${v}">${v}</option>`).join('');
+  const vtypeOpts    = (vhcState.codes['TMS_CARART']||[]).map(o=>`<option value="${o.label}">${o.label}</option>`).join('');
   const spOpts       = (fo.ship_points||[]).map(o=>{
     const v = o.value||o; const l = o.label||v;
     return `<option value="${v}">${v} — ${l}</option>`;
@@ -3448,7 +3448,7 @@ function buildVehicleForm() {
     const v = o.value||o; const l = o.label||v;
     return `<option value="${v}">${v} — ${l}</option>`;
   }).join('');
-  const vtypeOpts    = (fo.vtypes||[]).map(v=>`<option value="${v}">${v}</option>`).join('');
+  const vtypeOpts    = (vhcState.codes['TMS_CARART']||[]).map(o=>`<option value="${o.label}">${o.label}</option>`).join('');
 
   return `
   <!-- 기본정보 섹션 -->
