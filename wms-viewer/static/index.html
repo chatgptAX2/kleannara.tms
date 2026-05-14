@@ -782,6 +782,9 @@ thead th:hover .th-drag-handle{opacity:.8}
   <div class="nav-item" onclick="showPage('SHPDI')" id="nav-SHPDI">
     <span class="icon">📄</span> 출고문서아이템<span class="cnt" id="cnt-SHPDI">-</span>
   </div>
+  <div class="nav-item" onclick="showPage('shipSchedule')" id="nav-shipSchedule">
+    <span class="icon">📋</span> 출고예정정보
+  </div>
   <div class="nav-section">인터페이스</div>
   <div class="nav-item" onclick="showPage('IFWMS113')" id="nav-IFWMS113">
     <span class="icon">🔄</span> ERP출고오더<span class="cnt" id="cnt-IFWMS113">-</span>
@@ -1000,6 +1003,7 @@ const PAGE_META = {
   MEASI:         { title:'단위구성',          badge:'MEASI',          crumb:['홈','마스터','단위구성'] },
   SHPDH:         { title:'출고문서 헤더',     badge:'SHPDH',          crumb:['홈','출고','출고문서 헤더'] },
   SHPDI:         { title:'출고문서 아이템',   badge:'SHPDI',          crumb:['홈','출고','출고문서 아이템'] },
+  shipSchedule:  { title:'출고예정정보',      badge:'주문정보',        crumb:['홈','출고','출고예정정보'] },
   IFWMS113:      { title:'ERP 출고오더',      badge:'IFWMS113',       crumb:['홈','인터페이스','ERP 출고오더'] },
   BZPTN_DETAIL:  { title:'납품처 상세',       badge:'BZPTN_DETAIL',   crumb:['홈','TMS 배차','납품처 상세'] },
   VHCMA:         { title:'차량 마스터',       badge:'VHCMA',          crumb:['홈','TMS 배차','차량 마스터'] },
@@ -1029,7 +1033,7 @@ const PAGE_ICON = {
   dashboard:'🏠', schema:'🗂️', sql:'💾',
   delivery:'📍', vehicle:'🚛', wahma:'🏭',
   CMCDM:'📋', CMCDV:'📌', SKUMA:'📦', BZPTN:'🏢',
-  MEASI:'📐', SHPDH:'🚚', SHPDI:'📄', IFWMS113:'🔄',
+  MEASI:'📐', SHPDH:'🚚', SHPDI:'📄', shipSchedule:'📋', IFWMS113:'🔄',
   BZPTN_DETAIL:'🗺️', VHCMA:'🚛', ROUTE_COST:'💰',
 };
 
@@ -1160,6 +1164,9 @@ function _doShowPage(p) {
     state.table = p;
     srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderRouteCost();
+  } else if (p === 'shipSchedule') {
+    srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
+    renderShipSchedule();
   } else {
     state.table = p;
     srch.style.display = 'flex'; psize.style.display = 'flex'; toolbar.style.display = 'none';
@@ -4583,6 +4590,400 @@ function fmtDate8(v){
 }
 
 /* ═══════════════════════════════════════════════════════════
+   출고예정정보 (SHIP SCHEDULE)
+═══════════════════════════════════════════════════════════ */
+const shipScheduleState = {
+  page: 1, size: 50, total: 0,
+  params: {},
+  filterOpts: { wareky:[], statit:[], skug05:[], lota02:[] },
+  optsLoaded: false,
+  loading: false,
+};
+
+async function renderShipSchedule() {
+  const c = document.getElementById('content');
+  c.style.overflowY = 'auto';
+
+  /* 필터 옵션 로드 (최초 1회) */
+  if (!shipScheduleState.optsLoaded) {
+    try {
+      const res = await fetch('/api/shipment/schedule/filter-opts');
+      const d   = await res.json();
+      shipScheduleState.filterOpts = d;
+      shipScheduleState.optsLoaded = true;
+    } catch(e) { console.warn('filter-opts 로드 실패', e); }
+  }
+
+  const opts = shipScheduleState.filterOpts;
+
+  /* wareky 옵션 */
+  const warekyOpts = opts.wareky.map(v =>
+    `<option value="${v}">${v}</option>`).join('');
+
+  /* statit 옵션 */
+  const statitOpts = opts.statit.map(o =>
+    `<option value="${o.value}">${o.label}</option>`).join('');
+
+  /* skug05 옵션 */
+  const skug05Opts = opts.skug05.map(o =>
+    `<option value="${o.value}">${o.label}</option>`).join('');
+
+  /* lota02 멀티 체크박스 */
+  const lota02Checks = opts.lota02.map(v =>
+    `<label style="display:inline-flex;align-items:center;gap:3px;margin-right:10px;font-size:12px;cursor:pointer;">
+       <input type="checkbox" class="ss-lota02" value="${v}" checked> ${v}
+     </label>`).join('');
+
+  /* 기본 shpmty 체크박스 */
+  const shpmtyList = [
+    {v:'201', l:'출고지시'}, {v:'205', l:'출고확인'}, {v:'206', l:'피킹완료'},
+    {v:'208', l:'검수완료'}, {v:'221', l:'출하완료'}, {v:'231', l:'납품완료'},
+  ];
+  const shpmtyChecks = shpmtyList.map(o =>
+    `<label style="display:inline-flex;align-items:center;gap:3px;margin-right:10px;font-size:12px;cursor:pointer;">
+       <input type="checkbox" class="ss-shpmty" value="${o.v}" checked> ${o.l}(${o.v})
+     </label>`).join('');
+
+  /* 오늘 ~ 7일 후 기본 날짜 */
+  const today = new Date();
+  const fmt   = d => d.toISOString().slice(0,10).replace(/-/g,'');
+  const d7    = new Date(today); d7.setDate(d7.getDate()+7);
+  const defFrom = fmt(today);
+  const defTo   = fmt(d7);
+
+  c.innerHTML = `
+<div style="padding:16px 20px;max-width:100%;box-sizing:border-box;">
+
+  <!-- 검색 패널 -->
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:16px;">
+    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+      🔍 검색조건
+      <span style="font-weight:400;font-size:11px;color:var(--text3);">출하요청일자 기준 조회</span>
+    </div>
+
+    <!-- 1행: 창고 / 출하요청일자 / 재고번호 -->
+    <div style="display:grid;grid-template-columns:160px 1fr 200px;gap:10px;margin-bottom:10px;align-items:end;">
+      <div>
+        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">창고(WAREKY)</label>
+        <select id="ss-wareky" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;">
+          <option value="">전체</option>
+          ${warekyOpts}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">출하요청일자 (RQSHPD)</label>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <input type="text" id="ss-rqshpd-from" value="${defFrom}" maxlength="8"
+            style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;" placeholder="YYYYMMDD">
+          <span style="color:var(--text3);font-size:12px;">~</span>
+          <input type="text" id="ss-rqshpd-to" value="${defTo}" maxlength="8"
+            style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;" placeholder="YYYYMMDD">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">재고번호 (STKNUM)</label>
+        <input type="text" id="ss-stknum"
+          style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;box-sizing:border-box;" placeholder="전체">
+      </div>
+    </div>
+
+    <!-- 2행: 상태 / 온도구분 / 부서 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;align-items:end;">
+      <div>
+        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">출고상태 (STATIT)</label>
+        <select id="ss-statit" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;">
+          <option value="">전체</option>
+          ${statitOpts}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">온도구분 (SKUG05)</label>
+        <select id="ss-skug05" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;">
+          <option value="">전체</option>
+          ${skug05Opts}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">부서 (DPTNKY)</label>
+        <input type="text" id="ss-dptnky"
+          style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;box-sizing:border-box;" placeholder="전체">
+      </div>
+    </div>
+
+    <!-- 3행: 출하유형(SHPMTY) -->
+    <div style="margin-bottom:10px;">
+      <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:5px;">출하유형 (SHPMTY)</label>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;">${shpmtyChecks}</div>
+    </div>
+
+    <!-- 4행: 로트구분(LOTA02) -->
+    <div style="margin-bottom:14px;">
+      <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:5px;">로트구분 (LOTA02)</label>
+      <div id="ss-lota02-wrap" style="display:flex;flex-wrap:wrap;gap:4px;">${lota02Checks || '<span style="font-size:11px;color:var(--text3);">로드 중...</span>'}</div>
+    </div>
+
+    <!-- 버튼 -->
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button onclick="loadShipSchedule(1)" style="padding:7px 20px;background:var(--primary);color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;">
+        🔍 조회
+      </button>
+      <button onclick="resetShipScheduleSearch()" style="padding:7px 14px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px;">
+        초기화
+      </button>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+        <label style="font-size:11px;color:var(--text2);">페이지당</label>
+        <select id="ss-page-size" onchange="loadShipSchedule(1)"
+          style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;">
+          <option value="30">30건</option>
+          <option value="50" selected>50건</option>
+          <option value="100">100건</option>
+          <option value="200">200건</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- 결과 영역 -->
+  <div id="ss-result-area">
+    <div style="text-align:center;padding:40px;color:var(--text3);font-size:13px;">
+      ⬆ 검색 조건을 입력하고 조회 버튼을 클릭하세요.
+    </div>
+  </div>
+</div>`;
+
+  /* Enter 키 조회 */
+  ['ss-rqshpd-from','ss-rqshpd-to','ss-stknum','ss-dptnky'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('keydown', e => { if (e.key==='Enter') loadShipSchedule(1); });
+  });
+}
+
+function resetShipScheduleSearch() {
+  const today = new Date();
+  const fmt   = d => d.toISOString().slice(0,10).replace(/-/g,'');
+  const d7    = new Date(today); d7.setDate(d7.getDate()+7);
+  const el = id => document.getElementById(id);
+  if (el('ss-wareky'))       el('ss-wareky').value = '';
+  if (el('ss-rqshpd-from')) el('ss-rqshpd-from').value = fmt(today);
+  if (el('ss-rqshpd-to'))   el('ss-rqshpd-to').value   = fmt(d7);
+  if (el('ss-stknum'))      el('ss-stknum').value = '';
+  if (el('ss-statit'))      el('ss-statit').value = '';
+  if (el('ss-skug05'))      el('ss-skug05').value = '';
+  if (el('ss-dptnky'))      el('ss-dptnky').value = '';
+  document.querySelectorAll('.ss-shpmty').forEach(cb => cb.checked = true);
+  document.querySelectorAll('.ss-lota02').forEach(cb => cb.checked = true);
+  document.getElementById('ss-result-area').innerHTML =
+    '<div style="text-align:center;padding:40px;color:var(--text3);font-size:13px;">⬆ 검색 조건을 입력하고 조회 버튼을 클릭하세요.</div>';
+}
+
+async function loadShipSchedule(pg) {
+  if (shipScheduleState.loading) return;
+  const el = id => document.getElementById(id);
+
+  const wareky      = el('ss-wareky')?.value || '';
+  const rqshpdFrom  = el('ss-rqshpd-from')?.value || '';
+  const rqshpdTo    = el('ss-rqshpd-to')?.value   || '';
+  const stknum      = el('ss-stknum')?.value       || '';
+  const statit      = el('ss-statit')?.value       || '';
+  const skug05      = el('ss-skug05')?.value       || '';
+  const dptnky      = el('ss-dptnky')?.value       || '';
+  const size        = parseInt(el('ss-page-size')?.value || '50');
+
+  const shpmtyArr = [...document.querySelectorAll('.ss-shpmty:checked')].map(cb => cb.value);
+  const lota02Arr = [...document.querySelectorAll('.ss-lota02:checked')].map(cb => cb.value);
+
+  const body = {
+    wareky, stknum, statit, skug05, dptnky,
+    rqshpd_from: rqshpdFrom,
+    rqshpd_to:   rqshpdTo,
+    shpmty: shpmtyArr,
+    lota02: lota02Arr,
+    page: pg || 1,
+    size,
+  };
+
+  shipScheduleState.loading = true;
+  shipScheduleState.page    = pg || 1;
+  shipScheduleState.size    = size;
+
+  const area = document.getElementById('ss-result-area');
+  area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3);font-size:13px;">⏳ 조회 중...</div>';
+
+  try {
+    const res  = await fetch('/api/shipment/schedule', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      area.innerHTML = `<div style="padding:20px;color:#e74c3c;font-size:12px;">오류: ${data.error||res.statusText}</div>`;
+      return;
+    }
+    shipScheduleState.total  = data.total;
+    shipScheduleState.params = body;
+    renderShipScheduleResult(data, area);
+  } catch(e) {
+    area.innerHTML = `<div style="padding:20px;color:#e74c3c;font-size:12px;">네트워크 오류: ${e.message}</div>`;
+  } finally {
+    shipScheduleState.loading = false;
+  }
+}
+
+function renderShipScheduleResult(data, area) {
+  const { rows, total, page, size } = data;
+  const totalPages = Math.ceil(total / size) || 1;
+
+  if (!rows || rows.length === 0) {
+    area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3);font-size:13px;">🔍 조회 결과가 없습니다.</div>';
+    return;
+  }
+
+  /* 상태코드 뱃지 색상 */
+  const statColor = {
+    '201':'#3498db','205':'#9b59b6','206':'#e67e22',
+    '208':'#16a085','221':'#27ae60','231':'#7f8c8d',
+  };
+
+  /* 숫자 포매팅 */
+  const fmtN = v => {
+    if (v === null || v === undefined || v === '') return '-';
+    const n = Number(v);
+    if (isNaN(n)) return v;
+    if (n === 0) return '0';
+    return n % 1 === 0 ? n.toLocaleString() : n.toLocaleString(undefined,{maximumFractionDigits:3});
+  };
+  const fmtDate = v => {
+    if (!v || v.trim()==='') return '-';
+    const s = String(v).trim();
+    if (s.length===8) return `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`;
+    return s;
+  };
+
+  /* 상태코드→한글 뱃지 */
+  const statBadge = (code, nm) => {
+    const c = statColor[String(code)] || '#95a5a6';
+    const label = (nm && nm.trim()) ? `${nm}` : String(code||'-');
+    return `<span style="display:inline-block;padding:2px 7px;border-radius:10px;background:${c};color:#fff;font-size:10px;font-weight:600;white-space:nowrap;" title="${code}">${label}</span>`;
+  };
+
+  /* 컬럼 정의 */
+  const cols = [
+    /* ── 기본정보 ── */
+    { key:'RQSHPD',    label:'출하요청일',    fmt: fmtDate,                             w:'90px'  },
+    { key:'STKNUM',    label:'재고번호',       fmt: v=>v||'-',                           w:'80px'  },
+    { key:'SVBELN',    label:'출고오더번호',   fmt: v=>v||'-',                           w:'110px' },
+    { key:'SHPOKY',    label:'출고문서키',     fmt: v=>v||'-',                           w:'110px' },
+    { key:'LOTA02',    label:'로트구분',       fmt: (v,r)=>`${v||'-'}<br><span style="font-size:10px;color:var(--text3);">${(r&&r.LOTA02NM)||''}</span>`,
+                                                                                          w:'90px'  },
+    { key:'STATIT',    label:'상태',           fmt: (v,r)=>statBadge(v, r&&r.STATNM),   w:'70px'  },
+    /* ── 품목 ── */
+    { key:'SKUKEY',    label:'품목코드',       fmt: v=>v||'-',                           w:'105px' },
+    { key:'DESC01',    label:'품목명',         fmt: v=>`<span title="${v||''}">${v||'-'}</span>`,
+                                                                                          w:'160px' },
+    { key:'SKUG05',    label:'온도',           fmt: (v,r)=>`${v||'-'}<br><span style="font-size:10px;color:var(--text3);">${(r&&r.SKUG05NM)||''}</span>`,
+                                                                                          w:'70px'  },
+    /* ── 부서 ── */
+    { key:'DPTNKY',    label:'부서코드',       fmt: v=>v||'-',                           w:'65px'  },
+    { key:'DPTNKYNM',  label:'부서명',         fmt: v=>v||'-',                           w:'120px' },
+    /* ── 수량(원본단위) ── */
+    { key:'UOMKEY',    label:'단위',           fmt: v=>v||'-',                           w:'50px'  },
+    { key:'QTUALO',    label:'출하대상',        fmt: fmtN,  w:'72px',  align:'right' },
+    { key:'QTALOC',    label:'할당',            fmt: fmtN,  w:'65px',  align:'right' },
+    { key:'QTSHPO',    label:'출하오더',        fmt: fmtN,  w:'72px',  align:'right' },
+    { key:'QTSHPD',    label:'출하확정',        fmt: fmtN,  w:'72px',  align:'right' },
+    { key:'QTJCMP',    label:'완료',            fmt: fmtN,  w:'60px',  align:'right' },
+    /* ── 환산수량 ── */
+    { key:'BAG',       label:'BAG',             fmt: fmtN,  w:'62px',  align:'right' },
+    { key:'BOX',       label:'BOX',             fmt: fmtN,  w:'62px',  align:'right' },
+    { key:'PLT',       label:'PLT',             fmt: fmtN,  w:'55px',  align:'right' },
+    { key:'SOK',       label:'SOK',             fmt: fmtN,  w:'55px',  align:'right' },
+    { key:'EA',        label:'EA',              fmt: fmtN,  w:'62px',  align:'right' },
+    { key:'TOT',       label:'KG',              fmt: fmtN,  w:'68px',  align:'right' },
+    { key:'BOXBAG',    label:'BOX/BAG',         fmt: fmtN,  w:'68px',  align:'right' },
+    /* ── BOX 기준 출하수량 ── */
+    { key:'QTUALOBOX', label:'대상BOX',         fmt: fmtN,  w:'68px',  align:'right' },
+    { key:'QTALOCBOX', label:'할당BOX',         fmt: fmtN,  w:'65px',  align:'right' },
+    { key:'QTJCMPBOX', label:'완료BOX',         fmt: fmtN,  w:'65px',  align:'right' },
+    { key:'QTSHPDBOX', label:'출하BOX',         fmt: fmtN,  w:'65px',  align:'right' },
+    /* ── 문서 ── */
+    { key:'DOCUTYNM',  label:'문서유형',        fmt: v=>v||'-',                           w:'75px'  },
+    { key:'LOTA01NM',  label:'납품처유형',      fmt: v=>(v&&v.trim())||'-',               w:'80px'  },
+  ];
+
+  const thead = `<tr>${cols.map(c=>`<th style="position:sticky;top:0;z-index:2;background:var(--surface2);padding:7px 8px;text-align:${c.align||'left'};white-space:nowrap;font-size:11px;font-weight:600;color:var(--text2);border-bottom:2px solid var(--border);min-width:${c.w};max-width:${c.w};">${c.label}</th>`).join('')}</tr>`;
+
+  const tbody = rows.map((r,i) => {
+    const bg = i%2===0 ? '' : 'background:var(--surface2);';
+    const cells = cols.map(c => {
+      const raw = r[c.key];
+      const rendered = c.fmt(raw, r);   // row 전체 전달 (LOTA02NM, STATNM 등 참조용)
+      const align = c.align === 'right' ? 'text-align:right;' : '';
+      const titleVal = String(raw??'').replace(/"/g,'&quot;');
+      return `<td style="${bg}${align}padding:5px 8px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:${c.w};border-bottom:1px solid var(--border);" title="${titleVal}">${rendered}</td>`;
+    }).join('');
+    return `<tr style="transition:.1s;" onmouseover="this.style.background='var(--primary-light,#eef3ff)'" onmouseout="this.style.background=''">${cells}</tr>`;
+  }).join('');
+
+  /* 페이지네이션 */
+  const paginHtml = _buildShipPagination(page, totalPages, total, size);
+
+  area.innerHTML = `
+    <!-- 요약 -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+      <span style="font-size:12px;color:var(--text2);">
+        총 <strong style="color:var(--primary);font-size:14px;">${total.toLocaleString()}</strong>건
+        &nbsp;|&nbsp; ${page}/${totalPages} 페이지
+      </span>
+      <span style="font-size:11px;color:var(--text3);">(현재 ${rows.length}건 표시)</span>
+    </div>
+
+    <!-- 테이블 래퍼 -->
+    <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:12px;">
+      <div style="overflow-x:auto;max-height:calc(100vh - 380px);overflow-y:auto;">
+        <table style="width:max-content;min-width:100%;border-collapse:collapse;">
+          <thead>${thead}</thead>
+          <tbody>${tbody}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 페이지네이션 -->
+    ${paginHtml}
+  `;
+}
+
+function _buildShipPagination(cur, total, totalRows, size) {
+  if (total <= 1) return '';
+  const range = 5;
+  let start = Math.max(1, cur - Math.floor(range/2));
+  let end   = Math.min(total, start + range - 1);
+  if (end - start < range - 1) start = Math.max(1, end - range + 1);
+
+  const btn = (p, label, disabled, active) =>
+    `<button onclick="${disabled?'':`loadShipSchedule(${p})`}"
+      style="padding:5px 10px;border:1px solid ${active?'var(--primary)':'var(--border)'};border-radius:5px;
+             background:${active?'var(--primary)':'var(--surface)'};
+             color:${active?'#fff':'var(--text)'};
+             font-size:12px;cursor:${disabled?'default':'pointer'};
+             opacity:${disabled?'0.4':'1'};"
+      ${disabled?'disabled':''}>${label}</button>`;
+
+  let pages = '';
+  if (start > 1) pages += btn(1,'1',false,false) + (start>2?'<span style="padding:0 4px;color:var(--text3)">…</span>':'');
+  for (let p=start; p<=end; p++) pages += btn(p, p, false, p===cur);
+  if (end < total) pages += (end<total-1?'<span style="padding:0 4px;color:var(--text3)">…</span>':'') + btn(total,total,false,false);
+
+  return `<div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 0;flex-wrap:wrap;">
+    ${btn(1,'◀◀', cur===1, false)}
+    ${btn(cur-1,'◀', cur===1, false)}
+    ${pages}
+    ${btn(cur+1,'▶', cur===total, false)}
+    ${btn(total,'▶▶', cur===total, false)}
+  </div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════
    SCHEMA
 ═══════════════════════════════════════════════════════════ */
 let schemaState = {tbl:'CMCDM'};
@@ -5287,6 +5688,7 @@ function mmgrDefaultConfig() {
     { type:'section', id:'sec-outbound',  label:'출고' },
     { type:'item',    id:'nav-SHPDH',     label:'출고문서헤더',    icon:'🚚', page:'SHPDH',    cnt:true },
     { type:'item',    id:'nav-SHPDI',     label:'출고문서아이템',  icon:'📄', page:'SHPDI',    cnt:true },
+    { type:'item',    id:'nav-shipSchedule', label:'출고예정정보', icon:'📋', page:'shipSchedule', cnt:false },
     { type:'section', id:'sec-interface', label:'인터페이스' },
     { type:'item',    id:'nav-IFWMS113',  label:'ERP출고오더',     icon:'🔄', page:'IFWMS113', cnt:true },
     { type:'section', id:'sec-tms-dlv',   label:'TMS 납품처' },
