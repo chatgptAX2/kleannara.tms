@@ -1164,7 +1164,7 @@ function _doShowPage(p) {
     state.table = p;
     srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderRouteCost();
-  } else if (p === 'shipSchedule') {
+  } else if (p === 'shipSchedule' || p === 'SHPDI') {
     srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderShipSchedule();
   } else {
@@ -4629,6 +4629,18 @@ async function renderShipSchedule() {
   const c = document.getElementById('content');
   c.style.overflowY = 'auto';
 
+  /* 현재 페이지 확인 (shipSchedule / SHPDI 공용) */
+  const _curPage = state.page;
+  const _isShpdi = (_curPage === 'SHPDI');
+
+  /* 페이지 전환 시 결과 초기화 (SHPDI ↔ shipSchedule 상태 오염 방지) */
+  if (shipScheduleState._lastPage && shipScheduleState._lastPage !== _curPage) {
+    shipScheduleState.page   = 1;
+    shipScheduleState.total  = 0;
+    shipScheduleState.params = {};
+  }
+  shipScheduleState._lastPage = _curPage;
+
   /* 필터 옵션 로드 (최초 1회) */
   if (!shipScheduleState.optsLoaded) {
     try {
@@ -4683,7 +4695,7 @@ async function renderShipSchedule() {
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:16px;">
     <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px;">
       🔍 검색조건
-      <span style="font-weight:400;font-size:11px;color:var(--text3);">출하요청일자 기준 조회</span>
+      <span style="font-weight:400;font-size:11px;color:var(--text3);">${_isShpdi ? '출고문서 아이템 — 출하요청일자 기준 조회' : '출하요청일자 기준 조회'}</span>
     </div>
 
     <!-- 1행: 창고 / 출하요청일자 / 재고번호 -->
