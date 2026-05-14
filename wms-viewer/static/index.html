@@ -432,9 +432,9 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .dlv-section-header h3{font-size:12px;font-weight:700;color:var(--text2)}
 .dlv-list-table-wrap{overflow:auto;flex:1;min-height:0}
 .dlv-list-table{border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed}
-.dlv-list-table thead th{position:sticky;top:0;background:var(--th-bg);padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none;cursor:grab}
+.dlv-list-table thead th{position:sticky;top:0;background:var(--th-bg);padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none;cursor:grab;box-sizing:border-box}
 .dlv-list-table thead th .th-cell{padding:6px 10px 6px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px}
-.dlv-list-table thead th .col-rz{position:absolute;right:0;top:0;bottom:0;width:5px;cursor:col-resize;z-index:2;background:transparent}
+.dlv-list-table thead th .col-rz{position:absolute;right:-1px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:10;background:transparent}
 .dlv-list-table thead th .col-rz:hover,.dlv-list-table thead th .col-rz.rz-active{background:var(--primary);opacity:.7}
 .dlv-list-table thead th.tbl-col-dragging{opacity:.35;cursor:grabbing}
 .dlv-list-table thead th.tbl-drag-over-left{box-shadow:inset 3px 0 0 var(--primary)}
@@ -442,7 +442,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .dlv-list-table tbody tr{border-bottom:1px solid var(--tr-border);cursor:pointer}
 .dlv-list-table tbody tr:hover{background:var(--tr-hover)}
 .dlv-list-table tbody tr.selected{background:var(--tr-selected);border-left:3px solid var(--primary)}
-.dlv-list-table tbody td{padding:7px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border);font-size:12px}
+.dlv-list-table tbody td{padding:7px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border);font-size:12px;box-sizing:border-box}
 .dlv-form-wrap{padding:16px 20px}
 .dlv-form{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 12px}
 .dlv-form-section-title{grid-column:1/-1;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;padding:6px 0 2px;border-bottom:1px solid var(--border)}
@@ -499,9 +499,9 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .vhc-section-hdr h3{font-size:12px;font-weight:700;color:var(--text2)}
 .vhc-list-wrap{overflow:auto;flex:1;min-height:0}
 .vhc-table{border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed}
-.vhc-table thead th{position:sticky;top:0;background:var(--th-bg);padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:700;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none;cursor:grab}
+.vhc-table thead th{position:sticky;top:0;background:var(--th-bg);padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:700;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none;cursor:grab;box-sizing:border-box}
 .vhc-table thead th .th-cell{padding:6px 10px 6px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px}
-.vhc-table thead th .col-rz{position:absolute;right:0;top:0;bottom:0;width:5px;cursor:col-resize;z-index:2;background:transparent}
+.vhc-table thead th .col-rz{position:absolute;right:-1px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:10;background:transparent}
 .vhc-table thead th .col-rz:hover,.vhc-table thead th .col-rz.rz-active{background:var(--primary);opacity:.7}
 .vhc-table thead th.tbl-col-dragging{opacity:.35;cursor:grabbing}
 .vhc-table thead th.tbl-drag-over-left{box-shadow:inset 3px 0 0 var(--primary)}
@@ -509,7 +509,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .vhc-table tbody tr{border-bottom:1px solid var(--tr-border);cursor:pointer;transition:.1s}
 .vhc-table tbody tr:hover{background:var(--tr-hover)}
 .vhc-table tbody tr.selected{background:var(--tr-selected-vhc);border-left:3px solid var(--primary)}
-.vhc-table tbody td{padding:6px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border);font-size:12px;vertical-align:middle}
+.vhc-table tbody td{padding:6px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border);font-size:12px;vertical-align:middle;box-sizing:border-box}
 .vhc-pagination{padding:5px 12px;border-top:1px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px}
 /* 차량 등록/수정 폼 */
 .vhc-form-box{flex:1;overflow-y:auto;min-height:0}
@@ -1691,10 +1691,11 @@ const _vhcColW = {}; // 차량 리스트 컬럼 너비 저장
 (function(){
   let _dragging = false;
   let _colId    = null;
-  let _tblSel   = null;   // '.dlv-list-table' | '.vhc-list-table'
+  let _tblSel   = null;
   let _startX   = 0;
   let _startW   = 0;
-  let _store    = null;   // _dlvColW or _vhcColW
+  let _store    = null;
+  let _thIdx    = -1;  // mousedown 시점에 인덱스 고정 (mousemove마다 재계산 방지)
 
   window.tableResizerDown = function(e, colId, tableSelector) {
     e.stopPropagation();
@@ -1707,15 +1708,16 @@ const _vhcColW = {}; // 차량 리스트 컬럼 너비 저장
                : _vhcColW;
     _startX    = e.clientX;
 
-    // 현재 th 실제 너비 읽기
+    // mousedown 시점의 실제 렌더링 너비를 기준값으로 사용
     const th = document.querySelector(`${tableSelector} thead th[data-rzid="${colId}"]`);
-    _startW = th ? th.getBoundingClientRect().width : (_store[colId] || 100);
+    _startW  = th ? th.getBoundingClientRect().width : (_store[colId] || 100);
+    _thIdx   = th ? [...th.parentElement.children].indexOf(th) : -1;
 
     // 활성 핸들 표시
-    document.querySelectorAll(`${tableSelector} .col-rz`).forEach(r => r.classList.remove('rz-active'));
+    document.querySelectorAll(`${tableSelector} thead .col-rz`).forEach(r => r.classList.remove('rz-active'));
     if (th) th.querySelector('.col-rz')?.classList.add('rz-active');
 
-    document.body.style.cursor = 'col-resize';
+    document.body.style.cursor     = 'col-resize';
     document.body.style.userSelect = 'none';
     document.addEventListener('mousemove', _onMove);
     document.addEventListener('mouseup',   _onUp);
@@ -1723,26 +1725,49 @@ const _vhcColW = {}; // 차량 리스트 컬럼 너비 저장
 
   function _onMove(e) {
     if (!_dragging || !_colId || !_tblSel) return;
-    const newW = Math.max(40, _startW + (e.clientX - _startX));
+    const newW = Math.max(36, _startW + (e.clientX - _startX));
+
+    // ① store 갱신
     _store[_colId] = newW;
 
-    // th 너비 적용
+    // ② th: width / min-width / max-width 모두 고정
     const th = document.querySelector(`${_tblSel} thead th[data-rzid="${_colId}"]`);
-    if (th) { th.style.width = newW + 'px'; th.style.minWidth = newW + 'px'; }
-
-    // 같은 인덱스의 tbody td 너비 적용
     if (th) {
-      const thIdx = [...th.parentElement.children].indexOf(th);
+      th.style.width    = newW + 'px';
+      th.style.minWidth = newW + 'px';
+      th.style.maxWidth = newW + 'px';
+    }
+
+    // ③ 같은 인덱스 td: width / min-width / max-width 모두 고정
+    //    min-width 누락 시 table-layout:fixed여도 td가 수축하는 문제 방지
+    if (_thIdx >= 0) {
       document.querySelectorAll(`${_tblSel} tbody tr`).forEach(tr => {
-        const td = tr.children[thIdx];
-        if (td) { td.style.width = newW + 'px'; td.style.maxWidth = newW + 'px'; }
+        const td = tr.children[_thIdx];
+        if (td) {
+          td.style.width    = newW + 'px';
+          td.style.minWidth = newW + 'px';
+          td.style.maxWidth = newW + 'px';
+        }
       });
+    }
+
+    // ④ 테이블 전체 너비 = 모든 th 너비 합산
+    //    열을 늘려도 다른 열이 줄지 않도록 overflow:auto 래퍼가 스크롤 담당
+    const tbl = document.querySelector(_tblSel);
+    if (tbl) {
+      let total = 0;
+      tbl.querySelectorAll('thead th').forEach(t => {
+        total += parseFloat(t.style.width) || t.getBoundingClientRect().width;
+      });
+      tbl.style.width    = total + 'px';
+      tbl.style.minWidth = total + 'px';
     }
   }
 
   function _onUp() {
     _dragging = false;
-    document.body.style.cursor    = '';
+    _thIdx    = -1;
+    document.body.style.cursor     = '';
     document.body.style.userSelect = '';
     document.querySelectorAll('.col-rz').forEach(r => r.classList.remove('rz-active'));
     document.removeEventListener('mousemove', _onMove);
@@ -3150,7 +3175,7 @@ function renderDeliveryList(data) {
     const sortCls = isSortable ? `sort-th${isAsc?' sort-asc':isDesc?' sort-desc':''}` : '';
     const onDblClick = isSortable ? `ondblclick="dlvSortBy('${c.sk}')"` : '';
     const handle = c.id !== 'dlv-c7' ? `<span class="tbl-drag-handle" title="드래그하여 순서 변경">⠿</span>` : '';
-    return `<th data-rzid="${c.id}" data-colid="${c.id}" class="${sortCls}" style="width:${c.w}px;min-width:36px;position:sticky;top:0"
+    return `<th data-rzid="${c.id}" data-colid="${c.id}" class="${sortCls}" style="width:${c.w}px;min-width:36px;"
       draggable="true"
       ondragstart="dlvColDragStart(event,'${c.id}')"
       ondragover="dlvColDragOver(event,'${c.id}')"
@@ -4025,7 +4050,7 @@ function renderVehicleList(data) {
     const sortCls = isSortable ? `sort-th${isAsc?' sort-asc':isDesc?' sort-desc':''}` : '';
     const onDblClick = isSortable ? `ondblclick="vhcSortBy('${c.sk}')"` : '';
     const handle = c.id !== 'vhc-c11' ? `<span class="tbl-drag-handle" title="드래그하여 순서 변경">⠿</span>` : '';
-    return `<th data-rzid="${c.id}" data-colid="${c.id}" class="${sortCls}" style="width:${c.w}px;min-width:36px;position:sticky;top:0"
+    return `<th data-rzid="${c.id}" data-colid="${c.id}" class="${sortCls}" style="width:${c.w}px;min-width:36px;"
       draggable="true"
       ondragstart="vhcColDragStart(event,'${c.id}')"
       ondragover="vhcColDragOver(event,'${c.id}')"
