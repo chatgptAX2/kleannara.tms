@@ -1341,5 +1341,317 @@ def api_wahma_delete():
     return jsonify({"ok": True})
 
 
+# ═══════════════════════════════════════════════════════════════
+#  환산단위 헬퍼 함수  (SZF_GET_CONVERT_QTY 대체)
+#  MEASI 기준:
+#    - INDDFU='V' 인 행이 기준단위 (QTPUOM=1 기준)
+#    - 목표단위의 QTPUOM = 기준단위 1개 당 목표단위 수량
+#  환산 공식:
+#    결과 = qty(기준단위 기준 수량) / 목표단위.QTPUOM
+#    단, 입력 uomkey → 기준단위 변환 후 → 목표단위 환산
+# ═══════════════════════════════════════════════════════════════
+
+def _convert_qty(conn, wareky, measky, qty, from_uom, to_uom):
+    """
+    MEASI 테이블을 이용한 단위 환산.
+    qty(from_uom 기준) → to_uom 기준 수량 반환.
+    변환 불가 시 0.0 반환.
+    """
+    if qty is None or qty == 0:
+        return 0.0
+    try:
+        qty = float(qty)
+    except (ValueError, TypeError):
+        return 0.0
+
+    # 동일 단위면 그대로
+    if from_uom == to_uom:
+        return qty
+
+    rows = conn.execute(
+        "SELECT UOMKEY, QTPUOM, INDDFU FROM MEASI WHERE WAREKY=? AND MEASKY=?",
+        (wareky, measky)
+    ).fetchall()
+
+    if not rows:
+        return 0.0
+
+    uom_map = {}   # uomkey → qtpuom (기준단위 대비 배수)
+    base_uom = None
+    base_qtpuom = 1.0
+
+    for r in rows:
+        uk  = r['UOMKEY'] if isinstance(r, dict) else r[0]
+        qtp = r['QTPUOM'] if isinstance(r, dict) else r[1]
+        idf = r['INDDFU'] if isinstance(r, dict) else r[2]
+        # INDDFU='V' 가 기준단위
+        if str(idf).strip() == 'V':
+            base_uom    = uk
+            base_qtpuom = float(qtp) if qtp else 1.0
+        if uk not in uom_map:
+            uom_map[uk] = float(qtp) if qtp else 1.0
+
+    if not uom_map:
+        return 0.0
+
+    # from_uom → 기준단위 수량으로 변환
+    from_rate = uom_map.get(from_uom)
+    to_rate   = uom_map.get(to_uom)
+
+    if from_rate is None or to_rate is None or to_rate == 0:
+        return 0.0
+
+    # qty(from_uom) → 기준단위 환산 → to_uom 환산
+    # MEASI QTPUOM 의미: 해당 단위 1개 = QTPUOM 개의 기준단위
+    # 예) BAG(기준,1), BOX(3), PAL(48)
+    # qty BOX → qty*3 BAG → qty*3/48 PAL
+    base_qty = qty * from_rate   # → 기준단위 수량
+    result   = base_qty / to_rate
+    return round(result, 6)
+
+
+# ─────────────────────────────────────────────────────────────────
+#  출고예정정보(주문정보) 조회 API
+# ─────────────────────────────────────────────────────────────────
+
+@app.route('/api/shipment/schedule', methods=['POST'])
+def api_shipment_schedule():
+    """
+    출고예정정보(주문정보) 조회.
+    원본 쿼리(SZF_GET_CONVERT_QTY) → Python _convert_qty() 함수로 환산.
+    """
+    body    = request.get_json() or {}
+    wareky  = body.get('wareky',  '').strip()
+    rqshpd_from = body.get('rqshpd_from', '').strip()
+    rqshpd_to   = body.get('rqshpd_to',  '').strip()
+    stknum  = body.get('stknum',  '').strip()
+    lota02s = body.get('lota02',  [])   # 플랜트 리스트
+    shpmtys = body.get('shpmty',  [])   # 출하유형 리스트
+    statit  = body.get('statit',  '').strip()
+    skug05  = body.get('skug05',  '').strip()
+    dptnky  = body.get('dptnky',  '').strip()
+    page    = int(body.get('page', 1))
+    size    = int(body.get('size', 100))
+    offset  = (page - 1) * size
+
+    conn = get_conn()
+
+    # ── WHERE 조건 조립 ──────────────────────────────────────────
+    where = ["1=1"]
+    params = []
+
+    if wareky:
+        where.append("SH.WAREKY = ?"); params.append(wareky)
+    if rqshpd_from:
+        where.append("SH.RQSHPD >= ?"); params.append(rqshpd_from)
+    if rqshpd_to:
+        where.append("SH.RQSHPD <= ?"); params.append(rqshpd_to)
+    if stknum:
+        where.append("SI.STKNUM = ?"); params.append(stknum)
+    if statit:
+        where.append("SI.STATIT = ?"); params.append(statit)
+    if skug05:
+        where.append("SI.SKUG05 = ?"); params.append(skug05)
+    if dptnky:
+        where.append("SH.DPTNKY = ?"); params.append(dptnky)
+
+    # 출하유형 (SHPMTY) 다중선택
+    default_shpmty = ['201','205','206','208','221','231']
+    use_shpmty = shpmtys if shpmtys else default_shpmty
+    ph = ','.join('?' * len(use_shpmty))
+    where.append(f"SH.SHPMTY IN ({ph})"); params.extend(use_shpmty)
+
+    # 플랜트 (LOTA02) 다중선택
+    default_lota02 = ['P100','P200','P300','P400']
+    use_lota02 = lota02s if lota02s else default_lota02
+    ph2 = ','.join('?' * len(use_lota02))
+    where.append(f"SI.LOTA02 IN ({ph2})"); params.extend(use_lota02)
+
+    where_sql = " AND ".join(where)
+
+    # ── 기본 쿼리 (환산 컬럼 제외, 먼저 로우 추출) ───────────────
+    base_sql = f"""
+        SELECT
+            SI.STKNUM                                               AS STKNUM,
+            SI.SVBELN                                               AS SVBELN,
+            SI.SHPOKY                                               AS SHPOKY,
+            SH.RQSHPD                                               AS RQSHPD,
+            SH.STATDO                                               AS STATDO,
+            COALESCE(ST.CDESC1,' ')                                 AS STATDONM,
+            COALESCE(ST.USARG1,' ')                                 AS STATDONO,
+            SI.SHPOIT                                               AS SHPOIT,
+            SI.STATIT                                               AS STATIT,
+            COALESCE((SELECT CDESC1 FROM CMCDV
+                      WHERE CMCDKY='STATIT' AND CMCDVL=SI.STATIT),' ') AS STATNM,
+            COALESCE(TRIM(SI.APPOINTPICKING),' ')                   AS APPOINTPICKING,
+            SI.CHGFLG                                               AS CHGFLG,
+            CASE WHEN SI.STATIT='NEW' THEN 'V' ELSE '' END          AS STATUS_NEW,
+            CASE WHEN SI.STATIT IN ('FAL','PAL') THEN 'V' ELSE '' END AS STATUS_ALO,
+            CASE WHEN SI.STATIT IN ('FPC','PPC') THEN 'V' ELSE '' END AS STATUS_PCK,
+            CASE WHEN SI.STATIT IN ('FSH','PSH') THEN 'V' ELSE '' END AS STATUS_SHP,
+            SI.SKUG05                                               AS SKUG05,
+            COALESCE(CD.CDESC1,' ')                                 AS SKUG05NM,
+            SI.SKUKEY                                               AS SKUKEY,
+            SI.DESC01                                               AS DESC01,
+            CASE WHEN SH.SHPMTY='231' THEN COALESCE(SH.PTRCVR,' ')
+                 ELSE COALESCE(SH.DPTNKY,' ') END                  AS DPTNKY,
+            CASE WHEN SH.SHPMTY='231' THEN COALESCE(VD.NAME01,' ')
+                 ELSE COALESCE(CT.NAME01,' ') END                  AS DPTNKYNM,
+            SI.SAPSTS                                               AS SAPSTS,
+            SI.QTSHPO                                               AS QTSHPO,
+            SI.QTYORG                                               AS QTYORG,
+            SI.UOMKEY                                               AS UOMKEY,
+            SI.QTALOC                                               AS QTALOC,
+            (SI.QTSHPO - SI.QTALOC)                                 AS QTUALO,
+            SI.QTJCMP                                               AS QTJCMP,
+            SI.QTSHPD                                               AS QTSHPD,
+            SI.DUOMKY                                               AS DUOMKY,
+            SI.NAME01                                               AS NAME01,
+            M.SKUL01                                                AS SKUL01,
+            SI.LOTA02                                               AS LOTA02,
+            COALESCE((SELECT CDESC1 FROM CMCDV
+                      WHERE CMCDKY='LOTA02' AND CMCDVL=SI.LOTA02),' ') AS LOTA02NM,
+            SI.LOTA01                                               AS LOTA01,
+            ' '                                                     AS LOTA01NM,
+            COALESCE(TRIM(SH.SAP2),' ')                             AS SAP2,
+            SI.LOTA08                                               AS LOTA08,
+            COALESCE((SELECT CDESC1 FROM CMCDV
+                      WHERE CMCDKY='NATNKY' AND CMCDVL=SI.LOTA08),' ') AS LOTA08NM,
+            SI.LOTA07                                               AS LOTA07,
+            SI.LOTA15                                               AS LOTA15,
+            SI.LOTA17                                               AS LOTA17,
+            COALESCE((SELECT NAME01 FROM BZPTN
+                      WHERE OWNRKY=SH.OWNRKY AND PTNRTY='CT'
+                        AND PTNRKY=SI.LOTA09),' ')                  AS LOTA09NM,
+            SH.DOCTXT                                               AS DOCTXT,
+            SI.ALSTKY                                               AS ALSTKY,
+            SH.PRTCHK                                               AS PRTCHK,
+            SI.CREDAT                                               AS CREDAT,
+            SI.CRETIM                                               AS CRETIM,
+            SI.CREUSR                                               AS CREUSR,
+            SI.LMODAT                                               AS LMODAT,
+            SI.LMOTIM                                               AS LMOTIM,
+            SI.LMOUSR                                               AS LMOUSR,
+            SI.TLOTA01                                              AS TLOTA01,
+            ' '                                                     AS TLOTA01NM,
+            SI.TLOTA02                                              AS TLOTA02,
+            COALESCE((SELECT CDESC1 FROM CMCDV
+                      WHERE CMCDKY='LOTA02' AND CMCDVL=SI.TLOTA02),' ') AS TLOTA02NM,
+            SH.DOCUTY                                               AS DOCUTYNM,
+            SH.WAREKY                                               AS WAREKY,
+            SI.MEASKY                                               AS MEASKY
+        FROM SHPDI SI
+        INNER JOIN SHPDH SH ON SH.SHPOKY = SI.SHPOKY
+        LEFT  JOIN BZPTN CT ON CT.OWNRKY=SH.OWNRKY AND CT.PTNRTY='CT' AND CT.PTNRKY=SH.DPTNKY
+        LEFT  JOIN BZPTN VD ON VD.OWNRKY=SH.OWNRKY AND VD.PTNRTY='VD' AND VD.PTNRKY=SH.PTRCVR
+        LEFT  JOIN CMCDV ST ON ST.CMCDKY='STATDO' AND ST.CMCDVL=SH.STATDO
+        LEFT  JOIN CMCDV CD ON CD.CMCDKY='SKUG05' AND CD.CMCDVL=SI.SKUG05
+        INNER JOIN SKUMA M  ON SI.SKUKEY=M.SKUKEY AND SH.OWNRKY=M.OWNRKY
+        WHERE {where_sql}
+        ORDER BY SI.SVBELN, SI.SHPOKY, SI.SHPOIT
+        LIMIT ? OFFSET ?
+    """
+
+    # 전체 건수
+    count_sql = f"""
+        SELECT COUNT(*) FROM SHPDI SI
+        INNER JOIN SHPDH SH ON SH.SHPOKY = SI.SHPOKY
+        LEFT  JOIN SKUMA M  ON SI.SKUKEY=M.SKUKEY AND SH.OWNRKY=M.OWNRKY
+        WHERE {where_sql}
+    """
+
+    try:
+        total = conn.execute(count_sql, params).fetchone()[0]
+        rows  = conn.execute(base_sql, params + [size, offset]).fetchall()
+    except Exception as e:
+        conn.close()
+        return jsonify({"error": str(e)}), 400
+
+    # ── Python 환산단위 계산 ──────────────────────────────────────
+    result = []
+    for r in rows:
+        d = dict(r)
+        wareky_r = d.get('WAREKY','1100')
+        measky   = d.get('MEASKY','')
+        uomkey   = d.get('UOMKEY','')
+        duomky   = d.get('DUOMKY','')
+        qtshpo   = d.get('QTSHPO') or 0
+        qtaloc   = d.get('QTALOC') or 0
+        qtjcmp   = d.get('QTJCMP') or 0
+        qtshpd   = d.get('QTSHPD') or 0
+        qtualo   = qtshpo - qtaloc
+
+        # 환산 기준수량 결정 (원본 쿼리 로직)
+        # 미할당 상태(NEW)이면 qtualo, 아니면 qtaloc
+        is_new_unalloc = (qtualo == qtshpo and d.get('STATIT') == 'NEW')
+        qty_for_calc = qtualo if is_new_unalloc else qtaloc
+
+        def conv(qty, to_uom):
+            return _convert_qty(conn, wareky_r, measky, qty, duomky, to_uom)
+
+        bag_val = conv(qty_for_calc, 'BAG')
+        box_val = conv(qty_for_calc, 'BOX')
+        pal_val = conv(qty_for_calc, 'PAL')
+        sok_val = conv(qty_for_calc, 'SOK')
+        ea_val  = conv(qty_for_calc, 'EA')
+        kg_val  = conv(qty_for_calc, 'KG')
+
+        # BOX/BAG 비율
+        boxbag = round(bag_val / box_val, 4) if box_val and box_val != 0 else 0
+
+        # 박스 환산 (미할당/할당/피킹/출고)
+        def box_conv(qty_v):
+            b = conv(qty_v, 'BAG')
+            bx = conv(qty_v, 'BOX')
+            if duomky != 'BAG' or qty_v == 0:
+                return 0
+            return round(qty_v / bx, 4) if bx and bx != 0 else 0
+
+        d['TOT']        = kg_val
+        d['BOXBAG']     = boxbag
+        d['BAG']        = bag_val
+        d['BOX']        = box_val
+        d['PLT']        = pal_val
+        d['SOK']        = sok_val
+        d['EA']         = ea_val
+        d['QTUALO']     = qtualo
+        d['QTUALOBOX']  = box_conv(qtualo)
+        d['QTALOCBOX']  = box_conv(qtaloc)
+        d['QTJCMPBOX']  = box_conv(qtjcmp)
+        d['QTSHPDBOX']  = box_conv(qtshpd)
+        # 내부 처리용 키 제거
+        d.pop('WAREKY', None)
+        d.pop('MEASKY', None)
+        result.append(d)
+
+    conn.close()
+    return jsonify({"total": total, "page": page, "size": size, "rows": result})
+
+
+@app.route('/api/shipment/schedule/filter-opts', methods=['GET'])
+def api_shipment_filter_opts():
+    """출고예정정보 검색조건 옵션 (WAREKY, STATIT, SKUG05, LOTA02)"""
+    conn = get_conn()
+    wareky_list = [r[0] for r in conn.execute(
+        "SELECT DISTINCT WAREKY FROM SHPDH WHERE WAREKY IS NOT NULL AND WAREKY!='' ORDER BY WAREKY"
+    ).fetchall()]
+    statit_list = conn.execute(
+        "SELECT CMCDVL AS value, CDESC1 AS label FROM CMCDV WHERE CMCDKY='STATIT' ORDER BY CMCDVL"
+    ).fetchall()
+    skug05_list = conn.execute(
+        "SELECT CMCDVL AS value, CDESC1 AS label FROM CMCDV WHERE CMCDKY='SKUG05' ORDER BY CMCDVL"
+    ).fetchall()
+    lota02_list = conn.execute(
+        "SELECT DISTINCT LOTA02 FROM SHPDI WHERE LOTA02 IS NOT NULL AND LOTA02!='' ORDER BY LOTA02"
+    ).fetchall()
+    conn.close()
+    return jsonify({
+        "wareky":  wareky_list,
+        "statit":  [dict(r) for r in statit_list],
+        "skug05":  [dict(r) for r in skug05_list],
+        "lota02":  [r[0] for r in lota02_list],
+    })
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5050, debug=False)
