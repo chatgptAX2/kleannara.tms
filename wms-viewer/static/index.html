@@ -4770,7 +4770,88 @@ async function runSQL(){
       return;
     }
 
-    // DML 결과 (INSERT/UPDATE/DELETE)
+    // ── 다건 실행 결과 ─────────────────────────────────────────────────
+    if(data.multi){
+      const hasDML = data.results.some(r => r.type !== 'SELECT');
+      if(hasDML){
+        try{ const r2=await fetch('/api/tables'); const d2=await r2.json();
+          Object.entries(d2).forEach(([t,info])=>{const el=document.getElementById(`cnt-${t}`);if(el)el.textContent=fmtNum(info.count);}); }catch(e2){}
+      }
+
+      const typeColors = {INSERT:'#22c55e', UPDATE:'#3b82f6', DELETE:'#ef4444', SELECT:'#3b82f6'};
+      const typeIcons  = {INSERT:'➕', UPDATE:'✏️', DELETE:'🗑️', SELECT:'📊'};
+
+      // 상단 요약 배지
+      const allOk = data.error_count === 0;
+      let summaryHtml = `
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;background:${allOk?'#14532d':'#450a0a'};border-bottom:2px solid ${allOk?'#22c55e':'#ef4444'};flex-shrink:0">
+          <span style="font-size:13px;font-weight:700;color:${allOk?'#22c55e':'#ef4444'}">${allOk?'✅':'⚠️'} ${data.total}개 구문 실행</span>
+          <span style="color:#86efac;font-size:11px">성공 ${data.ok_count}건</span>
+          ${data.error_count>0?`<span style="color:#fca5a5;font-size:11px">실패 ${data.error_count}건</span>`:''}
+          ${data.total_affected>0?`<span style="margin-left:auto;font-size:11px;color:#fbbf24;border:1px solid #fbbf24;padding:2px 8px;border-radius:10px">총 ${data.total_affected}행 영향</span>`:''}
+        </div>`;
+
+      // 각 구문 결과
+      let itemsHtml = '';
+      data.results.forEach(r => {
+        const col = typeColors[r.type] || '#94a3b8';
+        const ico = typeIcons[r.type]  || '▶';
+        if(!r.ok){
+          itemsHtml += `
+            <div style="margin:8px 10px;border:1px solid #ef4444;border-radius:6px;overflow:hidden">
+              <div style="display:flex;align-items:center;gap:8px;padding:7px 12px;background:#1c0505">
+                <span style="font-size:10px;color:#94a3b8;font-weight:600;min-width:24px">#${r.index}</span>
+                <span style="font-size:11px;font-weight:700;color:#ef4444">⚠️ ${r.type} 실패</span>
+                <span style="font-size:10px;color:#64748b;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.sql_preview}">${r.sql_preview}</span>
+              </div>
+              <div style="padding:8px 12px;font-size:11px;color:#fca5a5;background:#0f0202">${r.error}</div>
+            </div>`;
+        } else if(r.type === 'SELECT'){
+          // SELECT 결과 테이블
+          let tbl = `<div style="overflow:auto;max-height:200px"><table style="border-collapse:collapse;font-size:11px;min-width:100%"><thead><tr>`;
+          (r.columns||[]).forEach(c => {
+            tbl += `<th style="position:sticky;top:0;z-index:2;background:var(--th-bg);padding:6px 10px;text-align:left;font-size:10px;color:var(--text2);white-space:nowrap;border-right:1px solid var(--border);border-bottom:2px solid var(--border)">${c}</th>`;
+          });
+          tbl += '</tr></thead><tbody>';
+          (r.rows||[]).forEach((row, ri) => {
+            tbl += `<tr style="border-bottom:1px solid var(--tr-border)${ri%2===1?';background:var(--surface2)':''}">`;
+            row.forEach(v => {
+              const s = fmtVal(v); const num = typeof v==='number';
+              tbl += `<td style="padding:5px 10px;${num?'text-align:right;':''}white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border)" title="${String(s).replace(/"/g,'&quot;')}">${s||'-'}</td>`;
+            });
+            tbl += '</tr>';
+          });
+          tbl += '</tbody></table></div>';
+          itemsHtml += `
+            <div style="margin:8px 10px;border:1px solid #1e3a5f;border-radius:6px;overflow:hidden">
+              <div style="display:flex;align-items:center;gap:8px;padding:7px 12px;background:#0f1f33">
+                <span style="font-size:10px;color:#94a3b8;font-weight:600;min-width:24px">#${r.index}</span>
+                <span style="font-size:11px;font-weight:700;color:${col}">${ico} ${r.type}</span>
+                <span style="font-size:10px;color:#64748b;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.sql_preview}">${r.sql_preview}</span>
+                <span style="font-size:10px;color:${col};border:1px solid ${col};padding:2px 7px;border-radius:10px;white-space:nowrap">${r.count}행</span>
+              </div>
+              ${tbl}
+            </div>`;
+        } else {
+          // DML 성공
+          itemsHtml += `
+            <div style="margin:8px 10px;border:1px solid ${col}40;border-radius:6px;overflow:hidden">
+              <div style="display:flex;align-items:center;gap:8px;padding:7px 12px;background:${r.type==='DELETE'?'#1c0505':r.type==='INSERT'?'#052e16':'#0f1f33'}">
+                <span style="font-size:10px;color:#94a3b8;font-weight:600;min-width:24px">#${r.index}</span>
+                <span style="font-size:11px;font-weight:700;color:${col}">${ico} ${r.type}</span>
+                <span style="font-size:11px;color:#cbd5e1;flex:1">${r.message}</span>
+                <span style="font-size:10px;color:${col};border:1px solid ${col};padding:2px 7px;border-radius:10px;white-space:nowrap">${r.affected}행 영향</span>
+                <span style="font-size:10px;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px" title="${r.sql_preview}">${r.sql_preview}</span>
+              </div>
+            </div>`;
+        }
+      });
+
+      wrap.innerHTML = `<div style="display:flex;flex-direction:column;height:100%;min-height:0;overflow:auto">${summaryHtml}${itemsHtml}</div>`;
+      return;
+    }
+
+    // ── 단건 DML 결과 (INSERT/UPDATE/DELETE) ───────────────────────────
     if(data.ok){
       const typeColors = {INSERT:'#22c55e', UPDATE:'#3b82f6', DELETE:'#ef4444'};
       const typeIcons  = {INSERT:'➕', UPDATE:'✏️', DELETE:'🗑️'};
@@ -4791,13 +4872,12 @@ async function runSQL(){
       return;
     }
 
-    // SELECT 결과
+    // ── 단건 SELECT 결과 ───────────────────────────────────────────────
     const {columns, rows} = data;
     if(!rows || rows.length === 0){
       wrap.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text3)">결과가 없습니다 (0행)</div>`;
       return;
     }
-    // SQL 결과: 헤더 고정 + 본문 스크롤 구조
     let html = `
     <div style="display:flex;flex-direction:column;height:100%;min-height:0">
       <div style="padding:6px 12px;font-size:11px;color:var(--text3);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;background:var(--surface2)">

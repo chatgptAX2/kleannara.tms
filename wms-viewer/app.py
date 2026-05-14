@@ -389,40 +389,126 @@ def api_detail(table):
 @app.route('/api/sql', methods=['POST'])
 def api_sql():
     import re, datetime
+
+    def _split_statements(raw):
+        """세미콜론으로 SQL 구문을 분리 (문자열 리터럴 내부 세미콜론 무시)."""
+        stmts = []
+        buf   = []
+        in_sq = False   # 작은따옴표 안
+        in_dq = False   # 큰따옴표 안
+        i = 0
+        while i < len(raw):
+            ch = raw[i]
+            if ch == "'" and not in_dq:
+                in_sq = not in_sq
+            elif ch == '"' and not in_sq:
+                in_dq = not in_dq
+            if ch == ';' and not in_sq and not in_dq:
+                s = ''.join(buf).strip()
+                if s:
+                    stmts.append(s)
+                buf = []
+            else:
+                buf.append(ch)
+            i += 1
+        s = ''.join(buf).strip()
+        if s:
+            stmts.append(s)
+        return stmts
+
     body = request.get_json()
     sql  = (body or {}).get('sql', '').strip()
     if not sql:
         return jsonify({"error":"No SQL provided"}), 400
 
-    first_word = sql.upper().lstrip().split()[0] if sql.strip() else ''
+    stmts = _split_statements(sql)
+    if not stmts:
+        return jsonify({"error":"No SQL provided"}), 400
 
-    # DML (INSERT / UPDATE / DELETE)
-    if first_word in ('INSERT', 'UPDATE', 'DELETE'):
+    # ── 구문이 1개인 경우 기존 방식과 동일하게 처리 ──────────────────────
+    if len(stmts) == 1:
+        single = stmts[0]
+        first_word = single.upper().split()[0] if single.strip() else ''
+
+        if first_word in ('INSERT', 'UPDATE', 'DELETE'):
+            try:
+                conn = get_conn()
+                cur  = conn.execute(single)
+                conn.commit()
+                affected = cur.rowcount
+                conn.close()
+                return jsonify({"ok": True, "type": first_word, "affected": affected,
+                                "message": f"{first_word} 완료 — {affected}행 영향"})
+            except Exception as e:
+                try: conn.close()
+                except: pass
+                return jsonify({"error": str(e)}), 400
+
+        if first_word != 'SELECT':
+            return jsonify({"error": "SELECT / INSERT / UPDATE / DELETE 만 허용됩니다"}), 403
+
         try:
             conn = get_conn()
-            cur  = conn.execute(sql)
-            conn.commit()
-            affected = cur.rowcount
+            cur  = conn.execute(single)
+            cols = [d[0] for d in cur.description]
+            rows = cur.fetchmany(500)
             conn.close()
-            return jsonify({"ok": True, "type": first_word, "affected": affected,
-                            "message": f"{first_word} 완료 — {affected}행 영향"})
+            return jsonify({"columns": cols, "rows":[list(r) for r in rows], "count": len(rows)})
         except Exception as e:
-            try: conn.close()
-            except: pass
             return jsonify({"error": str(e)}), 400
 
-    if first_word != 'SELECT':
-        return jsonify({"error": "SELECT / INSERT / UPDATE / DELETE 만 허용됩니다"}), 403
+    # ── 구문이 2개 이상인 경우: 다건 순차 실행 ───────────────────────────
+    ALLOWED = ('SELECT','INSERT','UPDATE','DELETE')
+    for s in stmts:
+        fw = s.upper().split()[0] if s.strip() else ''
+        if fw not in ALLOWED:
+            return jsonify({"error": f"허용되지 않는 구문 포함: {fw} — SELECT / INSERT / UPDATE / DELETE 만 허용"}), 403
 
+    results  = []   # 각 구문 결과
+    conn = get_conn()
     try:
-        conn = get_conn()
-        cur  = conn.execute(sql)
-        cols = [d[0] for d in cur.description]
-        rows = cur.fetchmany(500)
+        for idx, s in enumerate(stmts, 1):
+            fw = s.upper().split()[0]
+            try:
+                cur = conn.execute(s)
+                if fw == 'SELECT':
+                    cols = [d[0] for d in cur.description]
+                    rows = cur.fetchmany(500)
+                    results.append({
+                        "index": idx, "type": "SELECT", "ok": True,
+                        "columns": cols, "rows": [list(r) for r in rows],
+                        "count": len(rows), "sql_preview": s[:120]
+                    })
+                else:
+                    affected = cur.rowcount
+                    results.append({
+                        "index": idx, "type": fw, "ok": True,
+                        "affected": affected,
+                        "message": f"{fw} 완료 — {affected}행 영향",
+                        "sql_preview": s[:120]
+                    })
+            except Exception as e:
+                conn.rollback()
+                results.append({
+                    "index": idx, "type": fw if s.strip() else "?",
+                    "ok": False, "error": str(e), "sql_preview": s[:120]
+                })
+                # 오류 발생 시 이후 구문 중단
+                break
+        conn.commit()
+    finally:
         conn.close()
-        return jsonify({"columns": cols, "rows":[list(r) for r in rows], "count": len(rows)})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
+
+    total    = len(results)
+    ok_cnt   = sum(1 for r in results if r.get('ok'))
+    err_cnt  = total - ok_cnt
+    total_affected = sum(r.get('affected', 0) for r in results if r.get('ok') and r.get('type') != 'SELECT')
+
+    return jsonify({
+        "multi": True, "results": results,
+        "total": total, "ok_count": ok_cnt, "error_count": err_cnt,
+        "total_affected": total_affected
+    })
 
 
 # ─────────────────────────────────────────────
