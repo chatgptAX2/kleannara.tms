@@ -2656,9 +2656,16 @@ function buildDeliveryForm() {
   const inbTimeOpts    = dlvState.codes['TMS_INBOUNDTIME'].map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
   // TMS_AUTOPLT: CMCDVL=값, CDESC1=표시텍스트 (1~24)
   const autoPltOpts    = (dlvState.codes['TMS_AUTOPLT']||[]).map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
-  // 권역 옵션: value=권역명(CDESC1) 기준 — AREA_CD 컬럼에 저장되는 값과 일치
-  const regionOpts     = (dlvState.codes['TMS_REGION']||[]).map(o=>
-    `<option value="${o.label}">${o.label}</option>`).join('');
+  // 권역 옵션: value=CMCDVL 앞2자리(KEY), 표시=CDESC2(권역명), 중복제거
+  const regionOpts     = (()=>{
+    const seen = new Map();
+    (dlvState.codes['TMS_REGION']||[]).forEach(o=>{
+      const key = String(o.value).substring(0,2);
+      if(!seen.has(key)) seen.set(key, o.desc2||o.label);
+    });
+    return [...seen.entries()].sort((a,b)=>a[0].localeCompare(b[0]))
+      .map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+  })();
 
   return `
     <!-- 기본정보 -->
@@ -3472,8 +3479,16 @@ function buildVehicleUI() {
   const classOpts    = vhcState.codes['TMS_CARCLASS'].map(o=>
     `<option value="${o.label}">${o.label}</option>`).join('');
   const fo           = vhcState.filterOpts;
-  const regionOpts   = (vhcState.codes['TMS_REGION']||[]).map(o=>
-    `<option value="${o.label}">${o.label}</option>`).join('');
+  // 배송구역 옵션: value=CMCDVL 앞2자리(KEY), 표시=CDESC2(권역명), 중복제거
+  const regionOpts   = (()=>{
+    const seen = new Map();
+    (vhcState.codes['TMS_REGION']||[]).forEach(o=>{
+      const key = String(o.value).substring(0,2);
+      if(!seen.has(key)) seen.set(key, o.desc2||o.label);
+    });
+    return [...seen.entries()].sort((a,b)=>a[0].localeCompare(b[0]))
+      .map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+  })();
   const vtypeOpts    = (vhcState.codes['TMS_CARART']||[]).map(o=>`<option value="${o.label}">${o.label}</option>`).join('');
   const spOpts       = (fo.ship_points||[]).map(o=>{
     const v = o.value||o; const l = o.label||v;
@@ -3599,8 +3614,16 @@ function buildVehicleForm() {
   const floorOpts    = vhcState.codes['TMS_FLOORTYPE'].map(o=>
     `<option value="${o.label}">${o.label}</option>`).join('');
   const fo           = vhcState.filterOpts;
-  const regionOpts   = (vhcState.codes['TMS_REGION']||[]).map(o=>
-    `<option value="${o.label}">${o.label}</option>`).join('');
+  // 배송구역 옵션: value=CMCDVL 앞2자리(KEY), 표시=CDESC2(권역명), 중복제거
+  const regionOpts   = (()=>{
+    const seen = new Map();
+    (vhcState.codes['TMS_REGION']||[]).forEach(o=>{
+      const key = String(o.value).substring(0,2);
+      if(!seen.has(key)) seen.set(key, o.desc2||o.label);
+    });
+    return [...seen.entries()].sort((a,b)=>a[0].localeCompare(b[0]))
+      .map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+  })();
   const spOpts       = (fo.ship_points||[]).map(o=>{
     const v = o.value||o; const l = o.label||v;
     return `<option value="${v}">${v} — ${l}</option>`;
