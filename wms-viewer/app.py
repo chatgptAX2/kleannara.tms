@@ -1424,13 +1424,15 @@ def api_shipment_schedule():
     wareky  = body.get('wareky',  '').strip()
     rqshpd_from = body.get('rqshpd_from', '').strip()
     rqshpd_to   = body.get('rqshpd_to',  '').strip()
-    stknum  = body.get('stknum',  '').strip()
-    svbelns = body.get('svbeln',  [])   # 납품문서번호 다중 리스트
-    lota02s = body.get('lota02',  [])   # 플랜트 리스트
-    shpmtys = body.get('shpmty',  [])   # 출하유형 리스트
-    statit  = body.get('statit',  '').strip()
-    skug05  = body.get('skug05',  '').strip()
-    dptnky  = body.get('dptnky',  '').strip()
+    stknum      = body.get('stknum',  '').strip()
+    svbelns     = body.get('svbeln',  [])   # 납품문서번호 다중 리스트
+    lota02s     = body.get('lota02',  [])   # 플랜트 리스트
+    shpmtys     = body.get('shpmty',  [])   # 출하유형 리스트
+    statit      = body.get('statit',  '').strip()
+    skug05      = body.get('skug05',  '').strip()
+    dptnky      = body.get('dptnky',  '').strip()
+    ptnrky      = body.get('ptnrky',  '').strip()   # 납품처 코드
+    alloc_st    = body.get('alloc_status', '').strip()  # 배차상태: 'done'|'notdone'|''(전체)
     page    = int(body.get('page', 1))
     size    = int(body.get('size', 100))
     offset  = (page - 1) * size
@@ -1462,9 +1464,17 @@ def api_shipment_schedule():
         where.append("SI.SKUG05 = ?"); params.append(skug05)
     if dptnky:
         where.append("SH.DPTNKY = ?"); params.append(dptnky)
+    # 납품처 코드 (STKNUM = 납품처코드로 저장되는 구조)
+    if ptnrky:
+        where.append("SI.STKNUM = ?"); params.append(ptnrky)
+    # 배차상태: STKNUM 유무로 판단
+    if alloc_st == 'done':
+        where.append("(SI.STKNUM IS NOT NULL AND TRIM(SI.STKNUM) != '')")
+    elif alloc_st == 'notdone':
+        where.append("(SI.STKNUM IS NULL OR TRIM(SI.STKNUM) = '')")
 
     # 출하유형 (SHPMTY) 다중선택
-    default_shpmty = ['201','205','206','208','221','231']
+    default_shpmty = ['201','205','206','208','221','231']  # 출하유형
     use_shpmty = shpmtys if shpmtys else default_shpmty
     ph = ','.join('?' * len(use_shpmty))
     where.append(f"SH.SHPMTY IN ({ph})"); params.extend(use_shpmty)

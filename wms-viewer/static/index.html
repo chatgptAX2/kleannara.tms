@@ -4742,38 +4742,73 @@ async function renderShipSchedule() {
         </div>
       </div>
 
-      <!-- 납품문서(SVBELN) 다중입력 -->
+      <!-- 납품문서(SVBELN) 팝업 검색 -->
       <div>
         <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">
           납품문서 (SVBELN)
-          <span style="font-weight:400;color:var(--text3);font-size:10px;">여러 건: 쉼표·줄바꿈 구분</span>
+          <span style="font-weight:400;color:var(--text3);font-size:10px;">다중 선택 가능</span>
         </label>
-        <textarea id="ss-svbeln" rows="2"
-          style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;box-sizing:border-box;resize:vertical;min-height:52px;line-height:1.4;"
-          placeholder="예) 823306772&#10;823306773, 823306774"></textarea>
+        <div style="display:flex;gap:4px;align-items:flex-start;">
+          <div style="flex:1;position:relative;">
+            <div id="ss-svbeln-tags"
+              style="min-height:34px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);
+                     font-size:11px;color:var(--text);display:flex;flex-wrap:wrap;gap:3px;align-items:center;cursor:default;"
+              onclick="openSvbelnPopup()">
+              <span id="ss-svbeln-placeholder" style="color:var(--text3);font-size:11px;">전체 (클릭하여 선택)</span>
+            </div>
+          </div>
+          <button type="button" onclick="openSvbelnPopup()"
+            style="flex-shrink:0;padding:0 8px;height:34px;font-size:13px;border-radius:6px;
+                   border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;" title="납품문서 검색">🔍</button>
+          <button type="button" onclick="clearSvbelnTags()"
+            style="flex-shrink:0;padding:0 8px;height:34px;font-size:12px;border-radius:6px;
+                   border:1px solid var(--border);background:var(--surface2);color:var(--text3);cursor:pointer;" title="선택 초기화">✕</button>
+        </div>
       </div>
     </div>
 
-    <!-- 2행: 상태 / 온도구분 / 부서 -->
+    <!-- 2행: 배차상태 / 제품군 / 납품처 -->
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;align-items:end;">
+
+      <!-- 배차상태: STKNUM 유무 라디오 -->
       <div>
-        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">출고상태 (STATIT)</label>
-        <select id="ss-statit" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;">
-          <option value="">전체</option>
-          ${statitOpts}
-        </select>
+        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:5px;">배차상태</label>
+        <div style="display:flex;align-items:center;gap:14px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);">
+          <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+            <input type="radio" name="ss-alloc" value="" checked> 전체
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+            <input type="radio" name="ss-alloc" value="done"> 완료
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+            <input type="radio" name="ss-alloc" value="notdone"> 미완료
+          </label>
+        </div>
       </div>
+
+      <!-- 제품군 (구 온도구분 SKUG05) -->
       <div>
-        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">온도구분 (SKUG05)</label>
+        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">제품군 (SKUG05)</label>
         <select id="ss-skug05" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;">
           <option value="">전체</option>
           ${skug05Opts}
         </select>
       </div>
+
+      <!-- 납품처: 팝업 검색 (구 부서 DPTNKY → STKNUM 기반 납품처코드) -->
       <div>
-        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">부서 (DPTNKY)</label>
-        <input type="text" id="ss-dptnky"
-          style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;box-sizing:border-box;" placeholder="전체">
+        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">납품처</label>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <input id="ss-ptnrky" type="text" readonly
+            style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);
+                   color:var(--text);font-size:12px;cursor:default;" placeholder="전체 (클릭하여 선택)">
+          <button type="button" onclick="openSsPtnrPopup()"
+            style="flex-shrink:0;padding:0 8px;height:32px;font-size:13px;border-radius:6px;
+                   border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;" title="납품처 검색">🔍</button>
+          <button type="button" onclick="clearSsPtnr()"
+            style="flex-shrink:0;padding:0 8px;height:32px;font-size:12px;border-radius:6px;
+                   border:1px solid var(--border);background:var(--surface2);color:var(--text3);cursor:pointer;" title="초기화">✕</button>
+        </div>
       </div>
     </div>
 
@@ -4837,14 +4872,9 @@ async function renderShipSchedule() {
 </div>`;
 
   /* Enter 키 조회 */
-  ['ss-rqshpd-from','ss-rqshpd-to','ss-dptnky'].forEach(id => {
+  ['ss-rqshpd-from','ss-rqshpd-to'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('keydown', e => { if (e.key==='Enter') loadShipSchedule(1); });
-  });
-  /* Ctrl+Enter → 조회 (textarea) */
-  const svbelnEl = document.getElementById('ss-svbeln');
-  if (svbelnEl) svbelnEl.addEventListener('keydown', e => {
-    if (e.key==='Enter' && (e.ctrlKey||e.metaKey)) loadShipSchedule(1);
   });
 
   /* 날짜 텍스트↔달력 동기화 함수 */
@@ -4896,10 +4926,14 @@ function resetShipScheduleSearch() {
   if (el('ss-rqshpd-from-cal')){ el('ss-rqshpd-from-cal').value = fmtH(dM7); }
   if (el('ss-rqshpd-to'))      { el('ss-rqshpd-to').value   = fmt8(dP7); }
   if (el('ss-rqshpd-to-cal'))  { el('ss-rqshpd-to-cal').value   = fmtH(dP7); }
-  if (el('ss-svbeln'))          el('ss-svbeln').value = '';
-  if (el('ss-statit'))          el('ss-statit').value = '';
+  /* 납품문서 팝업 태그 초기화 */
+  clearSvbelnTags();
+  /* 납품처 초기화 */
+  clearSsPtnr();
+  /* 배차상태 전체로 리셋 */
+  const allocAll = document.querySelector('input[name="ss-alloc"][value=""]');
+  if (allocAll) allocAll.checked = true;
   if (el('ss-skug05'))          el('ss-skug05').value = '';
-  if (el('ss-dptnky'))          el('ss-dptnky').value = '';
   document.querySelectorAll('.ss-shpmty').forEach(cb => cb.checked = true);
   const shpmtyAll = el('ss-shpmty-all'); if (shpmtyAll) shpmtyAll.checked = true;
   document.querySelectorAll('.ss-lota02').forEach(cb => cb.checked = true);
@@ -4915,20 +4949,24 @@ async function loadShipSchedule(pg) {
   const wareky     = el('ss-wareky')?.value || '';
   const rqshpdFrom = el('ss-rqshpd-from')?.value || '';
   const rqshpdTo   = el('ss-rqshpd-to')?.value   || '';
-  const statit     = el('ss-statit')?.value       || '';
   const skug05     = el('ss-skug05')?.value       || '';
-  const dptnky     = el('ss-dptnky')?.value       || '';
   const size       = parseInt(el('ss-page-size')?.value || '50');
 
-  /* 납품문서(SVBELN) 다중 파싱: 쉼표·줄바꿈 구분 */
-  const svbelnRaw  = el('ss-svbeln')?.value || '';
-  const svbelnArr  = svbelnRaw.split(/[,\n]+/).map(s=>s.trim()).filter(Boolean);
+  /* 납품문서(SVBELN) 팝업 선택 목록 */
+  const svbelnArr  = (window._ssSvbelnSelected || []).slice();
+
+  /* 납품처 코드 (팝업 선택) */
+  const ptnrky     = el('ss-ptnrky')?.value || '';
+
+  /* 배차상태 라디오 */
+  const allocSt    = document.querySelector('input[name="ss-alloc"]:checked')?.value || '';
 
   const shpmtyArr = [...document.querySelectorAll('.ss-shpmty:checked')].map(cb => cb.value);
   const lota02Arr = [...document.querySelectorAll('.ss-lota02:checked')].map(cb => cb.value);
 
   const body = {
-    wareky, statit, skug05, dptnky,
+    wareky, skug05, ptnrky,
+    alloc_status: allocSt,
     svbeln: svbelnArr,
     rqshpd_from: rqshpdFrom,
     rqshpd_to:   rqshpdTo,
@@ -6210,12 +6248,450 @@ function ptnrPopupSelect(ptnrky, name01) {
   const el = document.getElementById(inputId);
   if (el) {
     el.value = ptnrky;
-    // 입력 표시용 툴팁 (title에 명칭 표시)
     el.title = `${ptnrky} — ${name01}`;
   }
   showToast(`배송납품처${_ptnrPopupTarget}: ${ptnrky} (${name01}) 선택됨`);
   closePtnrPopup();
 }
+</script>
+
+<!-- ═══════════════════════════════════════════════════════
+     SVBELN(납품문서) 다중선택 팝업
+═══════════════════════════════════════════════════════ -->
+<div id="svbeln-popup-overlay"
+  style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9100;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;
+              width:700px;max-width:96vw;height:520px;max-height:92vh;
+              display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.4);">
+
+    <!-- 헤더 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:14px;font-weight:700;color:var(--text);">🔍 납품문서 검색</span>
+        <span id="svbeln-popup-sel-cnt"
+          style="font-size:11px;padding:2px 8px;border-radius:8px;background:var(--primary);color:#fff;display:none;">
+          0건 선택
+        </span>
+      </div>
+      <button onclick="closeSvbelnPopup()"
+        style="background:none;border:none;font-size:18px;color:var(--text3);cursor:pointer;line-height:1;">✕</button>
+    </div>
+
+    <!-- 검색바 -->
+    <div style="display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);flex-shrink:0;align-items:center;">
+      <input id="svbeln-popup-q" type="text"
+        placeholder="납품문서번호(SVBELN) 입력... (공백=전체)"
+        style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;
+               color:var(--text);padding:7px 10px;font-size:12px;"
+        onkeydown="if(event.key==='Enter') svbelnPopupSearch()">
+      <button onclick="svbelnPopupSearch()"
+        style="padding:7px 14px;font-size:12px;border-radius:6px;border:none;background:var(--primary);color:#fff;cursor:pointer;">
+        🔍 조회
+      </button>
+      <button onclick="svbelnPopupClear()"
+        style="padding:7px 10px;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;">
+        ↺
+      </button>
+    </div>
+
+    <!-- 안내 / 카운트 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:4px 16px;flex-shrink:0;font-size:11px;color:var(--text3);">
+      <span id="svbeln-popup-info">납품문서번호를 입력하거나 빈 칸으로 전체 조회하세요</span>
+      <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:var(--text2);">
+        <input type="checkbox" id="svbeln-popup-chk-all" onchange="svbelnPopupToggleAll(this.checked)">
+        현재 페이지 전체선택
+      </label>
+    </div>
+
+    <!-- 결과 테이블 -->
+    <div style="overflow:auto;flex:1;min-height:0;padding:0 16px 8px;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;" id="svbeln-popup-table">
+        <thead>
+          <tr style="position:sticky;top:0;z-index:1;background:var(--surface2);">
+            <th style="width:36px;padding:7px 8px;border-bottom:1px solid var(--border);"></th>
+            <th style="padding:7px 8px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;white-space:nowrap;">납품문서(SVBELN)</th>
+            <th style="padding:7px 8px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;white-space:nowrap;">출하요청일</th>
+            <th style="padding:7px 8px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">품목코드</th>
+            <th style="padding:7px 8px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">품목명</th>
+            <th style="padding:7px 8px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;white-space:nowrap;">재고번호</th>
+          </tr>
+        </thead>
+        <tbody id="svbeln-popup-body">
+          <tr><td colspan="6" style="padding:24px;text-align:center;color:var(--text3);">
+            조회 버튼을 클릭하거나 Enter를 눌러 검색하세요
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 하단: 선택 확인 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:10px 16px;border-top:1px solid var(--border);flex-shrink:0;">
+      <span style="font-size:11px;color:var(--text3);">
+        💡 체크박스로 복수 선택 후 <strong>확인</strong> 버튼을 클릭하세요
+      </span>
+      <div style="display:flex;gap:8px;">
+        <button onclick="svbelnPopupConfirm()"
+          style="padding:7px 20px;font-size:13px;font-weight:600;border-radius:7px;
+                 border:none;background:var(--primary);color:#fff;cursor:pointer;">
+          ✅ 확인
+        </button>
+        <button onclick="closeSvbelnPopup()"
+          style="padding:7px 14px;font-size:12px;border-radius:7px;
+                 border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;">
+          취소
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     납품처 검색 팝업 (출고문서아이템 전용 — ss-ptnrky)
+═══════════════════════════════════════════════════════ -->
+<div id="ss-ptnr-popup-overlay"
+  style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9100;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;
+              width:660px;max-width:95vw;height:400px;max-height:90vh;
+              display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.4);">
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;">
+      <span style="font-size:14px;font-weight:700;color:var(--text);">🔍 납품처 검색</span>
+      <button onclick="closeSsPtnrPopup()"
+        style="background:none;border:none;font-size:18px;color:var(--text3);cursor:pointer;line-height:1;">✕</button>
+    </div>
+    <div style="display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);flex-shrink:0;align-items:center;">
+      <input id="ss-ptnr-popup-q" type="text"
+        placeholder="납품처 코드 또는 명칭 검색..."
+        style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;
+               color:var(--text);padding:7px 10px;font-size:12px;"
+        oninput="ssPtnrPopupSearch()" onkeydown="if(event.key==='Enter') ssPtnrPopupSearch()">
+      <button onclick="ssPtnrPopupSearch()"
+        style="padding:7px 14px;font-size:12px;border-radius:6px;border:none;background:var(--primary);color:#fff;cursor:pointer;">
+        🔍 조회
+      </button>
+      <button onclick="document.getElementById('ss-ptnr-popup-q').value=''; ssPtnrPopupSearch();"
+        style="padding:7px 10px;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;">
+        ↺
+      </button>
+    </div>
+    <div id="ss-ptnr-popup-info"
+      style="padding:4px 16px;font-size:11px;color:var(--text3);flex-shrink:0;"></div>
+    <div style="overflow:auto;flex:1;min-height:0;padding:0 16px 12px;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead>
+          <tr style="position:sticky;top:0;z-index:1;background:var(--surface2);">
+            <th style="padding:7px 8px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;white-space:nowrap;">납품처코드</th>
+            <th style="padding:7px 8px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">납품처명</th>
+            <th style="padding:7px 8px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;white-space:nowrap;">권역</th>
+            <th style="padding:7px 8px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;white-space:nowrap;">출하지점</th>
+          </tr>
+        </thead>
+        <tbody id="ss-ptnr-popup-body">
+          <tr><td colspan="4" style="padding:20px;text-align:center;color:var(--text3);">검색어를 입력하세요</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="padding:8px 16px;border-top:1px solid var(--border);flex-shrink:0;font-size:11px;color:var(--text3);">
+      💡 행을 클릭하면 납품처가 선택됩니다
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   SVBELN 다중선택 팝업 JS
+═══════════════════════════════════════════════════════ */
+window._ssSvbelnSelected = [];   // 선택된 SVBELN 배열 (전역)
+let _svbelnPopupRows = [];       // 현재 팝업에 표시 중인 rows
+
+function openSvbelnPopup() {
+  const ov = document.getElementById('svbeln-popup-overlay');
+  ov.style.display = 'flex';
+  const qEl = document.getElementById('svbeln-popup-q');
+  if (qEl) { qEl.value = ''; qEl.focus(); }
+  document.getElementById('svbeln-popup-info').textContent = '조회 버튼을 클릭하거나 Enter를 눌러 검색하세요';
+  _svbelnPopupRows = [];
+  _svbelnRenderBody([]);
+  _svbelnUpdateSelCnt();
+}
+
+function closeSvbelnPopup() {
+  document.getElementById('svbeln-popup-overlay').style.display = 'none';
+}
+
+function svbelnPopupClear() {
+  const qEl = document.getElementById('svbeln-popup-q');
+  if (qEl) { qEl.value = ''; qEl.focus(); }
+}
+
+async function svbelnPopupSearch() {
+  const q    = (document.getElementById('svbeln-popup-q')?.value || '').trim();
+  const tbody = document.getElementById('svbeln-popup-body');
+  const info  = document.getElementById('svbeln-popup-info');
+
+  tbody.innerHTML = '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--text3);">' +
+    '<div class="spinner" style="width:18px;height:18px;margin:auto;"></div></td></tr>';
+  info.textContent = '조회 중...';
+
+  try {
+    /* 납품문서번호 기준 조회: /api/shipment/schedule 에서 svbeln 검색 */
+    const body = {
+      page: 1, size: 200,
+      svbeln: q ? [q] : [],
+    };
+    const res  = await fetch('/api/shipment/schedule', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    const rows = data.rows || [];
+
+    /* SVBELN 기준 중복 제거 */
+    const seen = new Set();
+    const uniq = rows.filter(r => {
+      if (!r.SVBELN || seen.has(r.SVBELN)) return false;
+      seen.add(r.SVBELN); return true;
+    });
+
+    _svbelnPopupRows = uniq;
+    info.textContent = `총 ${uniq.length}건 (최대 200건)`;
+
+    const allChk = document.getElementById('svbeln-popup-chk-all');
+    if (allChk) allChk.checked = false;
+
+    _svbelnRenderBody(uniq);
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="6" style="padding:16px;text-align:center;color:#ef4444;">조회 오류: ' + e.message + '</td></tr>';
+  }
+}
+
+function _svbelnRenderBody(rows) {
+  const tbody = document.getElementById('svbeln-popup-body');
+  if (!rows || rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--text3);">검색 결과가 없습니다</td></tr>';
+    return;
+  }
+  const fmtDate = v => {
+    if (!v || v.trim()==='') return '-';
+    const s = String(v).trim();
+    return s.length===8 ? s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6,8) : s;
+  };
+  tbody.innerHTML = rows.map(r => {
+    const sv = (r.SVBELN||'').replace(/'/g,"\\'");
+    const isChk = window._ssSvbelnSelected.includes(r.SVBELN);
+    return `<tr data-svbeln="${r.SVBELN||''}"
+      style="cursor:pointer;border-bottom:1px solid var(--border);${isChk?'background:var(--primary-light,#eef3ff);':''}"
+      onmouseenter="if(!this.classList.contains('sv-checked'))this.style.background='var(--surface2)'"
+      onmouseleave="this.style.background=this.classList.contains('sv-checked')?'var(--primary-light,#eef3ff)':''">
+      <td style="padding:6px 8px;text-align:center;" onclick="event.stopPropagation();">
+        <input type="checkbox" class="svbeln-row-chk" value="${r.SVBELN||''}"
+          ${isChk ? 'checked' : ''}
+          onchange="svbelnRowCheck(this)"
+          onclick="event.stopPropagation();">
+      </td>
+      <td style="padding:6px 8px;white-space:nowrap;font-weight:600;color:var(--primary);"
+          onclick="svbelnRowClickSelect(this.closest('tr'))">${r.SVBELN||'-'}</td>
+      <td style="padding:6px 8px;white-space:nowrap;"
+          onclick="svbelnRowClickSelect(this.closest('tr'))">${fmtDate(r.RQSHPD)}</td>
+      <td style="padding:6px 8px;white-space:nowrap;"
+          onclick="svbelnRowClickSelect(this.closest('tr'))">${r.SKUKEY||'-'}</td>
+      <td style="padding:6px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+          onclick="svbelnRowClickSelect(this.closest('tr'))" title="${r.DESC01||''}">${r.DESC01||'-'}</td>
+      <td style="padding:6px 8px;white-space:nowrap;"
+          onclick="svbelnRowClickSelect(this.closest('tr'))">${r.STKNUM||'-'}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* 행 클릭 → 체크박스 토글 */
+function svbelnRowClickSelect(tr) {
+  const chk = tr.querySelector('.svbeln-row-chk');
+  if (chk) { chk.checked = !chk.checked; svbelnRowCheck(chk); }
+}
+
+/* 체크박스 개별 변경 */
+function svbelnRowCheck(chk) {
+  const val = chk.value;
+  const tr  = chk.closest('tr');
+  if (chk.checked) {
+    if (!window._ssSvbelnSelected.includes(val)) window._ssSvbelnSelected.push(val);
+    if (tr) { tr.classList.add('sv-checked'); tr.style.background = 'var(--primary-light,#eef3ff)'; }
+  } else {
+    window._ssSvbelnSelected = window._ssSvbelnSelected.filter(v => v !== val);
+    if (tr) { tr.classList.remove('sv-checked'); tr.style.background = ''; }
+  }
+  /* 전체선택 체크박스 상태 갱신 */
+  const allChks = [...document.querySelectorAll('.svbeln-row-chk')];
+  const allChk  = document.getElementById('svbeln-popup-chk-all');
+  if (allChk) allChk.checked = allChks.length > 0 && allChks.every(c => c.checked);
+  _svbelnUpdateSelCnt();
+}
+
+/* 현재 페이지 전체선택 */
+function svbelnPopupToggleAll(checked) {
+  document.querySelectorAll('.svbeln-row-chk').forEach(chk => {
+    chk.checked = checked;
+    svbelnRowCheck(chk);
+  });
+}
+
+/* 선택 카운트 뱃지 갱신 */
+function _svbelnUpdateSelCnt() {
+  const cnt  = window._ssSvbelnSelected.length;
+  const badge = document.getElementById('svbeln-popup-sel-cnt');
+  if (badge) {
+    badge.textContent = `${cnt}건 선택`;
+    badge.style.display = cnt > 0 ? 'inline-block' : 'none';
+  }
+  /* 검색 조건 창의 태그 박스도 갱신 */
+  _svbelnRefreshTags();
+}
+
+/* 태그 박스 갱신 (팝업 닫힌 상태에서도 호출됨) */
+function _svbelnRefreshTags() {
+  const wrap = document.getElementById('ss-svbeln-tags');
+  const ph   = document.getElementById('ss-svbeln-placeholder');
+  if (!wrap) return;
+  const sel  = window._ssSvbelnSelected;
+  /* 기존 태그 제거 (placeholder 제외) */
+  [...wrap.children].forEach(c => { if (c !== ph) c.remove(); });
+  if (sel.length === 0) {
+    if (ph) ph.style.display = '';
+    return;
+  }
+  if (ph) ph.style.display = 'none';
+  sel.forEach(v => {
+    const tag = document.createElement('span');
+    tag.style.cssText = 'display:inline-flex;align-items:center;gap:3px;padding:2px 7px;' +
+      'border-radius:10px;background:var(--primary);color:#fff;font-size:11px;font-weight:600;white-space:nowrap;';
+    tag.innerHTML = `${v} <span style="cursor:pointer;font-size:12px;margin-left:2px;" onclick="svbelnRemoveTag('${v}')">✕</span>`;
+    wrap.appendChild(tag);
+  });
+}
+
+/* 태그 개별 삭제 */
+function svbelnRemoveTag(v) {
+  window._ssSvbelnSelected = window._ssSvbelnSelected.filter(x => x !== v);
+  _svbelnRefreshTags();
+  _svbelnUpdateSelCnt();
+}
+
+/* 전체 초기화 */
+function clearSvbelnTags() {
+  window._ssSvbelnSelected = [];
+  _svbelnRefreshTags();
+  _svbelnUpdateSelCnt();
+}
+
+/* 확인 버튼 → 팝업 닫기 */
+function svbelnPopupConfirm() {
+  closeSvbelnPopup();
+  const cnt = window._ssSvbelnSelected.length;
+  if (cnt > 0) showToast(`납품문서 ${cnt}건 선택됨`);
+}
+
+/* ESC / 오버레이 클릭으로 닫기 */
+document.getElementById('svbeln-popup-overlay').addEventListener('click', function(e) {
+  if (e.target === this) closeSvbelnPopup();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const ov = document.getElementById('svbeln-popup-overlay');
+    if (ov && ov.style.display !== 'none') closeSvbelnPopup();
+  }
+});
+
+/* ═══════════════════════════════════════════════════════
+   납품처 팝업 (출고문서아이템 전용: ss-ptnrky)
+═══════════════════════════════════════════════════════ */
+let _ssPtnrTimer = null;
+
+function openSsPtnrPopup() {
+  const ov = document.getElementById('ss-ptnr-popup-overlay');
+  ov.style.display = 'flex';
+  const qEl = document.getElementById('ss-ptnr-popup-q');
+  if (qEl) { qEl.value = ''; qEl.focus(); }
+  document.getElementById('ss-ptnr-popup-info').textContent = '';
+  document.getElementById('ss-ptnr-popup-body').innerHTML =
+    '<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--text3);">검색어를 입력하세요</td></tr>';
+}
+
+function closeSsPtnrPopup() {
+  document.getElementById('ss-ptnr-popup-overlay').style.display = 'none';
+}
+
+function clearSsPtnr() {
+  const el = document.getElementById('ss-ptnrky');
+  if (el) { el.value = ''; el.title = ''; }
+}
+
+function ssPtnrPopupSearch() {
+  clearTimeout(_ssPtnrTimer);
+  _ssPtnrTimer = setTimeout(_ssPtnrDoSearch, 280);
+}
+
+async function _ssPtnrDoSearch() {
+  const q     = (document.getElementById('ss-ptnr-popup-q')?.value || '').trim();
+  const tbody = document.getElementById('ss-ptnr-popup-body');
+  const info  = document.getElementById('ss-ptnr-popup-info');
+
+  tbody.innerHTML = '<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--text3);">' +
+    '<div class="spinner" style="width:18px;height:18px;margin:auto;"></div></td></tr>';
+
+  try {
+    const params = new URLSearchParams({ page: 1, size: 100 });
+    if (q) params.set('ptnrky', q);
+    const res  = await fetch(`/api/delivery/list?${params}`);
+    const data = await res.json();
+    const rows = data.rows || [];
+
+    info.textContent = `총 ${rows.length}건 (최대 100건)`;
+
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--text3);">검색 결과가 없습니다</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rows.map(r => `
+      <tr onclick="ssPtnrSelect('${(r.PTNRKY||'').replace(/'/g,"\\'")}','${(r.NAME01||'').replace(/'/g,"\\'")}')"}
+          style="cursor:pointer;border-bottom:1px solid var(--border);"
+          onmouseenter="this.style.background='var(--surface2)'"
+          onmouseleave="this.style.background=''">
+        <td style="padding:7px 8px;white-space:nowrap;font-weight:600;color:var(--primary);">${r.PTNRKY||'-'}</td>
+        <td style="padding:7px 8px;">${r.NAME01||'-'}</td>
+        <td style="padding:7px 8px;white-space:nowrap;">${r.AREA_CD||'-'}</td>
+        <td style="padding:7px 8px;white-space:nowrap;">${r.WAREKY||'-'}</td>
+      </tr>`).join('');
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="4" style="padding:16px;text-align:center;color:#ef4444;">조회 오류: ' + e.message + '</td></tr>';
+  }
+}
+
+function ssPtnrSelect(ptnrky, name01) {
+  const el = document.getElementById('ss-ptnrky');
+  if (el) {
+    el.value = ptnrky;
+    el.title = `${ptnrky} — ${name01}`;
+    el.placeholder = `${ptnrky} (${name01})`;
+  }
+  showToast(`납품처 선택: ${ptnrky} (${name01})`);
+  closeSsPtnrPopup();
+}
+
+/* ESC / 오버레이 클릭으로 닫기 */
+document.getElementById('ss-ptnr-popup-overlay').addEventListener('click', function(e) {
+  if (e.target === this) closeSsPtnrPopup();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const ov = document.getElementById('ss-ptnr-popup-overlay');
+    if (ov && ov.style.display !== 'none') closeSsPtnrPopup();
+  }
+});
 </script>
 </body>
 </html>
