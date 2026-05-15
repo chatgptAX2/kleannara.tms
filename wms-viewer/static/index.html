@@ -4665,28 +4665,32 @@ async function renderShipSchedule() {
   const skug05Opts = opts.skug05.map(o =>
     `<option value="${o.value}">${o.label}</option>`).join('');
 
-  /* lota02 멀티 체크박스 */
+  /* lota02 멀티 체크박스 (전체선택 앞에 추가) */
   const lota02Checks = opts.lota02.map(v =>
     `<label style="display:inline-flex;align-items:center;gap:3px;margin-right:10px;font-size:12px;cursor:pointer;">
        <input type="checkbox" class="ss-lota02" value="${v}" checked> ${v}
      </label>`).join('');
 
-  /* 기본 shpmty 체크박스 */
+  /* shpmty 체크박스 — 명칭 변경 + 전체선택 */
   const shpmtyList = [
-    {v:'201', l:'출고지시'}, {v:'205', l:'출고확인'}, {v:'206', l:'피킹완료'},
-    {v:'208', l:'검수완료'}, {v:'221', l:'출하완료'}, {v:'231', l:'납품완료'},
+    {v:'201', l:'판매출고'},  {v:'205', l:'자재요청출고'}, {v:'206', l:'무상출고'},
+    {v:'208', l:'수출출고'},  {v:'221', l:'이송출고'},     {v:'231', l:'반품출고'},
   ];
   const shpmtyChecks = shpmtyList.map(o =>
     `<label style="display:inline-flex;align-items:center;gap:3px;margin-right:10px;font-size:12px;cursor:pointer;">
        <input type="checkbox" class="ss-shpmty" value="${o.v}" checked> ${o.l}(${o.v})
      </label>`).join('');
 
-  /* 오늘 ~ 7일 후 기본 날짜 */
+  /* D-7 ~ D+7 기본 날짜 */
   const today = new Date();
-  const fmt   = d => d.toISOString().slice(0,10).replace(/-/g,'');
-  const d7    = new Date(today); d7.setDate(d7.getDate()+7);
-  const defFrom = fmt(today);
-  const defTo   = fmt(d7);
+  const fmt8  = d => d.toISOString().slice(0,10).replace(/-/g,'');   /* YYYYMMDD */
+  const fmtH  = d => d.toISOString().slice(0,10);                      /* YYYY-MM-DD (input[date]용) */
+  const dM7   = new Date(today); dM7.setDate(dM7.getDate()-7);
+  const dP7   = new Date(today); dP7.setDate(dP7.getDate()+7);
+  const defFrom = fmt8(dM7);
+  const defTo   = fmt8(dP7);
+  const defFromH = fmtH(dM7);
+  const defToH   = fmtH(dP7);
 
   c.innerHTML = `
 <div style="padding:16px 20px;max-width:100%;box-sizing:border-box;">
@@ -4698,8 +4702,8 @@ async function renderShipSchedule() {
       <span style="font-weight:400;font-size:11px;color:var(--text3);">${_isShpdi ? '출고문서 아이템 — 출하요청일자 기준 조회' : '출하요청일자 기준 조회'}</span>
     </div>
 
-    <!-- 1행: 창고 / 출하요청일자 / 재고번호 -->
-    <div style="display:grid;grid-template-columns:160px 1fr 200px;gap:10px;margin-bottom:10px;align-items:end;">
+    <!-- 1행: 창고 / 출하요청일자 / 납품문서(SVBELN) -->
+    <div style="display:grid;grid-template-columns:160px 1fr 220px;gap:10px;margin-bottom:10px;align-items:end;">
       <div>
         <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">창고(WAREKY)</label>
         <select id="ss-wareky" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;">
@@ -4707,20 +4711,46 @@ async function renderShipSchedule() {
           ${warekyOpts}
         </select>
       </div>
+
+      <!-- 출하요청일자: 텍스트 직접입력 + 달력 아이콘 -->  
       <div>
         <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">출하요청일자 (RQSHPD)</label>
         <div style="display:flex;align-items:center;gap:6px;">
-          <input type="text" id="ss-rqshpd-from" value="${defFrom}" maxlength="8"
-            style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;" placeholder="YYYYMMDD">
-          <span style="color:var(--text3);font-size:12px;">~</span>
-          <input type="text" id="ss-rqshpd-to" value="${defTo}" maxlength="8"
-            style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;" placeholder="YYYYMMDD">
+          <!-- FROM -->
+          <div style="position:relative;flex:1;">
+            <input type="text" id="ss-rqshpd-from" value="${defFrom}" maxlength="8"
+              style="width:100%;padding:6px 28px 6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;box-sizing:border-box;"
+              placeholder="YYYYMMDD" oninput="_ssDateSync('from',this.value)">
+            <input type="date" id="ss-rqshpd-from-cal" value="${defFromH}"
+              style="position:absolute;right:4px;top:50%;transform:translateY(-50%);width:18px;height:18px;opacity:0;cursor:pointer;"
+              onchange="_ssCalSync('from',this.value)">
+            <span onclick="document.getElementById('ss-rqshpd-from-cal').showPicker()"
+              style="position:absolute;right:6px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:14px;pointer-events:all;">📅</span>
+          </div>
+          <span style="color:var(--text3);font-size:12px;flex-shrink:0;">~</span>
+          <!-- TO -->
+          <div style="position:relative;flex:1;">
+            <input type="text" id="ss-rqshpd-to" value="${defTo}" maxlength="8"
+              style="width:100%;padding:6px 28px 6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;box-sizing:border-box;"
+              placeholder="YYYYMMDD" oninput="_ssDateSync('to',this.value)">
+            <input type="date" id="ss-rqshpd-to-cal" value="${defToH}"
+              style="position:absolute;right:4px;top:50%;transform:translateY(-50%);width:18px;height:18px;opacity:0;cursor:pointer;"
+              onchange="_ssCalSync('to',this.value)">
+            <span onclick="document.getElementById('ss-rqshpd-to-cal').showPicker()"
+              style="position:absolute;right:6px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:14px;pointer-events:all;">📅</span>
+          </div>
         </div>
       </div>
+
+      <!-- 납품문서(SVBELN) 다중입력 -->
       <div>
-        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">재고번호 (STKNUM)</label>
-        <input type="text" id="ss-stknum"
-          style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;box-sizing:border-box;" placeholder="전체">
+        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">
+          납품문서 (SVBELN)
+          <span style="font-weight:400;color:var(--text3);font-size:10px;">여러 건: 쉼표·줄바꿈 구분</span>
+        </label>
+        <textarea id="ss-svbeln" rows="2"
+          style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;box-sizing:border-box;resize:vertical;min-height:52px;line-height:1.4;"
+          placeholder="예) 823306772&#10;823306773, 823306774"></textarea>
       </div>
     </div>
 
@@ -4747,16 +4777,34 @@ async function renderShipSchedule() {
       </div>
     </div>
 
-    <!-- 3행: 출하유형(SHPMTY) -->
+    <!-- 3행: 출하유형(SHPMTY) + 전체선택 -->
     <div style="margin-bottom:10px;">
       <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:5px;">출하유형 (SHPMTY)</label>
-      <div style="display:flex;flex-wrap:wrap;gap:4px;">${shpmtyChecks}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+        <!-- 전체선택 토글 -->
+        <label style="display:inline-flex;align-items:center;gap:3px;margin-right:6px;font-size:12px;cursor:pointer;
+                      padding:2px 8px;border-radius:10px;border:1px solid var(--primary);color:var(--primary);font-weight:600;">
+          <input type="checkbox" id="ss-shpmty-all" checked
+            onchange="_ssToggleAll('ss-shpmty','ss-shpmty-all')"> 전체
+        </label>
+        <span style="color:var(--border);font-size:14px;margin-right:4px;">|</span>
+        ${shpmtyChecks}
+      </div>
     </div>
 
-    <!-- 4행: 로트구분(LOTA02) -->
+    <!-- 4행: 로트구분(LOTA02) + 전체선택 -->
     <div style="margin-bottom:14px;">
       <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:5px;">로트구분 (LOTA02)</label>
-      <div id="ss-lota02-wrap" style="display:flex;flex-wrap:wrap;gap:4px;">${lota02Checks || '<span style="font-size:11px;color:var(--text3);">로드 중...</span>'}</div>
+      <div id="ss-lota02-wrap" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+        <!-- 전체선택 토글 -->
+        <label style="display:inline-flex;align-items:center;gap:3px;margin-right:6px;font-size:12px;cursor:pointer;
+                      padding:2px 8px;border-radius:10px;border:1px solid var(--primary);color:var(--primary);font-weight:600;">
+          <input type="checkbox" id="ss-lota02-all" checked
+            onchange="_ssToggleAll('ss-lota02','ss-lota02-all')"> 전체
+        </label>
+        <span style="color:var(--border);font-size:14px;margin-right:4px;">|</span>
+        ${lota02Checks || '<span style="font-size:11px;color:var(--text3);">로드 중...</span>'}
+      </div>
     </div>
 
     <!-- 버튼 -->
@@ -4789,26 +4837,73 @@ async function renderShipSchedule() {
 </div>`;
 
   /* Enter 키 조회 */
-  ['ss-rqshpd-from','ss-rqshpd-to','ss-stknum','ss-dptnky'].forEach(id => {
+  ['ss-rqshpd-from','ss-rqshpd-to','ss-dptnky'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('keydown', e => { if (e.key==='Enter') loadShipSchedule(1); });
   });
+  /* Ctrl+Enter → 조회 (textarea) */
+  const svbelnEl = document.getElementById('ss-svbeln');
+  if (svbelnEl) svbelnEl.addEventListener('keydown', e => {
+    if (e.key==='Enter' && (e.ctrlKey||e.metaKey)) loadShipSchedule(1);
+  });
+
+  /* 날짜 텍스트↔달력 동기화 함수 */
+  window._ssDateSync = function(side, val) {
+    const clean = val.replace(/\D/g,'');
+    if (clean.length === 8) {
+      const iso = clean.slice(0,4)+'-'+clean.slice(4,6)+'-'+clean.slice(6,8);
+      const calId = side==='from' ? 'ss-rqshpd-from-cal' : 'ss-rqshpd-to-cal';
+      const cal = document.getElementById(calId);
+      if (cal) cal.value = iso;
+    }
+  };
+  window._ssCalSync = function(side, iso) {
+    if (!iso) return;
+    const yyyymmdd = iso.replace(/-/g,'');
+    const txtId = side==='from' ? 'ss-rqshpd-from' : 'ss-rqshpd-to';
+    const txt = document.getElementById(txtId);
+    if (txt) txt.value = yyyymmdd;
+  };
+
+  /* 전체선택 토글 함수 */
+  window._ssToggleAll = function(cls, allId) {
+    const allCb = document.getElementById(allId);
+    if (!allCb) return;
+    document.querySelectorAll('.'+cls).forEach(cb => cb.checked = allCb.checked);
+  };
+  /* 개별 체크 시 전체선택 상태 갱신 */
+  document.querySelectorAll('.ss-shpmty').forEach(cb => cb.addEventListener('change', () => {
+    const all = [...document.querySelectorAll('.ss-shpmty')];
+    const allCb = document.getElementById('ss-shpmty-all');
+    if (allCb) allCb.checked = all.every(c=>c.checked);
+  }));
+  document.querySelectorAll('.ss-lota02').forEach(cb => cb.addEventListener('change', () => {
+    const all = [...document.querySelectorAll('.ss-lota02')];
+    const allCb = document.getElementById('ss-lota02-all');
+    if (allCb) allCb.checked = all.every(c=>c.checked);
+  }));
 }
 
 function resetShipScheduleSearch() {
   const today = new Date();
-  const fmt   = d => d.toISOString().slice(0,10).replace(/-/g,'');
-  const d7    = new Date(today); d7.setDate(d7.getDate()+7);
+  const fmt8 = d => d.toISOString().slice(0,10).replace(/-/g,'');
+  const fmtH = d => d.toISOString().slice(0,10);
+  const dM7  = new Date(today); dM7.setDate(dM7.getDate()-7);
+  const dP7  = new Date(today); dP7.setDate(dP7.getDate()+7);
   const el = id => document.getElementById(id);
-  if (el('ss-wareky'))       el('ss-wareky').value = '';
-  if (el('ss-rqshpd-from')) el('ss-rqshpd-from').value = fmt(today);
-  if (el('ss-rqshpd-to'))   el('ss-rqshpd-to').value   = fmt(d7);
-  if (el('ss-stknum'))      el('ss-stknum').value = '';
-  if (el('ss-statit'))      el('ss-statit').value = '';
-  if (el('ss-skug05'))      el('ss-skug05').value = '';
-  if (el('ss-dptnky'))      el('ss-dptnky').value = '';
+  if (el('ss-wareky'))          el('ss-wareky').value = '';
+  if (el('ss-rqshpd-from'))    { el('ss-rqshpd-from').value = fmt8(dM7); }
+  if (el('ss-rqshpd-from-cal')){ el('ss-rqshpd-from-cal').value = fmtH(dM7); }
+  if (el('ss-rqshpd-to'))      { el('ss-rqshpd-to').value   = fmt8(dP7); }
+  if (el('ss-rqshpd-to-cal'))  { el('ss-rqshpd-to-cal').value   = fmtH(dP7); }
+  if (el('ss-svbeln'))          el('ss-svbeln').value = '';
+  if (el('ss-statit'))          el('ss-statit').value = '';
+  if (el('ss-skug05'))          el('ss-skug05').value = '';
+  if (el('ss-dptnky'))          el('ss-dptnky').value = '';
   document.querySelectorAll('.ss-shpmty').forEach(cb => cb.checked = true);
+  const shpmtyAll = el('ss-shpmty-all'); if (shpmtyAll) shpmtyAll.checked = true;
   document.querySelectorAll('.ss-lota02').forEach(cb => cb.checked = true);
+  const lota02All = el('ss-lota02-all'); if (lota02All) lota02All.checked = true;
   document.getElementById('ss-result-area').innerHTML =
     '<div style="text-align:center;padding:40px;color:var(--text3);font-size:13px;">⬆ 검색 조건을 입력하고 조회 버튼을 클릭하세요.</div>';
 }
@@ -4817,20 +4912,24 @@ async function loadShipSchedule(pg) {
   if (shipScheduleState.loading) return;
   const el = id => document.getElementById(id);
 
-  const wareky      = el('ss-wareky')?.value || '';
-  const rqshpdFrom  = el('ss-rqshpd-from')?.value || '';
-  const rqshpdTo    = el('ss-rqshpd-to')?.value   || '';
-  const stknum      = el('ss-stknum')?.value       || '';
-  const statit      = el('ss-statit')?.value       || '';
-  const skug05      = el('ss-skug05')?.value       || '';
-  const dptnky      = el('ss-dptnky')?.value       || '';
-  const size        = parseInt(el('ss-page-size')?.value || '50');
+  const wareky     = el('ss-wareky')?.value || '';
+  const rqshpdFrom = el('ss-rqshpd-from')?.value || '';
+  const rqshpdTo   = el('ss-rqshpd-to')?.value   || '';
+  const statit     = el('ss-statit')?.value       || '';
+  const skug05     = el('ss-skug05')?.value       || '';
+  const dptnky     = el('ss-dptnky')?.value       || '';
+  const size       = parseInt(el('ss-page-size')?.value || '50');
+
+  /* 납품문서(SVBELN) 다중 파싱: 쉼표·줄바꿈 구분 */
+  const svbelnRaw  = el('ss-svbeln')?.value || '';
+  const svbelnArr  = svbelnRaw.split(/[,\n]+/).map(s=>s.trim()).filter(Boolean);
 
   const shpmtyArr = [...document.querySelectorAll('.ss-shpmty:checked')].map(cb => cb.value);
   const lota02Arr = [...document.querySelectorAll('.ss-lota02:checked')].map(cb => cb.value);
 
   const body = {
-    wareky, stknum, statit, skug05, dptnky,
+    wareky, statit, skug05, dptnky,
+    svbeln: svbelnArr,
     rqshpd_from: rqshpdFrom,
     rqshpd_to:   rqshpdTo,
     shpmty: shpmtyArr,

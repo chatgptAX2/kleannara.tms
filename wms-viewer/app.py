@@ -1425,6 +1425,7 @@ def api_shipment_schedule():
     rqshpd_from = body.get('rqshpd_from', '').strip()
     rqshpd_to   = body.get('rqshpd_to',  '').strip()
     stknum  = body.get('stknum',  '').strip()
+    svbelns = body.get('svbeln',  [])   # 납품문서번호 다중 리스트
     lota02s = body.get('lota02',  [])   # 플랜트 리스트
     shpmtys = body.get('shpmty',  [])   # 출하유형 리스트
     statit  = body.get('statit',  '').strip()
@@ -1448,6 +1449,13 @@ def api_shipment_schedule():
         where.append("SH.RQSHPD <= ?"); params.append(rqshpd_to)
     if stknum:
         where.append("SI.STKNUM = ?"); params.append(stknum)
+    # 납품문서번호(SVBELN) 다중 검색
+    if svbelns:
+        clean_svbelns = [v.strip() for v in svbelns if v.strip()]
+        if clean_svbelns:
+            ph_sv = ','.join('?' * len(clean_svbelns))
+            where.append(f"SI.SVBELN IN ({ph_sv})")
+            params.extend(clean_svbelns)
     if statit:
         where.append("SI.STATIT = ?"); params.append(statit)
     if skug05:
