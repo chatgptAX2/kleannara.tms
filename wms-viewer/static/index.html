@@ -5121,37 +5121,45 @@ function _ssColDefs() {
     const label = (nm && nm.trim()) ? nm : String(code||'-');
     return `<span style="display:inline-block;padding:2px 7px;border-radius:10px;background:${c};color:#fff;font-size:10px;font-weight:600;white-space:nowrap;" title="${code}">${label}</span>`;
   };
+  /* 출하유형 코드 → 명칭 변환 맵 */
+  const shpmtyNmMap = {
+    '201':'판매출고', '205':'자재요청출고', '206':'무상출고',
+    '208':'수출출고', '221':'이송출고',     '231':'반품출고',
+  };
+
   return [
-    { key:'RQSHPD',    label:'출하요청일',  fmt:fmtDate,                             w:90  },
-    { key:'STKNUM',    label:'재고번호',     fmt:v=>v||'-',                           w:80  },
-    { key:'SVBELN',    label:'출고오더번호', fmt:v=>v||'-',                           w:110 },
-    { key:'SHPOKY',    label:'출고문서키',   fmt:v=>v||'-',                           w:110 },
-    { key:'LOTA02',    label:'로트구분',     fmt:(v,r)=>`${v||'-'}<br><span style="font-size:10px;color:var(--text3);">${(r&&r.LOTA02NM)||''}</span>`, w:90 },
-    { key:'STATIT',    label:'상태',         fmt:(v,r)=>statBadge(v,r&&r.STATNM),    w:70  },
-    { key:'SKUKEY',    label:'품목코드',     fmt:v=>v||'-',                           w:105 },
-    { key:'DESC01',    label:'품목명',       fmt:v=>`<span title="${v||''}">${v||'-'}</span>`, w:160 },
-    { key:'SKUG05',    label:'제품군',       fmt:(v,r)=>`${v||'-'}<br><span style="font-size:10px;color:var(--text3);">${(r&&r.SKUG05NM)||''}</span>`, w:70 },
-    { key:'DPTNKY',    label:'부서코드',     fmt:v=>v||'-',                           w:65  },
-    { key:'DPTNKYNM',  label:'부서명',       fmt:v=>v||'-',                           w:120 },
-    { key:'UOMKEY',    label:'단위',         fmt:v=>v||'-',                           w:50  },
-    { key:'QTUALO',    label:'출하대상',     fmt:fmtN,  w:72,  align:'right' },
-    { key:'QTALOC',    label:'할당',         fmt:fmtN,  w:65,  align:'right' },
-    { key:'QTSHPO',    label:'출하오더',     fmt:fmtN,  w:72,  align:'right' },
-    { key:'QTSHPD',    label:'출하확정',     fmt:fmtN,  w:72,  align:'right' },
-    { key:'QTJCMP',    label:'완료',         fmt:fmtN,  w:60,  align:'right' },
-    { key:'BAG',       label:'BAG',          fmt:fmtN,  w:62,  align:'right' },
-    { key:'BOX',       label:'BOX',          fmt:fmtN,  w:62,  align:'right' },
-    { key:'PLT',       label:'PLT',          fmt:fmtN,  w:55,  align:'right' },
-    { key:'SOK',       label:'SOK',          fmt:fmtN,  w:55,  align:'right' },
-    { key:'EA',        label:'EA',           fmt:fmtN,  w:62,  align:'right' },
-    { key:'TOT',       label:'KG',           fmt:fmtN,  w:68,  align:'right' },
-    { key:'BOXBAG',    label:'BOX/BAG',      fmt:fmtN,  w:68,  align:'right' },
-    { key:'QTUALOBOX', label:'대상BOX',      fmt:fmtN,  w:68,  align:'right' },
-    { key:'QTALOCBOX', label:'할당BOX',      fmt:fmtN,  w:65,  align:'right' },
-    { key:'QTJCMPBOX', label:'완료BOX',      fmt:fmtN,  w:65,  align:'right' },
-    { key:'QTSHPDBOX', label:'출하BOX',      fmt:fmtN,  w:65,  align:'right' },
-    { key:'DOCUTYNM',  label:'문서유형',     fmt:v=>v||'-',                           w:75  },
-    { key:'LOTA01NM',  label:'납품처유형',   fmt:v=>(v&&v.trim())||'-',               w:80  },
+    /* ── 기본정보 ── */
+    { key:'RQSHPD',     label:'출하요청일',   fmt:fmtDate,                             w:90  },
+    { key:'STKNUM',     label:'선적번호',     fmt:v=>v||'-',                           w:90  },
+    { key:'SVBELN',     label:'납품문서번호', fmt:v=>v||'-',                           w:115 },
+    { key:'SHPOKY',     label:'출고문서키',   fmt:v=>v||'-',                           w:110 },
+    { key:'LOTA02',     label:'플랜트',       fmt:(v,r)=>`${v||'-'}<br><span style="font-size:10px;color:var(--text3);">${(r&&r.LOTA02NM)||''}</span>`, w:90 },
+    { key:'STATIT',     label:'상태',         fmt:(v,r)=>statBadge(v,r&&r.STATNM),    w:70  },
+    /* ── 품목 ── */
+    { key:'SKUKEY',     label:'품목코드',     fmt:v=>v||'-',                           w:105 },
+    { key:'DESC01',     label:'품목명',       fmt:v=>`<span title="${v||''}">${v||'-'}</span>`, w:160 },
+    { key:'SKUG05',     label:'제품군',       fmt:(v,r)=>`${v||'-'}<br><span style="font-size:10px;color:var(--text3);">${(r&&r.SKUG05NM)||''}</span>`, w:70 },
+    /* ── 납품처 ── */
+    { key:'DPTNKY',     label:'납품처코드',   fmt:v=>v||'-',                           w:75  },
+    { key:'DPTNKYNM',   label:'납품처명',     fmt:v=>v||'-',                           w:130 },
+    /* ── 단위/수량 ── */
+    { key:'UOMKEY',     label:'단위',         fmt:v=>v||'-',                           w:50  },
+    { key:'QTUALO',     label:'납품수량',     fmt:fmtN,  w:80,  align:'right' },
+    { key:'QTSHPO',     label:'주문수량',     fmt:fmtN,  w:80,  align:'right' },
+    /* ── 환산수량 ── */
+    { key:'BAG',        label:'BAG',          fmt:fmtN,  w:62,  align:'right' },
+    { key:'BOX',        label:'BOX',          fmt:fmtN,  w:62,  align:'right' },
+    { key:'PLT',        label:'PLT',          fmt:fmtN,  w:55,  align:'right' },
+    { key:'SOK',        label:'SOK',          fmt:fmtN,  w:55,  align:'right' },
+    { key:'EA',         label:'EA',           fmt:fmtN,  w:62,  align:'right' },
+    { key:'TOT',        label:'KG',           fmt:fmtN,  w:68,  align:'right' },
+    { key:'BOXBAG',     label:'BOX/BAG',      fmt:fmtN,  w:68,  align:'right' },
+    /* ── BOX 기준 (대상만 유지) ── */
+    { key:'QTUALOBOX',  label:'대상BOX',      fmt:fmtN,  w:68,  align:'right' },
+    /* ── 문서유형 ── */
+    { key:'DOCUTYNM',   label:'문서유형코드', fmt:v=>v||'-',                           w:85  },
+    { key:'_SHPMTY_NM', label:'문서유형명',   fmt:(v,r)=>shpmtyNmMap[String(r.DOCUTYNM||'').trim()]||r.DOCUTYNM||'-', w:100 },
+    { key:'LOTA01NM',   label:'납품처유형',   fmt:v=>(v&&v.trim())||'-',               w:80  },
   ];
 }
 
