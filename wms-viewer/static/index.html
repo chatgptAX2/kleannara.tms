@@ -431,6 +431,21 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .dlv-section-header{padding:7px 14px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .dlv-section-header h3{font-size:12px;font-weight:700;color:var(--text2)}
 .dlv-list-table-wrap{overflow:auto;flex:1;min-height:0}
+/* ── 출고문서아이템 테이블 ── */
+.ss-table-wrap{overflow:auto;max-height:calc(100vh - 380px)}
+.ss-table{border-collapse:collapse;font-size:12px;table-layout:fixed}
+.ss-table thead th{position:sticky;top:0;z-index:2;background:var(--th-bg);padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none;box-sizing:border-box;cursor:pointer}
+.ss-table thead th .th-cell{padding:6px 8px 6px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:3px}
+.ss-table thead th .col-rz{position:absolute;right:-1px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:10;background:transparent}
+.ss-table thead th .col-rz:hover,.ss-table thead th .col-rz.rz-active{background:var(--primary);opacity:.7}
+.ss-table thead th:hover{background:var(--surface2)}
+.ss-table thead th.ss-sort-asc .ss-sort-icon::after{content:'▲'}
+.ss-table thead th.ss-sort-desc .ss-sort-icon::after{content:'▼'}
+.ss-table thead th .ss-sort-icon{font-size:9px;color:var(--primary);flex-shrink:0}
+.ss-table thead th .ss-sort-icon::after{content:'⇅';color:var(--text3);font-size:9px}
+.ss-table tbody tr{border-bottom:1px solid var(--tr-border);transition:.08s}
+.ss-table tbody tr:hover{background:var(--primary-light,#eef3ff)}
+.ss-table tbody td{padding:5px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border);font-size:11px;box-sizing:border-box;vertical-align:middle}
 .dlv-list-table{border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed}
 .dlv-list-table thead th{position:sticky;top:0;background:var(--th-bg);padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none;cursor:grab;box-sizing:border-box}
 .dlv-list-table thead th .th-cell{padding:6px 10px 6px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px}
@@ -1687,6 +1702,7 @@ function colOrderDragEnd(e) {
 ═══════════════════════════════════════════════════════════ */
 const _dlvColW = {}; // 납품처 리스트 컬럼 너비 저장
 const _vhcColW = {}; // 차량 리스트 컬럼 너비 저장
+const _ssColW  = {}; // 출고문서아이템 컬럼 너비 저장
 
 (function(){
   let _dragging = false;
@@ -1705,6 +1721,7 @@ const _vhcColW = {}; // 차량 리스트 컬럼 너비 저장
     _tblSel    = tableSelector;
     _store     = tableSelector === '.dlv-list-table' ? _dlvColW
                : tableSelector === '.wahma-table'    ? _wahmaColW
+               : tableSelector === '.ss-table'       ? _ssColW
                : _vhcColW;
     _startX    = e.clientX;
 
@@ -4623,6 +4640,10 @@ const shipScheduleState = {
   filterOpts: { wareky:[], statit:[], skug05:[], lota02:[] },
   optsLoaded: false,
   loading: false,
+  _lastPage: null,
+  sortKey: '',
+  sortDir: 'asc',
+  currentRows: [],
 };
 
 async function renderShipSchedule() {
@@ -5004,22 +5025,8 @@ async function loadShipSchedule(pg) {
   }
 }
 
-function renderShipScheduleResult(data, area) {
-  const { rows, total, page, size } = data;
-  const totalPages = Math.ceil(total / size) || 1;
-
-  if (!rows || rows.length === 0) {
-    area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3);font-size:13px;">🔍 조회 결과가 없습니다.</div>';
-    return;
-  }
-
-  /* 상태코드 뱃지 색상 */
-  const statColor = {
-    '201':'#3498db','205':'#9b59b6','206':'#e67e22',
-    '208':'#16a085','221':'#27ae60','231':'#7f8c8d',
-  };
-
-  /* 숫자 포매팅 */
+/* ── 출고문서아이템 컬럼 정의 (renderShipScheduleResult / ssSort 공용) ── */
+function _ssColDefs() {
   const fmtN = v => {
     if (v === null || v === undefined || v === '') return '-';
     const n = Number(v);
@@ -5028,82 +5035,98 @@ function renderShipScheduleResult(data, area) {
     return n % 1 === 0 ? n.toLocaleString() : n.toLocaleString(undefined,{maximumFractionDigits:3});
   };
   const fmtDate = v => {
-    if (!v || v.trim()==='') return '-';
+    if (!v || String(v).trim()==='') return '-';
     const s = String(v).trim();
     if (s.length===8) return `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`;
     return s;
   };
-
-  /* 상태코드→한글 뱃지 */
+  const statColor = {'201':'#3498db','205':'#9b59b6','206':'#e67e22','208':'#16a085','221':'#27ae60','231':'#7f8c8d'};
   const statBadge = (code, nm) => {
     const c = statColor[String(code)] || '#95a5a6';
-    const label = (nm && nm.trim()) ? `${nm}` : String(code||'-');
+    const label = (nm && nm.trim()) ? nm : String(code||'-');
     return `<span style="display:inline-block;padding:2px 7px;border-radius:10px;background:${c};color:#fff;font-size:10px;font-weight:600;white-space:nowrap;" title="${code}">${label}</span>`;
   };
-
-  /* 컬럼 정의 */
-  const cols = [
-    /* ── 기본정보 ── */
-    { key:'RQSHPD',    label:'출하요청일',    fmt: fmtDate,                             w:'90px'  },
-    { key:'STKNUM',    label:'재고번호',       fmt: v=>v||'-',                           w:'80px'  },
-    { key:'SVBELN',    label:'출고오더번호',   fmt: v=>v||'-',                           w:'110px' },
-    { key:'SHPOKY',    label:'출고문서키',     fmt: v=>v||'-',                           w:'110px' },
-    { key:'LOTA02',    label:'로트구분',       fmt: (v,r)=>`${v||'-'}<br><span style="font-size:10px;color:var(--text3);">${(r&&r.LOTA02NM)||''}</span>`,
-                                                                                          w:'90px'  },
-    { key:'STATIT',    label:'상태',           fmt: (v,r)=>statBadge(v, r&&r.STATNM),   w:'70px'  },
-    /* ── 품목 ── */
-    { key:'SKUKEY',    label:'품목코드',       fmt: v=>v||'-',                           w:'105px' },
-    { key:'DESC01',    label:'품목명',         fmt: v=>`<span title="${v||''}">${v||'-'}</span>`,
-                                                                                          w:'160px' },
-    { key:'SKUG05',    label:'온도',           fmt: (v,r)=>`${v||'-'}<br><span style="font-size:10px;color:var(--text3);">${(r&&r.SKUG05NM)||''}</span>`,
-                                                                                          w:'70px'  },
-    /* ── 부서 ── */
-    { key:'DPTNKY',    label:'부서코드',       fmt: v=>v||'-',                           w:'65px'  },
-    { key:'DPTNKYNM',  label:'부서명',         fmt: v=>v||'-',                           w:'120px' },
-    /* ── 수량(원본단위) ── */
-    { key:'UOMKEY',    label:'단위',           fmt: v=>v||'-',                           w:'50px'  },
-    { key:'QTUALO',    label:'출하대상',        fmt: fmtN,  w:'72px',  align:'right' },
-    { key:'QTALOC',    label:'할당',            fmt: fmtN,  w:'65px',  align:'right' },
-    { key:'QTSHPO',    label:'출하오더',        fmt: fmtN,  w:'72px',  align:'right' },
-    { key:'QTSHPD',    label:'출하확정',        fmt: fmtN,  w:'72px',  align:'right' },
-    { key:'QTJCMP',    label:'완료',            fmt: fmtN,  w:'60px',  align:'right' },
-    /* ── 환산수량 ── */
-    { key:'BAG',       label:'BAG',             fmt: fmtN,  w:'62px',  align:'right' },
-    { key:'BOX',       label:'BOX',             fmt: fmtN,  w:'62px',  align:'right' },
-    { key:'PLT',       label:'PLT',             fmt: fmtN,  w:'55px',  align:'right' },
-    { key:'SOK',       label:'SOK',             fmt: fmtN,  w:'55px',  align:'right' },
-    { key:'EA',        label:'EA',              fmt: fmtN,  w:'62px',  align:'right' },
-    { key:'TOT',       label:'KG',              fmt: fmtN,  w:'68px',  align:'right' },
-    { key:'BOXBAG',    label:'BOX/BAG',         fmt: fmtN,  w:'68px',  align:'right' },
-    /* ── BOX 기준 출하수량 ── */
-    { key:'QTUALOBOX', label:'대상BOX',         fmt: fmtN,  w:'68px',  align:'right' },
-    { key:'QTALOCBOX', label:'할당BOX',         fmt: fmtN,  w:'65px',  align:'right' },
-    { key:'QTJCMPBOX', label:'완료BOX',         fmt: fmtN,  w:'65px',  align:'right' },
-    { key:'QTSHPDBOX', label:'출하BOX',         fmt: fmtN,  w:'65px',  align:'right' },
-    /* ── 문서 ── */
-    { key:'DOCUTYNM',  label:'문서유형',        fmt: v=>v||'-',                           w:'75px'  },
-    { key:'LOTA01NM',  label:'납품처유형',      fmt: v=>(v&&v.trim())||'-',               w:'80px'  },
+  return [
+    { key:'RQSHPD',    label:'출하요청일',  fmt:fmtDate,                             w:90  },
+    { key:'STKNUM',    label:'재고번호',     fmt:v=>v||'-',                           w:80  },
+    { key:'SVBELN',    label:'출고오더번호', fmt:v=>v||'-',                           w:110 },
+    { key:'SHPOKY',    label:'출고문서키',   fmt:v=>v||'-',                           w:110 },
+    { key:'LOTA02',    label:'로트구분',     fmt:(v,r)=>`${v||'-'}<br><span style="font-size:10px;color:var(--text3);">${(r&&r.LOTA02NM)||''}</span>`, w:90 },
+    { key:'STATIT',    label:'상태',         fmt:(v,r)=>statBadge(v,r&&r.STATNM),    w:70  },
+    { key:'SKUKEY',    label:'품목코드',     fmt:v=>v||'-',                           w:105 },
+    { key:'DESC01',    label:'품목명',       fmt:v=>`<span title="${v||''}">${v||'-'}</span>`, w:160 },
+    { key:'SKUG05',    label:'제품군',       fmt:(v,r)=>`${v||'-'}<br><span style="font-size:10px;color:var(--text3);">${(r&&r.SKUG05NM)||''}</span>`, w:70 },
+    { key:'DPTNKY',    label:'부서코드',     fmt:v=>v||'-',                           w:65  },
+    { key:'DPTNKYNM',  label:'부서명',       fmt:v=>v||'-',                           w:120 },
+    { key:'UOMKEY',    label:'단위',         fmt:v=>v||'-',                           w:50  },
+    { key:'QTUALO',    label:'출하대상',     fmt:fmtN,  w:72,  align:'right' },
+    { key:'QTALOC',    label:'할당',         fmt:fmtN,  w:65,  align:'right' },
+    { key:'QTSHPO',    label:'출하오더',     fmt:fmtN,  w:72,  align:'right' },
+    { key:'QTSHPD',    label:'출하확정',     fmt:fmtN,  w:72,  align:'right' },
+    { key:'QTJCMP',    label:'완료',         fmt:fmtN,  w:60,  align:'right' },
+    { key:'BAG',       label:'BAG',          fmt:fmtN,  w:62,  align:'right' },
+    { key:'BOX',       label:'BOX',          fmt:fmtN,  w:62,  align:'right' },
+    { key:'PLT',       label:'PLT',          fmt:fmtN,  w:55,  align:'right' },
+    { key:'SOK',       label:'SOK',          fmt:fmtN,  w:55,  align:'right' },
+    { key:'EA',        label:'EA',           fmt:fmtN,  w:62,  align:'right' },
+    { key:'TOT',       label:'KG',           fmt:fmtN,  w:68,  align:'right' },
+    { key:'BOXBAG',    label:'BOX/BAG',      fmt:fmtN,  w:68,  align:'right' },
+    { key:'QTUALOBOX', label:'대상BOX',      fmt:fmtN,  w:68,  align:'right' },
+    { key:'QTALOCBOX', label:'할당BOX',      fmt:fmtN,  w:65,  align:'right' },
+    { key:'QTJCMPBOX', label:'완료BOX',      fmt:fmtN,  w:65,  align:'right' },
+    { key:'QTSHPDBOX', label:'출하BOX',      fmt:fmtN,  w:65,  align:'right' },
+    { key:'DOCUTYNM',  label:'문서유형',     fmt:v=>v||'-',                           w:75  },
+    { key:'LOTA01NM',  label:'납품처유형',   fmt:v=>(v&&v.trim())||'-',               w:80  },
   ];
+}
 
-  const thead = `<tr>${cols.map(c=>`<th style="position:sticky;top:0;z-index:2;background:var(--surface2);padding:7px 8px;text-align:${c.align||'left'};white-space:nowrap;font-size:11px;font-weight:600;color:var(--text2);border-bottom:2px solid var(--border);min-width:${c.w};max-width:${c.w};">${c.label}</th>`).join('')}</tr>`;
+function renderShipScheduleResult(data, area) {
+  const { rows, total, page, size } = data;
+  const totalPages = Math.ceil(total / size) || 1;
 
-  const tbody = rows.map((r,i) => {
-    const bg = i%2===0 ? '' : 'background:var(--surface2);';
-    const cells = cols.map(c => {
-      const raw = r[c.key];
-      const rendered = c.fmt(raw, r);   // row 전체 전달 (LOTA02NM, STATNM 등 참조용)
-      const align = c.align === 'right' ? 'text-align:right;' : '';
-      const titleVal = String(raw??'').replace(/"/g,'&quot;');
-      return `<td style="${bg}${align}padding:5px 8px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:${c.w};border-bottom:1px solid var(--border);" title="${titleVal}">${rendered}</td>`;
-    }).join('');
-    return `<tr style="transition:.1s;" onmouseover="this.style.background='var(--primary-light,#eef3ff)'" onmouseout="this.style.background=''">${cells}</tr>`;
-  }).join('');
+  if (!rows || rows.length === 0) {
+    area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3);font-size:13px;">🔍 조회 결과가 없습니다.</div>';
+    shipScheduleState.currentRows = [];
+    return;
+  }
+
+  /* 현재 행 캐시 저장 (클라이언트 정렬용) */
+  shipScheduleState.currentRows = rows;
+
+  const cols = _ssColDefs();
+
+  /* _ssColW 기본값 초기화 (최초 렌더 시) */
+  cols.forEach(c => { if (!_ssColW[c.key]) _ssColW[c.key] = c.w; });
+
+  _ssBuildTable(area, cols, rows, total, page, totalPages, size);
+}
+
+/* 테이블 HTML 빌드 + 삽입 (renderShipScheduleResult / ssSort 공용) */
+function _ssBuildTable(area, cols, rows, total, page, totalPages, size) {
+  const s = shipScheduleState;
+
+  /* thead */
+  const theadHtml = `<tr>${cols.map(c => {
+    const w = _ssColW[c.key] || c.w;
+    const isAsc  = s.sortKey === c.key && s.sortDir === 'asc';
+    const isDesc = s.sortKey === c.key && s.sortDir === 'desc';
+    const sortCls = isAsc ? 'ss-sort-asc' : isDesc ? 'ss-sort-desc' : '';
+    const alignStyle = c.align === 'right' ? 'justify-content:flex-end;' : '';
+    return `<th style="position:relative;width:${w}px;min-width:${w}px;max-width:${w}px;" data-rzid="${c.key}" class="${sortCls}">
+      <div class="th-cell" style="${alignStyle}" onclick="ssSort('${c.key}')">
+        ${c.label}<span class="ss-sort-icon"></span>
+      </div>
+      <div class="col-rz" onmousedown="tableResizerDown(event,'${c.key}','.ss-table')"></div>
+    </th>`;
+  }).join('')}</tr>`;
+
+  /* tbody */
+  const tbodyHtml = _ssBuildTbody(cols, rows);
 
   /* 페이지네이션 */
   const paginHtml = _buildShipPagination(page, totalPages, total, size);
 
   area.innerHTML = `
-    <!-- 요약 -->
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
       <span style="font-size:12px;color:var(--text2);">
         총 <strong style="color:var(--primary);font-size:14px;">${total.toLocaleString()}</strong>건
@@ -5111,20 +5134,71 @@ function renderShipScheduleResult(data, area) {
       </span>
       <span style="font-size:11px;color:var(--text3);">(현재 ${rows.length}건 표시)</span>
     </div>
-
-    <!-- 테이블 래퍼 -->
     <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:12px;">
-      <div style="overflow-x:auto;max-height:calc(100vh - 380px);overflow-y:auto;">
-        <table style="width:max-content;min-width:100%;border-collapse:collapse;">
-          <thead>${thead}</thead>
-          <tbody>${tbody}</tbody>
+      <div class="ss-table-wrap">
+        <table class="ss-table" style="width:max-content;min-width:100%;">
+          <thead>${theadHtml}</thead>
+          <tbody id="ss-tbody">${tbodyHtml}</tbody>
         </table>
       </div>
     </div>
-
-    <!-- 페이지네이션 -->
     ${paginHtml}
   `;
+}
+
+function _ssBuildTbody(cols, rows) {
+  return rows.map((r, i) => {
+    const cells = cols.map(c => {
+      const w   = _ssColW[c.key] || c.w;
+      const raw = r[c.key];
+      const rendered  = c.fmt(raw, r);
+      const alignStyle = c.align === 'right' ? 'text-align:right;' : '';
+      const titleVal  = String(raw ?? '').replace(/"/g, '&quot;');
+      return `<td style="${alignStyle}width:${w}px;min-width:${w}px;max-width:${w}px;box-sizing:border-box;" title="${titleVal}">${rendered}</td>`;
+    }).join('');
+    return `<tr>${cells}</tr>`;
+  }).join('');
+}
+
+/* 클라이언트 정렬 */
+function ssSort(key) {
+  const s = shipScheduleState;
+  if (!s.currentRows || s.currentRows.length === 0) return;
+
+  /* 정렬 방향 토글 */
+  if (s.sortKey === key) {
+    s.sortDir = s.sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    s.sortKey = key;
+    s.sortDir = 'asc';
+  }
+
+  /* 정렬 실행 */
+  const dir = s.sortDir === 'asc' ? 1 : -1;
+  const sorted = [...s.currentRows].sort((a, b) => {
+    let av = a[key] ?? '';
+    let bv = b[key] ?? '';
+    /* 숫자형 판별 */
+    const an = Number(av), bn = Number(bv);
+    if (!isNaN(an) && !isNaN(bn) && av !== '' && bv !== '') {
+      return (an - bn) * dir;
+    }
+    return String(av).localeCompare(String(bv), 'ko') * dir;
+  });
+
+  /* tbody만 교체 */
+  const cols = _ssColDefs();
+  const tbody = document.getElementById('ss-tbody');
+  if (tbody) tbody.innerHTML = _ssBuildTbody(cols, sorted);
+
+  /* th 정렬 아이콘 클래스 갱신 */
+  document.querySelectorAll('.ss-table thead th').forEach(th => {
+    const rzid = th.dataset.rzid;
+    th.classList.remove('ss-sort-asc', 'ss-sort-desc');
+    if (rzid === key) {
+      th.classList.add(s.sortDir === 'asc' ? 'ss-sort-asc' : 'ss-sort-desc');
+    }
+  });
 }
 
 function _buildShipPagination(cur, total, totalRows, size) {
