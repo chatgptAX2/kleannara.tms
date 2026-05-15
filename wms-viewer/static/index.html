@@ -432,7 +432,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .dlv-section-header h3{font-size:12px;font-weight:700;color:var(--text2)}
 .dlv-list-table-wrap{overflow:auto;flex:1;min-height:0}
 /* ── 출고문서아이템 테이블 ── */
-.ss-table-wrap{overflow:auto;max-height:calc(100vh - 380px)}
+.ss-table-wrap{overflow:auto;max-height:calc(100vh - 380px);border:1px solid var(--border);border-radius:8px;margin-bottom:12px}
 .ss-table{border-collapse:collapse;font-size:12px;table-layout:fixed}
 .ss-table thead th{position:sticky;top:0;z-index:2;background:var(--th-bg);padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none;box-sizing:border-box;cursor:pointer}
 .ss-table thead th .th-cell{padding:6px 8px 6px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:3px}
@@ -5134,13 +5134,11 @@ function _ssBuildTable(area, cols, rows, total, page, totalPages, size) {
       </span>
       <span style="font-size:11px;color:var(--text3);">(현재 ${rows.length}건 표시)</span>
     </div>
-    <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:12px;">
-      <div class="ss-table-wrap">
-        <table class="ss-table" style="width:max-content;min-width:100%;">
-          <thead>${theadHtml}</thead>
-          <tbody id="ss-tbody">${tbodyHtml}</tbody>
-        </table>
-      </div>
+    <div class="ss-table-wrap">
+      <table class="ss-table" style="width:max-content;min-width:100%;">
+        <thead>${theadHtml}</thead>
+        <tbody id="ss-tbody">${tbodyHtml}</tbody>
+      </table>
     </div>
     ${paginHtml}
   `;
