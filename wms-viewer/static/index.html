@@ -4788,7 +4788,7 @@ async function renderShipSchedule() {
   const defToH   = fmtH(dP7);
 
   c.innerHTML = `
-<div style="padding:16px 20px;max-width:100%;box-sizing:border-box;height:100%;display:flex;flex-direction:column;">
+<div style="padding:16px 20px;box-sizing:border-box;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">
 
   <!-- 검색 패널 -->
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:16px;flex-shrink:0;">
@@ -5242,6 +5242,8 @@ function _ssBuildTable(area, cols, rows, total, page, totalPages, size) {
   area.style.display = 'flex';
   area.style.flexDirection = 'column';
   area.style.minHeight = '0';
+  area.style.overflow = 'hidden';
+  area.style.flex = '1';
 }
 
 function _ssBuildTbody(cols, rows) {
