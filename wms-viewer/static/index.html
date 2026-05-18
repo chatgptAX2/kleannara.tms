@@ -5144,6 +5144,7 @@ function _ssColDefs() {
     { key:'DPTNKYNM',   label:'납품처명',     fmt:v=>v||'-',                           w:130 },
     /* ── 단위/수량 ── */
     { key:'UOMKEY',     label:'단위',         fmt:v=>v||'-',                           w:50  },
+    { key:'_STOCKTYPE', label:'재고유형',     fmt:(v,r)=>{ const u=String(r.UOMKEY||'').trim(); return u==='KG'?'원지':u==='R'?'판지':''; }, w:60 },
     { key:'QTUALO',     label:'납품수량',     fmt:fmtN,  w:80,  align:'right' },
     { key:'QTSHPO',     label:'주문수량',     fmt:fmtN,  w:80,  align:'right' },
     /* ── 환산수량 ── */
