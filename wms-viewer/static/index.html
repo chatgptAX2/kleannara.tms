@@ -239,6 +239,9 @@ tbody tr:hover td.sticky-col{background:var(--tr-hover)}
 
 tbody tr{border-bottom:1px solid var(--tr-border)}
 tbody tr:hover{background:var(--tr-hover);cursor:pointer}
+tbody tr.row-selected{background:var(--tr-selected)!important;outline:2px solid var(--primary);outline-offset:-2px;}
+tbody tr.row-selected td{color:var(--text)!important}
+tbody tr.row-selected td.sticky-col{background:var(--tr-selected)!important}
 tbody td{
   padding:7px 10px;
   white-space:nowrap;
@@ -448,8 +451,9 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .ss-table thead th.ss-sort-desc .ss-sort-icon::after{content:'▼'}
 .ss-table thead th .ss-sort-icon{font-size:9px;color:var(--primary);flex-shrink:0}
 .ss-table thead th .ss-sort-icon::after{content:'⇅';color:var(--text3);font-size:9px}
-.ss-table tbody tr{border-bottom:1px solid var(--tr-border);transition:.08s}
+.ss-table tbody tr{border-bottom:1px solid var(--tr-border);transition:.08s;cursor:pointer}
 .ss-table tbody tr:hover{background:var(--primary-light,#eef3ff)}
+.ss-table tbody tr.row-selected{background:var(--tr-selected)!important;outline:2px solid var(--primary);outline-offset:-2px;}
 .ss-table tbody td{padding:5px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border);font-size:11px;box-sizing:border-box;vertical-align:middle}
 .dlv-list-table{border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed}
 .dlv-list-table thead th{position:sticky;top:0;background:var(--th-bg);padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none;cursor:grab;box-sizing:border-box}
@@ -461,7 +465,8 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .dlv-list-table thead th.tbl-drag-over-right{box-shadow:inset -3px 0 0 var(--primary)}
 .dlv-list-table tbody tr{border-bottom:1px solid var(--tr-border);cursor:pointer}
 .dlv-list-table tbody tr:hover{background:var(--tr-hover)}
-.dlv-list-table tbody tr.selected{background:var(--tr-selected);border-left:3px solid var(--primary)}
+.dlv-list-table tbody tr.selected{background:var(--tr-selected);outline:2px solid var(--primary);outline-offset:-2px;}
+.dlv-list-table tbody tr.selected td.sticky-col{background:var(--tr-selected)!important}
 .dlv-list-table tbody td{padding:7px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border);font-size:12px;box-sizing:border-box}
 .dlv-form-wrap{padding:16px 20px}
 .dlv-form{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 12px}
@@ -528,7 +533,8 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .vhc-table thead th.tbl-drag-over-right{box-shadow:inset -3px 0 0 var(--primary)}
 .vhc-table tbody tr{border-bottom:1px solid var(--tr-border);cursor:pointer;transition:.1s}
 .vhc-table tbody tr:hover{background:var(--tr-hover)}
-.vhc-table tbody tr.selected{background:var(--tr-selected-vhc);border-left:3px solid var(--primary)}
+.vhc-table tbody tr.selected{background:var(--tr-selected-vhc);outline:2px solid var(--primary);outline-offset:-2px;}
+.vhc-table tbody tr.selected td.sticky-col{background:var(--tr-selected-vhc)!important}
 .vhc-table tbody td{padding:6px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border);font-size:12px;vertical-align:middle;box-sizing:border-box}
 .vhc-pagination{padding:5px 12px;border-top:1px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px}
 /* 차량 등록/수정 폼 */
@@ -579,7 +585,8 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .wahma-table thead th .th-cell{padding:8px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
 .wahma-table tbody tr{border-bottom:1px solid var(--tr-border);cursor:pointer}
 .wahma-table tbody tr:hover{background:var(--tr-hover)}
-.wahma-table tbody tr.selected{background:var(--tr-selected);border-left:3px solid var(--primary)}
+.wahma-table tbody tr.selected{background:var(--tr-selected);outline:2px solid var(--primary);outline-offset:-2px;}
+.wahma-table tbody tr.selected td.sticky-col{background:var(--tr-selected)!important}
 .wahma-table tbody td{padding:7px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border);font-size:12px}
 .wahma-pg{padding:5px 12px;border-top:1px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px}
 .wahma-form-wrap{padding:16px 20px}
@@ -1493,9 +1500,13 @@ function renderTableFromCache(){
       </div>
     </div>`;
 
-  // 행 더블클릭 이벤트 → CRUD 편집 모달 (단일 클릭은 드래그 복사 전용)
+  // 행 클릭: 선택 highlight / 더블클릭: CRUD 편집 모달
   document.querySelectorAll('#main-table tbody tr').forEach((tr, i) => {
     tr._rowData = rows[i];
+    tr.onclick = () => {
+      document.querySelectorAll('#main-table tbody tr').forEach(r => r.classList.remove('row-selected'));
+      tr.classList.add('row-selected');
+    };
     tr.ondblclick = () => openCrudEdit(tr);
   });
 }
@@ -4583,7 +4594,7 @@ function renderRouteCostPivot(data){
   // 바디
   let tbody = '<tbody>';
   data.rows.forEach(row => {
-    tbody += `<tr style="border-bottom:1px solid var(--tr-border);cursor:default">
+    tbody += `<tr style="border-bottom:1px solid var(--tr-border);cursor:pointer" onclick="(function(tr){tr.closest('table').querySelectorAll('tbody tr').forEach(r=>r.classList.remove('row-selected'));tr.classList.add('row-selected');})(this)">
       <td style="${tdBase()}color:var(--text3)">${row.SHPPT||'-'}</td>
       <td style="${tdBase()}font-weight:600;color:var(--td-num)">${row.ROUTE}</td>
       <td style="${tdBase()}">${row.PTNRKY}</td>
@@ -4631,7 +4642,7 @@ function renderRouteCostList(data){
 
   let tbody = '<tbody>';
   data.rows.forEach(row => {
-    tbody += '<tr style="border-bottom:1px solid var(--tr-border)">';
+    tbody += '<tr style="border-bottom:1px solid var(--tr-border);cursor:pointer" onclick="(function(tr){tr.closest(\'table\').querySelectorAll(\'tbody tr\').forEach(r=>r.classList.remove(\'row-selected\'));tr.classList.add(\'row-selected\');})(this)">';
     cols.forEach(c => {
       let s = row[c];
       if(c==='COST') s = s!=null ? '₩'+Number(s).toLocaleString('ko-KR') : '-';
@@ -5261,7 +5272,7 @@ function _ssBuildTbody(cols, rows) {
       const titleVal  = String(raw ?? '').replace(/"/g, '&quot;');
       return `<td style="${alignStyle}width:${w}px;min-width:${w}px;max-width:${w}px;box-sizing:border-box;" title="${titleVal}">${rendered}</td>`;
     }).join('');
-    return `<tr>${cells}</tr>`;
+    return `<tr onclick="(function(tr){document.querySelectorAll('.ss-table tbody tr').forEach(r=>r.classList.remove('row-selected'));tr.classList.add('row-selected');})(this)">${cells}</tr>`;
   }).join('');
 }
 
