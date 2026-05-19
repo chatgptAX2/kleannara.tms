@@ -1671,5 +1671,261 @@ def api_shipment_filter_opts():
     })
 
 
+# ─────────────────────────────────────────────
+#  배차전략 관리 API
+# ─────────────────────────────────────────────
+
+@app.route('/api/dispatch/strategy', methods=['GET'])
+def api_dispatch_strategy_get():
+    """배차전략 기준표 3종 조회"""
+    conn = get_conn()
+    inch12 = conn.execute(
+        "SELECT CARTYPE,GRM_COND,MAX_COUNT,SORT_SEQ FROM DS_INCH12 ORDER BY SORT_SEQ,GRM_COND"
+    ).fetchall()
+    inch3 = conn.execute(
+        "SELECT CARTYPE,GRM_COND,MAX_COUNT,SORT_SEQ FROM DS_INCH3 ORDER BY SORT_SEQ,GRM_COND"
+    ).fetchall()
+    vehicle = conn.execute(
+        "SELECT CARTYPE,LENGTH_M,WIDTH_M,HEIGHT_M,LOAD_TON,SORT_SEQ FROM DS_VEHICLE ORDER BY SORT_SEQ"
+    ).fetchall()
+    conn.close()
+    return jsonify({
+        "inch12":  [dict(r) for r in inch12],
+        "inch3":   [dict(r) for r in inch3],
+        "vehicle": [dict(r) for r in vehicle],
+    })
+
+
+@app.route('/api/dispatch/strategy/save', methods=['POST'])
+def api_dispatch_strategy_save():
+    """배차전략 기준표 저장 (table: inch12|inch3|vehicle, rows: [...])"""
+    from datetime import datetime
+    body  = request.json or {}
+    table = body.get('table', '')
+    rows  = body.get('rows', [])
+    today = datetime.now().strftime('%Y%m%d')
+    conn  = get_conn()
+    try:
+        if table == 'inch12':
+            conn.execute("DELETE FROM DS_INCH12")
+            for r in rows:
+                conn.execute(
+                    "INSERT INTO DS_INCH12 (CARTYPE,GRM_COND,MAX_COUNT,SORT_SEQ,UPDDAT) VALUES (?,?,?,?,?)",
+                    (r['CARTYPE'], r['GRM_COND'], int(r['MAX_COUNT']), int(r.get('SORT_SEQ',0)), today)
+                )
+        elif table == 'inch3':
+            conn.execute("DELETE FROM DS_INCH3")
+            for r in rows:
+                conn.execute(
+                    "INSERT INTO DS_INCH3 (CARTYPE,GRM_COND,MAX_COUNT,SORT_SEQ,UPDDAT) VALUES (?,?,?,?,?)",
+                    (r['CARTYPE'], r['GRM_COND'], int(r['MAX_COUNT']), int(r.get('SORT_SEQ',0)), today)
+                )
+        elif table == 'vehicle':
+            conn.execute("DELETE FROM DS_VEHICLE")
+            for r in rows:
+                conn.execute(
+                    "INSERT INTO DS_VEHICLE (CARTYPE,LENGTH_M,WIDTH_M,HEIGHT_M,LOAD_TON,SORT_SEQ,UPDDAT) VALUES (?,?,?,?,?,?,?)",
+                    (r['CARTYPE'], float(r['LENGTH_M']), str(r['WIDTH_M']),
+                     float(r['HEIGHT_M']), float(r['LOAD_TON']), int(r.get('SORT_SEQ',0)), today)
+                )
+        else:
+            return jsonify({"error": "unknown table"}), 400
+        conn.commit()
+        return jsonify({"ok": True, "saved": len(rows)})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/dispatch/simulate', methods=['POST'])
+def api_dispatch_simulate():
+    """
+    자동배차 시뮬레이션
+    body: { rqshpd_from, rqshpd_to, dptnky (optional) }
+    반환: 납품처 × 날짜 단위로 묶인 배차 결과
+    """
+    body        = request.json or {}
+    date_from   = body.get('rqshpd_from', '').replace('-','')
+    date_to     = body.get('rqshpd_to',   '').replace('-','')
+    dptnky_filt = body.get('dptnky', '').strip()
+
+    conn = get_conn()
+
+    # ── 배차기준표 로드 ──
+    inch12_rows = conn.execute(
+        "SELECT CARTYPE,GRM_COND,MAX_COUNT,SORT_SEQ FROM DS_INCH12 ORDER BY SORT_SEQ,GRM_COND"
+    ).fetchall()
+    inch3_rows = conn.execute(
+        "SELECT CARTYPE,GRM_COND,MAX_COUNT,SORT_SEQ FROM DS_INCH3 ORDER BY SORT_SEQ,GRM_COND"
+    ).fetchall()
+    vehicle_rows = conn.execute(
+        "SELECT CARTYPE,LOAD_TON,SORT_SEQ FROM DS_VEHICLE ORDER BY SORT_SEQ"
+    ).fetchall()
+
+    # 기준표 dict 변환: {cartype: {LT300: cnt, GE300: cnt}}
+    def build_inch_map(rows):
+        m = {}
+        for r in rows:
+            ct = r['CARTYPE']
+            if ct not in m:
+                m[ct] = {}
+            m[ct][r['GRM_COND']] = r['MAX_COUNT']
+        return m
+
+    inch12_map  = build_inch_map(inch12_rows)
+    inch3_map   = build_inch_map(inch3_rows)
+    # 차량 순서 리스트 (순서대로 비교)
+    car_order   = [dict(r) for r in vehicle_rows]  # [{CARTYPE, LOAD_TON, SORT_SEQ}]
+    load_ton_map = {r['CARTYPE']: r['LOAD_TON'] for r in vehicle_rows}
+
+    # ── 원지 아이템 조회 (UOMKEY=KG, 인치 판별 가능한 것만) ──
+    where_parts = ["d.UOMKEY = 'KG'"]
+    params = []
+    if date_from:
+        where_parts.append("h.RQSHPD >= ?"); params.append(date_from)
+    if date_to:
+        where_parts.append("h.RQSHPD <= ?"); params.append(date_to)
+    if dptnky_filt:
+        where_parts.append("h.DPTNKY = ?"); params.append(dptnky_filt)
+
+    where_sql = "WHERE " + " AND ".join(where_parts) if where_parts else ""
+
+    sql = f"""
+        SELECT
+            h.RQSHPD,
+            h.DPTNKY,
+            d.SVBELN,
+            d.SKUKEY,
+            LOWER(SUBSTR(d.SKUKEY,3,3)) AS inch_code,
+            SUBSTR(d.SKUKEY,6,3)         AS grammage,
+            d.QTSHPO,
+            d.UOMKEY
+        FROM SHPDI d
+        JOIN SHPDH h ON d.SHPOKY = h.SHPOKY
+        {where_sql}
+        ORDER BY h.RQSHPD, h.DPTNKY, d.SVBELN
+    """
+    items = conn.execute(sql, params).fetchall()
+    conn.close()
+
+    INCH12_CODES = {'s11','a11','am1'}
+    INCH3_CODES  = {'sr1','ir1','al1'}
+
+    def get_inch(code):
+        if code in INCH12_CODES: return '12인치'
+        if code in INCH3_CODES:  return '3인치'
+        return None
+
+    def get_grm_cond(grm_str):
+        try:
+            g = int(grm_str)
+            return 'LT300' if g < 300 else 'GE300'
+        except:
+            return 'GE300'
+
+    def find_car_by_count(inch_type, grm_cond, count):
+        """원지 개수로 적합 차량 찾기 (가장 작은 적재 가능 차량)"""
+        imap = inch12_map if inch_type == '12인치' else inch3_map
+        for car in car_order:
+            ct = car['CARTYPE']
+            if ct not in imap: continue
+            max_cnt = imap[ct].get(grm_cond, 0)
+            if max_cnt >= count:
+                return ct
+        # 모두 초과 시 최대 차량
+        return car_order[-1]['CARTYPE'] if car_order else '18톤'
+
+    # ── 납품처 × 날짜 × SVBELN 단위로 그루핑 ──
+    from collections import defaultdict
+    # key: (rqshpd, dptnky) → svbeln → items
+    group = defaultdict(lambda: defaultdict(list))
+    for row in items:
+        key    = (row['RQSHPD'], row['DPTNKY'])
+        svbeln = row['SVBELN']
+        inch_t = get_inch(row['inch_code'])
+        if inch_t is None:
+            continue  # 인치 판별 불가 원지는 제외
+        group[key][svbeln].append({
+            'skukey':   row['SKUKEY'],
+            'inch':     inch_t,
+            'grm_cond': get_grm_cond(row['grammage']),
+            'grammage': row['grammage'],
+            'qty_kg':   row['QTSHPO'],
+        })
+
+    # ── 납품처 단위 배차 결과 계산 ──
+    results = []
+    for (rqshpd, dptnky), svbeln_dict in sorted(group.items()):
+        # 납품처의 모든 SVBELN 목록과 원지 집계
+        svbeln_list = list(svbeln_dict.keys())
+        all_items   = [it for its in svbeln_dict.values() for it in its]
+
+        # 인치별 그루핑
+        from itertools import groupby
+        inch_groups = defaultdict(list)
+        for it in all_items:
+            inch_groups[it['inch']].append(it)
+
+        # 각 인치 유형별 대표 grm_cond (가장 많은 것 or GE300 우선)
+        car_by_inch = {}
+        total_count_by_inch = {}
+        for inch_t, its in inch_groups.items():
+            total_cnt = len(its)
+            # 평량 조건: 과반수 이상이 GE300이면 GE300
+            ge300_cnt = sum(1 for i in its if i['grm_cond'] == 'GE300')
+            grm_cond  = 'GE300' if ge300_cnt > total_cnt / 2 else 'LT300'
+            car_by_inch[inch_t]         = find_car_by_count(inch_t, grm_cond, total_cnt)
+            total_count_by_inch[inch_t] = total_cnt
+
+        # 최종 차량: 인치별 차량 중 더 큰 것 선택
+        def car_sort_key(ct):
+            for i, c in enumerate(car_order):
+                if c['CARTYPE'] == ct: return i
+            return 999
+
+        if car_by_inch:
+            final_car_by_inch = max(car_by_inch.items(), key=lambda x: car_sort_key(x[1]))
+            final_car = final_car_by_inch[1]
+        else:
+            final_car = '판별불가'
+
+        # 상차량 기준 검증 (총 KG vs 상차량)
+        total_kg     = sum(it['qty_kg'] for it in all_items)
+        load_ton_car = load_ton_map.get(final_car, 0)
+        load_kg_cap  = load_ton_car * 1000
+        over_weight  = total_kg > load_kg_cap if load_kg_cap > 0 else False
+
+        # 상차량 초과 시 더 큰 차량으로 업그레이드
+        if over_weight:
+            for car in car_order:
+                ct = car['CARTYPE']
+                if load_ton_map.get(ct, 0) * 1000 >= total_kg:
+                    final_car    = ct
+                    load_ton_car = car['LOAD_TON']
+                    load_kg_cap  = load_ton_car * 1000
+                    over_weight  = total_kg > load_kg_cap
+                    break
+
+        results.append({
+            'rqshpd':      rqshpd,
+            'dptnky':      dptnky,
+            'svbeln_list': svbeln_list,
+            'svbeln_count':len(svbeln_list),
+            'total_items': len(all_items),
+            'total_kg':    round(total_kg, 2),
+            'inch_summary': {k: {'count': total_count_by_inch[k], 'car': v}
+                             for k, v in car_by_inch.items()},
+            'final_car':   final_car,
+            'load_ton':    load_ton_car,
+            'load_kg_cap': load_kg_cap,
+            'over_weight': over_weight,
+            'weight_ratio':round(total_kg / load_kg_cap * 100, 1) if load_kg_cap > 0 else 0,
+        })
+
+    return jsonify({"ok": True, "total": len(results), "rows": results})
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5050, debug=False)

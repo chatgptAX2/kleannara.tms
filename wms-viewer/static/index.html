@@ -602,6 +602,59 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .wahma-span2{grid-column:span 2}
 .wahma-span4{grid-column:span 4}
 
+/* ── 배차전략 관리 ── */
+.ds-layout{display:flex;flex-direction:column;height:100%;overflow:hidden;background:var(--bg)}
+.ds-topbar{padding:14px 20px 10px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.ds-topbar-title{font-size:15px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px}
+.ds-topbar-title span{font-size:12px;font-weight:400;color:var(--text3)}
+.ds-body{flex:1;overflow:auto;padding:20px;display:flex;flex-direction:column;gap:20px;min-height:0}
+.ds-section{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.ds-section-hdr{padding:10px 16px;background:var(--th-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.ds-section-hdr h3{font-size:13px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px}
+.ds-section-hdr .ds-badge{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:var(--primary);color:#fff}
+.ds-table{width:100%;border-collapse:collapse;font-size:12px}
+.ds-table thead th{padding:8px 12px;background:var(--th-bg);color:var(--text3);font-size:11px;font-weight:600;border-bottom:1px solid var(--border);border-right:1px solid var(--border);text-align:center;white-space:nowrap}
+.ds-table thead th:last-child{border-right:none}
+.ds-table thead th.ds-cartype{text-align:left;min-width:72px}
+.ds-table tbody tr{border-bottom:1px solid var(--tr-border);transition:.08s}
+.ds-table tbody tr:hover{background:var(--tr-hover)}
+.ds-table tbody td{padding:6px 10px;border-right:1px solid var(--tr-border);text-align:center;vertical-align:middle}
+.ds-table tbody td:last-child{border-right:none}
+.ds-table tbody td.ds-cartype{font-weight:700;color:var(--primary);text-align:left;font-size:13px;background:var(--surface2)}
+.ds-input{width:72px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);color:var(--text);font-size:12px;text-align:center;transition:.15s}
+.ds-input:focus{outline:none;border-color:var(--primary);background:var(--input-focus-bg)}
+.ds-input.wide{width:90px}
+.ds-save-btn{padding:6px 16px;border-radius:6px;border:none;background:var(--primary);color:#fff;font-size:12px;font-weight:600;cursor:pointer;transition:.15s;display:flex;align-items:center;gap:5px}
+.ds-save-btn:hover{background:var(--primary-dark)}
+.ds-save-btn:disabled{opacity:.5;cursor:not-allowed}
+.ds-saved-tag{font-size:11px;color:var(--success);font-weight:600;display:none}
+/* 자동배차 시뮬레이션 */
+.ds-sim-panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.ds-sim-form{padding:16px 20px;display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--border);background:var(--th-bg)}
+.ds-sim-fg{display:flex;flex-direction:column;gap:4px}
+.ds-sim-fg label{font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.5px;text-transform:uppercase}
+.ds-sim-fg input{padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;min-width:130px}
+.ds-sim-fg input:focus{outline:none;border-color:var(--primary)}
+.ds-sim-run-btn{padding:7px 20px;border-radius:7px;border:none;background:var(--primary);color:#fff;font-size:12px;font-weight:700;cursor:pointer;transition:.15s;white-space:nowrap}
+.ds-sim-run-btn:hover{background:var(--primary-dark)}
+.ds-sim-result{padding:16px 20px}
+/* 결과 카드 */
+.ds-result-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;margin-top:12px}
+.ds-car-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;position:relative;transition:.15s}
+.ds-car-card:hover{border-color:var(--primary);box-shadow:0 2px 12px rgba(37,99,235,.08)}
+.ds-car-card.warn{border-color:var(--warning)!important;background:rgba(217,119,6,.04)}
+.ds-car-card .ds-car-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;margin-bottom:8px}
+.ds-car-card .ds-car-row{display:flex;justify-content:space-between;align-items:center;font-size:11px;padding:2px 0;border-bottom:1px solid var(--tr-border)}
+.ds-car-card .ds-car-row:last-child{border-bottom:none}
+.ds-car-card .ds-car-row .lbl{color:var(--text3)}
+.ds-car-card .ds-car-row .val{font-weight:600;color:var(--text)}
+.ds-weight-bar{height:6px;border-radius:3px;background:var(--surface);border:1px solid var(--border);overflow:hidden;margin:6px 0 4px}
+.ds-weight-fill{height:100%;border-radius:3px;transition:.4s}
+/* 차량 톤수 색상 */
+.car-1t4{background:#6366f1;color:#fff} .car-3t5{background:#8b5cf6;color:#fff}
+.car-5t{background:#0ea5e9;color:#fff}  .car-5tax{background:#06b6d4;color:#fff}
+.car-8t{background:#10b981;color:#fff}  .car-11t{background:#f59e0b;color:#fff}
+.car-15t{background:#ef4444;color:#fff} .car-18t{background:#dc2626;color:#fff}
 /* ── PANEL RESIZER (드래그 높이 조절) ── */
 .panel-resizer{height:6px;background:var(--border);cursor:ns-resize;flex-shrink:0;position:relative;display:flex;align-items:center;justify-content:center;transition:.15s}
 .panel-resizer:hover,.panel-resizer.dragging{background:var(--primary)}
@@ -834,6 +887,9 @@ thead th:hover .th-drag-handle{opacity:.8}
   <div class="nav-item" onclick="showPage('ROUTE_COST')" id="nav-ROUTE_COST">
     <span class="icon">💰</span> 운송경로 비용<span class="cnt" id="cnt-ROUTE_COST">-</span>
   </div>
+  <div class="nav-item" onclick="showPage('dispatchStrategy')" id="nav-dispatchStrategy">
+    <span class="icon">⚙️</span> 배차전략 관리
+  </div>
   <div class="nav-section">도구</div>
   <div class="nav-item" onclick="showPage('schema')" id="nav-schema">
     <span class="icon">🗂️</span> 테이블 스키마
@@ -1034,6 +1090,7 @@ const PAGE_META = {
   IFWMS113:      { title:'ERP 출고오더',      badge:'IFWMS113',       crumb:['홈','인터페이스','ERP 출고오더'] },
   BZPTN_DETAIL:  { title:'납품처 상세',       badge:'BZPTN_DETAIL',   crumb:['홈','TMS 배차','납품처 상세'] },
   VHCMA:         { title:'차량 마스터',       badge:'VHCMA',          crumb:['홈','TMS 배차','차량 마스터'] },
+  dispatchStrategy: { title:'배차전략 관리', badge:'⚙️ Strategy',    crumb:['홈','TMS 배차','배차전략 관리'] },
 };
 
 function updateBreadcrumb(crumbs) {
@@ -1194,6 +1251,9 @@ function _doShowPage(p) {
   } else if (p === 'shipSchedule' || p === 'SHPDI') {
     srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderShipSchedule();
+  } else if (p === 'dispatchStrategy') {
+    srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
+    renderDispatchStrategy();
   } else {
     state.table = p;
     srch.style.display = 'flex'; psize.style.display = 'flex'; toolbar.style.display = 'none';
@@ -4730,6 +4790,363 @@ const shipScheduleState = {
   currentRows: [],
   colOrder: [],   // 컬럼 표시 순서 (key 배열) — 빈 배열이면 _ssColDefs() 기본 순서 사용
 };
+
+/* ═══════════════════════════════════════════════════════════
+   배차전략 관리 화면
+═══════════════════════════════════════════════════════════ */
+const DS_CAR_COLOR = {
+  '1.4톤':'car-1t4','3.5톤':'car-3t5','5톤':'car-5t','5톤축':'car-5tax',
+  '8톤':'car-8t','11톤':'car-11t','15톤':'car-15t','18톤':'car-18t',
+};
+function _dsCarBadge(ct) {
+  const cls = DS_CAR_COLOR[ct] || 'car-11t';
+  return `<span class="ds-car-badge ${cls}">🚛 ${ct}</span>`;
+}
+
+async function renderDispatchStrategy() {
+  const c = document.getElementById('content');
+  c.style.overflowY = 'hidden';
+  c.innerHTML = `<div class="ds-layout">
+    <div class="ds-topbar">
+      <div class="ds-topbar-title">⚙️ 배차전략 관리 <span>차량 톤수별 원지 적재 기준 및 차량 제원을 관리합니다</span></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="ds-save-btn" id="ds-save-all-btn" onclick="dsSaveAll()">
+          💾 전체 저장
+        </button>
+        <span class="ds-saved-tag" id="ds-saved-tag">✅ 저장됨</span>
+      </div>
+    </div>
+    <div class="ds-body" id="ds-body">
+      <div class="loading"><div class="spinner"></div>기준표 로딩 중...</div>
+    </div>
+  </div>`;
+
+  // 데이터 로드
+  let data;
+  try {
+    const res = await fetch('/api/dispatch/strategy');
+    data = await res.json();
+  } catch(e) {
+    document.getElementById('ds-body').innerHTML =
+      `<div class="loading" style="color:var(--danger)">❌ 로드 실패: ${e.message}</div>`;
+    return;
+  }
+
+  window._dsData = data;  // 전역 보관
+  _dsRender(data);
+}
+
+function _dsRender(data) {
+  const body = document.getElementById('ds-body');
+  if (!body) return;
+
+  // ── 차량 순서 (원지 기준표에서 추출) ──
+  const cars12 = [...new Set(data.inch12.map(r => r.CARTYPE))];
+  const cars3  = [...new Set(data.inch3.map(r => r.CARTYPE))];
+
+  // ── 12인치 기준표 ──
+  const tbl12 = _dsBuildInchTable('inch12', '12인치 원지 배차기준', cars12, data.inch12);
+  // ── 3인치 기준표 ──
+  const tbl3  = _dsBuildInchTable('inch3',  '3인치 원지 배차기준',  cars3,  data.inch3);
+  // ── 차량 제원 ──
+  const tblVhc = _dsBuildVehicleTable(data.vehicle);
+  // ── 자동배차 시뮬레이션 패널 ──
+  const simPanel = _dsBuildSimPanel();
+
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      ${tbl12}
+      ${tbl3}
+    </div>
+    ${tblVhc}
+    ${simPanel}
+  `;
+}
+
+function _dsBuildInchTable(tableId, title, cars, rows) {
+  // rows: [{CARTYPE, GRM_COND, MAX_COUNT}]
+  const byCarGrm = {};
+  rows.forEach(r => {
+    if (!byCarGrm[r.CARTYPE]) byCarGrm[r.CARTYPE] = {};
+    byCarGrm[r.CARTYPE][r.GRM_COND] = r.MAX_COUNT;
+  });
+  const badge = tableId === 'inch12' ? '12"' : '3"';
+  const icon  = tableId === 'inch12' ? '🔵' : '🟢';
+
+  const tbodyRows = cars.map((ct, i) => {
+    const lt = byCarGrm[ct]?.LT300 ?? '';
+    const ge = byCarGrm[ct]?.GE300 ?? '';
+    const ccls = DS_CAR_COLOR[ct] || 'car-11t';
+    return `<tr>
+      <td class="ds-cartype">
+        <span style="display:inline-block;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700;" class="${ccls}">🚛 ${ct}</span>
+      </td>
+      <td><input class="ds-input" type="number" min="1" max="99"
+        data-table="${tableId}" data-car="${ct}" data-grm="LT300" value="${lt}"></td>
+      <td><input class="ds-input" type="number" min="1" max="99"
+        data-table="${tableId}" data-car="${ct}" data-grm="GE300" value="${ge}"></td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="ds-section">
+    <div class="ds-section-hdr">
+      <h3>${icon} ${title} <span class="ds-badge">${badge}</span></h3>
+      <div style="font-size:10px;color:var(--text3)">차량 1대 기준 최대 적재 개수 (롤)</div>
+    </div>
+    <div style="padding:12px 16px">
+      <table class="ds-table">
+        <thead>
+          <tr>
+            <th class="ds-cartype">차량 톤수</th>
+            <th>평량 300 미만<br><small style="font-weight:400;color:var(--text3)">개수 (롤)</small></th>
+            <th>평량 300 이상<br><small style="font-weight:400;color:var(--text3)">개수 (롤)</small></th>
+          </tr>
+        </thead>
+        <tbody>${tbodyRows}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function _dsBuildVehicleTable(rows) {
+  const tbodyRows = rows.map(r => {
+    const ccls = DS_CAR_COLOR[r.CARTYPE] || 'car-11t';
+    return `<tr>
+      <td class="ds-cartype">
+        <span style="display:inline-block;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700;" class="${ccls}">🚛 ${r.CARTYPE}</span>
+      </td>
+      <td><input class="ds-input wide" type="number" step="0.1" min="0"
+        data-table="vehicle" data-car="${r.CARTYPE}" data-col="LENGTH_M" value="${r.LENGTH_M ?? ''}"></td>
+      <td><input class="ds-input wide" type="text"
+        data-table="vehicle" data-car="${r.CARTYPE}" data-col="WIDTH_M" value="${r.WIDTH_M ?? ''}"></td>
+      <td><input class="ds-input wide" type="number" step="0.1" min="0"
+        data-table="vehicle" data-car="${r.CARTYPE}" data-col="HEIGHT_M" value="${r.HEIGHT_M ?? ''}"></td>
+      <td><input class="ds-input wide" type="number" step="0.1" min="0"
+        data-table="vehicle" data-car="${r.CARTYPE}" data-col="LOAD_TON" value="${r.LOAD_TON ?? ''}"></td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="ds-section">
+    <div class="ds-section-hdr">
+      <h3>🚚 차량 제원 및 상차량 기준 <span class="ds-badge" style="background:var(--success)">판지 기준</span></h3>
+      <div style="font-size:10px;color:var(--text3)">판지제품 적재 시 차량 제원 및 최대 상차량 기준</div>
+    </div>
+    <div style="padding:12px 16px">
+      <table class="ds-table">
+        <thead>
+          <tr>
+            <th class="ds-cartype">차량 톤수</th>
+            <th>길이 (m)</th>
+            <th>너비 (m)<br><small style="font-weight:400;color:var(--text3)">범위 입력 가능</small></th>
+            <th>높이 (m)</th>
+            <th>상차량 (ton)<br><small style="font-weight:400;color:var(--success)">★ 배차 기준</small></th>
+          </tr>
+        </thead>
+        <tbody>${tbodyRows}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function _dsBuildSimPanel() {
+  const today = new Date();
+  const fmt   = d => d.toISOString().slice(0,10);
+  const dM7   = new Date(today); dM7.setDate(dM7.getDate()-7);
+  const dP7   = new Date(today); dP7.setDate(dP7.getDate()+7);
+  return `<div class="ds-sim-panel">
+    <div class="ds-section-hdr">
+      <h3>🤖 자동배차 시뮬레이션 <span class="ds-badge" style="background:var(--warning)">PREVIEW</span></h3>
+      <div style="font-size:10px;color:var(--text3)">저장된 배차전략 기준으로 납품처별 차량 배정 결과를 미리 봅니다</div>
+    </div>
+    <div class="ds-sim-form">
+      <div class="ds-sim-fg">
+        <label>출하요청일 (시작)</label>
+        <input type="date" id="ds-sim-from" value="${fmt(dM7)}">
+      </div>
+      <div class="ds-sim-fg">
+        <label>출하요청일 (종료)</label>
+        <input type="date" id="ds-sim-to" value="${fmt(dP7)}">
+      </div>
+      <div class="ds-sim-fg">
+        <label>납품처코드 (선택)</label>
+        <input type="text" id="ds-sim-dptnky" placeholder="전체">
+      </div>
+      <button class="ds-sim-run-btn" onclick="dsRunSimulate()">▶ 시뮬레이션 실행</button>
+    </div>
+    <div class="ds-sim-result" id="ds-sim-result">
+      <div style="text-align:center;padding:30px;color:var(--text3);font-size:13px;">
+        ⬆ 조건을 입력하고 시뮬레이션을 실행하세요.
+      </div>
+    </div>
+  </div>`;
+}
+
+/* 전체 저장 */
+async function dsSaveAll() {
+  const btn = document.getElementById('ds-save-all-btn');
+  const tag = document.getElementById('ds-saved-tag');
+  btn.disabled = true;
+  btn.textContent = '저장 중...';
+
+  // inch12 수집
+  const inch12Rows = _dsCollectInchRows('inch12');
+  const inch3Rows  = _dsCollectInchRows('inch3');
+  const vehicleRows = _dsCollectVehicleRows();
+
+  try {
+    for (const [table, rows] of [['inch12', inch12Rows],['inch3', inch3Rows],['vehicle', vehicleRows]]) {
+      const res = await fetch('/api/dispatch/strategy/save', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({table, rows})
+      });
+      const d = await res.json();
+      if (!d.ok) throw new Error(d.error || 'save failed');
+    }
+    tag.style.display = 'inline';
+    setTimeout(() => { tag.style.display = 'none'; }, 3000);
+    showToast('✅ 배차전략이 저장되었습니다.');
+  } catch(e) {
+    showToast('❌ 저장 실패: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '💾 전체 저장';
+  }
+}
+
+function _dsCollectInchRows(tableId) {
+  const inputs = document.querySelectorAll(`[data-table="${tableId}"]`);
+  const map = {};
+  inputs.forEach(inp => {
+    const car = inp.dataset.car;
+    const grm = inp.dataset.grm;
+    if (!map[car]) map[car] = { CARTYPE: car, LT300: 0, GE300: 0 };
+    map[car][grm] = parseInt(inp.value) || 0;
+  });
+  const rows = [];
+  let seq = 1;
+  Object.values(map).forEach(m => {
+    rows.push({ CARTYPE: m.CARTYPE, GRM_COND: 'LT300', MAX_COUNT: m.LT300, SORT_SEQ: seq });
+    rows.push({ CARTYPE: m.CARTYPE, GRM_COND: 'GE300', MAX_COUNT: m.GE300, SORT_SEQ: seq });
+    seq++;
+  });
+  return rows;
+}
+
+function _dsCollectVehicleRows() {
+  const inputs = document.querySelectorAll('[data-table="vehicle"]');
+  const map = {};
+  inputs.forEach(inp => {
+    const car = inp.dataset.car;
+    const col = inp.dataset.col;
+    if (!map[car]) map[car] = { CARTYPE: car };
+    map[car][col] = inp.value;
+  });
+  let seq = 1;
+  return Object.values(map).map(r => ({ ...r, SORT_SEQ: seq++ }));
+}
+
+/* 자동배차 시뮬레이션 실행 */
+async function dsRunSimulate() {
+  const from   = document.getElementById('ds-sim-from')?.value  || '';
+  const to     = document.getElementById('ds-sim-to')?.value    || '';
+  const dptnky = document.getElementById('ds-sim-dptnky')?.value.trim() || '';
+  const area   = document.getElementById('ds-sim-result');
+  if (!area) return;
+
+  area.innerHTML = `<div class="loading"><div class="spinner"></div>시뮬레이션 실행 중...</div>`;
+
+  try {
+    const res = await fetch('/api/dispatch/simulate', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ rqshpd_from: from, rqshpd_to: to, dptnky })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'failed');
+    _dsRenderSimResult(area, data);
+  } catch(e) {
+    area.innerHTML = `<div style="text-align:center;padding:24px;color:var(--danger);">❌ 오류: ${e.message}</div>`;
+  }
+}
+
+function _dsRenderSimResult(area, data) {
+  if (!data.rows || data.rows.length === 0) {
+    area.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text3);font-size:13px;">🔍 조회 결과가 없습니다.</div>`;
+    return;
+  }
+
+  // 차량 톤수별 집계
+  const carSummary = {};
+  data.rows.forEach(r => {
+    const ct = r.final_car || '미정';
+    if (!carSummary[ct]) carSummary[ct] = 0;
+    carSummary[ct]++;
+  });
+
+  // 요약 배지
+  const summaryBadges = Object.entries(carSummary).map(([ct, cnt]) => {
+    const ccls = DS_CAR_COLOR[ct] || 'car-11t';
+    return `<span class="${ccls}" style="padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px;">
+      🚛 ${ct} <span style="background:rgba(255,255,255,.25);border-radius:6px;padding:0 5px;">${cnt}건</span>
+    </span>`;
+  }).join('');
+
+  const warnCount = data.rows.filter(r => r.over_weight).length;
+
+  // 결과 카드
+  const cards = data.rows.map(r => {
+    const ccls = DS_CAR_COLOR[r.final_car] || 'car-11t';
+    const ratio = Math.min(r.weight_ratio, 100);
+    const barColor = ratio >= 90 ? 'var(--danger)' : ratio >= 70 ? 'var(--warning)' : 'var(--success)';
+    const warnTag  = r.over_weight ? `<span style="color:var(--warning);font-size:10px;font-weight:700;">⚠️ 중량초과</span>` : '';
+
+    const dateStr = r.rqshpd ? `${r.rqshpd.slice(0,4)}-${r.rqshpd.slice(4,6)}-${r.rqshpd.slice(6,8)}` : '-';
+
+    const inchSummaryHtml = Object.entries(r.inch_summary || {}).map(([inch, v]) => {
+      const ic = DS_CAR_COLOR[v.car] || 'car-11t';
+      return `<div style="font-size:10px;color:var(--text3);display:flex;justify-content:space-between;padding:1px 0">
+        <span>${inch}</span>
+        <span>${v.count}롤 → <span style="font-weight:700;color:var(--primary)">${v.car}</span></span>
+      </div>`;
+    }).join('');
+
+    const svbelns = (r.svbeln_list || []).slice(0, 3).join(', ') + (r.svbeln_list?.length > 3 ? ` 외 ${r.svbeln_list.length - 3}건` : '');
+
+    return `<div class="ds-car-card ${r.over_weight ? 'warn' : ''}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:2px">${dateStr} · ${r.dptnky}</div>
+          <span class="ds-car-badge ${ccls}">🚛 ${r.final_car}</span>
+        </div>
+        <div style="text-align:right">${warnTag}</div>
+      </div>
+      <div class="ds-weight-bar">
+        <div class="ds-weight-fill" style="width:${ratio}%;background:${barColor}"></div>
+      </div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:8px;text-align:right">
+        ${r.total_kg.toLocaleString()} kg / ${(r.load_kg_cap||0).toLocaleString()} kg (${r.weight_ratio}%)
+      </div>
+      <div class="ds-car-row"><span class="lbl">납품문서 수</span><span class="val">${r.svbeln_count}건</span></div>
+      <div class="ds-car-row"><span class="lbl">원지 총 개수</span><span class="val">${r.total_items}롤</span></div>
+      <div class="ds-car-row"><span class="lbl">상차량</span><span class="val">${r.load_ton}ton</span></div>
+      <div style="margin-top:8px;padding:6px 8px;background:var(--surface);border-radius:6px;border:1px solid var(--border)">
+        <div style="font-size:10px;font-weight:700;color:var(--text3);margin-bottom:4px">인치별 배차 근거</div>
+        ${inchSummaryHtml || '<div style="font-size:10px;color:var(--text3)">-</div>'}
+      </div>
+      <div style="margin-top:6px;font-size:10px;color:var(--text3);word-break:break-all">📄 ${svbelns}</div>
+    </div>`;
+  }).join('');
+
+  area.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:13px;font-weight:700;color:var(--text)">
+        시뮬레이션 결과 — 총 <span style="color:var(--primary)">${data.total}</span>건 납품처
+        ${warnCount ? `<span style="color:var(--warning);font-size:11px;margin-left:8px;">⚠️ 중량초과 ${warnCount}건</span>` : ''}
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${summaryBadges}</div>
+    </div>
+    <div class="ds-result-grid">${cards}</div>
+  `;
+}
 
 async function renderShipSchedule() {
   const c = document.getElementById('content');
