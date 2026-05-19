@@ -679,6 +679,141 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .panel-expanded .panel-list-section{flex:1!important;max-height:none!important}
 .panel-expanded .panel-form-section{display:none!important}
 
+/* ══════════════════════════════════════════════════
+   PS 배차 화면
+══════════════════════════════════════════════════ */
+.psd-layout{display:flex;flex-direction:column;flex:1;min-height:0;background:var(--bg);overflow:hidden}
+/* 검색바 */
+.psd-searchbar{flex-shrink:0;background:var(--surface);border-bottom:2px solid var(--border);padding:10px 16px;display:flex;flex-direction:column;gap:8px}
+.psd-search-title{font-size:13px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px;padding-bottom:4px;border-bottom:1px solid var(--tr-border)}
+.psd-search-row{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}
+.psd-fg{display:flex;flex-direction:column;gap:3px}
+.psd-fg label{font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.4px}
+.psd-fg input,.psd-fg select{padding:5px 8px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text);font-size:12px;min-width:110px}
+.psd-fg input:focus,.psd-fg select:focus{outline:none;border-color:var(--primary)}
+/* 툴바 버튼 */
+.psd-toolbar{flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);padding:8px 16px;display:flex;align-items:center;gap:8px}
+.psd-btn{padding:6px 16px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:.15s;display:flex;align-items:center;gap:5px;white-space:nowrap}
+.psd-btn:hover{border-color:var(--primary);color:var(--primary);background:var(--surface)}
+.psd-btn.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+.psd-btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark)}
+.psd-btn.success{background:#10b981;color:#fff;border-color:#10b981}
+.psd-btn.success:hover{background:#059669;border-color:#059669}
+.psd-btn.danger{background:#ef4444;color:#fff;border-color:#ef4444}
+.psd-btn.danger:hover{background:#dc2626;border-color:#dc2626}
+.psd-btn.warn{background:#f59e0b;color:#fff;border-color:#f59e0b}
+.psd-btn.warn:hover{background:#d97706;border-color:#d97706}
+.psd-btn:disabled{opacity:.45;cursor:not-allowed}
+.psd-sep{width:1px;height:22px;background:var(--border);flex-shrink:0}
+/* 메인 패널 영역 (좌우 분할) */
+.psd-main{flex:1;display:flex;min-height:0;gap:0}
+/* 좌측: 선적(차량) 패널 */
+.psd-left{display:flex;flex-direction:column;min-height:0;width:52%;border-right:2px solid var(--primary)}
+/* 우측: 납품문서 패널 */
+.psd-right{display:flex;flex-direction:column;min-height:0;flex:1}
+/* 패널 헤더 */
+.psd-panel-hdr{flex-shrink:0;padding:8px 14px;background:var(--th-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px}
+.psd-panel-hdr-title{font-size:12px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px}
+.psd-panel-hdr-info{font-size:11px;color:var(--text3)}
+/* 패널 본문 */
+.psd-panel-body{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0}
+.psd-panel-body::-webkit-scrollbar{width:6px}
+.psd-panel-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.psd-panel-body::-webkit-scrollbar-thumb:hover{background:var(--primary)}
+/* 차량 카드 (좌측) */
+.psd-car-wrap{padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.psd-car-card{background:var(--surface);border:2px solid var(--border);border-radius:8px;overflow:hidden;transition:.15s;position:relative}
+.psd-car-card.selected{border-color:var(--primary);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.psd-car-card.drag-over{border-color:#10b981;background:rgba(16,185,129,.04);box-shadow:0 0 0 3px rgba(16,185,129,.15)}
+.psd-car-card-hdr{padding:8px 12px;background:var(--th-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+.psd-car-badge{padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px}
+.psd-car-no{font-size:12px;font-weight:700;color:var(--text)}
+.psd-car-kg{font-size:11px;color:var(--text3);margin-left:auto}
+.psd-car-status{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
+.psd-car-status.draft{background:#fef3c7;color:#92400e}
+.psd-car-status.confirmed{background:#d1fae5;color:#065f46}
+/* 차량 내 납품문서 목록 */
+.psd-car-items{padding:4px 0}
+.psd-car-item{display:flex;align-items:center;gap:6px;padding:5px 12px;border-bottom:1px solid var(--tr-border);transition:.1s;cursor:grab;user-select:none;font-size:11px}
+.psd-car-item:last-child{border-bottom:none}
+.psd-car-item:hover{background:var(--tr-hover)}
+.psd-car-item.dragging{opacity:.4;background:var(--surface2)}
+.psd-car-item.selected-item{background:rgba(37,99,235,.08)}
+.psd-car-item-drag{color:var(--text3);font-size:10px;cursor:grab;flex-shrink:0}
+.psd-car-item-shpo{font-family:monospace;color:var(--primary);font-weight:600;min-width:90px;flex-shrink:0}
+.psd-car-item-desc{flex:1;color:var(--text);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.psd-car-item-qty{font-weight:700;color:var(--text);min-width:70px;text-align:right;flex-shrink:0}
+.psd-car-item-unit{color:var(--text3);min-width:24px;flex-shrink:0}
+.psd-car-item-inch{padding:1px 6px;border-radius:10px;font-size:10px;font-weight:700;flex-shrink:0}
+.inch-12{background:#dbeafe;color:#1e40af}
+.inch-3{background:#fce7f3;color:#9d174d}
+/* 우측 납품문서 테이블 */
+.psd-doc-table-wrap{height:100%;display:flex;flex-direction:column}
+.psd-doc-filter{flex-shrink:0;padding:6px 10px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.psd-doc-filter input{flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text);font-size:11px}
+.psd-doc-filter input:focus{outline:none;border-color:var(--primary)}
+.psd-doc-filter select{padding:4px 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text);font-size:11px}
+.psd-doc-tbl-wrap{flex:1;overflow:auto}
+.psd-doc-tbl-wrap::-webkit-scrollbar{width:6px;height:6px}
+.psd-doc-tbl-wrap::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.psd-doc-tbl-wrap::-webkit-scrollbar-thumb:hover{background:var(--primary)}
+.psd-doc-tbl{width:100%;border-collapse:collapse;font-size:11px}
+.psd-doc-tbl thead th{position:sticky;top:0;z-index:2;padding:7px 8px;background:var(--th-bg);color:var(--text3);font-size:10px;font-weight:700;border-bottom:2px solid var(--border);white-space:nowrap;text-align:center}
+.psd-doc-tbl thead th:first-child{text-align:center;width:28px}
+.psd-doc-tbl tbody tr{border-bottom:1px solid var(--tr-border);cursor:grab;transition:.1s;user-select:none}
+.psd-doc-tbl tbody tr:hover{background:var(--tr-hover)}
+.psd-doc-tbl tbody tr.dragging-row{opacity:.35;background:var(--surface2)}
+.psd-doc-tbl tbody tr.dispatched{background:rgba(16,185,129,.05)}
+.psd-doc-tbl tbody tr.dispatched td{color:var(--text3)}
+.psd-doc-tbl tbody tr.selected-row{background:rgba(37,99,235,.08)}
+.psd-doc-tbl tbody td{padding:5px 8px;white-space:nowrap;vertical-align:middle}
+.psd-doc-tbl tbody td:first-child{text-align:center}
+.psd-disp-badge{padding:1px 6px;border-radius:10px;font-size:9px;font-weight:700;background:#d1fae5;color:#065f46}
+.psd-undisp-badge{padding:1px 6px;border-radius:10px;font-size:9px;font-weight:700;background:#fee2e2;color:#991b1b}
+/* 수동배차 드롭 안내 */
+.psd-drop-hint{padding:20px;text-align:center;color:var(--text3);font-size:12px;border:2px dashed var(--border);border-radius:8px;margin:12px}
+.psd-drop-active .psd-drop-hint{border-color:#10b981;color:#10b981;background:rgba(16,185,129,.04)}
+/* 선택 카운트 배지 */
+.psd-sel-badge{background:var(--primary);color:#fff;border-radius:12px;padding:1px 8px;font-size:10px;font-weight:700}
+/* 납품분할 모달 */
+.psd-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
+.psd-modal{background:var(--surface);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.25);width:680px;max-width:100%;max-height:85vh;display:flex;flex-direction:column;overflow:hidden}
+.psd-modal-hdr{padding:14px 20px;background:var(--th-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.psd-modal-hdr h3{font-size:14px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px}
+.psd-modal-close{padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;font-size:13px;font-weight:700;transition:.15s}
+.psd-modal-close:hover{background:var(--surface2);color:var(--text)}
+.psd-modal-body{flex:1;overflow-y:auto;padding:16px 20px;min-height:0}
+.psd-modal-foot{padding:12px 20px;border-top:1px solid var(--border);background:var(--surface);display:flex;justify-content:flex-end;gap:8px;flex-shrink:0}
+/* 분할 테이블 */
+.psd-split-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.psd-split-tbl thead th{padding:8px 10px;background:var(--th-bg);border-bottom:2px solid var(--border);font-size:11px;font-weight:700;color:var(--text3);text-align:center;white-space:nowrap}
+.psd-split-tbl tbody tr{border-bottom:1px solid var(--tr-border)}
+.psd-split-tbl tbody td{padding:6px 10px;vertical-align:middle;text-align:center}
+.psd-split-tbl tbody td.left{text-align:left}
+.psd-split-qty-input{width:80px;padding:4px 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text);font-size:12px;text-align:right;transition:.15s}
+.psd-split-qty-input:focus{outline:none;border-color:var(--primary)}
+/* 차량선택 드롭다운 */
+.psd-car-select-wrap{display:flex;align-items:center;gap:6px}
+.psd-car-select{padding:5px 8px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text);font-size:12px}
+/* 통계 정보 바 */
+.psd-stat-bar{flex-shrink:0;padding:5px 14px;background:var(--surface2);border-top:1px solid var(--border);display:flex;align-items:center;gap:16px;font-size:11px;color:var(--text3)}
+.psd-stat-bar .stat-item{display:flex;align-items:center;gap:4px}
+.psd-stat-bar .stat-val{font-weight:700;color:var(--text)}
+/* 빈 상태 */
+.psd-empty{padding:32px 20px;text-align:center;color:var(--text3)}
+.psd-empty .psd-empty-icon{font-size:36px;margin-bottom:8px}
+.psd-empty p{font-size:12px}
+/* 자동배차 결과 프리뷰 모달 */
+.psd-auto-result{padding:0}
+.psd-auto-veh-list{display:flex;flex-direction:column;gap:8px;padding:16px 20px}
+.psd-auto-veh{background:var(--surface2);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.psd-auto-veh-hdr{padding:8px 14px;background:var(--th-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.psd-auto-veh-hdr .veh-no{font-weight:700;font-size:12px;color:var(--text)}
+.psd-auto-veh-hdr .veh-kg{font-size:11px;color:var(--text3)}
+.psd-auto-veh-items{padding:4px 0}
+.psd-auto-item{display:flex;align-items:center;gap:6px;padding:4px 14px;border-bottom:1px solid var(--tr-border);font-size:11px}
+.psd-auto-item:last-child{border-bottom:none}
+
 /* ── MULTI-SELECT DROPDOWN ── */
 .ms-wrap{position:relative}
 .ms-trigger{background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:5px 9px;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:130px;white-space:nowrap;user-select:none;transition:.15s;width:100%}
@@ -1099,6 +1234,7 @@ const PAGE_META = {
   BZPTN_DETAIL:  { title:'납품처 상세',       badge:'BZPTN_DETAIL',   crumb:['홈','TMS 배차','납품처 상세'] },
   VHCMA:         { title:'차량 마스터',       badge:'VHCMA',          crumb:['홈','TMS 배차','차량 마스터'] },
   dispatchStrategy: { title:'배차전략 관리', badge:'⚙️ Strategy',    crumb:['홈','TMS 배차','배차전략 관리'] },
+  psDispatch:        { title:'PS 배차',      badge:'🚚 PS 배차',      crumb:['홈','TMS 배차','PS 배차'] },
 };
 
 function updateBreadcrumb(crumbs) {
@@ -1127,6 +1263,7 @@ const PAGE_ICON = {
   CMCDM:'📋', CMCDV:'📌', SKUMA:'📦', BZPTN:'🏢',
   MEASI:'📐', SHPDH:'🚚', SHPDI:'📄', shipSchedule:'📋', IFWMS113:'🔄',
   BZPTN_DETAIL:'🗺️', VHCMA:'🚛', ROUTE_COST:'💰',
+  psDispatch:'🚚',
 };
 
 function _tabTitle(p) {
@@ -1262,6 +1399,9 @@ function _doShowPage(p) {
   } else if (p === 'dispatchStrategy') {
     srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderDispatchStrategy();
+  } else if (p === 'psDispatch') {
+    srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
+    renderPsDispatch();
   } else {
     state.table = p;
     srch.style.display = 'flex'; psize.style.display = 'flex'; toolbar.style.display = 'none';
@@ -5156,6 +5296,1134 @@ function _dsRenderSimResult(area, data) {
   `;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   PS 배차 화면
+═══════════════════════════════════════════════════════════════ */
+const PSD_CAR_COLOR = {
+  '1.4톤':'car-1t4','3.5톤':'car-3t5','5톤':'car-5t',
+  '5톤축':'car-5tax','11톤':'car-11t','15톤':'car-15t','18톤':'car-18t'
+};
+const PSD_INCH12 = new Set(['a11','ab1','ag1','am1','111','s11','i11','k11']);
+const PSD_INCH3  = new Set(['ar1','ae1','aj1','al1','sr1','ir1']);
+
+/* 인치 판별 */
+function psdGetInch(skukey) {
+  const m = String(skukey||'').toLowerCase().slice(2,5);
+  if (PSD_INCH12.has(m)) return '12인치';
+  if (PSD_INCH3.has(m))  return '3인치';
+  return '';
+}
+
+/* 배차 상태 */
+const psdState = {
+  searchRows: [],       // 우측 납품문서 목록
+  vehicles:   [],       // 좌측 차량(배차) 목록 [{dispatch_no,cartype,items,...}]
+  selectedVehicle: null,// 선택된 배차번호
+  selectedDocs: new Set(),  // 우측 체크된 SHPOKY|SHPOIT
+  dragItem: null,       // 드래그 중인 아이템
+  dragSource: null,     // 'right'|'vehicle-[no]'
+  splitTarget: null,    // 분할 대상 아이템
+};
+
+/* 날짜 포맷 */
+function psdFmtDate(s) {
+  if (!s) return '-';
+  const d = String(s).replace(/-/g,'');
+  return d.length===8 ? `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}` : s;
+}
+function psdFmtNum(v) {
+  if (v==null||v==='') return '-';
+  const n = Number(v);
+  return isNaN(n) ? v : n.toLocaleString('ko-KR',{maximumFractionDigits:1});
+}
+
+/* 인치 배지 HTML */
+function psdInchBadge(skukey) {
+  const inch = psdGetInch(skukey);
+  if (!inch) return '';
+  return `<span class="psd-car-item-inch ${inch==='12인치'?'inch-12':'inch-3'}">${inch}</span>`;
+}
+
+/* 차량 색상 클래스 */
+function psdCarCls(cartype) {
+  return PSD_CAR_COLOR[cartype] || 'car-11t';
+}
+
+/* ── 메인 렌더 ───────────────────────────────────── */
+async function renderPsDispatch() {
+  const c = document.getElementById('content');
+  c.style.overflowY = 'hidden';
+
+  // 기본 날짜 (오늘)
+  const today = new Date();
+  const fmtD  = d => d.toISOString().slice(0,10);
+  const defFrom = fmtD(new Date(today.getFullYear(), today.getMonth(), 1));
+  const defTo   = fmtD(today);
+
+  c.innerHTML = `
+<div class="psd-layout" id="psd-root">
+  <!-- ① 검색조건 -->
+  <div class="psd-searchbar">
+    <div class="psd-search-title">■ 검색조건</div>
+    <div class="psd-search-row">
+      <div class="psd-fg">
+        <label>납품일(FROM)</label>
+        <input type="date" id="psd-date-from" value="${defFrom}">
+      </div>
+      <div class="psd-fg">
+        <label>납품일(TO)</label>
+        <input type="date" id="psd-date-to" value="${defTo}">
+      </div>
+      <div class="psd-fg">
+        <label>납품처코드/명</label>
+        <input type="text" id="psd-dptnky" placeholder="납품처 검색...">
+      </div>
+      <div class="psd-fg">
+        <label>납품문서</label>
+        <input type="text" id="psd-shpoky" placeholder="납품문서번호...">
+      </div>
+      <div class="psd-fg">
+        <label>배차상태</label>
+        <select id="psd-disp-stat">
+          <option value="all">전체</option>
+          <option value="undispatched" selected>미배차</option>
+          <option value="dispatched">배차완료</option>
+        </select>
+      </div>
+      <button class="psd-btn primary" onclick="psdSearch()">🔍 조회</button>
+    </div>
+  </div>
+
+  <!-- ② 툴바 -->
+  <div class="psd-toolbar">
+    <button class="psd-btn primary" onclick="psdSearch()">🔍 조회</button>
+    <div class="psd-sep"></div>
+    <button class="psd-btn success" id="psd-btn-auto" onclick="psdAutoDispatch()" disabled>⚡ 자동배차</button>
+    <button class="psd-btn" id="psd-btn-manual" onclick="psdManualDispatch()" disabled>✋ 수기배차</button>
+    <div class="psd-sep"></div>
+    <button class="psd-btn" id="psd-btn-split" onclick="psdOpenSplit()" disabled>✂️ 납품분할</button>
+    <div class="psd-sep"></div>
+    <button class="psd-btn warn" id="psd-btn-confirm" onclick="psdConfirmDispatch()" disabled>✅ 배차확정</button>
+    <button class="psd-btn danger" id="psd-btn-del" onclick="psdDeleteDispatch()" disabled>🗑️ 배차삭제</button>
+    <div class="psd-sep"></div>
+    <button class="psd-btn" onclick="psdSaveDispatch()" id="psd-btn-save">💾 배차저장</button>
+    <div style="margin-left:auto;font-size:11px;color:var(--text3)" id="psd-status-text"></div>
+  </div>
+
+  <!-- ③ 메인: 좌(선적/차량) + 우(납품문서) -->
+  <div class="psd-main">
+    <!-- 좌측: 배차(선적) 목록 -->
+    <div class="psd-left" id="psd-left">
+      <div class="psd-panel-hdr">
+        <div class="psd-panel-hdr-title">🚛 선적(차량) 배차 목록</div>
+        <div class="psd-panel-hdr-info" id="psd-left-info">배차 0건</div>
+      </div>
+      <div class="psd-panel-body" id="psd-vehicle-area">
+        <div class="psd-empty">
+          <div class="psd-empty-icon">🚛</div>
+          <p>자동배차 또는 수기배차로 배차를 생성하세요.</p>
+          <p style="margin-top:6px;font-size:11px">우측 납품문서를 이 영역으로 드래그하면 수동 추가됩니다.</p>
+        </div>
+      </div>
+      <div class="psd-stat-bar" id="psd-left-stat">
+        <span class="stat-item">차량: <span class="stat-val" id="psd-stat-veh">0</span></span>
+        <span class="stat-item">총KG: <span class="stat-val" id="psd-stat-kg">0</span></span>
+        <span class="stat-item">문서: <span class="stat-val" id="psd-stat-doc">0</span></span>
+      </div>
+    </div>
+
+    <!-- 우측: 납품문서 -->
+    <div class="psd-right" id="psd-right">
+      <div class="psd-panel-hdr">
+        <div class="psd-panel-hdr-title">📄 납품문서 목록 <span class="psd-sel-badge" id="psd-sel-cnt" style="display:none">0</span></div>
+        <div class="psd-panel-hdr-info" id="psd-right-info">총 0건</div>
+      </div>
+      <div class="psd-doc-table-wrap">
+        <div class="psd-doc-filter">
+          <input type="text" id="psd-doc-filter" placeholder="납품처/품목 필터..." oninput="psdFilterDocs()">
+          <select id="psd-doc-inch-filter" onchange="psdFilterDocs()">
+            <option value="">전체 인치</option>
+            <option value="12인치">12인치</option>
+            <option value="3인치">3인치</option>
+          </select>
+          <select id="psd-doc-stat-filter" onchange="psdFilterDocs()">
+            <option value="">전체 상태</option>
+            <option value="N">미배차</option>
+            <option value="Y">배차완료</option>
+          </select>
+          <button class="psd-btn" style="padding:4px 10px;font-size:11px" onclick="psdSelectAllDocs()">전체선택</button>
+          <button class="psd-btn" style="padding:4px 10px;font-size:11px" onclick="psdClearDocSel()">선택해제</button>
+        </div>
+        <div class="psd-doc-tbl-wrap" id="psd-doc-tbl-wrap"
+             ondragover="event.preventDefault();document.getElementById('psd-doc-tbl-wrap').classList.add('psd-drop-active')"
+             ondragleave="document.getElementById('psd-doc-tbl-wrap').classList.remove('psd-drop-active')"
+             ondrop="psdDropToRight(event)">
+          <table class="psd-doc-tbl" id="psd-doc-tbl">
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="psd-chk-all" onchange="psdToggleAll(this.checked)"></th>
+                <th>납품문서</th><th>IT</th><th>납품처코드</th><th>납품처명</th>
+                <th>품목코드</th><th>품목명</th><th>납품수량</th><th>단위</th>
+                <th>인치</th><th>납품일</th><th>배차</th>
+              </tr>
+            </thead>
+            <tbody id="psd-doc-tbody">
+              <tr><td colspan="12" class="psd-empty"><div class="psd-empty-icon" style="font-size:24px">📋</div><p>조회 버튼을 클릭하세요</p></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="psd-stat-bar">
+          <span class="stat-item">전체: <span class="stat-val" id="psd-stat-total">0</span></span>
+          <span class="stat-item">미배차: <span class="stat-val" id="psd-stat-undp">0</span></span>
+          <span class="stat-item">배차완료: <span class="stat-val" id="psd-stat-dp">0</span></span>
+          <span class="stat-item">선택: <span class="stat-val" id="psd-stat-sel">0</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 드롭 오버레이 (vehicle area) -->
+  <div id="psd-global-drop-hint" style="display:none;position:fixed;inset:0;z-index:8888;pointer-events:none"></div>
+</div>
+  `;
+
+  // 기존 배차 목록 로드
+  await psdLoadVehicles();
+  // 자동 조회
+  await psdSearch();
+}
+
+/* ── 조회 ─────────────────────────────────────────── */
+async function psdSearch() {
+  const dateFrom = document.getElementById('psd-date-from')?.value || '';
+  const dateTo   = document.getElementById('psd-date-to')?.value   || '';
+  const dptnky   = document.getElementById('psd-dptnky')?.value.trim() || '';
+  const shpoky   = document.getElementById('psd-shpoky')?.value.trim() || '';
+  const status   = document.getElementById('psd-disp-stat')?.value  || 'all';
+  const tbody    = document.getElementById('psd-doc-tbody');
+  if (!tbody) return;
+
+  tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;padding:20px"><div class="spinner" style="margin:0 auto 8px"></div>조회 중...</td></tr>`;
+
+  try {
+    const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo, dptnky, shpoky, status });
+    const res  = await fetch(`/api/ps-dispatch/search?${params}`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    psdState.searchRows = data.rows || [];
+    psdRenderDocTable();
+    psdUpdateToolbar();
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="12" style="color:var(--danger);text-align:center;padding:20px">❌ 조회 실패: ${e.message}</td></tr>`;
+  }
+}
+
+/* ── 납품문서 테이블 렌더 ──────────────────────────── */
+function psdRenderDocTable(filterText) {
+  const tbody = document.getElementById('psd-doc-tbody');
+  if (!tbody) return;
+  const fText  = (filterText ?? document.getElementById('psd-doc-filter')?.value ?? '').toLowerCase();
+  const fInch  = document.getElementById('psd-doc-inch-filter')?.value || '';
+  const fStat  = document.getElementById('psd-doc-stat-filter')?.value || '';
+
+  const rows = psdState.searchRows.filter(r => {
+    if (fText && !(
+      (r.DPTNKY||'').toLowerCase().includes(fText) ||
+      (r.DPTNM||'').toLowerCase().includes(fText) ||
+      (r.SHPOKY||'').toLowerCase().includes(fText) ||
+      (r.SKUKEY||'').toLowerCase().includes(fText) ||
+      (r.DESC01||'').toLowerCase().includes(fText)
+    )) return false;
+    if (fInch && r.INCH !== fInch) return false;
+    if (fStat==='N' && r.DISPATCHED) return false;
+    if (fStat==='Y' && !r.DISPATCHED) return false;
+    return true;
+  });
+
+  let undpCnt=0, dpCnt=0;
+  rows.forEach(r => r.DISPATCHED ? dpCnt++ : undpCnt++);
+
+  document.getElementById('psd-stat-total').textContent = rows.length.toLocaleString();
+  document.getElementById('psd-stat-undp').textContent  = undpCnt.toLocaleString();
+  document.getElementById('psd-stat-dp').textContent    = dpCnt.toLocaleString();
+  document.getElementById('psd-right-info').textContent = `총 ${rows.length}건`;
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="12" class="psd-empty"><div class="psd-empty-icon" style="font-size:24px">📋</div><p>조회 결과가 없습니다</p></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    const key  = `${r.SHPOKY}|${r.SHPOIT}`;
+    const sel  = psdState.selectedDocs.has(key);
+    const inch = r.INCH || '';
+    const inchBadge = inch ? `<span class="psd-car-item-inch ${inch==='12인치'?'inch-12':'inch-3'}">${inch}</span>` : '';
+    const dispBadge = r.DISPATCHED
+      ? `<span class="psd-disp-badge">배차</span>`
+      : `<span class="psd-undisp-badge">미배차</span>`;
+
+    return `<tr class="${r.DISPATCHED?'dispatched':''} ${sel?'selected-row':''}"
+      id="psd-row-${key.replace(/\|/g,'_')}"
+      draggable="true"
+      ondragstart="psdDragStartDoc(event,'${r.SHPOKY}','${r.SHPOIT}')"
+      ondragend="psdDragEndDoc(event)"
+      onclick="psdToggleDocSel('${key}',event)"
+      ondblclick="psdOpenSplitForRow('${r.SHPOKY}','${r.SHPOIT}')">
+      <td onclick="event.stopPropagation()">
+        <input type="checkbox" class="psd-doc-chk" data-key="${key}"
+               ${sel?'checked':''} onchange="psdChkDoc('${key}',this.checked)">
+      </td>
+      <td style="font-family:monospace;color:var(--primary);font-weight:600">${r.SHPOKY}</td>
+      <td style="text-align:center">${r.SHPOIT}</td>
+      <td>${r.DPTNKY||''}</td>
+      <td style="max-width:120px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${r.DPTNM||''}</td>
+      <td style="font-family:monospace;font-size:10px">${r.SKUKEY||''}</td>
+      <td style="max-width:140px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${r.DESC01||''}">${r.DESC01||''}</td>
+      <td style="text-align:right;font-weight:600">${psdFmtNum(r.QTSHPO)}</td>
+      <td style="text-align:center">${r.UOMKEY||'KG'}</td>
+      <td style="text-align:center">${inchBadge}</td>
+      <td style="text-align:center">${psdFmtDate(r.RQSHPD)}</td>
+      <td style="text-align:center">${dispBadge}</td>
+    </tr>`;
+  }).join('');
+
+  psdUpdateSelCnt();
+}
+
+/* ── 필터 ─────────────────────────────────────────── */
+function psdFilterDocs() { psdRenderDocTable(); }
+
+/* ── 체크박스 선택 ────────────────────────────────── */
+function psdChkDoc(key, checked) {
+  if (checked) psdState.selectedDocs.add(key);
+  else         psdState.selectedDocs.delete(key);
+  psdUpdateSelCnt();
+  psdUpdateToolbar();
+}
+function psdToggleDocSel(key, ev) {
+  if (ev.target.tagName==='INPUT') return;
+  if (psdState.selectedDocs.has(key)) psdState.selectedDocs.delete(key);
+  else                                psdState.selectedDocs.add(key);
+  const row = document.getElementById(`psd-row-${key.replace(/\|/g,'_')}`);
+  if (row) row.classList.toggle('selected-row');
+  const chk = row?.querySelector('.psd-doc-chk');
+  if (chk) chk.checked = psdState.selectedDocs.has(key);
+  psdUpdateSelCnt();
+  psdUpdateToolbar();
+}
+function psdToggleAll(checked) {
+  const fText = document.getElementById('psd-doc-filter')?.value.toLowerCase() || '';
+  const fInch = document.getElementById('psd-doc-inch-filter')?.value || '';
+  const fStat = document.getElementById('psd-doc-stat-filter')?.value || '';
+  psdState.searchRows.filter(r => {
+    if (fText && !(
+      (r.DPTNKY||'').toLowerCase().includes(fText) ||
+      (r.DPTNM||'').toLowerCase().includes(fText) ||
+      (r.SHPOKY||'').toLowerCase().includes(fText) ||
+      (r.SKUKEY||'').toLowerCase().includes(fText) ||
+      (r.DESC01||'').toLowerCase().includes(fText)
+    )) return false;
+    if (fInch && r.INCH !== fInch) return false;
+    if (fStat==='N' && r.DISPATCHED) return false;
+    if (fStat==='Y' && !r.DISPATCHED) return false;
+    return true;
+  }).forEach(r => {
+    const key = `${r.SHPOKY}|${r.SHPOIT}`;
+    if (checked) psdState.selectedDocs.add(key);
+    else         psdState.selectedDocs.delete(key);
+  });
+  psdRenderDocTable();
+  psdUpdateToolbar();
+}
+function psdSelectAllDocs() {
+  document.getElementById('psd-chk-all').checked = true;
+  psdToggleAll(true);
+}
+function psdClearDocSel() {
+  document.getElementById('psd-chk-all').checked = false;
+  psdState.selectedDocs.clear();
+  psdRenderDocTable();
+  psdUpdateToolbar();
+}
+function psdUpdateSelCnt() {
+  const n = psdState.selectedDocs.size;
+  const badge = document.getElementById('psd-sel-cnt');
+  if (badge) { badge.textContent = n; badge.style.display = n ? 'inline' : 'none'; }
+  const el = document.getElementById('psd-stat-sel');
+  if (el) el.textContent = n;
+}
+
+/* ── 툴바 버튼 활성화 제어 ───────────────────────── */
+function psdUpdateToolbar() {
+  const selCnt = psdState.selectedDocs.size;
+  const vehCnt = psdState.vehicles.length;
+  const selVeh = psdState.selectedVehicle;
+
+  const btn = id => document.getElementById(id);
+  if (btn('psd-btn-auto'))    btn('psd-btn-auto').disabled    = psdState.searchRows.filter(r=>!r.DISPATCHED).length === 0;
+  if (btn('psd-btn-manual'))  btn('psd-btn-manual').disabled  = selCnt === 0;
+  if (btn('psd-btn-split'))   btn('psd-btn-split').disabled   = selCnt === 0;
+  if (btn('psd-btn-confirm')) btn('psd-btn-confirm').disabled = !selVeh;
+  if (btn('psd-btn-del'))     btn('psd-btn-del').disabled     = !selVeh;
+}
+
+/* ── 기존 배차 로드 ──────────────────────────────── */
+async function psdLoadVehicles() {
+  const dateFrom = document.getElementById('psd-date-from')?.value || '';
+  const dateTo   = document.getElementById('psd-date-to')?.value   || '';
+  try {
+    const params = new URLSearchParams({date_from: dateFrom, date_to: dateTo});
+    const res  = await fetch(`/api/ps-dispatch/list?${params}`);
+    const data = await res.json();
+    if (!data.ok) return;
+    psdState.vehicles = (data.rows||[]).map(h => ({
+      dispatch_no: h.DISPATCH_NO,
+      rqshpd:      h.RQSHPD,
+      dptnky:      h.DPTNKY,
+      dptnm:       h.DPTNM,
+      cartype:     h.CARTYPE,
+      status:      h.STATUS,
+      total_kg:    h.TOTAL_KG,
+      total_cnt:   h.TOTAL_CNT,
+      items:       h.items || [],
+    }));
+    psdRenderVehicleArea();
+  } catch(e) { /* ignore */ }
+}
+
+/* ── 차량(선적) 영역 렌더 ────────────────────────── */
+function psdRenderVehicleArea() {
+  const area = document.getElementById('psd-vehicle-area');
+  if (!area) return;
+
+  let totalKg=0, totalDoc=0;
+  psdState.vehicles.forEach(v => {
+    totalKg  += v.total_kg  || 0;
+    totalDoc += v.total_cnt || 0;
+  });
+  const info = document.getElementById('psd-left-info');
+  if (info) info.textContent = `배차 ${psdState.vehicles.length}건`;
+  const stVeh = document.getElementById('psd-stat-veh');
+  const stKg  = document.getElementById('psd-stat-kg');
+  const stDoc = document.getElementById('psd-stat-doc');
+  if (stVeh) stVeh.textContent = psdState.vehicles.length;
+  if (stKg)  stKg.textContent  = psdFmtNum(totalKg) + ' KG';
+  if (stDoc) stDoc.textContent  = totalDoc;
+
+  if (!psdState.vehicles.length) {
+    area.innerHTML = `
+      <div class="psd-empty" id="psd-vehicle-drop-zone"
+           ondragover="event.preventDefault();this.closest('#psd-vehicle-area').classList.add('psd-drop-active')"
+           ondragleave="this.closest('#psd-vehicle-area').classList.remove('psd-drop-active')"
+           ondrop="psdDropToVehicleNew(event)">
+        <div class="psd-empty-icon">🚛</div>
+        <p>자동배차 또는 수기배차로 배차를 생성하세요.</p>
+        <p style="margin-top:6px;font-size:11px;color:var(--primary)">📥 납품문서를 여기로 드래그하여 새 배차를 생성할 수 있습니다</p>
+      </div>`;
+    return;
+  }
+
+  area.innerHTML = `<div class="psd-car-wrap" id="psd-car-wrap"
+    ondragover="psdVehicleAreaDragOver(event)"
+    ondragleave="psdVehicleAreaDragLeave(event)"
+    ondrop="psdDropToVehicleNew(event)">
+    ${psdState.vehicles.map(v => psdBuildVehicleCard(v)).join('')}
+    <div class="psd-drop-hint" id="psd-drop-hint-new">
+      📥 여기로 드래그하면 새 배차를 생성합니다
+    </div>
+  </div>`;
+
+  // 차량 카드 드래그/드롭 이벤트 바인딩
+  psdState.vehicles.forEach(v => psdBindVehicleCard(v.dispatch_no));
+}
+
+/* ── 차량 카드 HTML 빌드 ─────────────────────────── */
+function psdBuildVehicleCard(v) {
+  const ccls     = psdCarCls(v.cartype);
+  const selected = psdState.selectedVehicle === v.dispatch_no;
+  const statusBadge = v.status==='CONFIRMED'
+    ? `<span class="psd-car-status confirmed">확정</span>`
+    : `<span class="psd-car-status draft">가배차</span>`;
+
+  const itemsHtml = (v.items||[]).map(it => `
+    <div class="psd-car-item" draggable="true"
+         data-dispatch="${v.dispatch_no}"
+         data-shpoky="${it.SHPOKY}" data-shpoit="${it.SHPOIT}"
+         ondragstart="psdDragStartCarItem(event,'${v.dispatch_no}','${it.SHPOKY}','${it.SHPOIT}')"
+         ondragend="psdDragEndDoc(event)"
+         ondblclick="psdRemoveItemFromVehicle('${v.dispatch_no}','${it.SHPOKY}','${it.SHPOIT}')">
+      <span class="psd-car-item-drag">⠿</span>
+      <span class="psd-car-item-shpo">${it.SHPOKY}</span>
+      <span class="psd-car-item-desc" title="${it.DESC01||''}">${it.DESC01||it.SKUKEY||''}</span>
+      ${psdInchBadge(it.SKUKEY)}
+      <span class="psd-car-item-qty">${psdFmtNum(it.QTSHPO)}</span>
+      <span class="psd-car-item-unit">${it.UOMKEY||'KG'}</span>
+    </div>`).join('');
+
+  const emptyHint = !(v.items&&v.items.length)
+    ? `<div style="padding:12px;text-align:center;font-size:11px;color:var(--text3)">납품문서를 드래그하여 추가하세요</div>`
+    : '';
+
+  return `
+  <div class="psd-car-card ${selected?'selected':''}" id="psd-veh-${v.dispatch_no}"
+       onclick="psdSelectVehicle('${v.dispatch_no}')"
+       ondragover="psdVehicleCardDragOver(event,'${v.dispatch_no}')"
+       ondragleave="psdVehicleCardDragLeave(event,'${v.dispatch_no}')"
+       ondrop="psdDropToVehicle(event,'${v.dispatch_no}')">
+    <div class="psd-car-card-hdr">
+      <span class="psd-car-badge ${ccls}">🚛 ${v.cartype||'미정'}</span>
+      <span class="psd-car-no">${v.dispatch_no}</span>
+      <span class="psd-car-kg">${psdFmtNum(v.total_kg)} KG · ${v.total_cnt||0}건</span>
+      ${statusBadge}
+      <span style="font-size:11px;color:var(--text3)">${psdFmtDate(v.rqshpd)}</span>
+    </div>
+    <div class="psd-car-items" id="psd-veh-items-${v.dispatch_no}">
+      ${itemsHtml}${emptyHint}
+    </div>
+  </div>`;
+}
+
+/* ── 차량 카드 이벤트 바인딩 ─────────────────────── */
+function psdBindVehicleCard(dispatch_no) {
+  // 이미 HTML에 인라인으로 처리됨
+}
+
+/* ── 차량 선택 ────────────────────────────────────── */
+function psdSelectVehicle(dispatch_no) {
+  if (psdState.selectedVehicle === dispatch_no) {
+    psdState.selectedVehicle = null;
+  } else {
+    psdState.selectedVehicle = dispatch_no;
+  }
+  // 모든 카드 클래스 갱신
+  psdState.vehicles.forEach(v => {
+    const el = document.getElementById(`psd-veh-${v.dispatch_no}`);
+    if (el) el.classList.toggle('selected', v.dispatch_no === psdState.selectedVehicle);
+  });
+  psdUpdateToolbar();
+}
+
+/* ═══════════════════════════════════════════════════
+   드래그 & 드롭
+═══════════════════════════════════════════════════ */
+/* 우측 납품문서 → 드래그 시작 */
+function psdDragStartDoc(ev, shpoky, shpoit) {
+  const key = `${shpoky}|${shpoit}`;
+  // 선택된 아이템들 전체 드래그
+  if (!psdState.selectedDocs.has(key)) {
+    psdState.selectedDocs.add(key);
+    psdRenderDocTable();
+  }
+  psdState.dragSource = 'right';
+  const payload = [...psdState.selectedDocs].map(k => {
+    const [sk, sit] = k.split('|');
+    return psdState.searchRows.find(r => r.SHPOKY===sk && r.SHPOIT===sit);
+  }).filter(Boolean);
+  ev.dataTransfer.setData('application/json', JSON.stringify({source:'right', items: payload}));
+  ev.dataTransfer.effectAllowed = 'move';
+  document.querySelectorAll('#psd-doc-tbody tr.selected-row').forEach(r => r.classList.add('dragging-row'));
+  // 드롭 힌트 표시
+  const hint = document.getElementById('psd-drop-hint-new');
+  if (hint) hint.style.background='rgba(16,185,129,.08)';
+}
+
+/* 차량 카드 아이템 → 드래그 시작 */
+function psdDragStartCarItem(ev, dispatch_no, shpoky, shpoit) {
+  psdState.dragSource = `vehicle-${dispatch_no}`;
+  const veh = psdState.vehicles.find(v => v.dispatch_no===dispatch_no);
+  const item = veh?.items?.find(it => it.SHPOKY===shpoky && it.SHPOIT===shpoit);
+  ev.dataTransfer.setData('application/json', JSON.stringify({
+    source: `vehicle-${dispatch_no}`, dispatch_no, items: item ? [item] : []
+  }));
+  ev.dataTransfer.effectAllowed = 'move';
+  ev.currentTarget.classList.add('dragging');
+}
+
+function psdDragEndDoc(ev) {
+  document.querySelectorAll('.dragging-row').forEach(r => r.classList.remove('dragging-row'));
+  document.querySelectorAll('.dragging').forEach(r => r.classList.remove('dragging'));
+  document.querySelectorAll('.drag-over').forEach(r => r.classList.remove('drag-over'));
+  document.getElementById('psd-doc-tbl-wrap')?.classList.remove('psd-drop-active');
+}
+
+/* 차량 카드 dragover */
+function psdVehicleCardDragOver(ev, dispatch_no) {
+  ev.preventDefault();
+  ev.stopPropagation();
+  const card = document.getElementById(`psd-veh-${dispatch_no}`);
+  if (card) card.classList.add('drag-over');
+}
+function psdVehicleCardDragLeave(ev, dispatch_no) {
+  const card = document.getElementById(`psd-veh-${dispatch_no}`);
+  if (card) card.classList.remove('drag-over');
+}
+
+/* 차량 영역 (새 배차) dragover */
+function psdVehicleAreaDragOver(ev) {
+  ev.preventDefault();
+  const hint = document.getElementById('psd-drop-hint-new');
+  if (hint) hint.style.borderColor='#10b981';
+}
+function psdVehicleAreaDragLeave(ev) {
+  const hint = document.getElementById('psd-drop-hint-new');
+  if (hint) hint.style.borderColor='';
+}
+
+/* ── 차량에 드롭 (기존 배차번호에 추가) ─────────── */
+async function psdDropToVehicle(ev, dispatch_no) {
+  ev.preventDefault();
+  ev.stopPropagation();
+  const card = document.getElementById(`psd-veh-${dispatch_no}`);
+  if (card) card.classList.remove('drag-over');
+
+  let payload;
+  try { payload = JSON.parse(ev.dataTransfer.getData('application/json')); }
+  catch(e) { return; }
+
+  const items = payload.items || [];
+  if (!items.length) return;
+
+  // 같은 차량 내 이동이면 무시
+  if (payload.source === `vehicle-${dispatch_no}`) return;
+
+  // 원본이 다른 차량이면 그 차량에서 제거
+  if (payload.source && payload.source.startsWith('vehicle-')) {
+    const srcNo = payload.dispatch_no;
+    if (srcNo && srcNo !== dispatch_no) {
+      await psdRemoveItemsFromVehicleAPI(srcNo, items);
+    }
+  }
+
+  // 대상 차량에 추가
+  await psdAddItemsToVehicle(dispatch_no, items);
+}
+
+/* ── 빈 영역에 드롭 → 새 배차 생성 ─────────────── */
+async function psdDropToVehicleNew(ev) {
+  ev.preventDefault();
+  ev.stopPropagation();
+  document.getElementById('psd-vehicle-area')?.classList.remove('psd-drop-active');
+
+  let payload;
+  try { payload = JSON.parse(ev.dataTransfer.getData('application/json')); }
+  catch(e) { return; }
+
+  const items = payload.items || [];
+  if (!items.length) return;
+
+  // 차량에서 온 경우 이동 처리
+  if (payload.source && payload.source.startsWith('vehicle-')) return;
+
+  // 수기배차 다이얼로그
+  psdShowManualCarSelect(items);
+}
+
+/* ── 우측으로 드롭 (차량에서 제거) ──────────────── */
+async function psdDropToRight(ev) {
+  ev.preventDefault();
+  document.getElementById('psd-doc-tbl-wrap')?.classList.remove('psd-drop-active');
+
+  let payload;
+  try { payload = JSON.parse(ev.dataTransfer.getData('application/json')); }
+  catch(e) { return; }
+
+  // 차량에서 온 경우만 처리
+  if (!payload.source?.startsWith('vehicle-')) return;
+  const dispatch_no = payload.dispatch_no;
+  const items       = payload.items || [];
+  if (!dispatch_no || !items.length) return;
+
+  await psdRemoveItemsFromVehicleAPI(dispatch_no, items);
+}
+
+/* ── 차량에 아이템 추가 (API) ─────────────────────── */
+async function psdAddItemsToVehicle(dispatch_no, items) {
+  try {
+    const res = await fetch('/api/ps-dispatch/update-item', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ dispatch_no, action:'add', items })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    // 로컬 상태 갱신
+    const veh = psdState.vehicles.find(v => v.dispatch_no===dispatch_no);
+    if (veh && data.header) {
+      veh.total_kg  = data.header.TOTAL_KG;
+      veh.total_cnt = data.header.TOTAL_CNT;
+      items.forEach(it => {
+        if (!veh.items.find(x => x.SHPOKY===it.SHPOKY && x.SHPOIT===it.SHPOIT))
+          veh.items.push(it);
+      });
+    }
+    // 우측에서 배차완료 표시
+    items.forEach(it => {
+      const row = psdState.searchRows.find(r => r.SHPOKY===it.SHPOKY && r.SHPOIT===it.SHPOIT);
+      if (row) row.DISPATCHED = true;
+    });
+    psdState.selectedDocs.clear();
+    psdRenderVehicleArea();
+    psdRenderDocTable();
+    showToast(`✅ ${dispatch_no}에 ${items.length}건 추가됨`);
+  } catch(e) {
+    showToast(`❌ 추가 실패: ${e.message}`);
+  }
+}
+
+/* ── 차량에서 아이템 제거 (API) ────────────────────── */
+async function psdRemoveItemsFromVehicleAPI(dispatch_no, items) {
+  try {
+    const res = await fetch('/api/ps-dispatch/update-item', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ dispatch_no, action:'remove', items })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    // 로컬 상태 갱신
+    const veh = psdState.vehicles.find(v => v.dispatch_no===dispatch_no);
+    if (veh) {
+      items.forEach(it => {
+        const idx = veh.items.findIndex(x => x.SHPOKY===it.SHPOKY && x.SHPOIT===it.SHPOIT);
+        if (idx>=0) veh.items.splice(idx,1);
+      });
+      if (data.header) {
+        veh.total_kg  = data.header.TOTAL_KG;
+        veh.total_cnt = data.header.TOTAL_CNT;
+      }
+    }
+    items.forEach(it => {
+      const row = psdState.searchRows.find(r => r.SHPOKY===it.SHPOKY && r.SHPOIT===it.SHPOIT);
+      if (row) row.DISPATCHED = false;
+    });
+    psdRenderVehicleArea();
+    psdRenderDocTable();
+    showToast(`↩️ ${items.length}건 배차 해제됨`);
+  } catch(e) {
+    showToast(`❌ 제거 실패: ${e.message}`);
+  }
+}
+
+/* ── 차량에서 개별 아이템 더블클릭 제거 ──────────── */
+async function psdRemoveItemFromVehicle(dispatch_no, shpoky, shpoit) {
+  if (!confirm(`배차번호 ${dispatch_no}에서 납품문서 ${shpoky}를 제거하시겠습니까?`)) return;
+  await psdRemoveItemsFromVehicleAPI(dispatch_no, [{SHPOKY:shpoky, SHPOIT:shpoit}]);
+}
+
+/* ═══════════════════════════════════════════════════
+   자동배차
+═══════════════════════════════════════════════════ */
+async function psdAutoDispatch() {
+  const undispatched = psdState.searchRows.filter(r => !r.DISPATCHED);
+  if (!undispatched.length) { showToast('미배차 납품문서가 없습니다.'); return; }
+
+  const statusEl = document.getElementById('psd-status-text');
+  if (statusEl) statusEl.textContent = '⏳ 자동배차 실행 중...';
+
+  try {
+    const res = await fetch('/api/ps-dispatch/auto', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ items: undispatched })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    if (statusEl) statusEl.textContent = '';
+    // 결과 미리보기 모달
+    psdShowAutoResultModal(data.vehicles || []);
+  } catch(e) {
+    if (statusEl) statusEl.textContent = '';
+    showToast(`❌ 자동배차 실패: ${e.message}`);
+  }
+}
+
+/* 자동배차 결과 미리보기 모달 */
+function psdShowAutoResultModal(vehicles) {
+  const existing = document.getElementById('psd-auto-modal');
+  if (existing) existing.remove();
+
+  const totalVeh = vehicles.length;
+  const totalKg  = vehicles.reduce((s,v)=>s+v.total_kg,0);
+  const totalDoc  = vehicles.reduce((s,v)=>s+(v.item_cnt||0),0);
+
+  // 요약 배지
+  const carSummary = {};
+  vehicles.forEach(v => {
+    const ct = v.cartype||'미정';
+    carSummary[ct] = (carSummary[ct]||0)+1;
+  });
+  const summaryBadges = Object.entries(carSummary).map(([ct,cnt]) => {
+    const ccls = psdCarCls(ct);
+    return `<span class="psd-car-badge ${ccls}" style="margin:2px">${ct} × ${cnt}</span>`;
+  }).join('');
+
+  const vehListHtml = vehicles.map((v,idx) => {
+    const ccls = psdCarCls(v.cartype);
+    const itemsHtml = (v.items||[]).map(it => {
+      const inch = psdGetInch(it.SKUKEY||'');
+      const inchBadge = inch ? `<span class="psd-car-item-inch ${inch==='12인치'?'inch-12':'inch-3'}">${inch}</span>` : '';
+      return `<div class="psd-auto-item">
+        <span style="font-family:monospace;color:var(--primary);min-width:90px">${it.SHPOKY}</span>
+        ${inchBadge}
+        <span style="flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${it.DESC01||''}">${it.DESC01||it.SKUKEY||''}</span>
+        <span style="font-weight:600;min-width:70px;text-align:right">${psdFmtNum(it.QTSHPO)}</span>
+        <span style="color:var(--text3);margin-left:4px">${it.UOMKEY||'KG'}</span>
+      </div>`;
+    }).join('');
+
+    return `<div class="psd-auto-veh">
+      <div class="psd-auto-veh-hdr">
+        <span class="psd-car-badge ${ccls}">🚛 ${v.cartype||'미정'}</span>
+        <span class="veh-no">차량 ${idx+1}</span>
+        <span class="veh-kg">${psdFmtDate(v.rqshpd)}</span>
+        <span class="veh-kg">${v.dptnm||v.dptnky||''}</span>
+        <span class="veh-kg" style="margin-left:auto">${psdFmtNum(v.total_kg)} KG · ${v.item_cnt}건</span>
+      </div>
+      <div class="psd-auto-veh-items">${itemsHtml}</div>
+    </div>`;
+  }).join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'psd-auto-modal';
+  modal.className = 'psd-modal-overlay';
+  modal.innerHTML = `
+    <div class="psd-modal" style="width:780px">
+      <div class="psd-modal-hdr">
+        <h3>⚡ 자동배차 결과 미리보기</h3>
+        <button class="psd-modal-close" onclick="document.getElementById('psd-auto-modal').remove()">✕</button>
+      </div>
+      <div style="padding:12px 20px;background:var(--th-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-size:12px;font-weight:700;color:var(--text)">차량 ${totalVeh}대 · 문서 ${totalDoc}건 · 총 ${psdFmtNum(totalKg)} KG</span>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">${summaryBadges}</div>
+      </div>
+      <div class="psd-modal-body psd-auto-result">
+        <div class="psd-auto-veh-list">${vehListHtml}</div>
+      </div>
+      <div class="psd-modal-foot">
+        <button class="psd-btn" onclick="document.getElementById('psd-auto-modal').remove()">취소</button>
+        <button class="psd-btn success" onclick="psdSaveAutoResult(${JSON.stringify(vehicles).replace(/"/g,'&quot;')})">💾 배차 저장</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+async function psdSaveAutoResult(vehicles) {
+  document.getElementById('psd-auto-modal')?.remove();
+  try {
+    const res = await fetch('/api/ps-dispatch/save', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ vehicles })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    showToast(`✅ 자동배차 ${data.saved}건 저장 완료 (${data.dispatch_nos.join(', ')})`);
+    // 상태 갱신
+    psdState.selectedDocs.clear();
+    await psdLoadVehicles();
+    await psdSearch();
+  } catch(e) {
+    showToast(`❌ 저장 실패: ${e.message}`);
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   수기배차
+═══════════════════════════════════════════════════ */
+async function psdManualDispatch() {
+  const selKeys = [...psdState.selectedDocs];
+  if (!selKeys.length) { showToast('납품문서를 선택하세요.'); return; }
+  const items = selKeys.map(k => {
+    const [sk, sit] = k.split('|');
+    return psdState.searchRows.find(r => r.SHPOKY===sk && r.SHPOIT===sit);
+  }).filter(Boolean);
+  psdShowManualCarSelect(items);
+}
+
+/* 차량톤수 선택 다이얼로그 */
+function psdShowManualCarSelect(items) {
+  const existing = document.getElementById('psd-manual-modal');
+  if (existing) existing.remove();
+
+  const cartypes = ['1.4톤','3.5톤','5톤','5톤축','11톤','15톤','18톤'];
+  const totalKg  = items.reduce((s,it)=>s+parseFloat(it.QTSHPO||0),0);
+
+  const modal = document.createElement('div');
+  modal.id = 'psd-manual-modal';
+  modal.className = 'psd-modal-overlay';
+  modal.innerHTML = `
+    <div class="psd-modal" style="width:460px">
+      <div class="psd-modal-hdr">
+        <h3>✋ 수기배차 — 차량 톤수 선택</h3>
+        <button class="psd-modal-close" onclick="document.getElementById('psd-manual-modal').remove()">✕</button>
+      </div>
+      <div class="psd-modal-body">
+        <div style="margin-bottom:14px;padding:12px;background:var(--surface2);border-radius:8px;font-size:12px">
+          <div style="font-weight:700;margin-bottom:6px">선택 납품문서 ${items.length}건 · 총 ${psdFmtNum(totalKg)} KG</div>
+          ${items.slice(0,5).map(it=>`<div style="color:var(--text3)">${it.SHPOKY} / ${it.DESC01||it.SKUKEY||''} / ${psdFmtNum(it.QTSHPO)} KG</div>`).join('')}
+          ${items.length>5?`<div style="color:var(--text3)">...외 ${items.length-5}건</div>`:''}
+        </div>
+        <div class="psd-fg">
+          <label>차량 톤수 선택</label>
+          <select id="psd-manual-cartype" style="padding:7px 10px;font-size:13px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text)">
+            ${cartypes.map(ct => `<option value="${ct}">${ct}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="psd-modal-foot">
+        <button class="psd-btn" onclick="document.getElementById('psd-manual-modal').remove()">취소</button>
+        <button class="psd-btn primary" onclick="psdExecuteManual(${JSON.stringify(items).replace(/"/g,'&quot;')})">✋ 배차 생성</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+async function psdExecuteManual(items) {
+  const cartype = document.getElementById('psd-manual-cartype')?.value || '5톤';
+  document.getElementById('psd-manual-modal')?.remove();
+  try {
+    const res = await fetch('/api/ps-dispatch/create-manual', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ cartype, items })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    showToast(`✅ 수기배차 ${data.dispatch_no} 생성 (${cartype}, ${psdFmtNum(data.total_kg)} KG)`);
+    psdState.selectedDocs.clear();
+    await psdLoadVehicles();
+    await psdSearch();
+  } catch(e) {
+    showToast(`❌ 수기배차 실패: ${e.message}`);
+  }
+}
+
+/* ── 우측 납품문서 더블클릭 → 분할 열기 ─────────── */
+function psdOpenSplitForRow(shpoky, shpoit) {
+  const item = psdState.searchRows.find(r => r.SHPOKY===shpoky && r.SHPOIT===shpoit);
+  if (item) psdOpenSplitModal([item]);
+}
+
+/* ── 납품분할 버튼 ────────────────────────────────── */
+function psdOpenSplit() {
+  const selKeys = [...psdState.selectedDocs];
+  if (!selKeys.length) { showToast('납품문서를 선택하세요.'); return; }
+  const items = selKeys.map(k => {
+    const [sk, sit] = k.split('|');
+    return psdState.searchRows.find(r => r.SHPOKY===sk && r.SHPOIT===sit);
+  }).filter(Boolean);
+  psdOpenSplitModal(items);
+}
+
+/* ═══════════════════════════════════════════════════
+   납품분할 모달
+═══════════════════════════════════════════════════ */
+function psdOpenSplitModal(items) {
+  const existing = document.getElementById('psd-split-modal');
+  if (existing) existing.remove();
+
+  // 각 아이템에 대해 분할 수량 입력 행 생성
+  const rowsHtml = items.map((it, idx) => {
+    const orgQty = parseFloat(it.QTSHPO||0);
+    return `
+    <tr id="psd-split-row-${idx}">
+      <td><input type="checkbox" class="psd-split-chk" data-idx="${idx}" checked></td>
+      <td class="left" style="font-family:monospace;font-size:11px">${it.SHPOKY}-${it.SHPOIT}</td>
+      <td class="left" style="max-width:160px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${it.DESC01||''}">${it.DESC01||it.SKUKEY||''}</td>
+      <td style="text-align:right;font-weight:600">${psdFmtNum(orgQty)}</td>
+      <td>${it.UOMKEY||'KG'}</td>
+      <td>
+        <input type="number" class="psd-split-qty-input" data-idx="${idx}"
+               data-org="${orgQty}" data-shpoky="${it.SHPOKY}" data-shpoit="${it.SHPOIT}"
+               data-skukey="${it.SKUKEY||''}" data-desc="${(it.DESC01||'').replace(/"/g,'&quot;')}"
+               placeholder="분할수량" min="1" max="${orgQty-1}" step="1"
+               oninput="psdSplitCalcRem(${idx},${orgQty})">
+      </td>
+      <td style="text-align:right;color:var(--text3)" id="psd-split-rem-${idx}">-</td>
+      <td>${it.UOMKEY||'KG'}</td>
+    </tr>`;
+  }).join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'psd-split-modal';
+  modal.className = 'psd-modal-overlay';
+  modal.innerHTML = `
+    <div class="psd-modal" style="width:700px">
+      <div class="psd-modal-hdr">
+        <h3>✂️ 납품분할</h3>
+        <button class="psd-modal-close" onclick="document.getElementById('psd-split-modal').remove()">✕</button>
+      </div>
+      <div class="psd-modal-body">
+        <div style="margin-bottom:12px;font-size:12px;color:var(--text3)">
+          분할할 납품문서를 선택하고 분할수량을 입력하세요.<br>
+          분할 후 원본 문서는 <b>잔량</b>으로 유지되고, 분할된 수량은 새 납품문서로 생성됩니다.
+        </div>
+        <div style="overflow-x:auto">
+          <table class="psd-split-tbl">
+            <thead>
+              <tr>
+                <th style="width:28px"></th>
+                <th>납품문서</th><th>품목명</th>
+                <th style="text-align:right">원수량</th><th>단위</th>
+                <th style="text-align:center">분할수량</th>
+                <th style="text-align:right">잔량</th><th>단위</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+        <div style="margin-top:12px;padding:10px;background:var(--surface2);border-radius:6px;font-size:11px;color:var(--text3)">
+          💡 <b>아이템 분할</b>: 동일 납품문서의 여러 품목을 개별 납품문서로 분리<br>
+          💡 <b>수량 분할</b>: 하나의 품목의 수량을 지정하여 분리 (분할수량 입력 필수)
+        </div>
+      </div>
+      <div class="psd-modal-foot">
+        <button class="psd-btn" onclick="document.getElementById('psd-split-modal').remove()">취소</button>
+        <button class="psd-btn success" onclick="psdExecuteSplit()">✂️ 납품분할 저장</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+function psdSplitCalcRem(idx, orgQty) {
+  const inp = document.querySelector(`.psd-split-qty-input[data-idx="${idx}"]`);
+  const rem = document.getElementById(`psd-split-rem-${idx}`);
+  if (!inp || !rem) return;
+  const v = parseFloat(inp.value||0);
+  const r = orgQty - v;
+  rem.textContent = r > 0 ? psdFmtNum(r) : '⚠️ 초과';
+  rem.style.color  = r > 0 ? 'var(--text3)' : 'var(--danger)';
+}
+
+async function psdExecuteSplit() {
+  const inputs = document.querySelectorAll('.psd-split-qty-input');
+  const checked = document.querySelectorAll('.psd-split-chk:checked');
+  const checkedIdxs = new Set([...checked].map(c => parseInt(c.dataset.idx)));
+
+  const splits = [];
+  inputs.forEach(inp => {
+    const idx = parseInt(inp.dataset.idx);
+    if (!checkedIdxs.has(idx)) return;
+    const splitQty = parseFloat(inp.value||0);
+    if (splitQty <= 0) return;
+    const orgQty = parseFloat(inp.dataset.org||0);
+    if (splitQty >= orgQty) { showToast(`분할수량이 원수량 이상입니다 (idx:${idx})`); return; }
+    splits.push({
+      org_shpoky: inp.dataset.shpoky,
+      org_shpoit: inp.dataset.shpoit,
+      skukey:     inp.dataset.skukey,
+      desc01:     inp.dataset.desc,
+      org_qty:    orgQty,
+      split_qty:  splitQty,
+    });
+  });
+
+  if (!splits.length) { showToast('분할할 항목을 입력하세요.'); return; }
+
+  // API 호출 (아이템별로 개별 호출)
+  let successCnt = 0;
+  const allNewItems = [];
+  for (const sp of splits) {
+    try {
+      const res = await fetch('/api/ps-dispatch/split', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          org_shpoky: sp.org_shpoky,
+          org_shpoit: sp.org_shpoit,
+          splits: [sp]
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      allNewItems.push(...(data.splits||[]));
+      // 원본 수량 갱신 (searchRows에서)
+      const orig = psdState.searchRows.find(r => r.SHPOKY===sp.org_shpoky && r.SHPOIT===sp.org_shpoit);
+      if (orig) {
+        orig.QTSHPO = sp.org_qty - sp.split_qty;
+      }
+      // 분할된 아이템을 searchRows에 추가
+      const newItem = data.splits?.[0];
+      if (newItem) {
+        psdState.searchRows.push({
+          SHPOKY:    newItem.SHPOKY,
+          SHPOIT:    newItem.SHPOIT,
+          SKUKEY:    newItem.SKUKEY,
+          DESC01:    newItem.DESC01,
+          UOMKEY:    'KG',
+          QTSHPO:    newItem.QTSHPO,
+          DPTNKY:    orig?.DPTNKY||'',
+          DPTNM:     orig?.DPTNM||'',
+          DOCDAT:    orig?.DOCDAT||'',
+          RQSHPD:    orig?.RQSHPD||'',
+          INCH:      psdGetInch(newItem.SKUKEY||''),
+          DISPATCHED: false,
+        });
+      }
+      successCnt++;
+    } catch(e) {
+      showToast(`❌ 분할 실패 (${sp.org_shpoky}): ${e.message}`);
+    }
+  }
+
+  document.getElementById('psd-split-modal')?.remove();
+  if (successCnt) {
+    showToast(`✅ 납품분할 ${successCnt}건 완료`);
+    psdState.selectedDocs.clear();
+    psdRenderDocTable();
+    psdUpdateToolbar();
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   배차 확정 / 삭제 / 저장
+═══════════════════════════════════════════════════ */
+async function psdConfirmDispatch() {
+  const no = psdState.selectedVehicle;
+  if (!no) { showToast('확정할 배차를 선택하세요.'); return; }
+  const veh = psdState.vehicles.find(v => v.dispatch_no===no);
+  if (veh?.status==='CONFIRMED') { showToast('이미 확정된 배차입니다.'); return; }
+  if (!confirm(`배차번호 ${no}을(를) 확정하시겠습니까?\n확정 후에는 수정이 제한됩니다.`)) return;
+  try {
+    const res = await fetch('/api/ps-dispatch/confirm', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ dispatch_nos: [no] })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    showToast(`✅ ${no} 배차 확정`);
+    if (veh) veh.status = 'CONFIRMED';
+    psdRenderVehicleArea();
+  } catch(e) {
+    showToast(`❌ 확정 실패: ${e.message}`);
+  }
+}
+
+async function psdDeleteDispatch() {
+  const no = psdState.selectedVehicle;
+  if (!no) { showToast('삭제할 배차를 선택하세요.'); return; }
+  if (!confirm(`배차번호 ${no}을(를) 삭제하시겠습니까?`)) return;
+  try {
+    const res = await fetch('/api/ps-dispatch/delete', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ dispatch_nos: [no] })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error||'삭제 실패');
+    showToast(`🗑️ ${no} 삭제됨`);
+    psdState.vehicles = psdState.vehicles.filter(v => v.dispatch_no!==no);
+    psdState.selectedVehicle = null;
+    psdRenderVehicleArea();
+    psdUpdateToolbar();
+    await psdSearch();
+  } catch(e) {
+    showToast(`❌ 삭제 실패: ${e.message}`);
+  }
+}
+
+async function psdSaveDispatch() {
+  showToast('💾 배차 목록을 갱신합니다...');
+  await psdLoadVehicles();
+}
+
+/* ── 우측 빈 영역으로 드롭 시 새 배차 생성 (차량 선택 모달) ─ */
+// psdDropToVehicleNew에서 psdShowManualCarSelect 호출로 처리됨
+
+
 async function renderShipSchedule() {
   const c = document.getElementById('content');
   c.style.overflowY = 'hidden';
@@ -6530,6 +7798,7 @@ function mmgrDefaultConfig() {
     { type:'item',    id:'nav-VHCMA',     label:'차량 마스터',     icon:'🚛', page:'VHCMA',    cnt:true },
     { type:'item',    id:'nav-ROUTE_COST',label:'운송경로 비용',   icon:'💰', page:'ROUTE_COST',cnt:true },
     { type:'item',    id:'nav-dispatchStrategy', label:'배차전략 관리', icon:'⚙️', page:'dispatchStrategy', cnt:false },
+    { type:'item',    id:'nav-psDispatch',        label:'PS 배차',       icon:'🚚', page:'psDispatch',        cnt:false },
     { type:'section', id:'sec-tools',     label:'도구' },
     { type:'item',    id:'nav-schema',    label:'테이블 스키마',   icon:'🗂️', page:'schema' },
     { type:'item',    id:'nav-sql',       label:'SQL 콘솔',        icon:'💾', page:'sql' },

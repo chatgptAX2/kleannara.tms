@@ -1927,5 +1927,651 @@ def api_dispatch_simulate():
     return jsonify({"ok": True, "total": len(results), "rows": results})
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+#  PS 배차 API  (PS 제품군 원지 배차 관리)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── 인치 판별 상수 ──────────────────────────────────────────────────────────
+PS_INCH12_CODES = {'a11','ab1','ag1','am1','111','s11','i11','k11'}
+PS_INCH3_CODES  = {'ar1','ae1','aj1','al1','sr1','ir1'}
+
+def _ps_get_inch(skukey):
+    """SKUKEY[2:5] 로 인치 판별 → '12인치'|'3인치'|''"""
+    m = str(skukey or '').lower()[2:5]
+    if m in PS_INCH12_CODES: return '12인치'
+    if m in PS_INCH3_CODES:  return '3인치'
+    return ''
+
+def _ps_get_grm(skukey):
+    """SKUKEY[5:8] 로 평량 구간 → 'LT300'|'GE300'"""
+    try:
+        g = int(str(skukey or '')[5:8])
+        return 'GE300' if g >= 300 else 'LT300'
+    except Exception:
+        return 'LT300'
+
+def _ps_car_order(conn):
+    """DS_VEHICLE 차량 순서 (SORT_SEQ 역순 = 18톤→1.4톤)"""
+    rows = conn.execute(
+        "SELECT CARTYPE, LOAD_TON, SORT_SEQ FROM DS_VEHICLE ORDER BY SORT_SEQ DESC"
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+def _ps_load_strategy(conn):
+    """DS_INCH12, DS_INCH3 → {cartype: {grm_cond: max_count}}"""
+    def _build(rows):
+        m = {}
+        for r in rows:
+            ct = r['CARTYPE']
+            if ct not in m: m[ct] = {}
+            m[ct][r['GRM_COND']] = r['MAX_COUNT']
+        return m
+    inch12 = conn.execute("SELECT CARTYPE,GRM_COND,MAX_COUNT FROM DS_INCH12").fetchall()
+    inch3  = conn.execute("SELECT CARTYPE,GRM_COND,MAX_COUNT FROM DS_INCH3").fetchall()
+    return _build(inch12), _build(inch3)
+
+def _ps_find_car(inch_map, inch_type, grm_cond, count, car_order):
+    """인치×평량×개수 → 적합한 차량 타입 (없으면 최대 차량)"""
+    target_map = inch_map if inch_type == '12인치' else inch_map
+    for car in car_order:
+        ct  = car['CARTYPE']
+        cap = target_map.get(ct, {}).get(grm_cond, 0)
+        if cap >= count:
+            return ct
+    # 넘치면 가장 큰 차량
+    return car_order[0]['CARTYPE'] if car_order else '판별불가'
+
+def _ps_next_dispatch_no(conn, dt):
+    """배차번호 채번: PS-YYYYMMDD-001"""
+    prefix = f"PS-{dt}-"
+    row = conn.execute(
+        "SELECT MAX(DISPATCH_NO) FROM PS_DISPATCH_H WHERE DISPATCH_NO LIKE ?",
+        (prefix + '%',)
+    ).fetchone()
+    last = row[0] if row and row[0] else None
+    if last:
+        try:
+            seq = int(last.split('-')[-1]) + 1
+        except Exception:
+            seq = 1
+    else:
+        seq = 1
+    return f"{prefix}{seq:03d}"
+
+
+@app.route('/api/ps-dispatch/search', methods=['GET'])
+def api_ps_dispatch_search():
+    """
+    PS 배차용 원지 납품문서 조회
+    params: date_from, date_to, dptnky, shpoky, status(dispatched/undispatched/all)
+    """
+    date_from = request.args.get('date_from','').replace('-','')
+    date_to   = request.args.get('date_to','').replace('-','')
+    dptnky    = request.args.get('dptnky','').strip()
+    shpoky    = request.args.get('shpoky','').strip()
+    disp_stat = request.args.get('status','all')   # all|dispatched|undispatched
+
+    conn = get_conn()
+    try:
+        wheres = ["i.UOMKEY='KG'", "h.WAREKY='1100'"]
+        params = []
+        if date_from:
+            wheres.append("h.RQSHPD >= ?"); params.append(date_from)
+        if date_to:
+            wheres.append("h.RQSHPD <= ?"); params.append(date_to)
+        if dptnky:
+            wheres.append("(h.DPTNKY LIKE ? OR h.TDLNR_NM LIKE ?)")
+            params += [f'%{dptnky}%', f'%{dptnky}%']
+        if shpoky:
+            wheres.append("i.SHPOKY LIKE ?"); params.append(f'%{shpoky}%')
+
+        sql = f"""
+            SELECT i.SHPOKY, i.SHPOIT, i.SKUKEY, i.DESC01,
+                   i.UOMKEY, CAST(i.QTSHPO AS REAL) QTSHPO,
+                   h.DPTNKY, h.TDLNR_NM  DPTNM,
+                   h.DOCDAT, h.RQSHPD,
+                   SUBSTR(UPPER(i.SKUKEY),3,3) INCH_CODE
+            FROM SHPDI i
+            JOIN SHPDH h ON i.SHPOKY=h.SHPOKY
+            WHERE {' AND '.join(wheres)}
+            ORDER BY h.RQSHPD, h.DPTNKY, i.SHPOKY, i.SHPOIT
+        """
+        rows = conn.execute(sql, params).fetchall()
+        result = []
+        # 배차된 아이템 조회 (DRAFT/CONFIRMED 모두)
+        dispatched_keys = set()
+        drows = conn.execute(
+            "SELECT SHPOKY||'|'||SHPOIT as k FROM PS_DISPATCH_D"
+        ).fetchall()
+        for dr in drows:
+            dispatched_keys.add(dr['k'])
+
+        for r in rows:
+            key = f"{r['SHPOKY']}|{r['SHPOIT']}"
+            is_disp = key in dispatched_keys
+            if disp_stat == 'dispatched' and not is_disp: continue
+            if disp_stat == 'undispatched' and is_disp:  continue
+            inch  = _ps_get_inch(r['SKUKEY'])
+            grm   = _ps_get_grm(r['SKUKEY'])
+            result.append({
+                'SHPOKY':   r['SHPOKY'],
+                'SHPOIT':   r['SHPOIT'],
+                'SKUKEY':   r['SKUKEY'],
+                'DESC01':   r['DESC01'],
+                'UOMKEY':   r['UOMKEY'],
+                'QTSHPO':   r['QTSHPO'],
+                'DPTNKY':   r['DPTNKY'],
+                'DPTNM':    r['DPTNM'],
+                'DOCDAT':   r['DOCDAT'],
+                'RQSHPD':   r['RQSHPD'],
+                'INCH':     inch,
+                'GRM_COND': grm,
+                'DISPATCHED': is_disp,
+            })
+        return jsonify({"ok": True, "total": len(result), "rows": result})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/ps-dispatch/auto', methods=['POST'])
+def api_ps_dispatch_auto():
+    """
+    자동배차 실행
+    body: { items: [{SHPOKY,SHPOIT,SKUKEY,DESC01,QTSHPO,DPTNKY,DPTNM,RQSHPD,...}] }
+    → 납품처×납품일 단위로 차량 배차 결과 반환 (미저장, preview)
+    """
+    from datetime import datetime
+    body  = request.json or {}
+    items = body.get('items', [])
+    if not items:
+        return jsonify({"error": "items 없음"}), 400
+
+    conn = get_conn()
+    try:
+        car_order           = _ps_car_order(conn)
+        inch12_map, inch3_map = _ps_load_strategy(conn)
+        load_ton_map = {c['CARTYPE']: c['LOAD_TON'] for c in conn.execute(
+            "SELECT CARTYPE, LOAD_TON FROM DS_VEHICLE").fetchall()}
+
+        # 납품처×납품일 그룹핑
+        from collections import defaultdict
+        groups = defaultdict(list)
+        for it in items:
+            key = (it.get('DPTNKY',''), it.get('DPTNM',''), it.get('RQSHPD',''))
+            groups[key].append(it)
+
+        today = datetime.now().strftime('%Y%m%d')
+        all_vehicles = []   # 배차 결과 차량 목록
+
+        for (dptnky, dptnm, rqshpd), grp_items in sorted(groups.items()):
+            # 인치별 count
+            inch12_cnt = defaultdict(int)
+            inch3_cnt  = defaultdict(int)
+            for it in grp_items:
+                inch = _ps_get_inch(it.get('SKUKEY',''))
+                grm  = _ps_get_grm(it.get('SKUKEY',''))
+                if inch == '12인치':
+                    inch12_cnt[grm] += 1
+                elif inch == '3인치':
+                    inch3_cnt[grm] += 1
+
+            # 인치별 적합 차량
+            car_candidates = []
+            for grm, cnt in inch12_cnt.items():
+                ct = _ps_find_car(inch12_map, '12인치', grm, cnt, car_order)
+                car_candidates.append(ct)
+            for grm, cnt in inch3_cnt.items():
+                ct = _ps_find_car(inch3_map, '3인치', grm, cnt, car_order)
+                car_candidates.append(ct)
+
+            # 가장 큰 차량 결정
+            def _sort_key(ct):
+                for i, c in enumerate(car_order):
+                    if c['CARTYPE'] == ct: return i
+                return 999
+
+            if car_candidates:
+                final_car = min(car_candidates, key=_sort_key)  # sort_key 작을수록 큰 차량
+            else:
+                final_car = car_order[-1]['CARTYPE'] if car_order else '판별불가'
+
+            # KG 총합 계산 → 상차량 초과 시 분할
+            total_kg = sum(float(it.get('QTSHPO', 0)) for it in grp_items)
+            load_cap = load_ton_map.get(final_car, 0) * 1000
+
+            # 초과 시 더 큰 차량으로 업그레이드
+            for car in car_order:
+                ct = car['CARTYPE']
+                if _sort_key(ct) <= _sort_key(final_car):
+                    if load_ton_map.get(ct, 0) * 1000 >= total_kg:
+                        final_car = ct
+                        load_cap  = car['LOAD_TON'] * 1000
+                        break
+
+            # 여전히 초과 → 차량 분할 (가장 큰 차량에 꽉꽉 채움)
+            big_car  = car_order[0]['CARTYPE'] if car_order else final_car
+            big_cap  = load_ton_map.get(big_car, 0) * 1000
+
+            cur_items   = []
+            cur_kg      = 0.0
+            veh_list    = []
+
+            for it in grp_items:
+                qty_kg = float(it.get('QTSHPO', 0))
+                # 단일 아이템이 big_cap 초과하면 그대로 적재(분할 필요 → 수동)
+                if cur_kg + qty_kg > big_cap and cur_items:
+                    veh_list.append({'items': cur_items, 'total_kg': cur_kg})
+                    cur_items = []
+                    cur_kg    = 0.0
+                cur_items.append(it)
+                cur_kg += qty_kg
+
+            if cur_items:
+                veh_list.append({'items': cur_items, 'total_kg': cur_kg})
+
+            # 각 차량에 최적 차량톤수 부여
+            for veh in veh_list:
+                veh_kg    = veh['total_kg']
+                veh_car   = final_car
+                veh_cap_ok = load_ton_map.get(veh_car, 0) * 1000
+                # 이 차량 분량에 맞는 최소 차량 탐색 (역순: 작은→큰)
+                for car in reversed(car_order):
+                    if load_ton_map.get(car['CARTYPE'], 0) * 1000 >= veh_kg:
+                        veh_car = car['CARTYPE']
+                        veh_cap_ok = load_ton_map.get(veh_car, 0) * 1000
+
+                # 인치 기준도 재검증
+                v_inch12 = defaultdict(int)
+                v_inch3  = defaultdict(int)
+                for it in veh['items']:
+                    inch = _ps_get_inch(it.get('SKUKEY',''))
+                    grm  = _ps_get_grm(it.get('SKUKEY',''))
+                    if inch == '12인치': v_inch12[grm] += 1
+                    elif inch == '3인치': v_inch3[grm] += 1
+
+                cands2 = []
+                for grm, cnt in v_inch12.items():
+                    cands2.append(_ps_find_car(inch12_map, '12인치', grm, cnt, car_order))
+                for grm, cnt in v_inch3.items():
+                    cands2.append(_ps_find_car(inch3_map, '3인치', grm, cnt, car_order))
+                if cands2:
+                    inch_car = min(cands2, key=_sort_key)
+                    # 인치 기준 차량 vs kg 기준 차량 → 더 큰 것 선택
+                    if _sort_key(inch_car) < _sort_key(veh_car):
+                        veh_car    = inch_car
+                        veh_cap_ok = load_ton_map.get(veh_car, 0) * 1000
+
+                all_vehicles.append({
+                    'dptnky':   dptnky,
+                    'dptnm':    dptnm,
+                    'rqshpd':   rqshpd,
+                    'cartype':  veh_car,
+                    'total_kg': round(veh_kg, 2),
+                    'load_cap': veh_cap_ok * 1000 if veh_cap_ok > 0 else 0,
+                    'items':    veh['items'],
+                    'item_cnt': len(veh['items']),
+                })
+
+        return jsonify({"ok": True, "total": len(all_vehicles), "vehicles": all_vehicles})
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/ps-dispatch/save', methods=['POST'])
+def api_ps_dispatch_save():
+    """
+    배차 저장 (자동/수동 공통)
+    body: { vehicles: [{dptnky, dptnm, rqshpd, cartype, total_kg, items:[...]}] }
+    → PS_DISPATCH_H + PS_DISPATCH_D 삽입
+    """
+    from datetime import datetime
+    body     = request.json or {}
+    vehicles = body.get('vehicles', [])
+    if not vehicles:
+        return jsonify({"error": "vehicles 없음"}), 400
+
+    today = datetime.now().strftime('%Y%m%d')
+    conn  = get_conn()
+    try:
+        saved = []
+        for veh in vehicles:
+            dt          = (veh.get('rqshpd') or today).replace('-','')
+            dispatch_no = _ps_next_dispatch_no(conn, dt)
+            dptnky      = veh.get('dptnky','')
+            dptnm       = veh.get('dptnm','')
+            cartype     = veh.get('cartype','')
+            total_kg    = float(veh.get('total_kg', 0))
+            items       = veh.get('items', [])
+
+            conn.execute(
+                """INSERT INTO PS_DISPATCH_H
+                   (DISPATCH_NO,DISPATCH_DT,RQSHPD,DPTNKY,DPTNM,CARTYPE,STATUS,
+                    TOTAL_KG,TOTAL_CNT,CREDAT,CREUSR)
+                   VALUES (?,?,?,?,?,?,'DRAFT',?,?,?,?)""",
+                (dispatch_no, today, dt, dptnky, dptnm, cartype,
+                 total_kg, len(items), today, 'SYSTEM')
+            )
+            for seq, it in enumerate(items, 1):
+                conn.execute(
+                    """INSERT INTO PS_DISPATCH_D
+                       (DISPATCH_NO,SEQ,SHPOKY,SHPOIT,SKUKEY,DESC01,
+                        QTSHPO,UOMKEY,DPTNKY,DPTNM,IS_SPLIT,ORG_SHPOKY,ORG_SHPOIT)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (dispatch_no, seq,
+                     it.get('SHPOKY',''), it.get('SHPOIT',''),
+                     it.get('SKUKEY',''), it.get('DESC01',''),
+                     float(it.get('QTSHPO',0)), it.get('UOMKEY','KG'),
+                     it.get('DPTNKY',''), it.get('DPTNM',''),
+                     int(it.get('IS_SPLIT',0)),
+                     it.get('ORG_SHPOKY',''), it.get('ORG_SHPOIT',''))
+                )
+            saved.append(dispatch_no)
+        conn.commit()
+        return jsonify({"ok": True, "saved": len(saved), "dispatch_nos": saved})
+    except Exception as e:
+        conn.rollback()
+        import traceback
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/ps-dispatch/list', methods=['GET'])
+def api_ps_dispatch_list():
+    """
+    저장된 배차 목록 조회
+    params: date_from, date_to, dptnky, status
+    """
+    date_from = request.args.get('date_from','').replace('-','')
+    date_to   = request.args.get('date_to','').replace('-','')
+    dptnky    = request.args.get('dptnky','').strip()
+    status    = request.args.get('status','').strip()
+
+    conn = get_conn()
+    try:
+        wheres, params = [], []
+        if date_from:
+            wheres.append("h.RQSHPD >= ?"); params.append(date_from)
+        if date_to:
+            wheres.append("h.RQSHPD <= ?"); params.append(date_to)
+        if dptnky:
+            wheres.append("(h.DPTNKY LIKE ? OR h.DPTNM LIKE ?)")
+            params += [f'%{dptnky}%', f'%{dptnky}%']
+        if status:
+            wheres.append("h.STATUS=?"); params.append(status)
+
+        where_sql = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+        sql = f"""
+            SELECT h.DISPATCH_NO, h.DISPATCH_DT, h.RQSHPD,
+                   h.DPTNKY, h.DPTNM, h.CARTYPE, h.STATUS,
+                   h.TOTAL_KG, h.TOTAL_CNT, h.NOTE, h.CREDAT
+            FROM PS_DISPATCH_H h
+            {where_sql}
+            ORDER BY h.RQSHPD DESC, h.DISPATCH_NO
+        """
+        rows = conn.execute(sql, params).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            # 상세 아이템
+            detail = conn.execute(
+                """SELECT SEQ,SHPOKY,SHPOIT,SKUKEY,DESC01,QTSHPO,UOMKEY,
+                          DPTNKY,DPTNM,IS_SPLIT,ORG_SHPOKY,ORG_SHPOIT
+                   FROM PS_DISPATCH_D WHERE DISPATCH_NO=? ORDER BY SEQ""",
+                (d['DISPATCH_NO'],)
+            ).fetchall()
+            d['items'] = [dict(x) for x in detail]
+            result.append(d)
+        return jsonify({"ok": True, "total": len(result), "rows": result})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/ps-dispatch/confirm', methods=['POST'])
+def api_ps_dispatch_confirm():
+    """배차 확정 (DRAFT → CONFIRMED)"""
+    body         = request.json or {}
+    dispatch_nos = body.get('dispatch_nos', [])
+    if not dispatch_nos:
+        return jsonify({"error": "dispatch_nos 없음"}), 400
+    conn = get_conn()
+    try:
+        placeholders = ','.join('?' * len(dispatch_nos))
+        conn.execute(
+            f"UPDATE PS_DISPATCH_H SET STATUS='CONFIRMED' WHERE DISPATCH_NO IN ({placeholders})",
+            dispatch_nos
+        )
+        conn.commit()
+        return jsonify({"ok": True, "confirmed": len(dispatch_nos)})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/ps-dispatch/delete', methods=['POST'])
+def api_ps_dispatch_delete():
+    """배차 삭제 (DRAFT 상태만)"""
+    body         = request.json or {}
+    dispatch_nos = body.get('dispatch_nos', [])
+    if not dispatch_nos:
+        return jsonify({"error": "dispatch_nos 없음"}), 400
+    conn = get_conn()
+    try:
+        placeholders = ','.join('?' * len(dispatch_nos))
+        # DRAFT 상태 검증
+        locked = conn.execute(
+            f"SELECT DISPATCH_NO FROM PS_DISPATCH_H WHERE DISPATCH_NO IN ({placeholders}) AND STATUS<>'DRAFT'",
+            dispatch_nos
+        ).fetchall()
+        if locked:
+            return jsonify({"error": f"확정된 배차는 삭제할 수 없습니다: {[r[0] for r in locked]}"}), 400
+        conn.execute(f"DELETE FROM PS_DISPATCH_D WHERE DISPATCH_NO IN ({placeholders})", dispatch_nos)
+        conn.execute(f"DELETE FROM PS_DISPATCH_H WHERE DISPATCH_NO IN ({placeholders})", dispatch_nos)
+        conn.commit()
+        return jsonify({"ok": True, "deleted": len(dispatch_nos)})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/ps-dispatch/split', methods=['POST'])
+def api_ps_dispatch_split():
+    """
+    납품분할
+    body: {
+      org_shpoky, org_shpoit,   # 원본 납품문서
+      splits: [{skukey, desc01, org_qty, split_qty, uomkey}]
+    }
+    → PS_DISPATCH_SPLIT 삽입 + 분할된 가상 아이템 반환
+    """
+    from datetime import datetime
+    body       = request.json or {}
+    org_shpoky = body.get('org_shpoky','')
+    org_shpoit = body.get('org_shpoit','')
+    splits     = body.get('splits', [])
+
+    if not org_shpoky or not org_shpoit:
+        return jsonify({"error": "원본 납품문서 정보 없음"}), 400
+    if not splits:
+        return jsonify({"error": "splits 없음"}), 400
+
+    today  = datetime.now().strftime('%Y%m%d')
+    conn   = get_conn()
+    try:
+        result_items = []
+        for i, sp in enumerate(splits, 1):
+            split_key = f"SPL-{org_shpoky}-{org_shpoit}-{i:02d}"
+            org_qty   = float(sp.get('org_qty', 0))
+            split_qty = float(sp.get('split_qty', 0))
+            rem_qty   = org_qty - split_qty
+
+            conn.execute(
+                """INSERT OR REPLACE INTO PS_DISPATCH_SPLIT
+                   (SPLIT_KEY,ORG_SHPOKY,ORG_SHPOIT,NEW_SHPOKY,NEW_SHPOIT,
+                    SKUKEY,DESC01,ORG_QTY,SPLIT_QTY,REM_QTY,UOMKEY,STATUS,CREDAT,CREUSR)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,'KG','ACTIVE',?,?)""",
+                (split_key, org_shpoky, org_shpoit,
+                 f"{org_shpoky}S{i:02d}", f"{org_shpoit}",
+                 sp.get('skukey',''), sp.get('desc01',''),
+                 org_qty, split_qty, rem_qty, today, 'SYSTEM')
+            )
+            result_items.append({
+                'SPLIT_KEY':  split_key,
+                'SHPOKY':     f"{org_shpoky}S{i:02d}",
+                'SHPOIT':     org_shpoit,
+                'SKUKEY':     sp.get('skukey',''),
+                'DESC01':     sp.get('desc01',''),
+                'QTSHPO':     split_qty,
+                'UOMKEY':     'KG',
+                'IS_SPLIT':   1,
+                'ORG_SHPOKY': org_shpoky,
+                'ORG_SHPOIT': org_shpoit,
+            })
+        conn.commit()
+        return jsonify({"ok": True, "splits": result_items})
+    except Exception as e:
+        conn.rollback()
+        import traceback
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/ps-dispatch/update-item', methods=['POST'])
+def api_ps_dispatch_update_item():
+    """
+    수동배차: 납품문서 아이템을 특정 배차번호에 추가/이동
+    body: { dispatch_no, action:'add'|'remove', items:[{SHPOKY,SHPOIT,...}] }
+    """
+    body        = request.json or {}
+    dispatch_no = body.get('dispatch_no','')
+    action      = body.get('action','add')
+    items       = body.get('items', [])
+    if not dispatch_no or not items:
+        return jsonify({"error": "파라미터 없음"}), 400
+
+    conn = get_conn()
+    try:
+        if action == 'add':
+            # 현재 max SEQ 조회
+            row = conn.execute(
+                "SELECT MAX(SEQ) FROM PS_DISPATCH_D WHERE DISPATCH_NO=?", (dispatch_no,)
+            ).fetchone()
+            max_seq = (row[0] or 0)
+            for i, it in enumerate(items, 1):
+                seq = max_seq + i
+                conn.execute(
+                    """INSERT OR REPLACE INTO PS_DISPATCH_D
+                       (DISPATCH_NO,SEQ,SHPOKY,SHPOIT,SKUKEY,DESC01,
+                        QTSHPO,UOMKEY,DPTNKY,DPTNM,IS_SPLIT,ORG_SHPOKY,ORG_SHPOIT)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (dispatch_no, seq,
+                     it.get('SHPOKY',''), it.get('SHPOIT',''),
+                     it.get('SKUKEY',''), it.get('DESC01',''),
+                     float(it.get('QTSHPO',0)), it.get('UOMKEY','KG'),
+                     it.get('DPTNKY',''), it.get('DPTNM',''),
+                     int(it.get('IS_SPLIT',0)),
+                     it.get('ORG_SHPOKY',''), it.get('ORG_SHPOIT',''))
+                )
+            # TOTAL_KG, TOTAL_CNT 갱신
+            conn.execute("""
+                UPDATE PS_DISPATCH_H
+                SET TOTAL_KG  = (SELECT COALESCE(SUM(QTSHPO),0) FROM PS_DISPATCH_D WHERE DISPATCH_NO=?),
+                    TOTAL_CNT = (SELECT COUNT(*) FROM PS_DISPATCH_D WHERE DISPATCH_NO=?)
+                WHERE DISPATCH_NO=?
+            """, (dispatch_no, dispatch_no, dispatch_no))
+
+        elif action == 'remove':
+            for it in items:
+                conn.execute(
+                    "DELETE FROM PS_DISPATCH_D WHERE DISPATCH_NO=? AND SHPOKY=? AND SHPOIT=?",
+                    (dispatch_no, it.get('SHPOKY',''), it.get('SHPOIT',''))
+                )
+            conn.execute("""
+                UPDATE PS_DISPATCH_H
+                SET TOTAL_KG  = (SELECT COALESCE(SUM(QTSHPO),0) FROM PS_DISPATCH_D WHERE DISPATCH_NO=?),
+                    TOTAL_CNT = (SELECT COUNT(*) FROM PS_DISPATCH_D WHERE DISPATCH_NO=?)
+                WHERE DISPATCH_NO=?
+            """, (dispatch_no, dispatch_no, dispatch_no))
+
+        conn.commit()
+        # 갱신된 헤더 반환
+        h = conn.execute(
+            "SELECT * FROM PS_DISPATCH_H WHERE DISPATCH_NO=?", (dispatch_no,)
+        ).fetchone()
+        return jsonify({"ok": True, "header": dict(h) if h else {}})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/ps-dispatch/create-manual', methods=['POST'])
+def api_ps_dispatch_create_manual():
+    """
+    수기배차: 선택된 납품문서로 새 배차번호 생성
+    body: { cartype, items:[{SHPOKY,SHPOIT,...}] }
+    """
+    from datetime import datetime
+    body    = request.json or {}
+    cartype = body.get('cartype','')
+    items   = body.get('items', [])
+    if not items:
+        return jsonify({"error": "items 없음"}), 400
+
+    today = datetime.now().strftime('%Y%m%d')
+    conn  = get_conn()
+    try:
+        # 납품일 = items 첫번째 RQSHPD (없으면 today)
+        rqshpd      = (items[0].get('RQSHPD') or today).replace('-','')
+        dptnky      = items[0].get('DPTNKY','')
+        dptnm       = items[0].get('DPTNM','')
+        dispatch_no = _ps_next_dispatch_no(conn, rqshpd)
+        total_kg    = sum(float(it.get('QTSHPO',0)) for it in items)
+
+        conn.execute(
+            """INSERT INTO PS_DISPATCH_H
+               (DISPATCH_NO,DISPATCH_DT,RQSHPD,DPTNKY,DPTNM,CARTYPE,STATUS,
+                TOTAL_KG,TOTAL_CNT,CREDAT,CREUSR)
+               VALUES (?,?,?,?,?,?,'DRAFT',?,?,?,?)""",
+            (dispatch_no, today, rqshpd, dptnky, dptnm, cartype,
+             total_kg, len(items), today, 'SYSTEM')
+        )
+        for seq, it in enumerate(items, 1):
+            conn.execute(
+                """INSERT INTO PS_DISPATCH_D
+                   (DISPATCH_NO,SEQ,SHPOKY,SHPOIT,SKUKEY,DESC01,
+                    QTSHPO,UOMKEY,DPTNKY,DPTNM,IS_SPLIT,ORG_SHPOKY,ORG_SHPOIT)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (dispatch_no, seq,
+                 it.get('SHPOKY',''), it.get('SHPOIT',''),
+                 it.get('SKUKEY',''), it.get('DESC01',''),
+                 float(it.get('QTSHPO',0)), it.get('UOMKEY','KG'),
+                 it.get('DPTNKY',''), it.get('DPTNM',''),
+                 0, '', '')
+            )
+        conn.commit()
+        return jsonify({"ok": True, "dispatch_no": dispatch_no,
+                        "cartype": cartype, "total_kg": total_kg})
+    except Exception as e:
+        conn.rollback()
+        import traceback
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+    finally:
+        conn.close()
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5050, debug=False)
