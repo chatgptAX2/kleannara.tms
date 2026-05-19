@@ -67,7 +67,10 @@
 body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;height:100vh;display:flex;overflow:hidden}
 
 /* ── SIDEBAR (LNB) ── */
-#sidebar{width:220px;min-width:220px;background:var(--lnb-bg);border-right:1px solid var(--lnb-border);display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden}
+#sidebar{width:220px;min-width:220px;background:var(--lnb-bg);border-right:1px solid var(--lnb-border);display:flex;flex-direction:column;overflow:hidden}
+#sidebar-nav{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0}
+#sidebar-nav::-webkit-scrollbar{width:4px}
+#sidebar-nav::-webkit-scrollbar-thumb{background:var(--lnb-border);border-radius:2px}
 .logo{padding:12px 16px;border-bottom:1px solid var(--lnb-border);flex-shrink:0;display:flex;align-items:center;gap:0}
 .logo-brand{display:flex;flex-direction:column;gap:3px;width:100%}
 .logo-name{
@@ -832,6 +835,7 @@ thead th:hover .th-drag-handle{opacity:.8}
       <div class="logo-sub">Transportation Management</div>
     </div>
   </div>
+  <div id="sidebar-nav">
   <div class="nav-section">대시보드</div>
   <div class="nav-item active" onclick="showPage('dashboard')" id="nav-dashboard">
     <span class="icon">🏠</span> 대시보드
@@ -897,12 +901,12 @@ thead th:hover .th-drag-handle{opacity:.8}
   <div class="nav-item" onclick="showPage('sql')" id="nav-sql">
     <span class="icon">💾</span> SQL 콘솔
   </div>
-  <div style="flex:1"></div>
-  <button id="theme-toggle-btn" onclick="toggleTheme()">
+  </div><!-- /#sidebar-nav -->
+  <button id="theme-toggle-btn" onclick="toggleTheme()" style="flex-shrink:0">
     <span id="theme-icon">☀️</span>
     <span id="theme-label">라이트 모드</span>
   </button>
-  <button class="menu-mgr-btn" onclick="openMenuMgr()">⚙️ 메뉴 관리</button>
+  <button class="menu-mgr-btn" onclick="openMenuMgr()" style="flex-shrink:0">⚙️ 메뉴 관리</button>
 </div>
 
 <!-- 메뉴 관리자 모달 -->
@@ -6521,6 +6525,7 @@ function mmgrDefaultConfig() {
     { type:'item',    id:'nav-BZPTN_DETAIL', label:'납품처 상세',  icon:'🗺️', page:'BZPTN_DETAIL', cnt:true },
     { type:'item',    id:'nav-VHCMA',     label:'차량 마스터',     icon:'🚛', page:'VHCMA',    cnt:true },
     { type:'item',    id:'nav-ROUTE_COST',label:'운송경로 비용',   icon:'💰', page:'ROUTE_COST',cnt:true },
+    { type:'item',    id:'nav-dispatchStrategy', label:'배차전략 관리', icon:'⚙️', page:'dispatchStrategy', cnt:false },
     { type:'section', id:'sec-tools',     label:'도구' },
     { type:'item',    id:'nav-schema',    label:'테이블 스키마',   icon:'🗂️', page:'schema' },
     { type:'item',    id:'nav-sql',       label:'SQL 콘솔',        icon:'💾', page:'sql' },
@@ -6541,37 +6546,26 @@ function mmgrSaveConfig(cfg) {
 // 사이드바를 저장된 설정으로 재구성
 function mmgrApplySidebar() {
   const cfg = mmgrLoadConfig();
-  const sidebar = document.getElementById('sidebar');
-  // 기존 nav-item / nav-section 제거 (logo·btn 유지)
-  [...sidebar.children].forEach(el => {
-    if (el.classList.contains('nav-item') || el.classList.contains('nav-section') || el.style.flex === '1') {
-      el.remove();
-    }
-  });
+  const nav = document.getElementById('sidebar-nav');
+  // sidebar-nav 내용 전체 초기화 후 재빌드
+  nav.innerHTML = '';
 
-  // 순서대로 재삽입 (⚙️ 버튼 앞에)
-  const mgBtn = sidebar.querySelector('.menu-mgr-btn');
   cfg.forEach(item => {
     if (item.type === 'section') {
       const el = document.createElement('div');
       el.className = 'nav-section';
       el.id = item.id;
       el.textContent = item.label;
-      sidebar.insertBefore(el, mgBtn);
+      nav.appendChild(el);
     } else {
       const el = document.createElement('div');
       el.className = 'nav-item';
       el.id = item.id;
       el.onclick = () => showPage(item.page);
       el.innerHTML = `<span class="icon">${item.icon || '▪'}</span> ${item.label}${item.cnt ? `<span class="cnt" id="cnt-${item.page}">-</span>` : ''}`;
-      sidebar.insertBefore(el, mgBtn);
+      nav.appendChild(el);
     }
   });
-
-  // flex spacer
-  const spacer = document.createElement('div');
-  spacer.style.flex = '1';
-  sidebar.insertBefore(spacer, mgBtn);
 }
 
 /* ── 메뉴 관리자 모달 열기/닫기 ── */
