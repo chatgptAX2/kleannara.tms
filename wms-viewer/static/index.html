@@ -606,12 +606,16 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .wahma-span4{grid-column:span 4}
 
 /* ── 배차전략 관리 ── */
-.ds-layout{display:flex;flex-direction:column;height:100%;overflow:hidden;background:var(--bg)}
+.ds-layout{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;background:var(--bg)}
 .ds-topbar{padding:14px 20px 10px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .ds-topbar-title{font-size:15px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px}
 .ds-topbar-title span{font-size:12px;font-weight:400;color:var(--text3)}
-.ds-body{flex:1;overflow:auto;padding:20px;display:flex;flex-direction:column;gap:20px;min-height:0}
-.ds-section{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.ds-body{flex:1;overflow-y:auto;overflow-x:hidden;padding:20px;display:flex;flex-direction:column;gap:20px;min-height:0}
+.ds-body::-webkit-scrollbar{width:7px}
+.ds-body::-webkit-scrollbar-track{background:var(--surface2)}
+.ds-body::-webkit-scrollbar-thumb{background:var(--primary);border-radius:4px;opacity:.7}
+.ds-body::-webkit-scrollbar-thumb:hover{background:var(--primary-dark)}
+.ds-section{background:var(--surface);border:1px solid var(--border);border-radius:10px}
 .ds-section-hdr{padding:10px 16px;background:var(--th-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .ds-section-hdr h3{font-size:13px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px}
 .ds-section-hdr .ds-badge{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:var(--primary);color:#fff}
@@ -4897,13 +4901,13 @@ function _dsBuildInchTable(tableId, title, cars, rows) {
       <h3>${icon} ${title} <span class="ds-badge">${badge}</span></h3>
       <div style="font-size:10px;color:var(--text3)">차량 1대 기준 최대 적재 개수 (롤)</div>
     </div>
-    <div style="padding:12px 16px">
+    <div style="padding:12px 16px;overflow-y:auto;max-height:280px">
       <table class="ds-table">
         <thead>
           <tr>
-            <th class="ds-cartype">차량 톤수</th>
-            <th>평량 300 미만<br><small style="font-weight:400;color:var(--text3)">개수 (롤)</small></th>
-            <th>평량 300 이상<br><small style="font-weight:400;color:var(--text3)">개수 (롤)</small></th>
+            <th class="ds-cartype" style="position:sticky;top:0;z-index:2">차량 톤수</th>
+            <th style="position:sticky;top:0;z-index:2">평량 300 미만<br><small style="font-weight:400;color:var(--text3)">개수 (롤)</small></th>
+            <th style="position:sticky;top:0;z-index:2">평량 300 이상<br><small style="font-weight:400;color:var(--text3)">개수 (롤)</small></th>
           </tr>
         </thead>
         <tbody>${tbodyRows}</tbody>
@@ -4935,15 +4939,15 @@ function _dsBuildVehicleTable(rows) {
       <h3>🚚 차량 제원 및 상차량 기준 <span class="ds-badge" style="background:var(--success)">판지 기준</span></h3>
       <div style="font-size:10px;color:var(--text3)">판지제품 적재 시 차량 제원 및 최대 상차량 기준</div>
     </div>
-    <div style="padding:12px 16px">
+    <div style="padding:12px 16px;overflow-y:auto;max-height:295px">
       <table class="ds-table">
         <thead>
           <tr>
-            <th class="ds-cartype">차량 톤수</th>
-            <th>길이 (m)</th>
-            <th>너비 (m)<br><small style="font-weight:400;color:var(--text3)">범위 입력 가능</small></th>
-            <th>높이 (m)</th>
-            <th>상차량 (ton)<br><small style="font-weight:400;color:var(--success)">★ 배차 기준</small></th>
+            <th class="ds-cartype" style="position:sticky;top:0;z-index:2">차량 톤수</th>
+            <th style="position:sticky;top:0;z-index:2">길이 (m)</th>
+            <th style="position:sticky;top:0;z-index:2">너비 (m)<br><small style="font-weight:400;color:var(--text3)">범위 입력 가능</small></th>
+            <th style="position:sticky;top:0;z-index:2">높이 (m)</th>
+            <th style="position:sticky;top:0;z-index:2">상차량 (ton)<br><small style="font-weight:400;color:var(--success)">★ 배차 기준</small></th>
           </tr>
         </thead>
         <tbody>${tbodyRows}</tbody>
