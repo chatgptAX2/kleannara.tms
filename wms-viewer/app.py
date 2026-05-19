@@ -2020,7 +2020,8 @@ def api_ps_dispatch_search():
         if date_to:
             wheres.append("h.RQSHPD <= ?"); params.append(date_to)
         if dptnky:
-            wheres.append("(h.DPTNKY LIKE ? OR h.TDLNR_NM LIKE ?)")
+            # 납품처코드 또는 납품처명(BZPTN.NAME01) 기준 필터
+            wheres.append("(h.DPTNKY LIKE ? OR TRIM(COALESCE(b.NAME01,'')) LIKE ?)")
             params += [f'%{dptnky}%', f'%{dptnky}%']
         if shpoky:
             wheres.append("i.SHPOKY LIKE ?"); params.append(f'%{shpoky}%')
@@ -2028,11 +2029,13 @@ def api_ps_dispatch_search():
         sql = f"""
             SELECT i.SHPOKY, i.SHPOIT, i.SKUKEY, i.DESC01,
                    i.UOMKEY, CAST(i.QTSHPO AS REAL) QTSHPO,
-                   h.DPTNKY, h.TDLNR_NM  DPTNM,
+                   h.DPTNKY,
+                   TRIM(COALESCE(b.NAME01,'')) AS DPTNM,
                    h.DOCDAT, h.RQSHPD,
                    SUBSTR(UPPER(i.SKUKEY),3,3) INCH_CODE
             FROM SHPDI i
             JOIN SHPDH h ON i.SHPOKY=h.SHPOKY
+            LEFT JOIN BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT'
             WHERE {' AND '.join(wheres)}
             ORDER BY h.RQSHPD, h.DPTNKY, i.SHPOKY, i.SHPOIT
         """
