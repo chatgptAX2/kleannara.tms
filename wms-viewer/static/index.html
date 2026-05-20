@@ -784,10 +784,10 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .psd-doc-tbl tbody tr.dispatched{background:rgba(16,185,129,.05)}
 .psd-doc-tbl tbody tr.dispatched td{color:var(--text3)}
 .psd-doc-tbl tbody tr.selected-row{background:rgba(37,99,235,.08)}
-.psd-doc-tbl tbody td{padding:5px 8px;white-space:nowrap;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;max-width:0}
-.psd-doc-tbl tbody td:first-child{text-align:center;max-width:none}
-/* 납품처명·품목명 컬럼: 좁아질 때 말줄임 + title 툴팁으로 전체 확인 */
-.psd-doc-tbl tbody td.col-nm{text-align:left}
+.psd-doc-tbl tbody td{padding:5px 8px;white-space:nowrap;vertical-align:middle}
+.psd-doc-tbl tbody td:first-child{text-align:center}
+/* 납품처명·품목명: colgroup 너비로 제한, 넘치면 말줄임 */
+.psd-doc-tbl tbody td.col-nm{text-align:left;max-width:1px;overflow:hidden;text-overflow:ellipsis}
 .psd-disp-badge{padding:1px 6px;border-radius:10px;font-size:9px;font-weight:700;background:#d1fae5;color:#065f46}
 .psd-undisp-badge{padding:1px 6px;border-radius:10px;font-size:9px;font-weight:700;background:#fee2e2;color:#991b1b}
 /* 수동배차 드롭 안내 */
