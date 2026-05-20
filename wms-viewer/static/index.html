@@ -771,9 +771,11 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .psd-doc-filter select{padding:4px 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text);font-size:11px}
 .psd-doc-tbl-wrap{flex:1;overflow:auto}
 .psd-doc-tbl-wrap::-webkit-scrollbar{width:6px;height:6px}
+.psd-doc-tbl-wrap::-webkit-scrollbar-track{background:transparent}
 .psd-doc-tbl-wrap::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
 .psd-doc-tbl-wrap::-webkit-scrollbar-thumb:hover{background:var(--primary)}
-.psd-doc-tbl{width:100%;border-collapse:collapse;font-size:11px}
+.psd-doc-tbl-wrap::-webkit-scrollbar-corner{background:transparent}
+.psd-doc-tbl{width:max-content;min-width:100%;border-collapse:collapse;font-size:11px}
 .psd-doc-tbl thead th{position:sticky;top:0;z-index:2;padding:7px 8px;background:var(--th-bg);color:var(--text3);font-size:10px;font-weight:700;border-bottom:2px solid var(--border);white-space:nowrap;text-align:center}
 .psd-doc-tbl thead th:first-child{text-align:center;width:28px}
 .psd-doc-tbl tbody tr{border-bottom:1px solid var(--tr-border);cursor:grab;transition:.1s;user-select:none}
@@ -782,8 +784,10 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .psd-doc-tbl tbody tr.dispatched{background:rgba(16,185,129,.05)}
 .psd-doc-tbl tbody tr.dispatched td{color:var(--text3)}
 .psd-doc-tbl tbody tr.selected-row{background:rgba(37,99,235,.08)}
-.psd-doc-tbl tbody td{padding:5px 8px;white-space:nowrap;vertical-align:middle}
-.psd-doc-tbl tbody td:first-child{text-align:center}
+.psd-doc-tbl tbody td{padding:5px 8px;white-space:nowrap;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;max-width:0}
+.psd-doc-tbl tbody td:first-child{text-align:center;max-width:none}
+/* 납품처명·품목명 컬럼: 좁아질 때 말줄임 + title 툴팁으로 전체 확인 */
+.psd-doc-tbl tbody td.col-nm{text-align:left}
 .psd-disp-badge{padding:1px 6px;border-radius:10px;font-size:9px;font-weight:700;background:#d1fae5;color:#065f46}
 .psd-undisp-badge{padding:1px 6px;border-radius:10px;font-size:9px;font-weight:700;background:#fee2e2;color:#991b1b}
 /* 수동배차 드롭 안내 */
@@ -5548,6 +5552,20 @@ async function renderPsDispatch() {
              ondragleave="document.getElementById('psd-doc-tbl-wrap').classList.remove('psd-drop-active')"
              ondrop="psdDropToRight(event)">
           <table class="psd-doc-tbl" id="psd-doc-tbl">
+            <colgroup>
+              <col style="width:28px">      <!-- 체크박스 -->
+              <col style="width:110px">     <!-- 납품문서 -->
+              <col style="width:36px">      <!-- IT -->
+              <col style="width:80px">      <!-- 납품처코드 -->
+              <col style="width:150px">     <!-- 납품처명 -->
+              <col style="width:110px">     <!-- 품목코드 -->
+              <col style="width:180px">     <!-- 품목명 -->
+              <col style="width:72px">      <!-- 납품수량 -->
+              <col style="width:40px">      <!-- 단위 -->
+              <col style="width:52px">      <!-- 인치 -->
+              <col style="width:76px">      <!-- 납품일 -->
+              <col style="width:56px">      <!-- 배차 -->
+            </colgroup>
             <thead>
               <tr>
                 <th><input type="checkbox" id="psd-chk-all" onchange="psdToggleAll(this.checked)"></th>
@@ -5666,10 +5684,10 @@ function psdRenderDocTable(filterText) {
       </td>
       <td style="font-family:monospace;color:var(--primary);font-weight:600">${r.SHPOKY}</td>
       <td style="text-align:center">${r.SHPOIT}</td>
-      <td>${r.DPTNKY||''}</td>
-      <td style="max-width:120px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${r.DPTNM||''}</td>
-      <td style="font-family:monospace;font-size:10px">${r.SKUKEY||''}</td>
-      <td style="max-width:140px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${r.DESC01||''}">${r.DESC01||''}</td>
+      <td title="${r.DPTNKY||''}">${r.DPTNKY||''}</td>
+      <td class="col-nm" title="${r.DPTNM||''}">${r.DPTNM||''}</td>
+      <td style="font-family:monospace;font-size:10px" title="${r.SKUKEY||''}">${r.SKUKEY||''}</td>
+      <td class="col-nm" title="${r.DESC01||''}">${r.DESC01||''}</td>
       <td style="text-align:right;font-weight:600">${psdFmtNum(r.QTSHPO)}</td>
       <td style="text-align:center">${r.UOMKEY||'KG'}</td>
       <td style="text-align:center">${inchBadge}</td>
