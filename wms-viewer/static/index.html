@@ -726,7 +726,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 }
 .psd-resizer:hover::after,.psd-resizer.dragging::after{opacity:1}
 /* 우측: 납품문서 패널 */
-.psd-right{display:flex;flex-direction:column;min-height:0;flex:1;min-width:200px;overflow:hidden}
+.psd-right{display:flex;flex-direction:column;min-height:0;flex:1;min-width:200px;overflow:visible}
 /* 패널 헤더 */
 .psd-panel-hdr{flex-shrink:0;padding:8px 14px;background:var(--th-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px}
 .psd-panel-hdr-title{font-size:12px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px}
@@ -764,18 +764,18 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .inch-12{background:#dbeafe;color:#1e40af}
 .inch-3{background:#fce7f3;color:#9d174d}
 /* 우측 납품문서 테이블 */
-.psd-doc-table-wrap{height:100%;display:flex;flex-direction:column}
+.psd-doc-table-wrap{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .psd-doc-filter{flex-shrink:0;padding:6px 10px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
 .psd-doc-filter input{flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text);font-size:11px}
 .psd-doc-filter input:focus{outline:none;border-color:var(--primary)}
 .psd-doc-filter select{padding:4px 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text);font-size:11px}
-.psd-doc-tbl-wrap{flex:1;overflow:auto}
+.psd-doc-tbl-wrap{flex:1;overflow:auto;min-height:0}
 .psd-doc-tbl-wrap::-webkit-scrollbar{width:6px;height:6px}
 .psd-doc-tbl-wrap::-webkit-scrollbar-track{background:transparent}
 .psd-doc-tbl-wrap::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
 .psd-doc-tbl-wrap::-webkit-scrollbar-thumb:hover{background:var(--primary)}
 .psd-doc-tbl-wrap::-webkit-scrollbar-corner{background:transparent}
-.psd-doc-tbl{width:max-content;min-width:100%;border-collapse:collapse;font-size:11px}
+.psd-doc-tbl{table-layout:fixed;width:990px;min-width:990px;border-collapse:collapse;font-size:11px}
 .psd-doc-tbl thead th{position:sticky;top:0;z-index:2;padding:7px 8px;background:var(--th-bg);color:var(--text3);font-size:10px;font-weight:700;border-bottom:2px solid var(--border);white-space:nowrap;text-align:center}
 .psd-doc-tbl thead th:first-child{text-align:center;width:28px}
 .psd-doc-tbl tbody tr{border-bottom:1px solid var(--tr-border);cursor:grab;transition:.1s;user-select:none}
@@ -784,10 +784,9 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .psd-doc-tbl tbody tr.dispatched{background:rgba(16,185,129,.05)}
 .psd-doc-tbl tbody tr.dispatched td{color:var(--text3)}
 .psd-doc-tbl tbody tr.selected-row{background:rgba(37,99,235,.08)}
-.psd-doc-tbl tbody td{padding:5px 8px;white-space:nowrap;vertical-align:middle}
+.psd-doc-tbl tbody td{padding:5px 8px;white-space:nowrap;vertical-align:middle;overflow:hidden;text-overflow:ellipsis}
 .psd-doc-tbl tbody td:first-child{text-align:center}
-/* 납품처명·품목명: colgroup 너비로 제한, 넘치면 말줄임 */
-.psd-doc-tbl tbody td.col-nm{text-align:left;max-width:1px;overflow:hidden;text-overflow:ellipsis}
+.psd-doc-tbl tbody td.col-nm{text-align:left}
 .psd-disp-badge{padding:1px 6px;border-radius:10px;font-size:9px;font-weight:700;background:#d1fae5;color:#065f46}
 .psd-undisp-badge{padding:1px 6px;border-radius:10px;font-size:9px;font-weight:700;background:#fee2e2;color:#991b1b}
 /* 수동배차 드롭 안내 */
