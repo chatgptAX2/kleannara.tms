@@ -706,11 +706,27 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .psd-btn:disabled{opacity:.45;cursor:not-allowed}
 .psd-sep{width:1px;height:22px;background:var(--border);flex-shrink:0}
 /* 메인 패널 영역 (좌우 분할) */
-.psd-main{flex:1;display:flex;min-height:0;gap:0}
+.psd-main{flex:1;display:flex;min-height:0;gap:0;overflow:hidden}
 /* 좌측: 선적(차량) 패널 */
-.psd-left{display:flex;flex-direction:column;min-height:0;width:52%;border-right:2px solid var(--primary)}
+.psd-left{display:flex;flex-direction:column;min-height:0;width:52%;min-width:220px;max-width:80%;flex-shrink:0;overflow:hidden}
+/* 수직 리사이저 */
+.psd-resizer{
+  width:5px;flex-shrink:0;cursor:col-resize;background:var(--border);
+  position:relative;z-index:10;transition:background .15s;
+  display:flex;align-items:center;justify-content:center;
+  user-select:none;
+}
+.psd-resizer:hover,.psd-resizer.dragging{background:var(--primary)}
+.psd-resizer::after{
+  content:'';position:absolute;
+  width:1px;height:40px;
+  background:rgba(255,255,255,.5);border-radius:1px;
+  box-shadow:3px 0 0 rgba(255,255,255,.5),-3px 0 0 rgba(255,255,255,.5);
+  opacity:0;transition:opacity .15s;
+}
+.psd-resizer:hover::after,.psd-resizer.dragging::after{opacity:1}
 /* 우측: 납품문서 패널 */
-.psd-right{display:flex;flex-direction:column;min-height:0;flex:1}
+.psd-right{display:flex;flex-direction:column;min-height:0;flex:1;min-width:200px;overflow:hidden}
 /* 패널 헤더 */
 .psd-panel-hdr{flex-shrink:0;padding:8px 14px;background:var(--th-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px}
 .psd-panel-hdr-title{font-size:12px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px}
@@ -5299,6 +5315,74 @@ function _dsRenderSimResult(area, data) {
 /* ═══════════════════════════════════════════════════════════════
    PS 배차 화면
 ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════
+   PS 배차 — 좌우 패널 리사이저
+═══════════════════════════════════════════════════ */
+const PSD_RESIZER_KEY = 'psd_left_width_pct';   // localStorage 키
+
+function psdResizerMouseDown(e) {
+  e.preventDefault();
+  const resizer  = document.getElementById('psd-resizer');
+  const leftPanel = document.getElementById('psd-left');
+  const mainEl   = document.querySelector('.psd-main');
+  if (!resizer || !leftPanel || !mainEl) return;
+
+  resizer.classList.add('dragging');
+
+  // 드래그 중 텍스트 선택·드래그&드롭 이벤트가 방해하지 않도록 오버레이 추가
+  const overlay = document.createElement('div');
+  overlay.style.cssText =
+    'position:fixed;inset:0;z-index:99999;cursor:col-resize;user-select:none';
+  document.body.appendChild(overlay);
+
+  function onMouseMove(ev) {
+    const mainRect = mainEl.getBoundingClientRect();
+    const resizerW = resizer.offsetWidth;
+    // 마우스 X 위치 → 전체 main 너비 대비 비율
+    let newLeftW = ev.clientX - mainRect.left;
+    const minW   = 220;                         // min-width
+    const maxW   = mainRect.width * 0.80;       // max-width 80%
+    newLeftW = Math.max(minW, Math.min(maxW, newLeftW));
+
+    leftPanel.style.width = newLeftW + 'px';
+
+    // 저장 (px → % 변환하여 저장)
+    const pct = Math.round(newLeftW / mainRect.width * 1000) / 10;
+    try { localStorage.setItem(PSD_RESIZER_KEY, pct); } catch(_){}
+  }
+
+  function onMouseUp() {
+    resizer.classList.remove('dragging');
+    overlay.remove();
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup',  onMouseUp);
+  }
+
+  document.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('mouseup',   onMouseUp);
+}
+
+/* 저장된 너비 복원 */
+function psdRestoreWidth() {
+  const leftPanel = document.getElementById('psd-left');
+  const mainEl    = document.querySelector('.psd-main');
+  if (!leftPanel || !mainEl) return;
+  try {
+    const saved = parseFloat(localStorage.getItem(PSD_RESIZER_KEY));
+    if (!isNaN(saved) && saved > 10 && saved < 90) {
+      // main 너비가 아직 0일 수 있으므로 rAF 이후 적용
+      requestAnimationFrame(() => {
+        const mainW = mainEl.getBoundingClientRect().width;
+        if (mainW > 0) {
+          leftPanel.style.width = (mainW * saved / 100) + 'px';
+        } else {
+          leftPanel.style.width = saved + '%';
+        }
+      });
+    }
+  } catch(_){}
+}
+
 const PSD_CAR_COLOR = {
   '1.4톤':'car-1t4','3.5톤':'car-3t5','5톤':'car-5t',
   '5톤축':'car-5tax','11톤':'car-11t','15톤':'car-15t','18톤':'car-18t'
@@ -5432,6 +5516,11 @@ async function renderPsDispatch() {
       </div>
     </div>
 
+    <!-- 좌우 패널 리사이저 -->
+    <div class="psd-resizer" id="psd-resizer"
+         title="드래그하여 패널 너비 조절"
+         onmousedown="psdResizerMouseDown(event)"></div>
+
     <!-- 우측: 납품문서 -->
     <div class="psd-right" id="psd-right">
       <div class="psd-panel-hdr">
@@ -5487,6 +5576,8 @@ async function renderPsDispatch() {
 </div>
   `;
 
+  // 저장된 패널 너비 복원
+  psdRestoreWidth();
   // 기존 배차 목록 로드
   await psdLoadVehicles();
   // 자동 조회
