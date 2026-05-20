@@ -691,6 +691,19 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .psd-fg label{font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.4px}
 .psd-fg input,.psd-fg select{padding:5px 8px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text);font-size:12px;min-width:110px}
 .psd-fg input:focus,.psd-fg select:focus{outline:none;border-color:var(--primary)}
+/* 출하유형 멀티체크 드롭다운 */
+.psd-shpmty-wrap{position:relative}
+.psd-shpmty-btn{padding:5px 8px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text);font-size:12px;min-width:130px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;white-space:nowrap;user-select:none}
+.psd-shpmty-btn:hover{border-color:var(--primary)}
+.psd-shpmty-btn.open{border-color:var(--primary);border-radius:5px 5px 0 0}
+.psd-shpmty-btn .arrow{font-size:9px;color:var(--text3);transition:transform .15s}
+.psd-shpmty-btn.open .arrow{transform:rotate(180deg)}
+.psd-shpmty-panel{display:none;position:absolute;top:100%;left:0;z-index:300;min-width:150px;background:var(--surface);border:1px solid var(--primary);border-top:none;border-radius:0 0 6px 6px;box-shadow:0 6px 20px rgba(0,0,0,.4);padding:6px 0}
+.psd-shpmty-panel.open{display:block}
+.psd-shpmty-panel .shpmty-item{display:flex;align-items:center;gap:7px;padding:5px 12px;cursor:pointer;font-size:12px;color:var(--text);transition:background .1s}
+.psd-shpmty-panel .shpmty-item:hover{background:var(--tr-hover)}
+.psd-shpmty-panel .shpmty-item input[type=checkbox]{width:13px;height:13px;cursor:pointer;accent-color:var(--primary)}
+.psd-shpmty-panel .shpmty-divider{height:1px;background:var(--border);margin:4px 0}
 /* 툴바 버튼 */
 .psd-toolbar{flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);padding:8px 16px;display:flex;align-items:center;gap:8px}
 .psd-btn{padding:6px 16px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:.15s;display:flex;align-items:center;gap:5px;white-space:nowrap}
@@ -5321,6 +5334,69 @@ function _dsRenderSimResult(area, data) {
 /* ═══════════════════════════════════════════════════
    PS 배차 — 좌우 패널 리사이저
 ═══════════════════════════════════════════════════ */
+/* ── 출하유형 멀티체크 드롭다운 ────────────────────── */
+const PSD_SHPMTY_LABELS = {
+  '201':'판매출고','205':'자재불출','206':'무상출고',
+  '208':'수출출고','221':'이송출고','231':'반품출고'
+};
+
+function psdShpmtyToggle() {
+  const btn   = document.getElementById('psd-shpmty-btn');
+  const panel = document.getElementById('psd-shpmty-panel');
+  if (!btn || !panel) return;
+  const isOpen = panel.classList.contains('open');
+  if (isOpen) {
+    panel.classList.remove('open');
+    btn.classList.remove('open');
+  } else {
+    panel.classList.add('open');
+    btn.classList.add('open');
+  }
+}
+
+function psdShpmtyToggleAll(checked) {
+  document.querySelectorAll('.psd-shpmty-chk').forEach(cb => { cb.checked = checked; });
+  psdShpmtyUpdateLabel();
+}
+
+function psdShpmtyUpdateLabel() {
+  const all   = document.getElementById('psd-shpmty-all');
+  const chks  = [...document.querySelectorAll('.psd-shpmty-chk')];
+  const label = document.getElementById('psd-shpmty-label');
+  if (!label) return;
+  const checked = chks.filter(c => c.checked);
+  if (checked.length === 0) {
+    label.textContent = '(없음)';
+    if (all) all.checked = false;
+  } else if (checked.length === chks.length) {
+    label.textContent = '전체';
+    if (all) all.checked = true;
+  } else {
+    // 선택된 항목 명칭 나열 (최대 2개, 초과 시 +N)
+    const names = checked.map(c => PSD_SHPMTY_LABELS[c.value] || c.value);
+    label.textContent = names.length <= 2
+      ? names.join(', ')
+      : `${names.slice(0,2).join(', ')} +${names.length - 2}`;
+    if (all) all.checked = false;
+  }
+}
+
+// 개별 체크박스 변경 시 전체 라벨 갱신
+document.addEventListener('change', function(e) {
+  if (e.target.classList.contains('psd-shpmty-chk')) {
+    psdShpmtyUpdateLabel();
+  }
+});
+
+// 패널 외부 클릭 시 닫기
+document.addEventListener('mousedown', function(e) {
+  const wrap = document.getElementById('psd-shpmty-wrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('psd-shpmty-panel')?.classList.remove('open');
+    document.getElementById('psd-shpmty-btn')?.classList.remove('open');
+  }
+});
+
 const PSD_RESIZER_KEY = 'psd_left_width_pct';   // localStorage 키
 
 function psdResizerMouseDown(e) {
@@ -5471,15 +5547,24 @@ async function renderPsDispatch() {
       </div>
       <div class="psd-fg">
         <label>출하유형</label>
-        <select id="psd-shpmty">
-          <option value="">전체</option>
-          <option value="201">판매출고</option>
-          <option value="205">자재불출</option>
-          <option value="206">무상출고</option>
-          <option value="208">수출출고</option>
-          <option value="221">이송출고</option>
-          <option value="231">반품출고</option>
-        </select>
+        <div class="psd-shpmty-wrap" id="psd-shpmty-wrap">
+          <div class="psd-shpmty-btn" id="psd-shpmty-btn" onclick="psdShpmtyToggle()">
+            <span id="psd-shpmty-label">전체</span>
+            <span class="arrow">▼</span>
+          </div>
+          <div class="psd-shpmty-panel" id="psd-shpmty-panel">
+            <label class="shpmty-item">
+              <input type="checkbox" id="psd-shpmty-all" onchange="psdShpmtyToggleAll(this.checked)" checked> 전체
+            </label>
+            <div class="shpmty-divider"></div>
+            <label class="shpmty-item"><input type="checkbox" class="psd-shpmty-chk" value="201" checked> 판매출고</label>
+            <label class="shpmty-item"><input type="checkbox" class="psd-shpmty-chk" value="205" checked> 자재불출</label>
+            <label class="shpmty-item"><input type="checkbox" class="psd-shpmty-chk" value="206" checked> 무상출고</label>
+            <label class="shpmty-item"><input type="checkbox" class="psd-shpmty-chk" value="208" checked> 수출출고</label>
+            <label class="shpmty-item"><input type="checkbox" class="psd-shpmty-chk" value="221" checked> 이송출고</label>
+            <label class="shpmty-item"><input type="checkbox" class="psd-shpmty-chk" value="231" checked> 반품출고</label>
+          </div>
+        </div>
       </div>
       <div class="psd-fg">
         <label>배차상태</label>
@@ -5620,15 +5705,22 @@ async function psdSearch() {
   const dateTo   = document.getElementById('psd-date-to')?.value   || '';
   const dptnky   = document.getElementById('psd-dptnky')?.value.trim() || '';
   const shpoky   = document.getElementById('psd-shpoky')?.value.trim() || '';
-  const shpmty   = document.getElementById('psd-shpmty')?.value  || '';
   const status   = document.getElementById('psd-disp-stat')?.value  || 'all';
+  // 출하유형: 체크된 값 배열 수집 (전체 체크 = 파라미터 미전송)
+  const shpmtyChks = [...document.querySelectorAll('.psd-shpmty-chk:checked')].map(c => c.value);
+  const allChk     = document.getElementById('psd-shpmty-all');
+  const shpmtyAll  = allChk?.checked || shpmtyChks.length === 6;
   const tbody    = document.getElementById('psd-doc-tbody');
   if (!tbody) return;
 
   tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;padding:20px"><div class="spinner" style="margin:0 auto 8px"></div>조회 중...</td></tr>`;
 
   try {
-    const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo, dptnky, shpoky, shpmty, status });
+    const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo, dptnky, shpoky, status });
+    // 전체 선택이 아닐 때만 개별 shpmty 추가 (복수 값 → 같은 키 반복)
+    if (!shpmtyAll && shpmtyChks.length > 0) {
+      shpmtyChks.forEach(v => params.append('shpmty', v));
+    }
     const res  = await fetch(`/api/ps-dispatch/search?${params}`);
     const data = await res.json();
     if (!data.ok) throw new Error(data.error);

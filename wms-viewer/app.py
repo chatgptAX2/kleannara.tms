@@ -2009,7 +2009,7 @@ def api_ps_dispatch_search():
     date_to   = request.args.get('date_to','').replace('-','')
     dptnky    = request.args.get('dptnky','').strip()
     shpoky    = request.args.get('shpoky','').strip()
-    shpmty    = request.args.get('shpmty','').strip()   # 출하유형 코드 (201/205/206/208/221/231)
+    shpmty    = request.args.getlist('shpmty')           # 출하유형 코드 복수 (201/205/206/208/221/231)
     disp_stat = request.args.get('status','all')        # all|dispatched|undispatched
 
     conn = get_conn()
@@ -2026,8 +2026,10 @@ def api_ps_dispatch_search():
             params += [f'%{dptnky}%', f'%{dptnky}%']
         if shpoky:
             wheres.append("i.SHPOKY LIKE ?"); params.append(f'%{shpoky}%')
-        if shpmty:
-            wheres.append("h.SHPMTY = ?"); params.append(shpmty)
+        if shpmty:   # 복수 선택: IN (?,?,...)
+            ph = ','.join('?' * len(shpmty))
+            wheres.append(f"h.SHPMTY IN ({ph})")
+            params.extend(shpmty)
 
         sql = f"""
             SELECT i.SHPOKY, i.SHPOIT, i.SKUKEY, i.DESC01,
