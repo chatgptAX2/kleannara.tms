@@ -692,18 +692,20 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .psd-fg input,.psd-fg select{padding:5px 8px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text);font-size:12px;min-width:110px}
 .psd-fg input:focus,.psd-fg select:focus{outline:none;border-color:var(--primary)}
 /* 출하유형 멀티체크 드롭다운 */
-.psd-shpmty-wrap{position:relative}
-.psd-shpmty-btn{padding:5px 8px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text);font-size:12px;min-width:130px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;white-space:nowrap;user-select:none}
+.psd-shpmty-wrap{position:relative;display:inline-block}
+.psd-shpmty-btn{padding:5px 10px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text);font-size:12px;width:140px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;white-space:nowrap;user-select:none;height:30px;box-sizing:border-box}
 .psd-shpmty-btn:hover{border-color:var(--primary)}
 .psd-shpmty-btn.open{border-color:var(--primary);border-radius:5px 5px 0 0}
-.psd-shpmty-btn .arrow{font-size:9px;color:var(--text3);transition:transform .15s}
+.psd-shpmty-btn .psd-shpmty-label-txt{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.psd-shpmty-btn .arrow{font-size:9px;color:var(--text3);transition:transform .15s;flex-shrink:0}
 .psd-shpmty-btn.open .arrow{transform:rotate(180deg)}
-.psd-shpmty-panel{display:none;position:absolute;top:100%;left:0;z-index:300;min-width:150px;background:var(--surface);border:1px solid var(--primary);border-top:none;border-radius:0 0 6px 6px;box-shadow:0 6px 20px rgba(0,0,0,.4);padding:6px 0}
+.psd-shpmty-panel{display:none;position:absolute;top:100%;left:0;z-index:9999;width:140px;background:var(--surface);border:1px solid var(--primary);border-top:none;border-radius:0 0 6px 6px;box-shadow:0 6px 20px rgba(0,0,0,.4);padding:4px 0;box-sizing:border-box}
 .psd-shpmty-panel.open{display:block}
-.psd-shpmty-panel .shpmty-item{display:flex;align-items:center;gap:7px;padding:5px 12px;cursor:pointer;font-size:12px;color:var(--text);transition:background .1s}
+.psd-shpmty-panel .shpmty-item{display:flex;flex-direction:row;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;color:var(--text);transition:background .1s;white-space:nowrap;width:100%;box-sizing:border-box}
 .psd-shpmty-panel .shpmty-item:hover{background:var(--tr-hover)}
-.psd-shpmty-panel .shpmty-item input[type=checkbox]{width:13px;height:13px;cursor:pointer;accent-color:var(--primary)}
-.psd-shpmty-panel .shpmty-divider{height:1px;background:var(--border);margin:4px 0}
+.psd-shpmty-panel .shpmty-item input[type=checkbox]{width:13px;height:13px;flex-shrink:0;cursor:pointer;accent-color:var(--primary);margin:0}
+.psd-shpmty-panel .shpmty-item span{white-space:nowrap;line-height:1.4;font-size:12px}
+.psd-shpmty-panel .shpmty-divider{height:1px;background:var(--border);margin:3px 0}
 /* 툴바 버튼 */
 .psd-toolbar{flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);padding:8px 16px;display:flex;align-items:center;gap:8px}
 .psd-btn{padding:6px 16px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:.15s;display:flex;align-items:center;gap:5px;white-space:nowrap}
@@ -5549,20 +5551,21 @@ async function renderPsDispatch() {
         <label>출하유형</label>
         <div class="psd-shpmty-wrap" id="psd-shpmty-wrap">
           <div class="psd-shpmty-btn" id="psd-shpmty-btn" onclick="psdShpmtyToggle()">
-            <span id="psd-shpmty-label">전체</span>
+            <span class="psd-shpmty-label-txt" id="psd-shpmty-label">전체</span>
             <span class="arrow">▼</span>
           </div>
           <div class="psd-shpmty-panel" id="psd-shpmty-panel">
             <label class="shpmty-item">
-              <input type="checkbox" id="psd-shpmty-all" onchange="psdShpmtyToggleAll(this.checked)" checked> 전체
+              <input type="checkbox" id="psd-shpmty-all" onchange="psdShpmtyToggleAll(this.checked)" checked>
+              <span>전체</span>
             </label>
             <div class="shpmty-divider"></div>
-            <label class="shpmty-item"><input type="checkbox" class="psd-shpmty-chk" value="201" checked> 판매출고</label>
-            <label class="shpmty-item"><input type="checkbox" class="psd-shpmty-chk" value="205" checked> 자재불출</label>
-            <label class="shpmty-item"><input type="checkbox" class="psd-shpmty-chk" value="206" checked> 무상출고</label>
-            <label class="shpmty-item"><input type="checkbox" class="psd-shpmty-chk" value="208" checked> 수출출고</label>
-            <label class="shpmty-item"><input type="checkbox" class="psd-shpmty-chk" value="221" checked> 이송출고</label>
-            <label class="shpmty-item"><input type="checkbox" class="psd-shpmty-chk" value="231" checked> 반품출고</label>
+            <label class="shpmty-item"><input type="checkbox" class="psd-shpmty-chk" value="201" checked><span>판매출고</span></label>
+            <label class="shpmty-item"><input type="checkbox" class="psd-shpmty-chk" value="205" checked><span>자재불출</span></label>
+            <label class="shpmty-item"><input type="checkbox" class="psd-shpmty-chk" value="206" checked><span>무상출고</span></label>
+            <label class="shpmty-item"><input type="checkbox" class="psd-shpmty-chk" value="208" checked><span>수출출고</span></label>
+            <label class="shpmty-item"><input type="checkbox" class="psd-shpmty-chk" value="221" checked><span>이송출고</span></label>
+            <label class="shpmty-item"><input type="checkbox" class="psd-shpmty-chk" value="231" checked><span>반품출고</span></label>
           </div>
         </div>
       </div>
