@@ -2003,13 +2003,14 @@ def _ps_next_dispatch_no(conn, dt):
 def api_ps_dispatch_search():
     """
     PS 배차용 원지 납품문서 조회
-    params: date_from, date_to, dptnky, shpoky, status(dispatched/undispatched/all)
+    params: date_from, date_to, dptnky, shpoky, shpmty, status(dispatched/undispatched/all)
     """
     date_from = request.args.get('date_from','').replace('-','')
     date_to   = request.args.get('date_to','').replace('-','')
     dptnky    = request.args.get('dptnky','').strip()
     shpoky    = request.args.get('shpoky','').strip()
-    disp_stat = request.args.get('status','all')   # all|dispatched|undispatched
+    shpmty    = request.args.get('shpmty','').strip()   # 출하유형 코드 (201/205/206/208/221/231)
+    disp_stat = request.args.get('status','all')        # all|dispatched|undispatched
 
     conn = get_conn()
     try:
@@ -2025,6 +2026,8 @@ def api_ps_dispatch_search():
             params += [f'%{dptnky}%', f'%{dptnky}%']
         if shpoky:
             wheres.append("i.SHPOKY LIKE ?"); params.append(f'%{shpoky}%')
+        if shpmty:
+            wheres.append("h.SHPMTY = ?"); params.append(shpmty)
 
         sql = f"""
             SELECT i.SHPOKY, i.SHPOIT, i.SKUKEY, i.DESC01,
@@ -2032,10 +2035,13 @@ def api_ps_dispatch_search():
                    h.DPTNKY,
                    TRIM(COALESCE(b.NAME01,'')) AS DPTNM,
                    h.DOCDAT, h.RQSHPD,
+                   h.SHPMTY,
+                   TRIM(COALESCE(c.CDESC1,'')) AS SHPMTY_NM,
                    SUBSTR(UPPER(i.SKUKEY),3,3) INCH_CODE
             FROM SHPDI i
             JOIN SHPDH h ON i.SHPOKY=h.SHPOKY
             LEFT JOIN BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT'
+            LEFT JOIN CMCDV c ON c.CMCDKY='TASOTY' AND c.CMCDVL=h.SHPMTY
             WHERE {' AND '.join(wheres)}
             ORDER BY h.RQSHPD, h.DPTNKY, i.SHPOKY, i.SHPOIT
         """
@@ -2057,18 +2063,20 @@ def api_ps_dispatch_search():
             inch  = _ps_get_inch(r['SKUKEY'])
             grm   = _ps_get_grm(r['SKUKEY'])
             result.append({
-                'SHPOKY':   r['SHPOKY'],
-                'SHPOIT':   r['SHPOIT'],
-                'SKUKEY':   r['SKUKEY'],
-                'DESC01':   r['DESC01'],
-                'UOMKEY':   r['UOMKEY'],
-                'QTSHPO':   r['QTSHPO'],
-                'DPTNKY':   r['DPTNKY'],
-                'DPTNM':    r['DPTNM'],
-                'DOCDAT':   r['DOCDAT'],
-                'RQSHPD':   r['RQSHPD'],
-                'INCH':     inch,
-                'GRM_COND': grm,
+                'SHPOKY':    r['SHPOKY'],
+                'SHPOIT':    r['SHPOIT'],
+                'SKUKEY':    r['SKUKEY'],
+                'DESC01':    r['DESC01'],
+                'UOMKEY':    r['UOMKEY'],
+                'QTSHPO':    r['QTSHPO'],
+                'DPTNKY':    r['DPTNKY'],
+                'DPTNM':     r['DPTNM'],
+                'DOCDAT':    r['DOCDAT'],
+                'RQSHPD':    r['RQSHPD'],
+                'SHPMTY':    r['SHPMTY'],
+                'SHPMTY_NM': r['SHPMTY_NM'],
+                'INCH':      inch,
+                'GRM_COND':  grm,
                 'DISPATCHED': is_disp,
             })
         return jsonify({"ok": True, "total": len(result), "rows": result})
@@ -2396,6 +2404,7 @@ def api_ps_dispatch_split():
       org_shpoky, org_shpoit,   # 원본 납품문서
       splits: [{skukey, desc01, org_qty, split_qty, uomkey}]
     }
+    → SHPOKY는 원본 번호 그대로 유지, SHPOIT를 90, 91, 92... 으로 채번
     → PS_DISPATCH_SPLIT 삽입 + 분할된 가상 아이템 반환
     """
     from datetime import datetime
@@ -2412,31 +2421,42 @@ def api_ps_dispatch_split():
     today  = datetime.now().strftime('%Y%m%d')
     conn   = get_conn()
     try:
+        # 이미 분할된 이 문서의 최대 SHPOIT 채번 확인 (90번대 이후 사용)
+        existing = conn.execute(
+            "SELECT MAX(CAST(NEW_SHPOIT AS INTEGER)) FROM PS_DISPATCH_SPLIT WHERE ORG_SHPOKY=? AND ORG_SHPOIT=?",
+            (org_shpoky, org_shpoit)
+        ).fetchone()[0]
+        next_it = max(90, (existing or 89) + 1)
+
         result_items = []
-        for i, sp in enumerate(splits, 1):
-            split_key = f"SPL-{org_shpoky}-{org_shpoit}-{i:02d}"
-            org_qty   = float(sp.get('org_qty', 0))
-            split_qty = float(sp.get('split_qty', 0))
-            rem_qty   = org_qty - split_qty
+        for i, sp in enumerate(splits):
+            new_shpoit = str(next_it + i)
+            split_key  = f"SPL-{org_shpoky}-{org_shpoit}-{new_shpoit}"
+            org_qty    = float(sp.get('org_qty', 0))
+            split_qty  = float(sp.get('split_qty', 0))
+            rem_qty    = org_qty - split_qty
 
             conn.execute(
                 """INSERT OR REPLACE INTO PS_DISPATCH_SPLIT
                    (SPLIT_KEY,ORG_SHPOKY,ORG_SHPOIT,NEW_SHPOKY,NEW_SHPOIT,
                     SKUKEY,DESC01,ORG_QTY,SPLIT_QTY,REM_QTY,UOMKEY,STATUS,CREDAT,CREUSR)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,'KG','ACTIVE',?,?)""",
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,  'ACTIVE',?,?)""",
                 (split_key, org_shpoky, org_shpoit,
-                 f"{org_shpoky}S{i:02d}", f"{org_shpoit}",
+                 org_shpoky,           # ← SHPOKY 기존 번호 그대로 유지
+                 new_shpoit,           # ← SHPOIT 90번대로 채번
                  sp.get('skukey',''), sp.get('desc01',''),
-                 org_qty, split_qty, rem_qty, today, 'SYSTEM')
+                 org_qty, split_qty, rem_qty,
+                 sp.get('uomkey','KG'),
+                 today, 'SYSTEM')
             )
             result_items.append({
                 'SPLIT_KEY':  split_key,
-                'SHPOKY':     f"{org_shpoky}S{i:02d}",
-                'SHPOIT':     org_shpoit,
+                'SHPOKY':     org_shpoky,   # ← 기존 납품문서번호 유지
+                'SHPOIT':     new_shpoit,   # ← 분할 아이템번호
                 'SKUKEY':     sp.get('skukey',''),
                 'DESC01':     sp.get('desc01',''),
                 'QTSHPO':     split_qty,
-                'UOMKEY':     'KG',
+                'UOMKEY':     sp.get('uomkey','KG'),
                 'IS_SPLIT':   1,
                 'ORG_SHPOKY': org_shpoky,
                 'ORG_SHPOIT': org_shpoit,
