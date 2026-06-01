@@ -3115,6 +3115,19 @@ def api_ps_dispatch_auto():
                     final_items = veh['items'] + added_items
                     final_kg    = veh_kg + added_kg
 
+                    # ── 원지 롤 개수 집계 ──
+                    # 각 아이템의 QTSHPO(KG) ÷ ROLL_SINGLE_KG(600) → 반올림 = 롤 개수
+                    # SKUKEY별 롤 개수를 합산하여 총 롤 수 계산
+                    roll_count_by_sku = {}   # {skukey: roll_cnt}
+                    for it in final_items:
+                        if not _ps_is_roll(it.get('SKUKEY', '')):
+                            continue
+                        sk  = it.get('SKUKEY', '')
+                        kg  = float(it.get('QTSHPO', 0))
+                        cnt = max(1, round(kg / ROLL_SINGLE_KG)) if kg > 0 else 0
+                        roll_count_by_sku[sk] = roll_count_by_sku.get(sk, 0) + cnt
+                    total_roll_count = sum(roll_count_by_sku.values())
+
                     # ── 납품처 조건 체크 노트 추가 ──
                     ptnr_notes, ptnr_warns = _build_ptnr_notes(dptnky, rqshpd, veh_car)
                     if _max_ton_applied:
@@ -3126,23 +3139,25 @@ def api_ps_dispatch_auto():
                     add_notes = ptnr_warns + add_notes + ptnr_notes
 
                     all_vehicles.append({
-                        'dptnky':        dptnky,
-                        'dptnm':         dptnm,
-                        'rqshpd':        rqshpd,
-                        'cartype':       veh_car,
-                        'total_kg':      round(final_kg, 2),
-                        'load_cap':      veh_load_cap,
-                        'spare_kg':      round(veh_load_cap - final_kg, 2),
-                        'items':         final_items,
-                        'item_cnt':      len(final_items),
-                        'added_cnt':     len(added_items),
-                        'added_kg':      round(added_kg, 2),
-                        'material_type': 'ROLL',
-                        'notes':         add_notes,
-                        'ptnr_warns':    ptnr_warns,
-                        'forklift_yn':   ptnr_info.get(dptnky, {}).get('forklift_yn', ''),
-                        'deadline_time': ptnr_info.get(dptnky, {}).get('deadline_time', ''),
-                        'max_ton_label': ptnr_info.get(dptnky, {}).get('max_ton_label', ''),
+                        'dptnky':          dptnky,
+                        'dptnm':           dptnm,
+                        'rqshpd':          rqshpd,
+                        'cartype':         veh_car,
+                        'total_kg':        round(final_kg, 2),
+                        'load_cap':        veh_load_cap,
+                        'spare_kg':        round(veh_load_cap - final_kg, 2),
+                        'items':           final_items,
+                        'item_cnt':        len(final_items),
+                        'added_cnt':       len(added_items),
+                        'added_kg':        round(added_kg, 2),
+                        'material_type':   'ROLL',
+                        'roll_count':      total_roll_count,        # ★ 원지 총 롤 개수
+                        'roll_count_sku':  roll_count_by_sku,       # ★ SKUKEY별 롤 개수
+                        'notes':           add_notes,
+                        'ptnr_warns':      ptnr_warns,
+                        'forklift_yn':     ptnr_info.get(dptnky, {}).get('forklift_yn', ''),
+                        'deadline_time':   ptnr_info.get(dptnky, {}).get('deadline_time', ''),
+                        'max_ton_label':   ptnr_info.get(dptnky, {}).get('max_ton_label', ''),
                     })
 
             # =================================================================

@@ -963,6 +963,8 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 /* 추가 배차 아이템 강조 */
 .psd-auto-item-new{background:rgba(74,222,128,.06);border-left:3px solid #4ade80}
 .psd-auto-item-added{font-size:9px;font-weight:700;color:#4ade80;background:rgba(74,222,128,.15);border-radius:3px;padding:1px 4px;white-space:nowrap}
+/* 원지 롤 개수 배지 (아이템 행) */
+.psd-roll-cnt-badge{font-size:10px;font-weight:700;color:#93c5fd;background:rgba(147,197,253,.12);border:1px solid #3b82f6;border-radius:4px;padding:1px 6px;margin-left:4px;white-space:nowrap}
 /* 납품처 정보 배지 */
 .psd-ptnr-badge{font-size:10px;font-weight:700;border-radius:4px;padding:2px 7px;white-space:nowrap;display:inline-flex;align-items:center;gap:3px}
 .psd-ptnr-forklift-y{color:#34d399;background:rgba(52,211,153,.12);border:1px solid #34d399}
@@ -7286,18 +7288,51 @@ function psdShowAutoResultModal(vehicles) {
       });
     }
 
+    // 원지 롤 개수 (서버에서 계산된 roll_count 우선, 없으면 클라이언트 계산)
+    const isRollVeh = (mtype === 'ROLL');
+    const ROLL_SINGLE_KG = 600;
+    let totalRollCount = 0;
+    const rollCountBySku = v.roll_count_sku || {};  // {skukey: cnt}
+    if (isRollVeh) {
+      if (v.roll_count > 0) {
+        totalRollCount = v.roll_count;
+      } else {
+        // 폴백: 클라이언트에서 600KG 기준 계산
+        (v.items||[]).forEach(it => {
+          if (psdGetInch(it.SKUKEY||'')) {
+            const kg = parseFloat(it.QTSHPO||0);
+            if (kg > 0) totalRollCount += Math.max(1, Math.round(kg / ROLL_SINGLE_KG));
+          }
+        });
+      }
+    }
+
     const itemsHtml = (v.items||[]).map((it, itIdx) => {
       const inch      = psdGetInch(it.SKUKEY||'');
       const inchBadge = inch ? `<span class="psd-car-item-inch ${inch==='12인치'?'inch-12':'inch-3'}">${inch}</span>` : '';
       const isAdded   = itIdx >= origCnt;
       const addedMark = isAdded ? `<span class="psd-auto-item-added">+추가</span>` : '';
       const uom       = (it.UOMKEY||'KG').trim();
-      // R단위 판지: "27 R = 2,781 KG" 형식으로 표시
-      const qtyHtml   = uom === 'R' && it.KG_WEIGHT
-        ? `<span style="font-weight:600;min-width:70px;text-align:right">${psdFmtNum(it.QTSHPO)} R</span>
-           <span style="color:var(--text3);margin-left:4px;font-size:10px">= ${psdFmtNum(it.KG_WEIGHT)} KG</span>`
-        : `<span style="font-weight:600;min-width:70px;text-align:right">${psdFmtNum(it.QTSHPO)}</span>
+
+      // 원지 아이템: KG + 롤 개수 병행 표시
+      let qtyHtml;
+      if (isRollVeh && inch && uom === 'KG') {
+        const kg      = parseFloat(it.QTSHPO||0);
+        const skuCnt  = rollCountBySku[it.SKUKEY] != null
+          ? rollCountBySku[it.SKUKEY]
+          : (kg > 0 ? Math.max(1, Math.round(kg / ROLL_SINGLE_KG)) : 0);
+        qtyHtml = `<span style="font-weight:600;min-width:70px;text-align:right">${psdFmtNum(kg)}</span>
+           <span style="color:var(--text3);margin-left:2px">KG</span>
+           <span class="psd-roll-cnt-badge">${skuCnt}롤</span>`;
+      } else if (uom === 'R' && it.KG_WEIGHT) {
+        // R단위 판지: "27 R = 2,781 KG" 형식으로 표시
+        qtyHtml = `<span style="font-weight:600;min-width:70px;text-align:right">${psdFmtNum(it.QTSHPO)} R</span>
+           <span style="color:var(--text3);margin-left:4px;font-size:10px">= ${psdFmtNum(it.KG_WEIGHT)} KG</span>`;
+      } else {
+        qtyHtml = `<span style="font-weight:600;min-width:70px;text-align:right">${psdFmtNum(it.QTSHPO)}</span>
            <span style="color:var(--text3);margin-left:4px">${uom}</span>`;
+      }
+
       return `<div class="psd-auto-item${isAdded?' psd-auto-item-new':''}">
         <span style="font-family:monospace;color:var(--primary);min-width:90px">${it.SHPOKY}</span>
         <span style="color:var(--text3);min-width:22px;font-size:10px">#${it.SHPOIT}</span>
@@ -7307,11 +7342,20 @@ function psdShowAutoResultModal(vehicles) {
       </div>`;
     }).join('');
 
+    // 원지 차량: 총 KG + 롤 개수 병행 표시
+    const rollTotalHtml = isRollVeh && totalRollCount > 0
+      ? `<span class="veh-kg" style="font-weight:700;color:var(--text)">${psdFmtNum(v.total_kg)}KG</span>
+         <span style="font-size:10px;color:#93c5fd;font-weight:700;background:rgba(147,197,253,.12);border:1px solid #3b82f6;border-radius:4px;padding:1px 6px">🌀 ${totalRollCount}롤</span>`
+      : '';
+
     // 판지 차량: 합계 R + KG 병행 표시
     const boardTotalHtml = isBoardVeh && totalBoardR > 0
       ? `<span class="veh-kg" style="font-weight:700;color:var(--text)">${psdFmtNum(v.total_kg)}KG</span>
          <span style="font-size:10px;color:#059669;font-weight:600">(${psdFmtNum(totalBoardR)}R)</span>`
       : `<span class="veh-kg" style="font-weight:700;color:var(--text)">${psdFmtNum(v.total_kg)}KG</span>`;
+
+    // 원지/판지/기타 합계 HTML 통합
+    const totalKgHtml = isRollVeh && totalRollCount > 0 ? rollTotalHtml : boardTotalHtml;
 
     // 납품처 배지 그룹 (지게차·납기·최대톤수)
     const ptnrBadges = [forkBadge, deadlineBadge, maxTonBadge].filter(Boolean).join('');
@@ -7326,7 +7370,7 @@ function psdShowAutoResultModal(vehicles) {
         ${ptnrBadges}
         <span style="margin-left:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           ${addedBadge}${boardInfo}
-          ${boardTotalHtml}
+          ${totalKgHtml}
           <span class="veh-kg">/ ${psdFmtNum(loadCap)}KG · ${v.item_cnt}건</span>
           ${spareKg>0?`<span class="psd-auto-spare">여유 ${psdFmtNum(spareKg)}KG</span>`:''}
         </span>
@@ -7339,6 +7383,24 @@ function psdShowAutoResultModal(vehicles) {
 
   const addedSummary = totalAdded > 0
     ? `<span style="font-size:11px;color:#4ade80;margin-left:4px">⬆ 추가배차 ${totalAdded}건</span>`
+    : '';
+  // 원지 전체 롤 합계
+  const totalRollSum = vehicles
+    .filter(v => v.material_type === 'ROLL')
+    .reduce((s, v) => {
+      if (v.roll_count > 0) return s + v.roll_count;
+      // 폴백: 클라이언트 계산
+      let cnt = 0;
+      (v.items||[]).forEach(it => {
+        if (psdGetInch(it.SKUKEY||'')) {
+          const kg = parseFloat(it.QTSHPO||0);
+          if (kg > 0) cnt += Math.max(1, Math.round(kg / 600));
+        }
+      });
+      return s + cnt;
+    }, 0);
+  const rollSummary = totalRollSum > 0
+    ? `<span style="font-size:11px;color:#93c5fd;font-weight:700;margin-left:4px">🌀 총 ${totalRollSum}롤</span>`
     : '';
   const typeSummary = `<span style="font-size:11px;color:var(--text3)">(원지 ${rollCnt}대 · 판지 ${boardCnt}대)</span>`;
   // 납품처 경고 건수 집계
@@ -7374,7 +7436,7 @@ function psdShowAutoResultModal(vehicles) {
       </div>
       <div style="padding:10px 20px;background:var(--th-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span style="font-size:12px;font-weight:700;color:var(--text)">차량 ${totalVeh}대 · 문서 ${totalDoc}건 · 총 ${psdFmtNum(totalKg)} KG</span>
-        ${typeSummary}${addedSummary}${ptnrWarnSummary}${deadlineSummary}${noForkSummary}
+        ${typeSummary}${rollSummary}${addedSummary}${ptnrWarnSummary}${deadlineSummary}${noForkSummary}
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-left:auto">${summaryBadges}</div>
       </div>
       <div class="psd-modal-body psd-auto-result">
