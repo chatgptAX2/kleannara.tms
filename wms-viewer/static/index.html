@@ -6607,6 +6607,11 @@ function psdRenderDocTable(filterText) {
     const dispBadge = r.DISPATCHED
       ? `<span class="psd-disp-badge">배차</span>`
       : `<span class="psd-undisp-badge">미배차</span>`;
+    // 분할문서 배지: SHPOKY에 '-S' 패턴이 있으면 분할문서
+    const isSplitDoc = (r.SHPOKY||'').includes('-S') || r.IS_SPLIT;
+    const splitBadge = isSplitDoc
+      ? `<span style="font-size:9px;font-weight:700;color:#f59e0b;background:rgba(245,158,11,.15);border:1px solid #f59e0b;border-radius:3px;padding:1px 4px;vertical-align:middle;margin-left:3px">분할</span>`
+      : '';
     const shpmtyNm = r.SHPMTY_NM || r.SHPMTY || '';
     // 상품 유형 배지 (원지/판지/기타)
     const skuTypeBadge = r.SKU_TYPE === 'roll'
@@ -6626,7 +6631,7 @@ function psdRenderDocTable(filterText) {
         <input type="checkbox" class="psd-doc-chk" data-key="${key}"
                ${sel?'checked':''} onchange="psdChkDoc('${key}',this.checked)">
       </td>
-      <td style="font-family:monospace;color:var(--primary);font-weight:600">${r.SHPOKY}</td>
+      <td style="font-family:monospace;color:var(--primary);font-weight:600">${r.SHPOKY}${splitBadge}</td>
       <td style="text-align:center">${r.SHPOIT}</td>
       <td title="${r.DPTNKY||''}">${r.DPTNKY||''}</td>
       <td class="col-nm" title="${r.DPTNM||''}">${r.DPTNM||''}</td>
@@ -7597,7 +7602,8 @@ function psdOpenSplitModal(items) {
       <div class="psd-modal-body">
         <div style="margin-bottom:12px;font-size:12px;color:var(--text3)">
           분할할 납품문서를 선택하고 분할수량을 입력하세요.<br>
-          분할 후 원본 문서는 <b>잔량</b>으로 유지되고, 분할된 수량은 새 납품문서로 생성됩니다.
+          분할 후 원본 문서는 <b>잔량</b>으로 유지되고, 분할된 수량은 <b>신규 납품문서번호</b>로 채번됩니다.<br>
+          <span style="color:var(--primary);font-size:10px">예) 2004335315 → 2004335315-S01, S02 ...</span>
         </div>
         <div style="overflow-x:auto">
           <table class="psd-split-tbl">
@@ -7686,17 +7692,23 @@ async function psdExecuteSplit() {
       const newItem = data.splits?.[0];
       if (newItem) {
         psdState.searchRows.push({
-          SHPOKY:    newItem.SHPOKY,
-          SHPOIT:    newItem.SHPOIT,
-          SKUKEY:    newItem.SKUKEY,
-          DESC01:    newItem.DESC01,
-          UOMKEY:    'KG',
-          QTSHPO:    newItem.QTSHPO,
-          DPTNKY:    orig?.DPTNKY||'',
-          DPTNM:     orig?.DPTNM||'',
-          DOCDAT:    orig?.DOCDAT||'',
-          RQSHPD:    orig?.RQSHPD||'',
-          INCH:      psdGetInch(newItem.SKUKEY||''),
+          SHPOKY:     newItem.SHPOKY,      // ★ 신규 채번된 납품문서번호
+          SHPOIT:     newItem.SHPOIT,
+          SKUKEY:     newItem.SKUKEY,
+          DESC01:     newItem.DESC01,
+          UOMKEY:     newItem.UOMKEY || orig?.UOMKEY || 'KG',
+          QTSHPO:     newItem.QTSHPO,
+          DPTNKY:     orig?.DPTNKY||'',
+          DPTNM:      orig?.DPTNM||'',
+          DOCDAT:     orig?.DOCDAT||'',
+          RQSHPD:     orig?.RQSHPD||'',
+          SHPMTY:     orig?.SHPMTY||'',
+          SHPMTY_NM:  orig?.SHPMTY_NM||'',
+          SKU_TYPE:   orig?.SKU_TYPE||'',
+          INCH:       psdGetInch(newItem.SKUKEY||''),
+          IS_SPLIT:   1,                   // ★ 분할문서 표시
+          ORG_SHPOKY: newItem.ORG_SHPOKY,  // ★ 원본 납품문서번호
+          ORG_SHPOIT: newItem.ORG_SHPOIT,
           DISPATCHED: false,
         });
       }

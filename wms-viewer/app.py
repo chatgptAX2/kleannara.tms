@@ -3605,7 +3605,8 @@ def api_ps_dispatch_split():
       org_shpoky, org_shpoit,   # 원본 납품문서
       splits: [{skukey, desc01, org_qty, split_qty, uomkey}]
     }
-    → SHPOKY는 원본 번호 그대로 유지, SHPOIT를 90, 91, 92... 으로 채번
+    → NEW_SHPOKY = {ORG_SHPOKY}-S01 / S02 ... 신규 채번
+    → NEW_SHPOIT = 원본 org_shpoit 그대로 유지
     → PS_DISPATCH_SPLIT 삽입 + 분할된 가상 아이템 반환
     """
     from datetime import datetime
@@ -3622,17 +3623,30 @@ def api_ps_dispatch_split():
     today  = datetime.now().strftime('%Y%m%d')
     conn   = get_conn()
     try:
-        # 이미 분할된 이 문서의 최대 SHPOIT 채번 확인 (90번대 이후 사용)
-        existing = conn.execute(
-            "SELECT MAX(CAST(NEW_SHPOIT AS INTEGER)) FROM PS_DISPATCH_SPLIT WHERE ORG_SHPOKY=? AND ORG_SHPOIT=?",
-            (org_shpoky, org_shpoit)
-        ).fetchone()[0]
-        next_it = max(90, (existing or 89) + 1)
+        # ── 신규 SHPOKY 채번: {ORG_SHPOKY}-S01, S02 ... ──
+        # 이미 이 원본문서에서 분할된 최대 시퀀스 조회
+        existing_rows = conn.execute(
+            "SELECT NEW_SHPOKY FROM PS_DISPATCH_SPLIT WHERE ORG_SHPOKY=? AND STATUS='ACTIVE'",
+            (org_shpoky,)
+        ).fetchall()
+        # 기존 분할번호에서 Sxx 부분 추출해 최대값 파악
+        existing_seq = 0
+        prefix_base  = f"{org_shpoky}-S"
+        for row in existing_rows:
+            nk = (row[0] or '')
+            if nk.startswith(prefix_base):
+                try:
+                    seq_part   = int(nk[len(prefix_base):])
+                    existing_seq = max(existing_seq, seq_part)
+                except ValueError:
+                    pass
+        next_seq = existing_seq + 1   # 다음 분할 시퀀스 시작 번호
 
         result_items = []
         for i, sp in enumerate(splits):
-            new_shpoit = str(next_it + i)
-            split_key  = f"SPL-{org_shpoky}-{org_shpoit}-{new_shpoit}"
+            new_shpoky = f"{org_shpoky}-S{(next_seq + i):02d}"   # 예: 2004335315-S01
+            new_shpoit = org_shpoit                               # 아이템번호는 원본 유지
+            split_key  = f"SPL-{new_shpoky}-{new_shpoit}"
             org_qty    = float(sp.get('org_qty', 0))
             split_qty  = float(sp.get('split_qty', 0))
             rem_qty    = org_qty - split_qty
@@ -3643,8 +3657,8 @@ def api_ps_dispatch_split():
                     SKUKEY,DESC01,ORG_QTY,SPLIT_QTY,REM_QTY,UOMKEY,STATUS,CREDAT,CREUSR)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,  'ACTIVE',?,?)""",
                 (split_key, org_shpoky, org_shpoit,
-                 org_shpoky,           # ← SHPOKY 기존 번호 그대로 유지
-                 new_shpoit,           # ← SHPOIT 90번대로 채번
+                 new_shpoky,   # ★ 신규 채번된 납품문서번호
+                 new_shpoit,   # ★ 원본 아이템번호 유지
                  sp.get('skukey',''), sp.get('desc01',''),
                  org_qty, split_qty, rem_qty,
                  sp.get('uomkey','KG'),
@@ -3652,8 +3666,8 @@ def api_ps_dispatch_split():
             )
             result_items.append({
                 'SPLIT_KEY':  split_key,
-                'SHPOKY':     org_shpoky,   # ← 기존 납품문서번호 유지
-                'SHPOIT':     new_shpoit,   # ← 분할 아이템번호
+                'SHPOKY':     new_shpoky,   # ★ 신규 채번 납품문서번호
+                'SHPOIT':     new_shpoit,   # 원본 아이템번호
                 'SKUKEY':     sp.get('skukey',''),
                 'DESC01':     sp.get('desc01',''),
                 'QTSHPO':     split_qty,
