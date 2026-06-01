@@ -183,10 +183,10 @@ COL_LABELS = {
     "VBELV":"선행납품번호","POSNV":"선행포지션","ZKUNNR3":"고객코드3",
     "VOLEH":"부피단위","VTWEG":"유통경로",
     # ── BZPTN_DETAIL (TMS 납품처 상세)
-    "ROUTE_CD":"유통경로코드","ITEM_GROUP":"제품군","UNLOAD_TIME":"하차대기시간(분)",
+    "ROUTE_CD":"유통경로코드","ITEM_GROUP":"제품군","UNLOAD_TIME":"하차대기시간(분)","DEADLINE_TIME":"납기시간(HH:MM)",
     "INB_TIME_FROM1":"입차가능시작1","INB_TIME_TO1":"입차가능종료1",
     "AREA_CD":"권역","MAX_HEIGHT":"최대진입높이(m)","FORKLIFT_YN":"지게차여부",
-    "HANDWORK_YN":"수작업여부","AUTO_PLT":"자동설정PLT","MAX_BOX_QTY":"최대토수",
+    "HANDWORK_YN":"수작업여부","AUTO_PLT":"자동설정PLT","MAX_BOX_QTY":"최대박스수량","MAX_TON":"최대톤수(TMS_CARCLASS)",
     "AUTO_ALLOC_YN":"자동배차여부","SINGLE_ITEM_YN":"단수조정품목","NY_TYPE":"N/Y타입",
     "SINGLE_HEIGHT":"단수조정높이","DYNAMIC_YN":"동적유무","LTL_YN":"혼적유무",
     "PRIORITY_YN":"우선배차유무","MIN_QTSIWH":"최소납품수량",
@@ -241,7 +241,12 @@ def fmt_date(v):
 
 @app.route('/')
 def index():
-    return send_from_directory('static', 'index.html')
+    from flask import make_response
+    resp = make_response(send_from_directory('static', 'index.html'))
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    resp.headers['Pragma']        = 'no-cache'
+    resp.headers['Expires']       = '0'
+    return resp
 
 @app.route('/api/tables')
 def api_tables():
@@ -1002,6 +1007,9 @@ def api_delivery_list():
     _dlv_sort_map = {
         'PTNRKY':'b.PTNRKY','NAME01':'b.NAME01','WAREKY':'d.WAREKY',
         'ITEM_GROUP':'d.ITEM_GROUP','ADDR01':'b.ADDR01','AREA_CD':'d.AREA_CD',
+        'UNLOAD_TIME':'d.UNLOAD_TIME','FORKLIFT_YN':'d.FORKLIFT_YN',
+        'MAX_BOX_QTY':'d.MAX_BOX_QTY','DEADLINE_TIME':'d.DEADLINE_TIME',
+        'MAX_TON':'d.MAX_TON',
     }
     order_expr = _dlv_sort_map.get(sort_col, 'b.PTNRKY')
 
@@ -1033,7 +1041,7 @@ def api_delivery_list():
                b.ADDR01, b.ADDR02, b.REGN01, b.TELN01,
                d.WAREKY, d.ROUTE_CD, d.ITEM_GROUP, d.AREA_CD,
                d.UNLOAD_TIME, d.MAX_HEIGHT, d.AUTO_ALLOC_YN, d.FORKLIFT_YN,
-               d.INB_TIME_FROM1, d.INB_TIME_TO1,
+               d.INB_TIME_FROM1, d.INB_TIME_TO1, d.MAX_BOX_QTY, d.DEADLINE_TIME, d.MAX_TON,
                CASE WHEN d.PTNRKY IS NOT NULL THEN 'Y' ELSE 'N' END as HAS_DETAIL
         FROM BZPTN b
         LEFT JOIN BZPTN_DETAIL d ON b.PTNRKY=d.PTNRKY AND b.PTNRTY=d.PTNRTY AND b.OWNRKY=d.OWNRKY
@@ -1106,7 +1114,7 @@ def api_delivery_save():
         'FORKLIFT_YN', 'HANDWORK_YN', 'AUTO_PLT', 'MAX_BOX_QTY',
         'AUTO_ALLOC_YN', 'SINGLE_ITEM_YN', 'NY_TYPE', 'SINGLE_HEIGHT',
         'DYNAMIC_YN', 'LTL_YN', 'PRIORITY_YN', 'MIN_QTSIWH',
-        'LATITUDE', 'LONGITUDE', 'DEL_YN',
+        'LATITUDE', 'LONGITUDE', 'DEL_YN', 'DEADLINE_TIME', 'MAX_TON',
     ]
 
     try:
@@ -1300,6 +1308,162 @@ def api_vehicle_delete():
     return jsonify({"ok": True})
 
 
+@app.route('/api/carclass')
+def api_carclass():
+    """고정차량 관리: TMS_CARCLASS 공통코드 + DS_VEHICLE 통합 조회
+    - carclasses: 공통코드 전체 16건
+    - vehicles: DS_VEHICLE 독립 조회 (CARTYPE 기준)
+    - merged: TMS_CARCLASS 기준 LEFT JOIN → 모든 톤수 + 제원정보 통합
+    """
+    conn = get_conn()
+    # TMS_CARCLASS 공통코드 전체 조회
+    cc_rows = conn.execute("""
+        SELECT CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5
+        FROM CMCDV
+        WHERE CMCDKY = 'TMS_CARCLASS'
+        ORDER BY CMCDVL
+    """).fetchall()
+
+    # DS_VEHICLE 전체 조회 (CARTYPE 기준 독립 목록)
+    vhc_rows = conn.execute("""
+        SELECT CARTYPE, LENGTH_M, WIDTH_M, HEIGHT_M, LOAD_TON, SORT_SEQ, UPDDAT, UPDUSR
+        FROM DS_VEHICLE
+        ORDER BY SORT_SEQ, CARTYPE
+    """).fetchall()
+
+    # DS_VEHICLE을 CARTYPE → dict 맵으로 변환
+    vhc_map = {r['CARTYPE']: dict(r) for r in vhc_rows}
+
+    # TMS_CARCLASS 기준으로 DS_VEHICLE 데이터 병합
+    # CDESC1(차량톤수명)이 DS_VEHICLE.CARTYPE 과 매핑됨
+    merged = []
+    for r in cc_rows:
+        cc = dict(r)
+        cdesc1 = (cc.get('CDESC1') or '').strip()
+        vhc = vhc_map.get(cdesc1)  # CDESC1 값으로 DS_VEHICLE 매핑
+        merged.append({
+            # 공통코드 필드
+            'CMCDVL': cc['CMCDVL'],
+            'CDESC1': cdesc1,
+            'USARG1': cc['USARG1'],
+            'USARG2': cc['USARG2'],
+            'USARG3': cc['USARG3'],
+            'USARG4': cc['USARG4'],
+            'USARG5': cc['USARG5'],
+            # DS_VEHICLE 필드 (없으면 None)
+            'CARTYPE':  vhc['CARTYPE']  if vhc else None,
+            'LENGTH_M': vhc['LENGTH_M'] if vhc else None,
+            'WIDTH_M':  vhc['WIDTH_M']  if vhc else None,
+            'HEIGHT_M': vhc['HEIGHT_M'] if vhc else None,
+            'LOAD_TON': vhc['LOAD_TON'] if vhc else None,
+            'SORT_SEQ': vhc['SORT_SEQ'] if vhc else None,
+            'UPDDAT':   vhc['UPDDAT']   if vhc else None,
+            'UPDUSR':   vhc['UPDUSR']   if vhc else None,
+            'HAS_VHC':  bool(vhc),      # DS_VEHICLE 레코드 존재 여부
+        })
+
+    conn.close()
+
+    cc_list  = [dict(r) for r in cc_rows]
+    vhc_list = [dict(r) for r in vhc_rows]
+
+    return jsonify({"carclasses": cc_list, "vehicles": vhc_list, "merged": merged})
+
+
+@app.route('/api/carclass/save', methods=['POST'])
+def api_carclass_save():
+    """고정차량 관리 저장: CMCDV(TMS_CARCLASS) 또는 DS_VEHICLE 수정"""
+    import datetime
+    body = request.get_json() or {}
+    table = (body.get('table') or '').strip()  # 'carclass' | 'vehicle'
+    now   = datetime.datetime.now()
+    nowdt = now.strftime('%Y%m%d')
+    nowtm = now.strftime('%H%M%S')
+
+    conn = get_conn()
+    try:
+        if table == 'carclass':
+            # CMCDV TMS_CARCLASS 행 업데이트
+            key = (body.get('CMCDVL') or '').strip()
+            if not key:
+                return jsonify({"error": "CMCDVL 필수"}), 400
+            fields = {
+                'USARG1': body.get('USARG1'),  # 사용유무
+                'USARG2': body.get('USARG2'),  # 파렛트수
+                'USARG3': body.get('USARG3'),  # 적재중량(KG)
+                'USARG4': body.get('USARG4'),  # 장축여부
+                'USARG5': body.get('USARG5'),  # 고정차량 대수
+                'CDESC1': body.get('CDESC1'),  # 차량톤수명
+            }
+            sets = []
+            vals = []
+            for col, val in fields.items():
+                if val is not None:
+                    sets.append(f"{col}=?")
+                    vals.append(str(val).strip())
+            sets += ["LMODAT=?", "LMOTIM=?", "LMOUSR=?"]
+            vals += [nowdt, nowtm, 'WEB']
+            vals += ['TMS_CARCLASS', key]
+            conn.execute(f"UPDATE CMCDV SET {','.join(sets)} WHERE CMCDKY=? AND CMCDVL=?", vals)
+            conn.commit()
+            conn.close()
+            return jsonify({"ok": True})
+
+        elif table == 'vehicle':
+            # DS_VEHICLE 행 업데이트 (CARTYPE PK)
+            cartype = (body.get('CARTYPE') or '').strip()
+            if not cartype:
+                return jsonify({"error": "CARTYPE 필수"}), 400
+
+            # 존재하면 UPDATE, 없으면 INSERT
+            exists = conn.execute("SELECT 1 FROM DS_VEHICLE WHERE CARTYPE=?", [cartype]).fetchone()
+            if exists:
+                fields = {}
+                for col in ['LENGTH_M', 'WIDTH_M', 'HEIGHT_M', 'LOAD_TON', 'SORT_SEQ']:
+                    if body.get(col) is not None:
+                        fields[col] = body.get(col)
+                if fields:
+                    sets = [f"{c}=?" for c in fields] + ["UPDDAT=?", "UPDUSR=?"]
+                    vals = list(fields.values()) + [nowdt, 'WEB', cartype]
+                    conn.execute(f"UPDATE DS_VEHICLE SET {','.join(sets)} WHERE CARTYPE=?", vals)
+            else:
+                # 신규 INSERT
+                max_seq = conn.execute("SELECT COALESCE(MAX(SORT_SEQ),0)+1 FROM DS_VEHICLE").fetchone()[0]
+                conn.execute("""
+                    INSERT INTO DS_VEHICLE (CARTYPE, LENGTH_M, WIDTH_M, HEIGHT_M, LOAD_TON, SORT_SEQ, UPDDAT, UPDUSR)
+                    VALUES (?,?,?,?,?,?,?,?)
+                """, [
+                    cartype,
+                    body.get('LENGTH_M') or None,
+                    body.get('WIDTH_M') or None,
+                    body.get('HEIGHT_M') or None,
+                    body.get('LOAD_TON') or None,
+                    max_seq,
+                    nowdt, 'WEB'
+                ])
+            conn.commit()
+            conn.close()
+            return jsonify({"ok": True})
+
+        elif table == 'vehicle_delete':
+            # DS_VEHICLE 삭제 (CARTYPE PK)
+            cartype = (body.get('CARTYPE') or '').strip()
+            if not cartype:
+                return jsonify({"error": "CARTYPE 필수"}), 400
+            conn.execute("DELETE FROM DS_VEHICLE WHERE CARTYPE=?", [cartype])
+            conn.commit()
+            conn.close()
+            return jsonify({"ok": True})
+
+        else:
+            conn.close()
+            return jsonify({"error": f"알 수 없는 table: {table}"}), 400
+
+    except Exception as e:
+        conn.close()
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/delivery/delete', methods=['POST'])
 def api_delivery_delete():
     """납품처 TMS 상세(BZPTN_DETAIL) 삭제 (DEL_YN='Y')"""
@@ -1433,6 +1597,7 @@ def api_shipment_schedule():
     dptnky      = body.get('dptnky',  '').strip()
     ptnrky      = body.get('ptnrky',  '').strip()   # 납품처 코드
     alloc_st    = body.get('alloc_status', '').strip()  # 배차상태: 'done'|'notdone'|''(전체)
+    skukey      = body.get('skukey', '').strip()        # 품목코드
     page    = int(body.get('page', 1))
     size    = int(body.get('size', 100))
     offset  = (page - 1) * size
@@ -1467,6 +1632,8 @@ def api_shipment_schedule():
     # 납품처 코드 (STKNUM = 납품처코드로 저장되는 구조)
     if ptnrky:
         where.append("SI.STKNUM = ?"); params.append(ptnrky)
+    if skukey:
+        where.append("SI.SKUKEY LIKE ?"); params.append(f"%{skukey}%")
     # 배차상태: STKNUM 유무로 판단
     if alloc_st == 'done':
         where.append("(SI.STKNUM IS NOT NULL AND TRIM(SI.STKNUM) != '')")
@@ -1529,6 +1696,7 @@ def api_shipment_schedule():
             SI.LOTA02                                               AS LOTA02,
             COALESCE((SELECT CDESC1 FROM CMCDV
                       WHERE CMCDKY='LOTA02' AND CMCDVL=SI.LOTA02),' ') AS LOTA02NM,
+            COALESCE(TRIM(SI.LOTA03),' ')                           AS LOTA03,
             SI.LOTA01                                               AS LOTA01,
             ' '                                                     AS LOTA01NM,
             COALESCE(TRIM(SH.SAP2),' ')                             AS SAP2,
@@ -1686,7 +1854,7 @@ def api_dispatch_strategy_get():
         "SELECT CARTYPE,GRM_COND,MAX_COUNT,SORT_SEQ FROM DS_INCH3 ORDER BY SORT_SEQ,GRM_COND"
     ).fetchall()
     vehicle = conn.execute(
-        "SELECT CARTYPE,LENGTH_M,WIDTH_M,HEIGHT_M,LOAD_TON,SORT_SEQ FROM DS_VEHICLE ORDER BY SORT_SEQ"
+        "SELECT CARTYPE,LENGTH_M,WIDTH_M,HEIGHT_M,LOAD_TON,SORT_SEQ,PALLET_HEIGHT_M FROM DS_VEHICLE ORDER BY SORT_SEQ"
     ).fetchall()
     conn.close()
     return jsonify({
@@ -1724,9 +1892,10 @@ def api_dispatch_strategy_save():
             conn.execute("DELETE FROM DS_VEHICLE")
             for r in rows:
                 conn.execute(
-                    "INSERT INTO DS_VEHICLE (CARTYPE,LENGTH_M,WIDTH_M,HEIGHT_M,LOAD_TON,SORT_SEQ,UPDDAT) VALUES (?,?,?,?,?,?,?)",
+                    "INSERT INTO DS_VEHICLE (CARTYPE,LENGTH_M,WIDTH_M,HEIGHT_M,LOAD_TON,SORT_SEQ,UPDDAT,PALLET_HEIGHT_M) VALUES (?,?,?,?,?,?,?,?)",
                     (r['CARTYPE'], float(r['LENGTH_M']), str(r['WIDTH_M']),
-                     float(r['HEIGHT_M']), float(r['LOAD_TON']), int(r.get('SORT_SEQ',0)), today)
+                     float(r['HEIGHT_M']), float(r['LOAD_TON']), int(r.get('SORT_SEQ',0)), today,
+                     float(r.get('PALLET_HEIGHT_M') or 0))
                 )
         else:
             return jsonify({"error": "unknown table"}), 400
@@ -1810,8 +1979,8 @@ def api_dispatch_simulate():
     items = conn.execute(sql, params).fetchall()
     conn.close()
 
-    INCH12_CODES = {'s11','a11','am1'}
-    INCH3_CODES  = {'sr1','ir1','al1'}
+    INCH12_CODES = {'s11','a11','am1','sm1'}
+    INCH3_CODES  = {'sr1','ir1','al1','rw1'}
 
     def get_inch(code):
         if code in INCH12_CODES: return '12인치'
@@ -1932,8 +2101,8 @@ def api_dispatch_simulate():
 # ═══════════════════════════════════════════════════════════════════════════
 
 # ── 인치 판별 상수 ──────────────────────────────────────────────────────────
-PS_INCH12_CODES = {'a11','ab1','ag1','am1','111','s11','i11','k11'}
-PS_INCH3_CODES  = {'ar1','ae1','aj1','al1','sr1','ir1'}
+PS_INCH12_CODES = {'a11','ab1','ag1','am1','111','s11','i11','k11','sm1'}
+PS_INCH3_CODES  = {'ar1','ae1','aj1','al1','sr1','ir1','rw1'}
 
 def _ps_get_inch(skukey):
     """SKUKEY[2:5] 로 인치 판별 → '12인치'|'3인치'|''"""
@@ -1949,6 +2118,123 @@ def _ps_get_grm(skukey):
         return 'GE300' if g >= 300 else 'LT300'
     except Exception:
         return 'LT300'
+
+# ── 원지/판지 물리 치수 계산 헬퍼 ────────────────────────────────────────────
+import math
+
+def _ps_is_roll(skukey):
+    """
+    원지(롤) 여부 판별
+    SKUKEY 구조: [0:2]=prefix, [2:5]=inchCode, [5:8]=gsm, [8]='-', [9:13]=width_mm, [13:17]=length_mm
+    롤 원지: length_mm == '0000' (길이 무한)
+    """
+    sk = str(skukey or '')
+    if len(sk) < 17:
+        return False
+    # 하이픈(-) 위치 확인: 표준은 [8]
+    if sk[8:9] != '-':
+        return False
+    length_part = sk[13:17]
+    return length_part == '0000'
+
+def _ps_is_board(skukey):
+    """
+    판지(평판) 여부 판별
+    SKUKEY[13:17] != '0000' 이고 숫자인 경우 → 평판 판지
+    """
+    sk = str(skukey or '')
+    if len(sk) < 17:
+        return False
+    if sk[8:9] != '-':
+        return False
+    length_part = sk[13:17]
+    return length_part != '0000' and length_part.isdigit()
+
+def _ps_parse_skukey_dims(skukey):
+    """
+    SKUKEY에서 gsm(평량)과 width_mm(너비) 파싱
+    Returns: (gsm:int, width_mm:int) or (None, None)
+    SKUKEY 구조: [0:2]=prefix, [2:5]=inchCode, [5:8]=gsm, [8]='-', [9:13]=width_mm, [13:17]=length_mm
+    """
+    sk = str(skukey or '')
+    if len(sk) < 17:
+        return None, None
+    try:
+        gsm      = int(sk[5:8])
+        width_mm = int(sk[9:13])
+        return gsm, width_mm
+    except (ValueError, IndexError):
+        return None, None
+
+def _ps_parse_board_dims(skukey):
+    """
+    판지(평판) SKUKEY에서 가로(mm)와 세로(mm) 파싱
+    SKUKEY[9:13]=가로(mm), SKUKEY[13:17]=세로(mm)
+    Returns: (width_mm:int, length_mm:int) or (None, None)
+    """
+    sk = str(skukey or '')
+    if len(sk) < 17 or sk[8:9] != '-':
+        return None, None
+    try:
+        w = int(sk[9:13])
+        l = int(sk[13:17])
+        return w, l
+    except (ValueError, IndexError):
+        return None, None
+
+def _ps_calc_roll_diameter(weight_kg, gsm, width_mm):
+    """
+    원지 롤 직경(mm) 계산
+    D = sqrt(4 × W_g / (π × ρ × width_mm))
+    ρ = gsm/1,000,000 g/mm² (gsm = g/m² = g/1,000,000mm²)
+    W_g = weight_kg × 1000 (g)
+    Returns: diameter_mm or None
+    """
+    if not gsm or not width_mm or gsm <= 0 or width_mm <= 0:
+        return None
+    try:
+        density_g_per_mm2 = gsm / 1_000_000.0   # g/mm²
+        weight_g          = weight_kg * 1000.0
+        # D² = 4W / (π × ρ × width)
+        d_sq = (4.0 * weight_g) / (math.pi * density_g_per_mm2 * width_mm)
+        if d_sq <= 0:
+            return None
+        return math.sqrt(d_sq)
+    except Exception:
+        return None
+
+def _ps_parse_vehicle_width(width_str):
+    """
+    '1.8~2.1' 또는 '2.4' 형태 파싱 → 최솟값(보수적 기준) 반환
+    Returns: float (m 단위), 파싱 실패 시 2.4
+    """
+    try:
+        s = str(width_str or '').strip()
+        if '~' in s:
+            return float(s.split('~')[0].strip())
+        return float(s)
+    except (ValueError, TypeError):
+        return 2.4
+
+def _ps_get_vehicle_info(conn):
+    """DS_VEHICLE 전체 데이터 → {CARTYPE: {height_m, width_m, length_m, load_kg, pallet_height_m, effective_height_m}} dict"""
+    rows = conn.execute(
+        "SELECT CARTYPE, LENGTH_M, WIDTH_M, HEIGHT_M, LOAD_TON, PALLET_HEIGHT_M FROM DS_VEHICLE"
+    ).fetchall()
+    result = {}
+    for r in rows:
+        h_m       = float(r['HEIGHT_M'] or 0)
+        pal_h_m   = float(r['PALLET_HEIGHT_M'] or 0)
+        eff_h_m   = max(0.0, h_m - pal_h_m)   # 파렛트 높이 차감 후 실제 가용 높이
+        result[r['CARTYPE']] = {
+            'height_m':           h_m,
+            'pallet_height_m':    pal_h_m,
+            'effective_height_m': eff_h_m,
+            'width_m':            _ps_parse_vehicle_width(r['WIDTH_M']),
+            'length_m':           float(r['LENGTH_M'] or 0),
+            'load_kg':            float(r['LOAD_TON'] or 0) * 1000.0,
+        }
+    return result
 
 def _ps_car_order(conn):
     """DS_VEHICLE 차량 순서 (SORT_SEQ 역순 = 18톤→1.4톤)"""
@@ -1970,15 +2256,25 @@ def _ps_load_strategy(conn):
     inch3  = conn.execute("SELECT CARTYPE,GRM_COND,MAX_COUNT FROM DS_INCH3").fetchall()
     return _build(inch12), _build(inch3)
 
-def _ps_find_car(inch_map, inch_type, grm_cond, count, car_order):
-    """인치×평량×개수 → 적합한 차량 타입 (없으면 최대 차량)"""
-    target_map = inch_map if inch_type == '12인치' else inch_map
-    for car in car_order:
+def _ps_find_car(inch_map, inch_type, grm_cond, count, car_order, veh_info=None):
+    """인치×평량×개수 → 적합한 최소 차량 타입 (없으면 LOAD_TON 입력된 최대 차량)
+    car_order: SORT_SEQ DESC (큰→작은) → reversed = 작은→큰 순 탐색하여
+    count를 수용하는 첫 번째(가장 작은) 차량 반환.
+
+    veh_info 제공 시 초과 폴백을 LOAD_TON > 0 인 가장 큰 차량으로 반환
+    (car_order[0]은 4.5톤 등 LOAD_TON 미입력 차량일 수 있으므로 veh_info 필터링 필요)
+    """
+    for car in reversed(car_order):   # 작은 차량부터 탐색
         ct  = car['CARTYPE']
-        cap = target_map.get(ct, {}).get(grm_cond, 0)
+        cap = inch_map.get(ct, {}).get(grm_cond, 0)
         if cap >= count:
             return ct
-    # 넘치면 가장 큰 차량
+    # 모든 차량 초과 → LOAD_TON 입력된 가장 큰 유효 차량 반환
+    if veh_info:
+        for car in car_order:          # 큰→작은 순 (SORT_SEQ DESC)
+            ct = car['CARTYPE']
+            if veh_info.get(ct, {}).get('load_kg', 0) > 0:
+                return ct
     return car_order[0]['CARTYPE'] if car_order else '판별불가'
 
 def _ps_next_dispatch_no(conn, dt):
@@ -2002,7 +2298,7 @@ def _ps_next_dispatch_no(conn, dt):
 @app.route('/api/ps-dispatch/search', methods=['GET'])
 def api_ps_dispatch_search():
     """
-    PS 배차용 원지 납품문서 조회
+    PS 배차용 납품문서 조회 (원지 + 판지, SKUG05='10' 제품군 고정)
     params: date_from, date_to, dptnky, shpoky, shpmty, status(dispatched/undispatched/all)
     """
     date_from = request.args.get('date_from','').replace('-','')
@@ -2014,7 +2310,9 @@ def api_ps_dispatch_search():
 
     conn = get_conn()
     try:
-        wheres = ["i.UOMKEY='KG'", "h.WAREKY='1100'"]
+        # SKUG05='10' (제품군 10: 원지·판지 모두 포함) 고정 필터
+        # UOMKEY='KG' 조건 제거 → 원지(UOMKEY=KG)·판지(UOMKEY=R) 모두 조회
+        wheres = ["TRIM(i.SKUG05)='10'", "h.WAREKY='1100'"]
         params = []
         if date_from:
             wheres.append("h.RQSHPD >= ?"); params.append(date_from)
@@ -2034,16 +2332,20 @@ def api_ps_dispatch_search():
         sql = f"""
             SELECT i.SHPOKY, i.SHPOIT, i.SKUKEY, i.DESC01,
                    i.UOMKEY, CAST(i.QTSHPO AS REAL) QTSHPO,
+                   TRIM(COALESCE(i.SKUG05,'')) AS SKUG05,
                    h.DPTNKY,
                    TRIM(COALESCE(b.NAME01,'')) AS DPTNM,
                    h.DOCDAT, h.RQSHPD,
                    h.SHPMTY,
                    TRIM(COALESCE(c.CDESC1,'')) AS SHPMTY_NM,
-                   SUBSTR(UPPER(i.SKUKEY),3,3) INCH_CODE
+                   SUBSTR(UPPER(i.SKUKEY),3,3) INCH_CODE,
+                   COALESCE(m.GRSWGT, 0) AS GRSWGT,
+                   TRIM(COALESCE(i.LOTA03,'')) AS LOTA03
             FROM SHPDI i
             JOIN SHPDH h ON i.SHPOKY=h.SHPOKY
             LEFT JOIN BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT'
             LEFT JOIN CMCDV c ON c.CMCDKY='TASOTY' AND c.CMCDVL=h.SHPMTY
+            LEFT JOIN SKUMA m ON m.SKUKEY=i.SKUKEY
             WHERE {' AND '.join(wheres)}
             ORDER BY h.RQSHPD, h.DPTNKY, i.SHPOKY, i.SHPOIT
         """
@@ -2064,13 +2366,38 @@ def api_ps_dispatch_search():
             if disp_stat == 'undispatched' and is_disp:  continue
             inch  = _ps_get_inch(r['SKUKEY'])
             grm   = _ps_get_grm(r['SKUKEY'])
+            # 상품 유형 판별: 원지(roll) / 판지(board)
+            sku_type = 'roll' if _ps_is_roll(r['SKUKEY']) else \
+                       'board' if _ps_is_board(r['SKUKEY']) else 'other'
+            # 판지(R 단위)의 KG 환산: QTSHPO(R) × GRSWGT(kg/R)
+            qtshpo  = float(r['QTSHPO'] or 0)
+            grswgt  = float(r['GRSWGT'] or 0)
+            uomkey  = (r['UOMKEY'] or '').strip()
+            # GRSWGT가 없으면 SKUKEY에서 GSM×치수로 역산 (판지 전용)
+            if grswgt <= 0 and uomkey == 'R' and _ps_is_board(r['SKUKEY']):
+                gsm_val, _ = _ps_parse_skukey_dims(r['SKUKEY'])
+                w_v, l_v   = _ps_parse_board_dims(r['SKUKEY'])
+                if gsm_val and w_v and l_v:
+                    # 기본 리머(500장) 기준: GRSWGT = 500 × gsm/1e6 × w_mm × l_mm (kg)
+                    gsm_val = float(gsm_val)
+                    grswgt = round(500.0 * (gsm_val / 1_000_000.0) * float(w_v) * float(l_v) / 1000.0, 2)
+            if uomkey == 'R' and grswgt > 0:
+                kg_weight = round(qtshpo * grswgt, 2)
+            elif uomkey == 'KG':
+                kg_weight = qtshpo
+            else:
+                kg_weight = qtshpo  # 기타 단위는 그대로
             result.append({
                 'SHPOKY':    r['SHPOKY'],
                 'SHPOIT':    r['SHPOIT'],
                 'SKUKEY':    r['SKUKEY'],
                 'DESC01':    r['DESC01'],
-                'UOMKEY':    r['UOMKEY'],
-                'QTSHPO':    r['QTSHPO'],
+                'UOMKEY':    uomkey,
+                'QTSHPO':    qtshpo,
+                'GRSWGT':    grswgt,       # kg/R (묶음당 중량)
+                'KG_WEIGHT': kg_weight,    # 실제 KG 중량 (배차 엔진 사용)
+                'SKUG05':    r['SKUG05'],
+                'SKU_TYPE':  sku_type,   # 'roll'|'board'|'other'
                 'DPTNKY':    r['DPTNKY'],
                 'DPTNM':     r['DPTNM'],
                 'DOCDAT':    r['DOCDAT'],
@@ -2080,6 +2407,7 @@ def api_ps_dispatch_search():
                 'INCH':      inch,
                 'GRM_COND':  grm,
                 'DISPATCHED': is_disp,
+                'LOTA03':    r['LOTA03'],  # 포장타입
             })
         return jsonify({"ok": True, "total": len(result), "rows": result})
     except Exception as e:
@@ -2091,11 +2419,31 @@ def api_ps_dispatch_search():
 @app.route('/api/ps-dispatch/auto', methods=['POST'])
 def api_ps_dispatch_auto():
     """
-    자동배차 실행
+    자동배차 실행 (강화 버전)
     body: { items: [{SHPOKY,SHPOIT,SKUKEY,DESC01,QTSHPO,DPTNKY,DPTNM,RQSHPD,...}] }
+
+    ■ 원지(롤, SKUKEY[9:13]='0000'):
+      1) 인치×평량 기준 차량 선정 (DS_INCH12/DS_INCH3 전략)
+      2) 중량 초과 시 차량 업그레이드 or 분할
+      3) 배차 후 잔여 적재 여유(load_spare_kg) > 0 이면:
+         - 동일 납품처×납품일의 미배차 원지 중 여유 중량 이하인 것 추가 배차
+         - 추가 적재 시 2단 적재 높이 검사:
+           D(mm) = sqrt(4×W_g / (π × gsm/1e6 × width_mm))
+           2단 높이(m) = 2×D/1000 → 차량 HEIGHT_M 초과 불가
+
+    ■ 판지(평판, SKUKEY[9:13]!='0000'):
+      1순위) 중량 기준: LOAD_TON×1000 >= 납품수량(KG) 인 최소 차량에 배차
+      2순위) 치수 최적화:
+         - 판지 크기: SKUKEY[9:13]=가로(mm), SKUKEY[13:17]=세로(mm)
+         - 적재 높이: 건당 중량(GRSWGT)과 GSM으로 역산
+           h_per_sheet(mm) = GRSWGT*1000 / (gsm/1e6 × w_mm × l_mm)
+           total_height(m) = sum(h_per_sheet × 매수) / 1000
+         - 차량 치수(LENGTH_M, WIDTH_M, HEIGHT_M)와 비교하여 초과 시 차량 업그레이드
     → 납품처×납품일 단위로 차량 배차 결과 반환 (미저장, preview)
     """
     from datetime import datetime
+    from collections import defaultdict
+
     body  = request.json or {}
     items = body.get('items', [])
     if not items:
@@ -2103,129 +2451,969 @@ def api_ps_dispatch_auto():
 
     conn = get_conn()
     try:
-        car_order           = _ps_car_order(conn)
+        car_order             = _ps_car_order(conn)
         inch12_map, inch3_map = _ps_load_strategy(conn)
-        load_ton_map = {c['CARTYPE']: c['LOAD_TON'] for c in conn.execute(
-            "SELECT CARTYPE, LOAD_TON FROM DS_VEHICLE").fetchall()}
+        veh_info              = _ps_get_vehicle_info(conn)  # {CARTYPE: {height_m, width_m, length_m, load_kg}}
 
-        # 납품처×납품일 그룹핑
-        from collections import defaultdict
+        # SKUMA 판지 치수 정보 로드 (SKUKEY → GRSWGT, ASKL04, ASKL05)
+        skuma_rows = conn.execute(
+            "SELECT SKUKEY, GRSWGT, ASKL04, ASKL05 FROM SKUMA WHERE MTYPE='P'"
+        ).fetchall()
+        skuma_map = {}  # SKUKEY → {grswgt, w_mm, l_mm}
+        for sr in skuma_rows:
+            try:
+                w = int(sr['ASKL04']) if sr['ASKL04'] and str(sr['ASKL04']).strip().isdigit() else 0
+                l = int(sr['ASKL05']) if sr['ASKL05'] and str(sr['ASKL05']).strip().isdigit() else 0
+            except Exception:
+                w, l = 0, 0
+            skuma_map[sr['SKUKEY']] = {
+                'grswgt': float(sr['GRSWGT'] or 0),
+                'w_mm':   w,
+                'l_mm':   l,
+            }
+
+        # ── 차량 정렬 헬퍼 (sort_key 작을수록 큰 차량, DS_VEHICLE.SORT_SEQ DESC 정렬)
+        def _sort_key(ct):
+            for i, c in enumerate(car_order):
+                if c['CARTYPE'] == ct: return i
+            return 999
+
+        # LOAD_TON이 실제 입력된 차량만 배차 대상으로 사용
+        _valid_cars = [c for c in car_order if veh_info.get(c['CARTYPE'], {}).get('load_kg', 0) > 0]
+
+        def _upgrade_by_kg(cur_car, need_kg):
+            """
+            중량 기준으로 need_kg를 수용할 수 있는 최소 차량 반환 (하위 호환용 — 내부에서 _best_fit_car 호출)
+            """
+            return _best_fit_car(need_kg)
+
+        def _best_fit_car(need_kg):
+            """
+            적재 효율 최적 차량 선정 — 납품처별 중량합계 기준
+            전략:
+              1) need_kg 를 수용 가능한 차량 중 (load_kg >= need_kg)
+                 → 첨부율(= need_kg / load_kg)이 가장 높은(꽉 채우는) 차량 선택
+              2) 모든 차량이 need_kg 초과 → 가장 큰 유효 차량 반환
+                 (이후 분할 로직에서 처리)
+            - _valid_cars: LOAD_TON이 입력된 차량만, SORT_SEQ DESC(큰→작은) 순
+            """
+            best_car   = None
+            best_ratio = -1.0   # 첨부율 (0.0 ~ 1.0): 높을수록 효율적
+
+            for car in _valid_cars:          # 큰 차량 → 작은 차량 순
+                ct      = car['CARTYPE']
+                cap_kg  = veh_info.get(ct, {}).get('load_kg', 0)
+                if cap_kg <= 0:
+                    continue
+                if cap_kg >= need_kg:
+                    ratio = need_kg / cap_kg  # 첨부율
+                    if ratio > best_ratio:    # 더 높은 첨부율 = 더 꽉 채우는 차량
+                        best_ratio = ratio
+                        best_car   = ct
+
+            if best_car is None:
+                # 모든 차량 초과 → 가장 큰 유효 차량 (분할 배차 진입)
+                best_car = _valid_cars[0]['CARTYPE'] if _valid_cars else '판별불가'
+            return best_car
+
+        # 단일 원지 롤 표준 중량 (직경·높이 계산 기준)
+        # QTSHPO는 아이템 전체 합산 KG → 개별 롤 직경 계산 시 단일 롤 중량 사용
+        ROLL_SINGLE_KG = 600.0
+
+        def _roll_single_diam_mm(skukey):
+            """
+            단일 롤 직경(mm) 계산 — 표준 중량 ROLL_SINGLE_KG 기준
+            Returns: diam_mm(float) or None
+            """
+            gsm, width_mm = _ps_parse_skukey_dims(skukey)
+            if not gsm or not width_mm:
+                return None
+            return _ps_calc_roll_diameter(ROLL_SINGLE_KG, gsm, width_mm)
+
+        def _check_height_ok(item, cartype):
+            """
+            원지 롤 2단 적재 높이 검사
+            - 직경 계산은 단일 롤 ROLL_SINGLE_KG(600kg) 기준 (QTSHPO는 여러 롤 합계)
+            - 2단 높이 = 직경 × 2 ≤ 차량 effective_height_m
+            Returns: (ok:bool, height_2tier_m:float)
+            """
+            sk = item.get('SKUKEY', '')
+            if not _ps_is_roll(sk):
+                return True, 0.0
+            diam_mm = _roll_single_diam_mm(sk)
+            if diam_mm is None:
+                return True, 0.0   # 계산 불가 시 허용 처리
+            height_2tier_m = 2.0 * diam_mm / 1000.0
+            # 파렛트 높이를 차감한 실제 가용 높이로 검사
+            car_h = veh_info.get(cartype, {}).get('effective_height_m', 99.0)
+            return height_2tier_m <= car_h, height_2tier_m
+
+        def _calc_board_stack_height_m(item, skuma_map):
+            """
+            판지 적재 높이(m) 계산
+            단위면적당 두께: t(mm) = GRSWGT_g / (gsm/1e6 × w_mm × l_mm)
+            총 적재 높이 = t × 매수 (수량 단위에 따라)
+            KG_WEIGHT 또는 QTSHPO×GRSWGT로 실제 KG 환산 후 묶음 수 계산
+            """
+            sk     = item.get('SKUKEY', '')
+            sm     = skuma_map.get(sk, {})
+            grswgt = sm.get('grswgt', 0)   # kg/건
+            w_mm   = sm.get('w_mm', 0)
+            l_mm   = sm.get('l_mm', 0)
+
+            if grswgt <= 0 or w_mm <= 0 or l_mm <= 0:
+                # SKUKEY에서 직접 파싱 시도
+                w2, l2 = _ps_parse_board_dims(sk)
+                if w2 and l2:
+                    w_mm, l_mm = w2, l2
+
+            if grswgt <= 0 or w_mm <= 0 or l_mm <= 0:
+                return 0.0  # 계산 불가
+
+            gsm, _ = _ps_parse_skukey_dims(sk)
+            if not gsm or gsm <= 0:
+                return 0.0
+
+            # KG_WEIGHT 우선, 없으면 R→KG 변환
+            if item.get('KG_WEIGHT') is not None:
+                qty_kg = float(item['KG_WEIGHT'])
+            else:
+                uom = (item.get('UOMKEY') or '').strip()
+                qtshpo = float(item.get('QTSHPO') or 0)
+                qty_kg = qtshpo * grswgt if (uom == 'R' and grswgt > 0) else qtshpo
+            bundles = qty_kg / grswgt  # 묶음 수(ream/bulk 단위)
+
+            # 시트 1장 두께(mm) 계산
+            # 종이 밀도 ≈ 1.2 g/cm³ = 0.0012 g/mm³
+            # gsm = g/m² = g/(1,000,000 mm²)
+            # 두께 t = (gsm / 1e6) / 0.0012 mm = gsm / 1200 mm
+            PAPER_DENSITY_G_PER_MM3 = 0.0012   # g/mm³ (종이 평균 밀도)
+            t_sheet_mm = (gsm / 1_000_000.0) / PAPER_DENSITY_G_PER_MM3  # mm/장
+
+            # 묶음 1개당 시트 수 = grswgt_g / (gsm/1e6 × w_mm × l_mm)
+            grswgt_g      = grswgt * 1000.0           # g
+            area_mm2      = float(w_mm) * float(l_mm) # mm²
+            gsm_per_mm2   = gsm / 1_000_000.0         # g/mm²
+            if gsm_per_mm2 * area_mm2 <= 0:
+                return 0.0
+            sheets_per_bundle = grswgt_g / (gsm_per_mm2 * area_mm2)
+
+            # 묶음 1개 높이 = 시트 수 × 시트 두께
+            bundle_height_mm = sheets_per_bundle * t_sheet_mm
+            total_height_mm  = bundle_height_mm * bundles
+            return total_height_mm / 1000.0  # m
+
+        def _check_board_dims_ok(items_list, cartype, skuma_map):
+            """
+            판지 치수 검사 (차량 길이/너비/높이 모두 확인)
+            Returns: (ok:bool, max_w_mm, max_l_mm, total_height_m)
+            """
+            ci = veh_info.get(cartype, {})
+            # 파렛트 높이를 차감한 실제 가용 높이로 검사
+            car_h = ci.get('effective_height_m', 99.0)
+            car_w = ci.get('width_m', 99.0) * 1000.0   # mm
+            car_l = ci.get('length_m', 99.0) * 1000.0  # mm
+
+            max_w, max_l = 0, 0
+            total_h = 0.0
+            for it in items_list:
+                sk = it.get('SKUKEY', '')
+                sm = skuma_map.get(sk, {})
+                w  = sm.get('w_mm', 0)
+                l  = sm.get('l_mm', 0)
+                if not w or not l:
+                    w2, l2 = _ps_parse_board_dims(sk)
+                    w, l = (w2 or 0), (l2 or 0)
+                max_w = max(max_w, w)
+                max_l = max(max_l, l)
+                total_h += _calc_board_stack_height_m(it, skuma_map)
+
+            width_ok  = (max_w == 0 or max_w <= car_w)
+            length_ok = (max_l == 0 or max_l <= car_l)
+            height_ok = (total_h == 0.0 or total_h <= car_h)
+            return (width_ok and length_ok and height_ok), max_w, max_l, total_h
+
+        # ──────────────────────────────────────────────────────────────────
+        # CBM 관련 헬퍼 함수 (판지 배차 전용)
+        # ──────────────────────────────────────────────────────────────────
+
+        def _ps_get_item_cbm(item, skuma_map):
+            """
+            아이템 1건의 총 CBM(m³) 반환
+            우선순위:
+              1) SKUMA.CUBICM > 0  → CUBICM × 수량(묶음 수)
+              2) ASKL04(가로mm) × ASKL05(세로mm) × 두께(역산) × 묶음 수
+              3) 계산 불가 → 0.0
+            두께 역산: GRSWGT(kg) / (gsm/1e6 × w_mm × l_mm × density)
+            """
+            sk     = item.get('SKUKEY', '')
+            sm     = skuma_map.get(sk, {})
+            grswgt = sm.get('grswgt', 0)   # kg/묶음
+            w_mm   = sm.get('w_mm', 0)
+            l_mm   = sm.get('l_mm', 0)
+
+            # 치수 없으면 SKUKEY에서 직접 파싱
+            if not w_mm or not l_mm:
+                w2, l2 = _ps_parse_board_dims(sk)
+                w_mm = w2 or w_mm
+                l_mm = l2 or l_mm
+
+            # KG_WEIGHT 우선, 없으면 R→KG 변환
+            if item.get('KG_WEIGHT') is not None:
+                qty_kg = float(item['KG_WEIGHT'])
+            else:
+                uom    = (item.get('UOMKEY') or '').strip()
+                qtshpo = float(item.get('QTSHPO') or 0)
+                qty_kg = qtshpo * grswgt if (uom == 'R' and grswgt > 0) else qtshpo
+            if qty_kg <= 0:
+                return 0.0
+
+            # 묶음 수 계산 (GRSWGT>0이면 KG ÷ 묶음중량, 아니면 수량 자체를 1묶음으로)
+            bundles = (qty_kg / grswgt) if grswgt > 0 else 1.0
+
+            # ① SKUMA.CUBICM 이용 (값이 있을 때)
+            cubicm_per_bundle = sm.get('cubicm', 0.0)
+            if cubicm_per_bundle and cubicm_per_bundle > 0:
+                return cubicm_per_bundle * bundles
+
+            # ② 치수 × 두께 역산
+            if w_mm > 0 and l_mm > 0 and grswgt > 0:
+                gsm, _ = _ps_parse_skukey_dims(sk)
+                if gsm and gsm > 0:
+                    PAPER_DENSITY = 0.0012  # g/mm³
+                    t_sheet_mm   = (gsm / 1_000_000.0) / PAPER_DENSITY  # mm/장
+                    gsm_per_mm2  = gsm / 1_000_000.0
+                    area_mm2     = float(w_mm) * float(l_mm)
+                    if gsm_per_mm2 * area_mm2 > 0:
+                        grswgt_g           = grswgt * 1000.0
+                        sheets_per_bundle  = grswgt_g / (gsm_per_mm2 * area_mm2)
+                        bundle_h_mm        = sheets_per_bundle * t_sheet_mm
+                        bundle_cbm         = (w_mm / 1000.0) * (l_mm / 1000.0) * (bundle_h_mm / 1000.0)
+                        return bundle_cbm * bundles
+
+            return 0.0
+
+        def _ps_get_car_cbm(cartype, veh_info):
+            """
+            차량 적재함 CBM(m³) = LENGTH_M × WIDTH_M × effective_height_m
+            WIDTH_M이 범위("1.8~2.1")이면 _ps_parse_vehicle_width 처리된 값 사용
+            HEIGHT는 파렛트 차감 후 effective_height_m 사용
+            """
+            ci = veh_info.get(cartype, {})
+            l  = ci.get('length_m', 0.0)
+            w  = ci.get('width_m',  0.0)   # 이미 _ps_parse_vehicle_width 처리됨
+            h  = ci.get('effective_height_m', 0.0)
+            if l <= 0 or w <= 0 or h <= 0:
+                return 0.0
+            return l * w * h
+
+        def _upgrade_by_cbm(cur_car, need_cbm, veh_info, car_order):
+            """
+            CBM 기준으로 need_cbm을 수용할 수 있는 최소 차량 반환
+            - car_order: 큰 차량(18톤)→작은 차량(1.4톤) 순
+            - reversed → 작은 차량부터 탐색, 적재 CBM >= need_cbm인 최소 차량
+            - 모두 초과하면 가장 큰 차량 반환
+            """
+            best = None
+            for car in reversed(_valid_cars):
+                ct    = car['CARTYPE']
+                c_cbm = _ps_get_car_cbm(ct, veh_info)
+                if c_cbm > 0 and c_cbm >= need_cbm:
+                    best = ct
+            if best is None:
+                best = _valid_cars[0]['CARTYPE'] if _valid_cars else cur_car
+            return best
+
+        # ──────────────────────────────────────────────────────────────────
+        # skuma_map 에 CUBICM 컬럼 추가 로드 (기존 skuma_map 보완)
+        # ──────────────────────────────────────────────────────────────────
+        skuma_cubicm_rows = conn.execute(
+            "SELECT SKUKEY, CUBICM FROM SKUMA WHERE MTYPE='P'"
+        ).fetchall()
+        for sc in skuma_cubicm_rows:
+            sk = sc['SKUKEY']
+            if sk in skuma_map:
+                skuma_map[sk]['cubicm'] = float(sc['CUBICM'] or 0)
+            else:
+                skuma_map[sk] = {'grswgt': 0, 'w_mm': 0, 'l_mm': 0,
+                                 'cubicm': float(sc['CUBICM'] or 0)}
+
+        # ── 납품처×납품일 그룹핑
         groups = defaultdict(list)
         for it in items:
             key = (it.get('DPTNKY',''), it.get('DPTNM',''), it.get('RQSHPD',''))
             groups[key].append(it)
 
-        today = datetime.now().strftime('%Y%m%d')
-        all_vehicles = []   # 배차 결과 차량 목록
+        # ──────────────────────────────────────────────────────────────────
+        # ★ 납품처 TMS 정보 일괄 조회 (DEADLINE_TIME / FORKLIFT_YN / MAX_TON)
+        #   dptnky 목록을 한 번에 SELECT하여 딕셔너리로 캐싱
+        # ──────────────────────────────────────────────────────────────────
+        all_dptnky_list = list({k[0] for k in groups.keys() if k[0]})
+        ptnr_info = {}   # {dptnky: {deadline_time, forklift_yn, max_ton, max_ton_label, max_load_kg}}
+        if all_dptnky_list:
+            placeholders = ','.join('?' * len(all_dptnky_list))
+            ptnr_rows = conn.execute(
+                f"SELECT PTNRKY, DEADLINE_TIME, FORKLIFT_YN, MAX_TON "
+                f"FROM BZPTN_DETAIL "
+                f"WHERE PTNRKY IN ({placeholders}) AND PTNRTY='CT' AND DEL_YN!='Y'",
+                all_dptnky_list
+            ).fetchall()
+            # TMS_CARCLASS 코드 → 톤수명 매핑 로드
+            carclass_rows = conn.execute(
+                "SELECT CMCDVL, CDESC1 FROM CMCDV WHERE CMCDKY='TMS_CARCLASS'"
+            ).fetchall()
+            carclass_map = {r['CMCDVL']: r['CDESC1'] for r in carclass_rows}
+            # 톤수명 → DS_VEHICLE.LOAD_TON(kg) 매핑
+            # (DS_VEHICLE.CARTYPE = TMS_CARCLASS.CDESC1)
+            veh_load_map = {c['CARTYPE']: veh_info.get(c['CARTYPE'], {}).get('load_kg', 0)
+                            for c in car_order}
+            for pr in ptnr_rows:
+                dk = pr['PTNRKY']
+                mt = (pr['MAX_TON'] or '').strip()
+                mt_label = carclass_map.get(mt, mt) if mt else ''
+                # 최대톤수 코드 → 차량명 → 허용 최대 load_kg
+                mt_load_kg = veh_load_map.get(mt_label, 0) if mt_label else 0
+                ptnr_info[dk] = {
+                    'deadline_time': (pr['DEADLINE_TIME'] or '').strip(),
+                    'forklift_yn':   (pr['FORKLIFT_YN'] or '').strip(),
+                    'max_ton':       mt,
+                    'max_ton_label': mt_label,
+                    'max_load_kg':   mt_load_kg,
+                }
+
+        # 자동배차 실행 시각 (납기시간 비교용)
+        now_dt = datetime.now()
+        now_hhmm = now_dt.strftime('%H:%M')
+
+        def _cap_valid_cars(dptnky):
+            """
+            납품처 MAX_TON 기준으로 배차 허용 차량 목록 반환
+            - MAX_TON 미설정 또는 해당 차량 LOAD_TON 미확인 → _valid_cars 그대로 반환
+            - MAX_TON 설정 → 해당 톤수 이하(load_kg ≤ max_load_kg) 차량만 반환
+              단, 필터 결과가 빈 경우 _valid_cars 그대로 (예외 방지)
+            """
+            pi = ptnr_info.get(dptnky, {})
+            max_load_kg = pi.get('max_load_kg', 0)
+            if max_load_kg <= 0:
+                return _valid_cars   # 제한 없음
+            filtered = [c for c in _valid_cars
+                        if veh_info.get(c['CARTYPE'], {}).get('load_kg', 0) <= max_load_kg]
+            return filtered if filtered else _valid_cars   # 빈 경우 원본 반환
+
+        def _build_ptnr_notes(dptnky, rqshpd, assigned_car):
+            """
+            납품처 TMS 조건 체크 노트 생성
+            ① 최대톤수: 배정 차량 > 허용 톤수 → 경고
+            ② 지게차: FORKLIFT_YN 정보 표시
+            ③ 납기시간: DEADLINE_TIME vs 당일 now_hhmm 비교 → 초과 경고
+            Returns: (notes:list[str], warnings:list[str])
+              notes   = 정보성 메시지
+              warnings = 경고 메시지 (모달에서 강조 표시)
+            """
+            pi = ptnr_info.get(dptnky, {})
+            notes, warnings = [], []
+            if not pi:
+                return notes, warnings
+
+            # ① 최대톤수 체크
+            max_ton_label = pi.get('max_ton_label', '')
+            max_load_kg   = pi.get('max_load_kg', 0)
+            if max_ton_label:
+                assigned_load_kg = veh_info.get(assigned_car, {}).get('load_kg', 0)
+                if max_load_kg > 0 and assigned_load_kg > max_load_kg:
+                    warnings.append(
+                        f"[최대톤수초과] 납품처 허용 {max_ton_label}({max_load_kg:.0f}kg) < "
+                        f"배정차량 {assigned_car}({assigned_load_kg:.0f}kg) — 수동확인필요"
+                    )
+                else:
+                    notes.append(
+                        f"[최대톤수OK] 납품처 허용 {max_ton_label}({max_load_kg:.0f}kg) / "
+                        f"배정 {assigned_car}({assigned_load_kg:.0f}kg)"
+                    )
+
+            # ② 지게차 여부 표시
+            forklift = pi.get('forklift_yn', '')
+            if forklift == 'Y':
+                notes.append("[지게차] ✅ 납품처 지게차 사용가능")
+            elif forklift == 'N':
+                notes.append("[지게차] ⚠ 납품처 지게차 없음 — 수작업 하차 필요")
+
+            # ③ 납기시간 체크 (당일 납품 기준)
+            deadline = pi.get('deadline_time', '')
+            if deadline:
+                # 납품일(RQSHPD=YYYYMMDD)과 현재 날짜가 같을 때만 시간 비교
+                today_str = now_dt.strftime('%Y%m%d')
+                rqshpd_str = (rqshpd or '').replace('-', '')
+                if rqshpd_str == today_str:
+                    if now_hhmm > deadline:
+                        warnings.append(
+                            f"[납기시간초과] 납기시간 {deadline} < 현재시각 {now_hhmm} "
+                            f"— 당일 납기 불가 가능성, 수동확인필요"
+                        )
+                    else:
+                        notes.append(
+                            f"[납기시간OK] 납기시간 {deadline} / 현재시각 {now_hhmm} (당일 납기 가능)"
+                        )
+                else:
+                    # 납품일이 당일이 아닌 경우: 납기시간 정보만 표시
+                    notes.append(f"[납기시간] 납품처 납기시간 {deadline} (납품일 {rqshpd_str})")
+
+            return notes, warnings
+
+        all_vehicles = []   # 최종 배차 결과
 
         for (dptnky, dptnm, rqshpd), grp_items in sorted(groups.items()):
-            # 인치별 count
-            inch12_cnt = defaultdict(int)
-            inch3_cnt  = defaultdict(int)
-            for it in grp_items:
-                inch = _ps_get_inch(it.get('SKUKEY',''))
-                grm  = _ps_get_grm(it.get('SKUKEY',''))
-                if inch == '12인치':
-                    inch12_cnt[grm] += 1
-                elif inch == '3인치':
-                    inch3_cnt[grm] += 1
 
-            # 인치별 적합 차량
-            car_candidates = []
-            for grm, cnt in inch12_cnt.items():
-                ct = _ps_find_car(inch12_map, '12인치', grm, cnt, car_order)
-                car_candidates.append(ct)
-            for grm, cnt in inch3_cnt.items():
-                ct = _ps_find_car(inch3_map, '3인치', grm, cnt, car_order)
-                car_candidates.append(ct)
+            # ── 아이템 분류: 원지(롤) vs 판지(평판) vs 기타
+            roll_items  = [it for it in grp_items if _ps_is_roll(it.get('SKUKEY',''))]
+            board_items = [it for it in grp_items if _ps_is_board(it.get('SKUKEY',''))]
+            other_items = [it for it in grp_items
+                           if not _ps_is_roll(it.get('SKUKEY',''))
+                           and not _ps_is_board(it.get('SKUKEY',''))]
 
-            # 가장 큰 차량 결정
-            def _sort_key(ct):
-                for i, c in enumerate(car_order):
-                    if c['CARTYPE'] == ct: return i
-                return 999
+            # 이 납품처에 적용될 허용 차량 목록 (MAX_TON 필터 적용)
+            # _valid_cars를 납품처별 제한 목록으로 임시 교체 → 내부 헬퍼 함수가 자동 적용
+            _orig_valid_cars = _valid_cars
+            _valid_cars = _cap_valid_cars(dptnky)
+            _max_ton_applied = (len(_valid_cars) < len(_orig_valid_cars))
 
-            if car_candidates:
-                final_car = min(car_candidates, key=_sort_key)  # sort_key 작을수록 큰 차량
-            else:
-                final_car = car_order[-1]['CARTYPE'] if car_order else '판별불가'
-
-            # KG 총합 계산 → 상차량 초과 시 분할
-            total_kg = sum(float(it.get('QTSHPO', 0)) for it in grp_items)
-            load_cap = load_ton_map.get(final_car, 0) * 1000
-
-            # 초과 시 더 큰 차량으로 업그레이드
-            for car in car_order:
-                ct = car['CARTYPE']
-                if _sort_key(ct) <= _sort_key(final_car):
-                    if load_ton_map.get(ct, 0) * 1000 >= total_kg:
-                        final_car = ct
-                        load_cap  = car['LOAD_TON'] * 1000
-                        break
-
-            # 여전히 초과 → 차량 분할 (가장 큰 차량에 꽉꽉 채움)
-            big_car  = car_order[0]['CARTYPE'] if car_order else final_car
-            big_cap  = load_ton_map.get(big_car, 0) * 1000
-
-            cur_items   = []
-            cur_kg      = 0.0
-            veh_list    = []
-
-            for it in grp_items:
-                qty_kg = float(it.get('QTSHPO', 0))
-                # 단일 아이템이 big_cap 초과하면 그대로 적재(분할 필요 → 수동)
-                if cur_kg + qty_kg > big_cap and cur_items:
-                    veh_list.append({'items': cur_items, 'total_kg': cur_kg})
-                    cur_items = []
-                    cur_kg    = 0.0
-                cur_items.append(it)
-                cur_kg += qty_kg
-
-            if cur_items:
-                veh_list.append({'items': cur_items, 'total_kg': cur_kg})
-
-            # 각 차량에 최적 차량톤수 부여
-            for veh in veh_list:
-                veh_kg    = veh['total_kg']
-                veh_car   = final_car
-                veh_cap_ok = load_ton_map.get(veh_car, 0) * 1000
-                # 이 차량 분량에 맞는 최소 차량 탐색 (역순: 작은→큰)
-                for car in reversed(car_order):
-                    if load_ton_map.get(car['CARTYPE'], 0) * 1000 >= veh_kg:
-                        veh_car = car['CARTYPE']
-                        veh_cap_ok = load_ton_map.get(veh_car, 0) * 1000
-
-                # 인치 기준도 재검증
-                v_inch12 = defaultdict(int)
-                v_inch3  = defaultdict(int)
-                for it in veh['items']:
+            # =================================================================
+            # ① 원지(롤) 배차
+            # =================================================================
+            if roll_items:
+                # 1단계: 인치×평량 기준 차량 후보 선정
+                inch12_cnt = defaultdict(int)
+                inch3_cnt  = defaultdict(int)
+                for it in roll_items:
                     inch = _ps_get_inch(it.get('SKUKEY',''))
                     grm  = _ps_get_grm(it.get('SKUKEY',''))
-                    if inch == '12인치': v_inch12[grm] += 1
-                    elif inch == '3인치': v_inch3[grm] += 1
+                    if inch == '12인치': inch12_cnt[grm] += 1
+                    elif inch == '3인치': inch3_cnt[grm] += 1
 
-                cands2 = []
-                for grm, cnt in v_inch12.items():
-                    cands2.append(_ps_find_car(inch12_map, '12인치', grm, cnt, car_order))
-                for grm, cnt in v_inch3.items():
-                    cands2.append(_ps_find_car(inch3_map, '3인치', grm, cnt, car_order))
-                if cands2:
-                    inch_car = min(cands2, key=_sort_key)
-                    # 인치 기준 차량 vs kg 기준 차량 → 더 큰 것 선택
-                    if _sort_key(inch_car) < _sort_key(veh_car):
-                        veh_car    = inch_car
-                        veh_cap_ok = load_ton_map.get(veh_car, 0) * 1000
+                car_candidates = []
+                for grm, cnt in inch12_cnt.items():
+                    car_candidates.append(_ps_find_car(inch12_map, '12인치', grm, cnt, car_order, veh_info))
+                for grm, cnt in inch3_cnt.items():
+                    car_candidates.append(_ps_find_car(inch3_map, '3인치', grm, cnt, car_order, veh_info))
 
-                all_vehicles.append({
-                    'dptnky':   dptnky,
-                    'dptnm':    dptnm,
-                    'rqshpd':   rqshpd,
-                    'cartype':  veh_car,
-                    'total_kg': round(veh_kg, 2),
-                    'load_cap': veh_cap_ok * 1000 if veh_cap_ok > 0 else 0,
-                    'items':    veh['items'],
-                    'item_cnt': len(veh['items']),
-                })
+                base_car = (min(car_candidates, key=_sort_key)
+                            if car_candidates
+                            else (car_order[-1]['CARTYPE'] if car_order else '판별불가'))
+
+                total_kg = sum(float(it.get('QTSHPO', 0)) for it in roll_items)
+
+                # 2단계: 납품처별 중량합계 기준 첨부율 최적 차량 선정
+                #   _best_fit_car: 수용 가능 차량 중 need_kg/load_kg 첨부율이 가장 높은 차량
+                kg_best = _best_fit_car(total_kg)
+                kg_best_cap = veh_info.get(kg_best, {}).get('load_kg', 0)
+                kg_fill = (total_kg / kg_best_cap * 100) if kg_best_cap > 0 else 0
+                # base_car가 인치 기준 차량이고 kg_best보다 작다면 인치 기준 유지
+                # (인치 기준 > 중량 기준이면 인치 우선 — 안전)
+                if _sort_key(kg_best) < _sort_key(base_car):
+                    base_car = kg_best   # 중량 기준이 더 큰 차량 → 안전하게 교체
+
+                # 인치 기준 vs 중량 기준 → 더 큰(sort_key 작은) 차량 선택
+                if car_candidates:
+                    inch_car = min(car_candidates, key=_sort_key)
+                    if _sort_key(inch_car) < _sort_key(base_car):
+                        base_car = inch_car
+
+                # LOAD_TON이 입력된 유효 차량 중 가장 큰 것 기준으로 분할
+                big_car = _valid_cars[0]['CARTYPE'] if _valid_cars else base_car
+                big_cap = veh_info.get(big_car, {}).get('load_kg', 0) or 99_999_999.0
+
+                # 3단계: 차량 분할 (가장 큰 차량도 초과 시 분할)
+                veh_list = []
+                cur_items, cur_kg = [], 0.0
+
+                for it in roll_items:
+                    qty_kg = float(it.get('QTSHPO', 0))
+                    if cur_kg + qty_kg > big_cap and cur_items:
+                        veh_list.append({'items': cur_items, 'total_kg': cur_kg})
+                        cur_items, cur_kg = [], 0.0
+                    cur_items.append(it)
+                    cur_kg += qty_kg
+                if cur_items:
+                    veh_list.append({'items': cur_items, 'total_kg': cur_kg})
+
+                # 4단계: 각 차량에 최적 톤수 배정 (첨부율 최적 차량 선정)
+                for veh in veh_list:
+                    veh_kg  = veh['total_kg']
+                    # _best_fit_car: 납품처별 중량합계 기준 첨부율 최대화 차량
+                    veh_car = _best_fit_car(veh_kg)
+                    veh_cap_kg = veh_info.get(veh_car, {}).get('load_kg', 0)
+                    veh_fill   = (veh_kg / veh_cap_kg * 100) if veh_cap_kg > 0 else 0
+
+                    # 인치 기준 재검증
+                    v12, v3 = defaultdict(int), defaultdict(int)
+                    for it in veh['items']:
+                        inch = _ps_get_inch(it.get('SKUKEY',''))
+                        grm  = _ps_get_grm(it.get('SKUKEY',''))
+                        if inch == '12인치': v12[grm] += 1
+                        elif inch == '3인치': v3[grm] += 1
+
+                    cands2 = ([_ps_find_car(inch12_map, '12인치', g, c, car_order, veh_info) for g, c in v12.items()] +
+                              [_ps_find_car(inch3_map,  '3인치',  g, c, car_order, veh_info) for g, c in v3.items()])
+                    if cands2:
+                        inch_car2 = min(cands2, key=_sort_key)
+                        if _sort_key(inch_car2) < _sort_key(veh_car):
+                            veh_car = inch_car2
+
+                    # ── 4-H단계: 원지 1단 적재 높이 검사 → 초과 시 업그레이드 ──
+                    # 직경 계산은 단일 롤 ROLL_SINGLE_KG(600kg) 기준
+                    # (QTSHPO는 여러 롤 합산 KG이므로 직경 계산에는 사용하지 않음)
+                    # 1단 적재 높이 = 직경 D(mm) / 1000 (m) ≤ 차량 effective_height_m
+                    roll_h_notes = []
+                    seen_skukeys = set()   # 동일 SKUKEY 중복 검사 방지
+                    for it in veh['items']:
+                        sk = it.get('SKUKEY', '')
+                        if not _ps_is_roll(sk) or sk in seen_skukeys:
+                            continue
+                        seen_skukeys.add(sk)
+                        diam_mm = _roll_single_diam_mm(sk)
+                        if diam_mm is None:
+                            continue
+                        roll_h_m  = diam_mm / 1000.0   # 1단 적재 높이 = 롤 직경
+                        car_eff_h = veh_info.get(veh_car, {}).get('effective_height_m', 99.0)
+                        if roll_h_m > car_eff_h:
+                            # 현재 차량 높이 초과 → 수용 가능한 더 큰 차량 탐색
+                            upgraded = False
+                            for car in car_order:   # 큰 차량 → 작은 차량 순
+                                ct = car['CARTYPE']
+                                if _sort_key(ct) >= _sort_key(veh_car):
+                                    continue        # 현재 차량보다 작거나 같은 차량 스킵
+                                eff_h = veh_info.get(ct, {}).get('effective_height_m', 0)
+                                if eff_h > 0 and eff_h >= roll_h_m:
+                                    roll_h_notes.append(
+                                        f"[높이초과 업그레이드] {veh_car}→{ct} "
+                                        f"(롤직경 {diam_mm:.0f}mm={roll_h_m:.2f}m > "
+                                        f"차량가용높이 {car_eff_h:.2f}m → {ct}높이 {eff_h:.2f}m)"
+                                    )
+                                    veh_car = ct
+                                    upgraded = True
+                                    break
+                            if not upgraded:
+                                roll_h_notes.append(
+                                    f"[높이초과-수동확인필요] {sk} "
+                                    f"롤직경 {diam_mm:.0f}mm={roll_h_m:.2f}m > "
+                                    f"최대차량 가용높이 "
+                                    f"{veh_info.get(veh_car,{}).get('effective_height_m',0):.2f}m"
+                                )
+
+                    veh_load_cap = veh_info.get(veh_car, {}).get('load_kg', 0)
+                    veh_fill_final = (veh_kg / veh_load_cap * 100) if veh_load_cap > 0 else 0
+
+                    # 5단계: 여유 중량 기반 추가 배차 (원지 롤)
+                    #   ‣ 2단 적재 가능 항목은 2단 기준 적재 롤 수(max_count × 2)로 재계산하여
+                    #     인치 기준 차량 다운그레이드(더 작은 차량으로 변경) 가능 여부 검토
+                    load_spare_kg    = veh_load_cap - veh_kg
+                    added_items      = []
+                    added_kg         = 0.0
+                    # 배차 결과 노트: 중량효율 + 높이검사 + 인치 재검증 결과 기록
+                    add_notes        = [
+                        f"[효율최적-중량기준] {veh_car} 선정 "
+                        f"(적재필요 {veh_kg:.1f}kg / "
+                        f"차량적재 {veh_load_cap:.0f}kg / "
+                        f"첨부율 {veh_fill_final:.1f}%)"
+                    ] + roll_h_notes
+                    tier2_items      = []   # 2단 적재 확정 항목 (다운그레이드 검토용)
+
+                    if load_spare_kg > 0:
+                        # 이미 배차된 키 집합 (veh_list 전체)
+                        all_dispatched_keys = set()
+                        for v2 in veh_list:
+                            for x in v2['items']:
+                                all_dispatched_keys.add((x.get('SHPOKY',''), x.get('SHPOIT','')))
+
+                        candidates_for_add = [
+                            it for it in roll_items
+                            if (it.get('SHPOKY',''), it.get('SHPOIT','')) not in all_dispatched_keys
+                            and float(it.get('QTSHPO', 0)) <= load_spare_kg
+                        ]
+                        # 중량 내림차순으로 정렬하여 꽉 채우기
+                        candidates_for_add.sort(key=lambda x: float(x.get('QTSHPO', 0)), reverse=True)
+
+                        for cand in candidates_for_add:
+                            cand_kg = float(cand.get('QTSHPO', 0))
+                            if added_kg + cand_kg > load_spare_kg:
+                                continue
+                            # 2단 적재 높이 검사
+                            h_ok, h2m = _check_height_ok(cand, veh_car)
+                            if not h_ok:
+                                car_h = veh_info.get(veh_car, {}).get('effective_height_m', 0)
+                                pal_h = veh_info.get(veh_car, {}).get('pallet_height_m', 0)
+                                pal_note = f" (파렛트{pal_h}m 차감)" if pal_h > 0 else ""
+                                add_notes.append(
+                                    f"{cand.get('SHPOKY','')}#{cand.get('SHPOIT','')} "
+                                    f"2단높이 {h2m:.2f}m > 가용높이 {car_h}m{pal_note} (제외)"
+                                )
+                                continue
+                            # 2단 적재 가능 → 추가 배차 확정, tier2 목록에도 기록
+                            added_items.append(cand)
+                            tier2_items.append(cand)
+                            added_kg += cand_kg
+                            all_dispatched_keys.add((cand.get('SHPOKY',''), cand.get('SHPOIT','')))
+
+                    # ── 2단 적재 기준 인치 차량 다운그레이드 검토 ─────────────
+                    # 2단 적재 가능 항목이 있으면 현재 차량의 인치 기준 max_count 를
+                    # 2배(2단)로 확장하여 더 작은 차량으로 변경 가능한지 확인합니다.
+                    # 예) 12인치 LT300 롤 8개 + 2단 가능 2개(=1단 환산 1개) → 실질 9개
+                    #     → 더 작은 차량 가능 여부 재검증
+                    if tier2_items:
+                        all_final_items = veh['items'] + tier2_items
+
+                        # 인치×평량별 롤 수 집계 (2단 항목은 0.5개로 환산 = 2단 2개 = 1단 1개)
+                        tier2_keys = {(x.get('SHPOKY',''), x.get('SHPOIT','')) for x in tier2_items}
+                        t2_v12 = defaultdict(float)
+                        t2_v3  = defaultdict(float)
+                        for it in all_final_items:
+                            inch = _ps_get_inch(it.get('SKUKEY',''))
+                            grm  = _ps_get_grm(it.get('SKUKEY',''))
+                            key  = (it.get('SHPOKY',''), it.get('SHPOIT',''))
+                            # 2단 적재 항목: 2개가 1단 1개 공간 → 0.5로 환산
+                            weight = 0.5 if key in tier2_keys else 1.0
+                            if inch == '12인치': t2_v12[grm] += weight
+                            elif inch == '3인치': t2_v3[grm]  += weight
+
+                        # 2단 환산 기준 최소 차량 후보
+                        tier2_cands = []
+                        for grm, cnt_f in t2_v12.items():
+                            # max_count 비교는 올림 처리 (0.5 환산 포함)
+                            tier2_cands.append(
+                                _ps_find_car(inch12_map, '12인치', grm, math.ceil(cnt_f), car_order, veh_info)
+                            )
+                        for grm, cnt_f in t2_v3.items():
+                            tier2_cands.append(
+                                _ps_find_car(inch3_map, '3인치', grm, math.ceil(cnt_f), car_order, veh_info)
+                            )
+
+                        if tier2_cands:
+                            tier2_inch_car = min(tier2_cands, key=_sort_key)
+                            # 중량은 반드시 충족해야 함
+                            final_total_kg = veh_kg + added_kg
+                            tier2_kg_car   = _best_fit_car(final_total_kg)
+                            # 인치 후보와 중량 후보 중 더 큰 차량 선택 (안전 우선)
+                            if _sort_key(tier2_inch_car) > _sort_key(veh_car):
+                                # 2단 환산으로 더 작은 차량 가능 → 중량도 만족하면 다운그레이드
+                                if _sort_key(tier2_kg_car) >= _sort_key(tier2_inch_car):
+                                    downgraded_car = tier2_inch_car
+                                else:
+                                    downgraded_car = tier2_kg_car
+                                if _sort_key(downgraded_car) > _sort_key(veh_car):
+                                    add_notes.append(
+                                        f"[2단적재 다운그레이드] {veh_car}→{downgraded_car} "
+                                        f"(2단환산 롤수 기준: {dict(t2_v12) or ''}{dict(t2_v3) or ''})"
+                                    )
+                                    veh_car      = downgraded_car
+                                    veh_load_cap = veh_info.get(veh_car, {}).get('load_kg', 0)
+                            elif tier2_cands:
+                                add_notes.append(
+                                    f"[2단적재 적용] 현재차량 {veh_car} 유지 "
+                                    f"(2단환산 인치최소 {tier2_inch_car})"
+                                )
+
+                    final_items = veh['items'] + added_items
+                    final_kg    = veh_kg + added_kg
+
+                    # ── 원지 롤 개수 집계 ──
+                    # 각 아이템의 QTSHPO(KG) ÷ ROLL_SINGLE_KG(600) → 반올림 = 롤 개수
+                    # SKUKEY별 롤 개수를 합산하여 총 롤 수 계산
+                    roll_count_by_sku = {}   # {skukey: roll_cnt}
+                    for it in final_items:
+                        if not _ps_is_roll(it.get('SKUKEY', '')):
+                            continue
+                        sk  = it.get('SKUKEY', '')
+                        kg  = float(it.get('QTSHPO', 0))
+                        cnt = max(1, round(kg / ROLL_SINGLE_KG)) if kg > 0 else 0
+                        roll_count_by_sku[sk] = roll_count_by_sku.get(sk, 0) + cnt
+                    total_roll_count = sum(roll_count_by_sku.values())
+
+                    # ── 납품처 조건 체크 노트 추가 ──
+                    ptnr_notes, ptnr_warns = _build_ptnr_notes(dptnky, rqshpd, veh_car)
+                    if _max_ton_applied:
+                        pi = ptnr_info.get(dptnky, {})
+                        add_notes.insert(0,
+                            f"[최대톤수 적용] 납품처 허용 {pi.get('max_ton_label','')} 기준 "
+                            f"배차 차량 제한 적용"
+                        )
+                    add_notes = ptnr_warns + add_notes + ptnr_notes
+
+                    all_vehicles.append({
+                        'dptnky':          dptnky,
+                        'dptnm':           dptnm,
+                        'rqshpd':          rqshpd,
+                        'cartype':         veh_car,
+                        'total_kg':        round(final_kg, 2),
+                        'load_cap':        veh_load_cap,
+                        'spare_kg':        round(veh_load_cap - final_kg, 2),
+                        'items':           final_items,
+                        'item_cnt':        len(final_items),
+                        'added_cnt':       len(added_items),
+                        'added_kg':        round(added_kg, 2),
+                        'material_type':   'ROLL',
+                        'roll_count':      total_roll_count,        # ★ 원지 총 롤 개수
+                        'roll_count_sku':  roll_count_by_sku,       # ★ SKUKEY별 롤 개수
+                        'notes':           add_notes,
+                        'ptnr_warns':      ptnr_warns,
+                        'forklift_yn':     ptnr_info.get(dptnky, {}).get('forklift_yn', ''),
+                        'deadline_time':   ptnr_info.get(dptnky, {}).get('deadline_time', ''),
+                        'max_ton_label':   ptnr_info.get(dptnky, {}).get('max_ton_label', ''),
+                    })
+
+            # =================================================================
+            # ② 판지(평판) 배차 — 1순위: 중량 최적화, 2순위: CBM 검사
+            # =================================================================
+            if board_items:
+                # ─────────────────────────────────────────────────────────
+                # [STEP-1] 가장 큰 차량 기준으로 중량·높이 초과 시 차량 분할
+                # ─────────────────────────────────────────────────────────
+                # _valid_cars[0] = 가장 큰 유효 차량(LOAD_TON이 입력된 차량)
+                big_car    = _valid_cars[0]['CARTYPE'] if _valid_cars else '판별불가'
+                big_cap_kg = veh_info.get(big_car, {}).get('load_kg', 0) or 99_999_999.0
+                big_cap_h  = veh_info.get(big_car, {}).get('effective_height_m', 99.0) or 99.0
+
+                # ── 판지 KG 중량 헬퍼 (R단위 → KG 변환) ─────────────────
+                def _board_kg(it):
+                    """판지 아이템의 실제 KG 중량 반환
+                    - UOMKEY='R': KG_WEIGHT (서버가 미리 계산) or QTSHPO×GRSWGT
+                    - UOMKEY='KG': QTSHPO 그대로
+                    """
+                    # 검색 API가 KG_WEIGHT를 계산해서 전달한 경우
+                    if it.get('KG_WEIGHT') is not None:
+                        return float(it['KG_WEIGHT'])
+                    uom = (it.get('UOMKEY') or '').strip()
+                    qty = float(it.get('QTSHPO') or 0)
+                    if uom == 'R':
+                        grswgt = skuma_map.get(it.get('SKUKEY',''), {}).get('grswgt', 0)
+                        return qty * grswgt if grswgt > 0 else qty
+                    return qty   # KG or other
+
+                # 최대 차량 적재 중량·높이 단위로 아이템 묶기 (그룹 분할)
+                # 분할 조건: 중량 초과 OR 누적 적재 높이 초과
+                veh_list_b  = []      # [{items, total_kg}]
+                cur_items_b = []
+                cur_kg_b    = 0.0
+                cur_h_b     = 0.0
+                for it in board_items:
+                    qty_kg  = _board_kg(it)   # R→KG 변환 적용
+                    item_h  = _calc_board_stack_height_m(it, skuma_map)  # 아이템 적재 높이(m)
+                    # 현재 그룹에 추가 시 최대 차량 중량 또는 높이 초과 → 새 그룹 시작
+                    kg_over = cur_items_b and (cur_kg_b + qty_kg > big_cap_kg)
+                    h_over  = cur_items_b and item_h > 0 and (cur_h_b + item_h > big_cap_h)
+                    if kg_over or h_over:
+                        veh_list_b.append({'items': cur_items_b, 'total_kg': cur_kg_b, 'total_h': cur_h_b})
+                        cur_items_b = []
+                        cur_kg_b    = 0.0
+                        cur_h_b     = 0.0
+                    cur_items_b.append(it)
+                    cur_kg_b += qty_kg
+                    cur_h_b  += item_h
+                if cur_items_b:
+                    veh_list_b.append({'items': cur_items_b, 'total_kg': cur_kg_b, 'total_h': cur_h_b})
+
+                # ─────────────────────────────────────────────────────────
+                # [STEP-2] 각 그룹별 차량 선정: 1순위 중량 → 2순위 CBM
+                # ─────────────────────────────────────────────────────────
+                for veh in veh_list_b:
+                    veh_kg   = veh['total_kg']
+                    veh_items = veh['items']
+                    board_notes = []
+
+                    # ── 1순위: 적재 효율 최적 차량 선정 (첨부율 최대화) ─────
+                    # 납품처별 중량합계(veh_kg) 기준으로 적재 가능한 차량 중
+                    # 첨부율(= veh_kg / load_cap)이 가장 높은 차량 선택
+                    veh_car   = _best_fit_car(veh_kg)
+                    cap_kg_v  = veh_info.get(veh_car, {}).get('load_kg', 0)
+                    fill_pct  = (veh_kg / cap_kg_v * 100) if cap_kg_v > 0 else 0
+                    kg_note = (
+                        f"[효율최적-중량기준] {veh_car} 선정 "
+                        f"(적재필요 {veh_kg:.1f}kg / "
+                        f"차량적재 {cap_kg_v:.0f}kg / "
+                        f"첨부율 {fill_pct:.1f}%)"
+                    )
+                    board_notes.append(kg_note)
+
+                    # ── 2순위: CBM 검사 → 초과 시 업그레이드 ─────────────
+                    total_cbm = sum(
+                        _ps_get_item_cbm(it, skuma_map) for it in veh_items
+                    )
+                    car_cbm   = _ps_get_car_cbm(veh_car, veh_info)
+
+                    if total_cbm > 0 and car_cbm > 0:
+                        cbm_ratio = total_cbm / car_cbm * 100
+                        if total_cbm > car_cbm:
+                            # CBM 초과 → 더 큰 차량으로 업그레이드
+                            cbm_car_new = _upgrade_by_cbm(veh_car, total_cbm, veh_info, car_order)
+                            new_car_cbm = _ps_get_car_cbm(cbm_car_new, veh_info)
+                            if cbm_car_new != veh_car:
+                                board_notes.append(
+                                    f"[CBM초과 업그레이드] {veh_car}→{cbm_car_new} "
+                                    f"(화물CBM {total_cbm:.3f}m³ > 차량CBM {car_cbm:.3f}m³ → "
+                                    f"새차량CBM {new_car_cbm:.3f}m³)"
+                                )
+                                veh_car = cbm_car_new
+                            else:
+                                # 최대 차량도 CBM 초과 → 경고 노트만 추가
+                                board_notes.append(
+                                    f"[CBM초과-수동확인필요] 화물CBM {total_cbm:.3f}m³ > "
+                                    f"최대차량CBM {car_cbm:.3f}m³ "
+                                    f"(적재율 {cbm_ratio:.0f}%)"
+                                )
+                        else:
+                            board_notes.append(
+                                f"[CBM OK] 화물CBM {total_cbm:.3f}m³ / "
+                                f"차량CBM {car_cbm:.3f}m³ (적재율 {cbm_ratio:.0f}%)"
+                            )
+                    elif total_cbm == 0:
+                        board_notes.append("[CBM] 치수정보 없음 (CBM 검사 생략)")
+
+                    # ── 최종 차량 정보 ─────────────────────────────────────
+                    veh_load_cap = veh_info.get(veh_car, {}).get('load_kg', 0)
+
+                    # ── 치수(L×W×H) 상세 검사 (기존 로직 유지: 경고 노트) ──
+                    dims_ok, max_w, max_l, total_h = _check_board_dims_ok(
+                        veh_items, veh_car, skuma_map
+                    )
+                    if not dims_ok:
+                        # 치수 초과 시에도 CBM 업그레이드된 차량 기준 재검사
+                        upgraded_by_dim = False
+                        for car in car_order:   # 큰 차량부터
+                            ct = car['CARTYPE']
+                            ok2, mw2, ml2, th2 = _check_board_dims_ok(veh_items, ct, skuma_map)
+                            if ok2:
+                                if ct != veh_car:
+                                    # 중량/CBM 기준보다 더 큰 차량이 필요한 경우만 업그레이드
+                                    if _sort_key(ct) < _sort_key(veh_car):
+                                        board_notes.append(
+                                            f"[치수기준 추가업그레이드] {veh_car}→{ct} "
+                                            f"(최대 {mw2}×{ml2}mm, 적재높이 {th2:.2f}m)"
+                                        )
+                                        veh_car      = ct
+                                        veh_load_cap = veh_info.get(ct, {}).get('load_kg', 0)
+                                max_w, max_l, total_h = mw2, ml2, th2
+                                upgraded_by_dim = True
+                                break
+                        if not upgraded_by_dim:
+                            ci = veh_info.get(veh_car, {})
+                            board_notes.append(
+                                f"[치수초과-수동확인필요] 최대 {max_w}×{max_l}mm, "
+                                f"적재높이 {total_h:.2f}m vs 차량가용높이 "
+                                f"{ci.get('effective_height_m', ci.get('height_m', 0)):.2f}m"
+                            )
+                    else:
+                        ci = veh_info.get(veh_car, {})
+                        board_notes.append(
+                            f"[치수OK] 최대 {max_w}×{max_l}mm, "
+                            f"적재높이 {total_h:.2f}m / "
+                            f"가용높이 {ci.get('effective_height_m', ci.get('height_m', 0)):.2f}m"
+                        )
+
+                    # ── 납품처 조건 체크 노트 추가 ──
+                    ptnr_notes, ptnr_warns = _build_ptnr_notes(dptnky, rqshpd, veh_car)
+                    if _max_ton_applied:
+                        pi = ptnr_info.get(dptnky, {})
+                        board_notes.insert(0,
+                            f"[최대톤수 적용] 납품처 허용 {pi.get('max_ton_label','')} 기준 "
+                            f"배차 차량 제한 적용"
+                        )
+                    board_notes = ptnr_warns + board_notes + ptnr_notes
+
+                    all_vehicles.append({
+                        'dptnky':        dptnky,
+                        'dptnm':         dptnm,
+                        'rqshpd':        rqshpd,
+                        'cartype':       veh_car,
+                        'total_kg':      round(veh_kg, 2),
+                        'load_cap':      veh_load_cap,
+                        'spare_kg':      round(veh_load_cap - veh_kg, 2),
+                        'items':         veh_items,
+                        'item_cnt':      len(veh_items),
+                        'added_cnt':     0,
+                        'added_kg':      0.0,
+                        'material_type': 'BOARD',
+                        'board_dims':    {
+                            'max_w_mm':       max_w,
+                            'max_l_mm':       max_l,
+                            'total_height_m': round(total_h, 3),
+                            'total_cbm':      round(total_cbm, 4),
+                            'car_cbm':        round(car_cbm, 4),
+                        },
+                        'notes':         board_notes,
+                        'ptnr_warns':    ptnr_warns,
+                        'forklift_yn':   ptnr_info.get(dptnky, {}).get('forklift_yn', ''),
+                        'deadline_time': ptnr_info.get(dptnky, {}).get('deadline_time', ''),
+                        'max_ton_label': ptnr_info.get(dptnky, {}).get('max_ton_label', ''),
+                    })
+
+            # =================================================================
+            # ③ 기타 아이템 (원지/판지 외) 배차 — 중량 기준
+            # =================================================================
+            if other_items:
+                total_kg = sum(float(it.get('QTSHPO', 0)) for it in other_items)
+                big_car  = car_order[0]['CARTYPE'] if car_order else '판별불가'
+                big_cap  = veh_info.get(big_car, {}).get('load_kg', 0)
+
+                veh_list_o = []
+                cur_items_o, cur_kg_o = [], 0.0
+                for it in other_items:
+                    qty_kg = float(it.get('QTSHPO', 0))
+                    if cur_kg_o + qty_kg > big_cap and cur_items_o:
+                        veh_list_o.append({'items': cur_items_o, 'total_kg': cur_kg_o})
+                        cur_items_o, cur_kg_o = [], 0.0
+                    cur_items_o.append(it)
+                    cur_kg_o += qty_kg
+                if cur_items_o:
+                    veh_list_o.append({'items': cur_items_o, 'total_kg': cur_kg_o})
+
+                for veh in veh_list_o:
+                    veh_kg  = veh['total_kg']
+                    veh_car = '판별불가'
+                    # _valid_cars (MAX_TON 필터 적용된 목록) 기준으로 차량 선택
+                    for car in reversed(_valid_cars):
+                        ct = car['CARTYPE']
+                        if veh_info.get(ct, {}).get('load_kg', 0) >= veh_kg:
+                            veh_car = ct
+                    # _valid_cars 내에 적합한 차량 없으면 전체 car_order에서 재탐색
+                    if veh_car == '판별불가':
+                        for car in reversed(car_order):
+                            ct = car['CARTYPE']
+                            if veh_info.get(ct, {}).get('load_kg', 0) >= veh_kg:
+                                veh_car = ct
+                    veh_load_cap = veh_info.get(veh_car, {}).get('load_kg', 0)
+
+                    # ── 납품처 조건 체크 노트 추가 ──
+                    other_notes = []
+                    ptnr_notes_o, ptnr_warns_o = _build_ptnr_notes(dptnky, rqshpd, veh_car)
+                    if _max_ton_applied:
+                        pi = ptnr_info.get(dptnky, {})
+                        other_notes.insert(0,
+                            f"[최대톤수 적용] 납품처 허용 {pi.get('max_ton_label','')} 기준 "
+                            f"배차 차량 제한 적용"
+                        )
+                    other_notes = ptnr_warns_o + other_notes + ptnr_notes_o
+
+                    all_vehicles.append({
+                        'dptnky':        dptnky,
+                        'dptnm':         dptnm,
+                        'rqshpd':        rqshpd,
+                        'cartype':       veh_car,
+                        'total_kg':      round(veh_kg, 2),
+                        'load_cap':      veh_load_cap,
+                        'spare_kg':      round(veh_load_cap - veh_kg, 2),
+                        'items':         veh['items'],
+                        'item_cnt':      len(veh['items']),
+                        'added_cnt':     0,
+                        'added_kg':      0.0,
+                        'material_type': 'OTHER',
+                        'notes':         other_notes,
+                        'ptnr_warns':    ptnr_warns_o,
+                        'forklift_yn':   ptnr_info.get(dptnky, {}).get('forklift_yn', ''),
+                        'deadline_time': ptnr_info.get(dptnky, {}).get('deadline_time', ''),
+                        'max_ton_label': ptnr_info.get(dptnky, {}).get('max_ton_label', ''),
+                    })
+
+            # ── 납품처별 _valid_cars 임시 교체 복원 ──
+            _valid_cars = _orig_valid_cars
 
         return jsonify({"ok": True, "total": len(all_vehicles), "vehicles": all_vehicles})
     except Exception as e:
@@ -2273,15 +3461,18 @@ def api_ps_dispatch_save():
                 conn.execute(
                     """INSERT INTO PS_DISPATCH_D
                        (DISPATCH_NO,SEQ,SHPOKY,SHPOIT,SKUKEY,DESC01,
-                        QTSHPO,UOMKEY,DPTNKY,DPTNM,IS_SPLIT,ORG_SHPOKY,ORG_SHPOIT)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        QTSHPO,UOMKEY,DPTNKY,DPTNM,IS_SPLIT,ORG_SHPOKY,ORG_SHPOIT,
+                        GRSWGT,KG_WEIGHT)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (dispatch_no, seq,
                      it.get('SHPOKY',''), it.get('SHPOIT',''),
                      it.get('SKUKEY',''), it.get('DESC01',''),
                      float(it.get('QTSHPO',0)), it.get('UOMKEY','KG'),
                      it.get('DPTNKY',''), it.get('DPTNM',''),
                      int(it.get('IS_SPLIT',0)),
-                     it.get('ORG_SHPOKY',''), it.get('ORG_SHPOIT',''))
+                     it.get('ORG_SHPOKY',''), it.get('ORG_SHPOIT',''),
+                     float(it.get('GRSWGT',0) or 0),
+                     float(it.get('KG_WEIGHT',0) or 0))
                 )
             saved.append(dispatch_no)
         conn.commit()
@@ -2322,8 +3513,10 @@ def api_ps_dispatch_list():
         sql = f"""
             SELECT h.DISPATCH_NO, h.DISPATCH_DT, h.RQSHPD,
                    h.DPTNKY, h.DPTNM, h.CARTYPE, h.STATUS,
-                   h.TOTAL_KG, h.TOTAL_CNT, h.NOTE, h.CREDAT
+                   h.TOTAL_KG, h.TOTAL_CNT, h.NOTE, h.CREDAT,
+                   COALESCE(v.LOAD_TON, 0) AS LOAD_TON
             FROM PS_DISPATCH_H h
+            LEFT JOIN DS_VEHICLE v ON v.CARTYPE = h.CARTYPE
             {where_sql}
             ORDER BY h.RQSHPD DESC, h.DISPATCH_NO
         """
@@ -2331,10 +3524,16 @@ def api_ps_dispatch_list():
         result = []
         for r in rows:
             d = dict(r)
+            # 적재가능중량 (LOAD_TON × 1000 kg)
+            load_ton = float(d.get('LOAD_TON') or 0)
+            load_kg  = round(load_ton * 1000, 1) if load_ton > 0 else None
+            d['LOAD_KG'] = load_kg   # None = DS_VEHICLE 미등록
             # 상세 아이템
             detail = conn.execute(
                 """SELECT SEQ,SHPOKY,SHPOIT,SKUKEY,DESC01,QTSHPO,UOMKEY,
-                          DPTNKY,DPTNM,IS_SPLIT,ORG_SHPOKY,ORG_SHPOIT
+                          DPTNKY,DPTNM,IS_SPLIT,ORG_SHPOKY,ORG_SHPOIT,
+                          COALESCE(GRSWGT,0) AS GRSWGT,
+                          COALESCE(KG_WEIGHT,0) AS KG_WEIGHT
                    FROM PS_DISPATCH_D WHERE DISPATCH_NO=? ORDER BY SEQ""",
                 (d['DISPATCH_NO'],)
             ).fetchall()
@@ -2406,7 +3605,8 @@ def api_ps_dispatch_split():
       org_shpoky, org_shpoit,   # 원본 납품문서
       splits: [{skukey, desc01, org_qty, split_qty, uomkey}]
     }
-    → SHPOKY는 원본 번호 그대로 유지, SHPOIT를 90, 91, 92... 으로 채번
+    → NEW_SHPOKY = {ORG_SHPOKY}-S01 / S02 ... 신규 채번
+    → NEW_SHPOIT = 원본 org_shpoit 그대로 유지
     → PS_DISPATCH_SPLIT 삽입 + 분할된 가상 아이템 반환
     """
     from datetime import datetime
@@ -2423,17 +3623,30 @@ def api_ps_dispatch_split():
     today  = datetime.now().strftime('%Y%m%d')
     conn   = get_conn()
     try:
-        # 이미 분할된 이 문서의 최대 SHPOIT 채번 확인 (90번대 이후 사용)
-        existing = conn.execute(
-            "SELECT MAX(CAST(NEW_SHPOIT AS INTEGER)) FROM PS_DISPATCH_SPLIT WHERE ORG_SHPOKY=? AND ORG_SHPOIT=?",
-            (org_shpoky, org_shpoit)
-        ).fetchone()[0]
-        next_it = max(90, (existing or 89) + 1)
+        # ── 신규 SHPOKY 채번: {ORG_SHPOKY}-S01, S02 ... ──
+        # 이미 이 원본문서에서 분할된 최대 시퀀스 조회
+        existing_rows = conn.execute(
+            "SELECT NEW_SHPOKY FROM PS_DISPATCH_SPLIT WHERE ORG_SHPOKY=? AND STATUS='ACTIVE'",
+            (org_shpoky,)
+        ).fetchall()
+        # 기존 분할번호에서 Sxx 부분 추출해 최대값 파악
+        existing_seq = 0
+        prefix_base  = f"{org_shpoky}-S"
+        for row in existing_rows:
+            nk = (row[0] or '')
+            if nk.startswith(prefix_base):
+                try:
+                    seq_part   = int(nk[len(prefix_base):])
+                    existing_seq = max(existing_seq, seq_part)
+                except ValueError:
+                    pass
+        next_seq = existing_seq + 1   # 다음 분할 시퀀스 시작 번호
 
         result_items = []
         for i, sp in enumerate(splits):
-            new_shpoit = str(next_it + i)
-            split_key  = f"SPL-{org_shpoky}-{org_shpoit}-{new_shpoit}"
+            new_shpoky = f"{org_shpoky}-S{(next_seq + i):02d}"   # 예: 2004335315-S01
+            new_shpoit = org_shpoit                               # 아이템번호는 원본 유지
+            split_key  = f"SPL-{new_shpoky}-{new_shpoit}"
             org_qty    = float(sp.get('org_qty', 0))
             split_qty  = float(sp.get('split_qty', 0))
             rem_qty    = org_qty - split_qty
@@ -2444,8 +3657,8 @@ def api_ps_dispatch_split():
                     SKUKEY,DESC01,ORG_QTY,SPLIT_QTY,REM_QTY,UOMKEY,STATUS,CREDAT,CREUSR)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,  'ACTIVE',?,?)""",
                 (split_key, org_shpoky, org_shpoit,
-                 org_shpoky,           # ← SHPOKY 기존 번호 그대로 유지
-                 new_shpoit,           # ← SHPOIT 90번대로 채번
+                 new_shpoky,   # ★ 신규 채번된 납품문서번호
+                 new_shpoit,   # ★ 원본 아이템번호 유지
                  sp.get('skukey',''), sp.get('desc01',''),
                  org_qty, split_qty, rem_qty,
                  sp.get('uomkey','KG'),
@@ -2453,8 +3666,8 @@ def api_ps_dispatch_split():
             )
             result_items.append({
                 'SPLIT_KEY':  split_key,
-                'SHPOKY':     org_shpoky,   # ← 기존 납품문서번호 유지
-                'SHPOIT':     new_shpoit,   # ← 분할 아이템번호
+                'SHPOKY':     new_shpoky,   # ★ 신규 채번 납품문서번호
+                'SHPOIT':     new_shpoit,   # 원본 아이템번호
                 'SKUKEY':     sp.get('skukey',''),
                 'DESC01':     sp.get('desc01',''),
                 'QTSHPO':     split_qty,
