@@ -568,6 +568,70 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .vhc-badge.type-일반{background:var(--badge-blue-bg);color:var(--badge-blue-fg)}
 .vhc-badge.type-냉동{background:#1e3a2f;color:#6ee7b7}
 .vhc-badge.type-냉장{background:#2d1e5f;color:#c4b5fd}
+/* ── CARCLASS 고정차량 관리 ── */
+.crc-layout{display:flex;flex-direction:column;height:100%;overflow:hidden;background:var(--bg)}
+.crc-toolbar{padding:6px 12px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:8px;flex-shrink:0}
+.crc-title{font-size:13px;font-weight:700;color:var(--text);margin-right:auto}
+.crc-btn{padding:5px 13px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;font-size:12px;font-weight:600;transition:.15s;white-space:nowrap}
+.crc-btn:hover{border-color:var(--primary);color:var(--primary)}
+.crc-btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.crc-btn.primary:hover{filter:brightness(1.12)}
+.crc-btn.success{background:#166534;border-color:#16a34a;color:#86efac}
+.crc-btn.success:hover{background:#15803d}
+.crc-btn.danger{background:#7f1d1d;border-color:#dc2626;color:#fca5a5}
+.crc-btn.danger:hover{background:#991b1b}
+.crc-btn:disabled{opacity:.4;cursor:not-allowed}
+/* 전체 바디: 두 섹션이 각각 스크롤 */
+.crc-body{flex:1;overflow:hidden;padding:16px;display:flex;flex-direction:column;gap:18px;min-height:0}
+/* 섹션 카드: 독립 스크롤 (헤더 고정) */
+.crc-section{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;min-height:0;flex:1}
+.crc-section-hdr{padding:9px 14px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0}
+.crc-section-hdr h3{font-size:12px;font-weight:700;color:var(--text2);margin:0;flex:1}
+.crc-section-hdr .hdr-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(99,102,241,.18);color:var(--primary)}
+/* 섹션 내부 스크롤 컨테이너 */
+.crc-scroll{flex:1;overflow:auto;min-height:0}
+/* 인라인 편집 그리드 테이블 공통 */
+.crc-tbl{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+.crc-tbl thead th{background:var(--th-bg);padding:7px 10px;text-align:center;font-size:11px;font-weight:700;color:var(--text3);border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;position:sticky;top:0;z-index:2}
+.crc-tbl thead th:last-child{border-right:none}
+.crc-tbl tbody tr{border-bottom:1px solid var(--tr-border);transition:.1s}
+.crc-tbl tbody tr:hover{background:var(--tr-hover)}
+.crc-tbl tbody tr.crc-dirty{background:rgba(245,158,11,.08)!important;outline:1px solid rgba(245,158,11,.4);outline-offset:-1px}
+.crc-tbl tbody tr.crc-new{background:rgba(34,197,94,.07)!important;outline:1px solid rgba(34,197,94,.4);outline-offset:-1px}
+.crc-tbl tbody tr.crc-no-vhc td{color:var(--text3)}
+.crc-tbl tbody td{padding:5px 8px;border-right:1px solid var(--tr-border);vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
+.crc-tbl tbody td:last-child{border-right:none}
+/* 편집 가능 셀 */
+.crc-cell-edit{display:none;width:100%;box-sizing:border-box;background:var(--input-focus-bg,var(--surface2));border:1px solid var(--primary);border-radius:3px;color:var(--text);font-size:12px;padding:3px 6px;text-align:center}
+.crc-cell-view{display:inline-block;width:100%;text-align:center}
+.crc-cell-wrap.editing .crc-cell-edit{display:block}
+.crc-cell-wrap.editing .crc-cell-view{display:none}
+.crc-cell-wrap{cursor:pointer;display:block;width:100%}
+/* Y/N 배지 */
+.crc-badge-y{background:#166534;color:#86efac;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700}
+.crc-badge-n{background:#7f1d1d;color:#fca5a5;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700}
+/* 저장 상태 인디케이터 */
+.crc-saving{animation:crc-pulse .6s ease-in-out infinite alternate}
+@keyframes crc-pulse{from{opacity:.5}to{opacity:1}}
+/* 변경 행 수 표시 */
+.crc-dirty-cnt{font-size:11px;color:var(--warning);font-weight:700;padding:2px 8px;background:rgba(245,158,11,.1);border-radius:4px;display:none}
+.crc-dirty-cnt.visible{display:inline-block}
+/* 빈 행 추가 버튼 */
+.crc-add-row{text-align:center;padding:10px;color:var(--text3);font-size:12px;cursor:pointer;border-top:1px dashed var(--border)}
+.crc-add-row:hover{color:var(--primary);background:var(--tr-hover)}
+/* select 인라인 */
+.crc-cell-sel{display:none;width:100%;box-sizing:border-box;background:var(--input-focus-bg,var(--surface2));border:1px solid var(--primary);border-radius:3px;color:var(--text);font-size:12px;padding:3px 4px;text-align:center}
+.crc-cell-wrap.editing .crc-cell-sel{display:block}
+/* 편집 가능 힌트 hover */
+.crc-cell-wrap:not(.editing):hover{background:rgba(99,102,241,.08);border-radius:3px;cursor:text}
+.crc-cell-wrap:not(.editing):hover .crc-cell-view{color:var(--primary)}
+/* 상태 배지 */
+.crc-st-badge{font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px}
+.crc-st-badge.modified{color:var(--warning)}
+.crc-st-badge.new{color:#22c55e}
+.crc-st-badge.normal{color:var(--text3)}
+/* 제원없음 배지 */
+.crc-no-vhc-badge{font-size:10px;color:var(--text3);font-style:italic}
 /* ── WAHMA 물류센터 관리 ── */
 .wahma-layout{display:flex;flex-direction:column;height:100%;overflow:hidden;background:var(--bg)}
 .wahma-toolbar{padding:6px 12px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:6px;flex-shrink:0}
@@ -610,7 +674,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .ds-topbar{padding:14px 20px 10px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .ds-topbar-title{font-size:15px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px}
 .ds-topbar-title span{font-size:12px;font-weight:400;color:var(--text3)}
-.ds-body{flex:1;overflow-y:auto;overflow-x:hidden;padding:20px;display:flex;flex-direction:column;gap:20px;min-height:0}
+.ds-body{flex:1;overflow-y:auto;overflow-x:auto;padding:20px;display:flex;flex-direction:column;gap:20px;min-height:0}
 .ds-body::-webkit-scrollbar{width:7px}
 .ds-body::-webkit-scrollbar-track{background:var(--surface2)}
 .ds-body::-webkit-scrollbar-thumb{background:var(--primary);border-radius:4px;opacity:.7}
@@ -663,9 +727,13 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .car-8t{background:#10b981;color:#fff}  .car-11t{background:#f59e0b;color:#fff}
 .car-15t{background:#ef4444;color:#fff} .car-18t{background:#dc2626;color:#fff}
 /* ── PANEL RESIZER (드래그 높이 조절) ── */
-.panel-resizer{height:6px;background:var(--border);cursor:ns-resize;flex-shrink:0;position:relative;display:flex;align-items:center;justify-content:center;transition:.15s}
+.panel-resizer{height:6px;background:var(--border);cursor:ns-resize;flex-shrink:0;position:relative;display:flex;align-items:center;justify-content:center;transition:background .15s}
 .panel-resizer:hover,.panel-resizer.dragging{background:var(--primary)}
 .panel-resizer::before{content:'';width:32px;height:2px;background:currentColor;opacity:.4;border-radius:1px;box-shadow:0 3px 0 currentColor, 0 -3px 0 currentColor}
+/* 출고예정정보 전용 리사이저 — 좀 더 두껍고 눈에 띄게 */
+#ss-resizer{height:8px;border-radius:4px;margin:3px 0}
+#ss-resizer::after{content:'⠿';position:absolute;font-size:10px;color:var(--text3);letter-spacing:2px;top:50%;transform:translateY(-50%);pointer-events:none}
+#ss-resizer:hover::after,#ss-resizer.dragging::after{color:#fff}
 
 /* ── PANEL TOGGLE HEADER ── */
 .panel-hdr{padding:6px 12px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;user-select:none}
@@ -692,20 +760,22 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .psd-fg input,.psd-fg select{padding:5px 8px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text);font-size:12px;min-width:110px}
 .psd-fg input:focus,.psd-fg select:focus{outline:none;border-color:var(--primary)}
 /* 출하유형 멀티체크 드롭다운 */
+/* 출하유형 멀티체크 드롭다운 */
 .psd-shpmty-wrap{position:relative;display:inline-block}
-.psd-shpmty-btn{padding:5px 10px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text);font-size:12px;width:140px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;white-space:nowrap;user-select:none;height:30px;box-sizing:border-box}
+.psd-shpmty-btn{padding:0 10px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text);font-size:12px;width:130px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;white-space:nowrap;user-select:none;height:30px;box-sizing:border-box}
 .psd-shpmty-btn:hover{border-color:var(--primary)}
-.psd-shpmty-btn.open{border-color:var(--primary);border-radius:5px 5px 0 0}
+.psd-shpmty-btn.open{border-color:var(--primary)}
 .psd-shpmty-btn .psd-shpmty-label-txt{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
 .psd-shpmty-btn .arrow{font-size:9px;color:var(--text3);transition:transform .15s;flex-shrink:0}
 .psd-shpmty-btn.open .arrow{transform:rotate(180deg)}
-.psd-shpmty-panel{display:none;position:absolute;top:100%;left:0;z-index:9999;width:140px;background:var(--surface);border:1px solid var(--primary);border-top:none;border-radius:0 0 6px 6px;box-shadow:0 6px 20px rgba(0,0,0,.4);padding:4px 0;box-sizing:border-box}
+/* 패널: fixed + JS로 좌표 계산 → 부모 overflow/stacking context 영향 없음 */
+.psd-shpmty-panel{display:none;position:fixed;z-index:99999;min-width:130px;background:var(--surface);border:1px solid var(--primary);border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.5);padding:4px 0;box-sizing:border-box}
 .psd-shpmty-panel.open{display:block}
-.psd-shpmty-panel .shpmty-item{display:flex;flex-direction:row;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;color:var(--text);transition:background .1s;white-space:nowrap;width:100%;box-sizing:border-box}
+.psd-shpmty-panel .shpmty-item{display:flex;align-items:center;padding:6px 14px 6px 12px;cursor:pointer;font-size:12px;color:var(--text);transition:background .12s;user-select:none;white-space:nowrap}
 .psd-shpmty-panel .shpmty-item:hover{background:var(--tr-hover)}
-.psd-shpmty-panel .shpmty-item input[type=checkbox]{width:13px;height:13px;flex-shrink:0;cursor:pointer;accent-color:var(--primary);margin:0}
-.psd-shpmty-panel .shpmty-item span{white-space:nowrap;line-height:1.4;font-size:12px}
-.psd-shpmty-panel .shpmty-divider{height:1px;background:var(--border);margin:3px 0}
+.psd-shpmty-panel .shpmty-item input[type=checkbox]{width:14px;height:14px;min-width:14px;flex-shrink:0;cursor:pointer;accent-color:var(--primary);margin:0 8px 0 0;pointer-events:none}
+.psd-shpmty-panel .shpmty-item span{white-space:nowrap;font-size:12px;line-height:1.4;color:var(--text)}
+.psd-shpmty-panel .shpmty-divider{height:1px;background:var(--border);margin:3px 8px}
 /* 툴바 버튼 */
 .psd-toolbar{flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);padding:8px 16px;display:flex;align-items:center;gap:8px}
 .psd-btn{padding:6px 16px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:.15s;display:flex;align-items:center;gap:5px;white-space:nowrap}
@@ -755,8 +825,34 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .psd-car-wrap{padding:10px 12px;display:flex;flex-direction:column;gap:8px}
 .psd-car-card{background:var(--surface);border:2px solid var(--border);border-radius:8px;overflow:hidden;transition:.15s;position:relative}
 .psd-car-card.selected{border-color:var(--primary);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+/* 좌측 차량 필터바 */
+.psd-veh-filter{flex-shrink:0;padding:5px 10px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.psd-veh-filter label{font-size:11px;color:var(--text2)}
+.psd-veh-filter select,.psd-veh-filter input{padding:3px 7px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text);font-size:11px}
+.psd-veh-filter .psd-veh-filter-cnt{margin-left:auto;font-size:10px;color:var(--text3)}
+.psd-veh-all-chk-wrap{display:flex;align-items:center;gap:4px;padding:2px 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);cursor:pointer;user-select:none;font-size:11px;color:var(--text2);flex-shrink:0}
+.psd-veh-all-chk-wrap:hover{border-color:var(--primary);color:var(--primary)}
+.psd-veh-all-chk-wrap input[type=checkbox]{width:13px;height:13px;cursor:pointer;accent-color:var(--primary);margin:0}
+/* 차량 카드 체크박스 */
+.psd-car-chk{width:14px;height:14px;cursor:pointer;flex-shrink:0;accent-color:var(--primary)}
 .psd-car-card.drag-over{border-color:#10b981;background:rgba(16,185,129,.04);box-shadow:0 0 0 3px rgba(16,185,129,.15)}
 .psd-car-card-hdr{padding:8px 12px;background:var(--th-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+/* 적재 정보 바 */
+.psd-car-load-bar{padding:5px 12px 6px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:11px}
+.psd-car-load-nums{display:flex;align-items:center;gap:0;margin-bottom:4px;flex-wrap:wrap;gap:2px 8px}
+.psd-car-load-item{display:flex;align-items:center;gap:3px;white-space:nowrap}
+.psd-car-load-label{color:var(--text3);font-size:10px}
+.psd-car-load-val{font-weight:700;color:var(--text)}
+.psd-car-load-val.over{color:#dc2626}
+.psd-car-load-val.warn{color:#d97706}
+.psd-car-load-val.ok{color:#059669}
+.psd-car-load-ratio{margin-left:auto;font-size:12px;font-weight:800}
+.psd-car-load-ratio.over{color:#dc2626}
+.psd-car-load-ratio.warn{color:#d97706}
+.psd-car-load-ratio.ok{color:#059669}
+.psd-car-load-ratio.na{color:var(--text3)}
+.psd-car-prog-wrap{height:5px;background:var(--border);border-radius:3px;overflow:hidden}
+.psd-car-prog-bar{height:100%;border-radius:3px;transition:width .3s}
 .psd-car-badge{padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px}
 .psd-car-no{font-size:12px;font-weight:700;color:var(--text)}
 .psd-car-kg{font-size:11px;color:var(--text3);margin-left:auto}
@@ -847,6 +943,26 @@ textarea.sql-input{width:100%;min-height:110px;padding:12px;background:var(--bg)
 .psd-auto-veh-items{padding:4px 0}
 .psd-auto-item{display:flex;align-items:center;gap:6px;padding:4px 14px;border-bottom:1px solid var(--tr-border);font-size:11px}
 .psd-auto-item:last-child{border-bottom:none}
+/* 원지/판지 구분 배지 */
+.psd-auto-mtype{display:inline-flex;align-items:center;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.3px}
+.psd-auto-mtype-roll{background:#1e3a5f;color:#93c5fd;border:1px solid #3b82f6}
+.psd-auto-mtype-board{background:#3d2a00;color:#fcd34d;border:1px solid #d97706}
+.psd-auto-mtype-other{background:#2d2d2d;color:#9ca3af;border:1px solid #6b7280}
+/* 적재율 바 */
+.psd-auto-loadbar-wrap{height:4px;background:var(--tr-border);margin:0}
+.psd-auto-loadbar{height:4px;transition:width .3s;border-radius:0}
+/* 추가 배차 배지 */
+.psd-auto-added-badge{font-size:10px;font-weight:700;color:#4ade80;background:rgba(74,222,128,.12);border:1px solid #4ade80;border-radius:4px;padding:1px 6px}
+/* 판지 치수 정보 */
+.psd-auto-dim-info{font-size:10px;color:#c084fc;background:rgba(192,132,252,.1);border:1px solid #a855f7;border-radius:4px;padding:1px 6px}
+/* 여유 중량 */
+.psd-auto-spare{font-size:10px;color:#4ade80;font-weight:600}
+/* 주의사항 영역 */
+.psd-auto-notes{padding:4px 14px;background:rgba(251,191,36,.07);border-bottom:1px solid rgba(251,191,36,.2)}
+.psd-auto-note-item{font-size:10px;color:#fbbf24;padding:2px 0;line-height:1.4}
+/* 추가 배차 아이템 강조 */
+.psd-auto-item-new{background:rgba(74,222,128,.06);border-left:3px solid #4ade80}
+.psd-auto-item-added{font-size:9px;font-weight:700;color:#4ade80;background:rgba(74,222,128,.15);border-radius:3px;padding:1px 4px;white-space:nowrap}
 
 /* ── MULTI-SELECT DROPDOWN ── */
 .ms-wrap{position:relative}
@@ -1054,6 +1170,9 @@ thead th:hover .th-drag-handle{opacity:.8}
   <div class="nav-item" onclick="showPage('vehicle')" id="nav-vehicle">
     <span class="icon">🚛</span> 차량관리<span class="cnt" id="cnt-vehicle">-</span>
   </div>
+  <div class="nav-item" onclick="showPage('carClass')" id="nav-carClass">
+    <span class="icon">📋</span> 고정차량 관리<span class="cnt" id="cnt-carClass">-</span>
+  </div>
   <div class="nav-section">TMS 배차</div>
   <div class="nav-item" onclick="showPage('BZPTN_DETAIL')" id="nav-BZPTN_DETAIL">
     <span class="icon">🗺️</span> 납품처 상세<span class="cnt" id="cnt-BZPTN_DETAIL">-</span>
@@ -1215,8 +1334,15 @@ let searchTimer = null;
    UTILS
 ═══════════════════════════════════════════════════════════ */
 function fmtNum(n){ return (n ?? 0).toLocaleString('ko-KR'); }
-function fmtVal(v){
+// 테이블별로 값을 항상 공란으로 표시할 컬럼 목록
+const _BLANK_COLS = {
+  IFWMS113: new Set(['STKNUM']),
+};
+
+function fmtVal(v, col, tbl){
   if(v === null || v === undefined) return '';
+  // 테이블-컬럼 공란 처리
+  if(tbl && col && _BLANK_COLS[tbl] && _BLANK_COLS[tbl].has(col)) return '';
   const s = String(v).trim();
   if(s === '' || s === ' ') return '';
   if(/^\d{8}$/.test(s)) return `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6)}`;
@@ -1254,6 +1380,7 @@ const PAGE_META = {
   sql:           { title:'SQL 콘솔',          badge:'Query Console',  crumb:['홈','도구','SQL 콘솔'] },
   delivery:      { title:'납품처 관리',       badge:'BZPTN_DETAIL',   crumb:['홈','TMS 납품처','납품처 관리'] },
   vehicle:       { title:'차량관리',          badge:'VHCMA',          crumb:['홈','TMS 기준정보','차량관리'] },
+  carClass:      { title:'고정차량 관리',     badge:'TMS_CARCLASS',   crumb:['홈','TMS 기준정보','고정차량 관리'] },
   wahma:         { title:'물류센터(창고) 관리', badge:'WAHMA',         crumb:['홈','마스터','물류센터(창고)'] },
   ROUTE_COST:    { title:'운송경로별 비용',   badge:'ROUTE_COST',     crumb:['홈','TMS 배차','운송경로 비용'] },
   CMCDM:         { title:'공통코드 헤더',     badge:'CMCDM',          crumb:['홈','마스터','공통코드 헤더'] },
@@ -1374,6 +1501,24 @@ function closeTab(id) {
 
 /* 실제 페이지 렌더링 (탭 조작 없이 순수 렌더만) */
 function _doShowPage(p) {
+  // ── PS배차 이탈 시: psd-root를 body 아래 hidden 컨테이너에 보존 ──
+  if (typeof psdState !== 'undefined' && psdState.initialized) {
+    const psdRoot = document.getElementById('psd-root');
+    if (psdRoot && p !== 'psDispatch') {
+      // 현재 폼 값 저장
+      if (typeof psdSaveForm === 'function') psdSaveForm();
+      // psd-root를 hidden 보존 컨테이너로 이동
+      let keeper = document.getElementById('psd-root-keeper');
+      if (!keeper) {
+        keeper = document.createElement('div');
+        keeper.id = 'psd-root-keeper';
+        keeper.style.cssText = 'display:none;position:fixed;width:0;height:0;overflow:hidden';
+        document.body.appendChild(keeper);
+      }
+      keeper.appendChild(psdRoot);
+    }
+  }
+
   // LNB 활성화
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   const navEl = document.getElementById(`nav-${p}`);
@@ -1389,6 +1534,42 @@ function _doShowPage(p) {
   const si = document.getElementById('search-input');
   if (si) si.value = '';
   document.getElementById('search-clear').style.display = 'none';
+
+  // ── PS배차로 복귀 시: keeper에서 psd-root를 꺼내 content에 재삽입 ──
+  if (p === 'psDispatch' && typeof psdState !== 'undefined' && psdState.initialized) {
+    const keeper  = document.getElementById('psd-root-keeper');
+    const psdRoot = document.getElementById('psd-root');
+    const content = document.getElementById('content');
+    if (psdRoot && content) {
+      content.innerHTML = '';
+      content.appendChild(psdRoot);
+      content.style.overflowY = 'hidden';
+      srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
+      // 메타 적용
+      const meta    = PAGE_META[p];
+      const titleEl = document.getElementById('page-title');
+      const badgeEl = document.getElementById('topbar-badge');
+      if (meta) {
+        if (titleEl) titleEl.textContent = meta.title;
+        if (badgeEl) badgeEl.textContent = meta.badge;
+        updateBreadcrumb(meta.crumb);
+      }
+      // 저장된 폼값 복원 + 기존 데이터 재렌더
+      if (typeof psdSaveForm === 'function') {
+        if (psdState.savedForm) {
+          if (typeof psdRestoreForm === 'function') psdRestoreForm(psdState.savedForm);
+        }
+      }
+      if (typeof psdRestoreWidth === 'function') psdRestoreWidth();
+      // 데이터 즉시 재렌더 (서버 재조회 없이)
+      if (typeof psdRenderDocTable === 'function' && psdState.searchRows.length > 0) {
+        psdRenderDocTable();
+        if (typeof psdUpdateToolbar === 'function') psdUpdateToolbar();
+      }
+      if (typeof psdRenderVehicleArea === 'function') psdRenderVehicleArea();
+      return;
+    }
+  }
 
   // 메타 적용
   const meta    = PAGE_META[p];
@@ -1420,6 +1601,9 @@ function _doShowPage(p) {
   } else if (p === 'vehicle') {
     srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderVehicle();
+  } else if (p === 'carClass') {
+    srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
+    renderCarClass();
   } else if (p === 'wahma') {
     srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderWahma();
@@ -1690,7 +1874,7 @@ function renderTableFromCache(){
       tbody += '<tr>';
       cols.forEach(col => {
         const v      = row[col];
-        const s      = fmtVal(v);
+        const s      = fmtVal(v, col, tbl);
         const isPk   = pkCols.includes(col);
         const sticky = isPk ? ' sticky-col' : '';
         const isNum  = typeof v === 'number';
@@ -2899,7 +3083,7 @@ async function renderDelivery() {
   c.innerHTML = `<div class="loading"><div class="spinner"></div>공통코드 로딩 중...</div>`;
 
   // 공통코드 병렬 로드
-  const codeKeys = ['LOTA02','SKUG05','TMS_ROUTE','TMS_UNLOADTIME','TMS_MAXHEIGHT','TMS_INBOUNDTIME','TMS_REGION','TMS_AUTOPLT'];
+  const codeKeys = ['LOTA02','SKUG05','TMS_ROUTE','TMS_UNLOADTIME','TMS_MAXHEIGHT','TMS_INBOUNDTIME','TMS_REGION','TMS_AUTOPLT','TMS_CARCLASS'];
   const results  = await Promise.all(codeKeys.map(k => fetch(`/api/codes/${k}`).then(r=>r.json())));
   codeKeys.forEach((k,i) => dlvState.codes[k] = results[i]);
   // TMS_SHPPOINT 목록 (출하지점 select용)
@@ -3031,6 +3215,7 @@ function buildDeliveryForm() {
   const inbTimeOpts    = dlvState.codes['TMS_INBOUNDTIME'].map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
   // TMS_AUTOPLT: CMCDVL=값, CDESC1=표시텍스트 (1~24)
   const autoPltOpts    = (dlvState.codes['TMS_AUTOPLT']||[]).map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
+  const carclassOpts   = (dlvState.codes['TMS_CARCLASS']||[]).map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
   // 권역 옵션: value=CMCDVL 앞2자리(KEY), 표시=CDESC2(권역명), 중복제거
   const regionOpts     = (()=>{
     const seen = new Map();
@@ -3117,11 +3302,10 @@ function buildDeliveryForm() {
       </select>
     </div>
     <div class="form-group">
-      <label>하차대기시간</label>
-      <select id="f-UNLOAD_TIME">
-        <option value="">선택</option>
-        ${unloadOpts}
-      </select>
+      <label>납기시간 <span style="font-size:10px;color:var(--text3);font-weight:400">(몇 시까지 도착)</span></label>
+      <input id="f-DEADLINE_TIME" type="time" step="1800"
+        style="background:var(--surface2);border:1px solid var(--border);border-radius:5px;
+               color:var(--text);padding:6px 9px;font-size:12px;width:100%">
     </div>
     <div class="form-group">
       <label>자동설정PLT</label>
@@ -3154,7 +3338,10 @@ function buildDeliveryForm() {
     </div>
     <div class="form-group">
       <label>최대톤수</label>
-      <input id="f-MAX_BOX_QTY" type="number" placeholder="0" min="0">
+      <select id="f-MAX_TON">
+        <option value="">선택 (최대 진입 차량톤수)</option>
+        ${carclassOpts}
+      </select>
     </div>
 
     <div class="form-group">
@@ -3502,9 +3689,12 @@ function renderDeliveryList(data) {
     {id:'dlv-c2', label:'출하지점',   sk:'WAREKY',    w: _dlvColW['dlv-c2']|| 90},
     {id:'dlv-c3', label:'제품군',     sk:'ITEM_GROUP',w: _dlvColW['dlv-c3']|| 80},
     {id:'dlv-c4', label:'주소',       sk:'ADDR01',    w: _dlvColW['dlv-c4']||220},
-    {id:'dlv-c5', label:'권역',       sk:'AREA_CD',   w: _dlvColW['dlv-c5']|| 80},
-    {id:'dlv-c6', label:'TMS등록',    sk:'',          w: _dlvColW['dlv-c6']|| 72},
-    {id:'dlv-c7', label:'',           sk:'',          w: _dlvColW['dlv-c7']|| 56},
+    {id:'dlv-c5', label:'권역',       sk:'AREA_CD',     w: _dlvColW['dlv-c5']|| 80},
+    {id:'dlv-c8', label:'납기시간',   sk:'DEADLINE_TIME', w: _dlvColW['dlv-c8']|| 72},
+    {id:'dlv-c9', label:'지게차',     sk:'FORKLIFT_YN', w: _dlvColW['dlv-c9']|| 56},
+    {id:'dlv-ca', label:'최대톤수',   sk:'MAX_TON',     w: _dlvColW['dlv-ca']|| 68},
+    {id:'dlv-c6', label:'TMS등록',    sk:'',            w: _dlvColW['dlv-c6']|| 72},
+    {id:'dlv-c7', label:'',           sk:'',            w: _dlvColW['dlv-c7']|| 56},
   ];
   // colOrder 순서로 정렬 (드래그 후 순서 유지)
   const dlvColMap = Object.fromEntries(_dlvColDefs.map(c => [c.id, c]));
@@ -3546,6 +3736,9 @@ function renderDeliveryList(data) {
       'dlv-c3': `<td style="${dw('dlv-c3',80)}">${skuLabel?`<span style="font-size:10px;background:var(--surface2);padding:1px 6px;border-radius:3px">${skuLabel}</span>`:'-'}</td>`,
       'dlv-c4': `<td style="${dw('dlv-c4',220)}color:var(--text3)" title="${(row.ADDR01||'')+' '+(row.ADDR02||'')}">${(row.ADDR01||'')+(row.ADDR02?' '+row.ADDR02:'')||'-'}</td>`,
       'dlv-c5': `<td style="${dw('dlv-c5',80)}">${row.AREA_CD||'-'}</td>`,
+      'dlv-c8': `<td style="${dw('dlv-c8',72)}text-align:center;font-family:monospace;font-weight:600;color:${row.DEADLINE_TIME?'var(--warning)':'var(--text3)'}">${row.DEADLINE_TIME||'-'}</td>`,
+      'dlv-c9': `<td style="${dw('dlv-c9',56)}text-align:center">${row.FORKLIFT_YN==='Y'?'<span style="color:var(--success);font-weight:700">Y</span>':row.FORKLIFT_YN==='N'?'<span style="color:var(--text3)">N</span>':'-'}</td>`,
+      'dlv-ca': (() => { const carclassMap = Object.fromEntries((dlvState.codes['TMS_CARCLASS']||[]).map(o=>[o.value,o.label])); const lbl = row.MAX_TON ? (carclassMap[row.MAX_TON]||row.MAX_TON) : '-'; return `<td style="${dw('dlv-ca',68)}text-align:center;font-weight:600;color:${row.MAX_TON?'var(--primary)':'var(--text3)'}">${lbl}</td>`; })(),
       'dlv-c6': `<td style="${dw('dlv-c6',72)}text-align:center">${hasDtl?'<span class="badge-reg">등록</span>':'<span class="badge-none">미등록</span>'}</td>`,
       'dlv-c7': `<td style="${dw('dlv-c7',56)}text-align:center;padding:3px"><button class="row-del-btn" title="삭제" onclick="event.stopPropagation();dlvDeleteRow('${row.PTNRKY}','${row.PTNRTY||'CT'}','${row.OWNRKY||'KN'}')">🗑</button></td>`,
     };
@@ -3666,6 +3859,7 @@ function fillDeliveryForm(data) {
   setVal('f-WAREKY',       d.WAREKY);
   setVal('f-AREA_CD',      d.AREA_CD);
   setVal('f-MAX_BOX_QTY',  d.MAX_BOX_QTY);
+  setSel('f-MAX_TON',       d.MAX_TON || '');
   setVal('f-SINGLE_HEIGHT',d.SINGLE_HEIGHT);
   setVal('f-MIN_QTSIWH',   d.MIN_QTSIWH);
   setVal('f-LATITUDE',     d.LATITUDE);
@@ -3683,6 +3877,7 @@ function fillDeliveryForm(data) {
   setSel('f-ROUTE_CD',       d.ROUTE_CD);
   setSel('f-ITEM_GROUP',     d.ITEM_GROUP);
   setSel('f-UNLOAD_TIME',    d.UNLOAD_TIME != null ? String(d.UNLOAD_TIME) : '');
+  setVal('f-DEADLINE_TIME', d.DEADLINE_TIME || '');
   // AUTO_PLT: DB값이 REAL일 수도 있고 '01'~'24' 문자열일 수도 있음 → TMS_AUTOPLT value(01~24) 형식으로 정규화
   (function(){
     const v = d.AUTO_PLT;
@@ -3715,7 +3910,7 @@ function dlvResetForm() {
   if (titleEl) titleEl.textContent = '📝 납품처 등록';
 
   ['f-PTNRKY','f-NAME01','f-NAME02','f-ADDR01','f-ADDR02','f-TELN01','f-FAXTL1',
-   'f-EMAIL1','f-WAREKY','f-AREA_CD','f-MAX_BOX_QTY','f-SINGLE_HEIGHT',
+   'f-EMAIL1','f-WAREKY','f-AREA_CD','f-MAX_BOX_QTY','f-SINGLE_HEIGHT','f-MAX_TON',
    'f-MIN_QTSIWH','f-LATITUDE','f-LONGITUDE'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
@@ -3723,7 +3918,7 @@ function dlvResetForm() {
   const elPtnrty = document.getElementById('f-PTNRTY');
   if (elPtnrty) elPtnrty.value = 'CT';
   ['f-ROUTE_CD','f-ITEM_GROUP','f-UNLOAD_TIME','f-AUTO_PLT',
-   'f-MAX_HEIGHT','f-INB_TIME_FROM1','f-INB_TIME_TO1'].forEach(id => {
+   'f-MAX_HEIGHT','f-INB_TIME_FROM1','f-INB_TIME_TO1','f-DEADLINE_TIME'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -3753,6 +3948,7 @@ async function dlvSave() {
     ROUTE_CD:       document.getElementById('f-ROUTE_CD')?.value || null,
     ITEM_GROUP:     document.getElementById('f-ITEM_GROUP')?.value || null,
     UNLOAD_TIME:    parseInt(document.getElementById('f-UNLOAD_TIME')?.value)||null,
+    DEADLINE_TIME:  (document.getElementById('f-DEADLINE_TIME')?.value || '').trim() || null,
     INB_TIME_FROM1: document.getElementById('f-INB_TIME_FROM1')?.value || null,
     INB_TIME_TO1:   document.getElementById('f-INB_TIME_TO1')?.value || null,
     AREA_CD:        document.getElementById('f-AREA_CD')?.value || null,
@@ -3761,6 +3957,7 @@ async function dlvSave() {
     HANDWORK_YN:    getYN('HANDWORK_YN'),
     AUTO_PLT:       document.getElementById('f-AUTO_PLT')?.value || null,
     MAX_BOX_QTY:    parseInt(document.getElementById('f-MAX_BOX_QTY')?.value)||null,
+    MAX_TON:        (document.getElementById('f-MAX_TON')?.value || '').trim() || null,
     AUTO_ALLOC_YN:  getYN('AUTO_ALLOC_YN'),
     SINGLE_ITEM_YN: getYN('SINGLE_ITEM_YN'),
     NY_TYPE:        getYN('NY_TYPE'),
@@ -3803,6 +4000,540 @@ async function dlvSave() {
   } catch(e) {
     showToast('오류: ' + e.message);
   }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   고정차량 관리 (TMS_CARCLASS + DS_VEHICLE)
+═══════════════════════════════════════════════════════════ */
+const crcState = {
+  ccRows:     [],  // CMCDV TMS_CARCLASS 공통코드 행 (16건)
+  vhcRows:    [],  // DS_VEHICLE 차량마스터 행 (독립 목록)
+  mergedRows: [],  // TMS_CARCLASS 기준 LEFT JOIN merged (16건 전체)
+  ccDirty:  {},   // {CMCDVL: {field:val,...}}  변경된 공통코드 셀
+  vhcDirty: {},   // {CMCDVL: {field:val,...}}  변경된 차량마스터 셀 (키=CMCDVL)
+  vhcNew:   [],   // 신규 추가된 DS_VEHICLE 행
+  _editing: null, // 현재 편집 중인 wrap DOM (중복 방지)
+};
+
+async function renderCarClass() {
+  const c = document.getElementById('content');
+  c.innerHTML = `<div class="crc-layout" id="crc-root">
+    <div class="crc-toolbar">
+      <span class="crc-title">📋 고정차량 관리</span>
+      <span class="crc-dirty-cnt" id="crc-dirty-cnt">변경 0건</span>
+      <button class="crc-btn success" onclick="crcSaveAll()" id="crc-save-btn" disabled>💾 전체 저장</button>
+      <button class="crc-btn" onclick="renderCarClass()">🔄 새로고침</button>
+    </div>
+    <div class="crc-body" id="crc-body">
+      <div style="padding:40px;text-align:center;color:var(--text3);font-size:13px;">⏳ 데이터 로드 중...</div>
+    </div>
+  </div>`;
+
+  // 상태 초기화
+  crcState.ccDirty  = {};
+  crcState.vhcDirty = {};
+  crcState.vhcNew   = [];
+
+  try {
+    const data = await fetch('/api/carclass').then(r => r.json());
+    crcState.ccRows     = data.carclasses || [];
+    crcState.vhcRows    = data.vehicles   || [];
+    crcState.mergedRows = data.merged     || [];
+    _crcRender();
+  } catch(e) {
+    document.getElementById('crc-body').innerHTML =
+      `<div style="padding:40px;text-align:center;color:var(--danger)">❌ 로드 실패: ${e.message}</div>`;
+  }
+}
+
+function _crcRender() {
+  const body = document.getElementById('crc-body');
+  if (!body) return;
+  body.innerHTML = `
+    ${_crcBuildCCSection()}
+    ${_crcBuildVhcSection()}
+  `;
+  _crcUpdateDirtyCnt();
+}
+
+/* ── 섹션1: TMS_CARCLASS 공통코드 ── */
+function _crcBuildCCSection() {
+  const rows = crcState.ccRows;
+  const rowsHtml = rows.map(r => {
+    const dirty  = crcState.ccDirty[r.CMCDVL] || {};
+    const usarg1 = dirty.USARG1 !== undefined ? dirty.USARG1 : (r.USARG1 || 'Y').trim();
+    const usarg2 = dirty.USARG2 !== undefined ? dirty.USARG2 : (r.USARG2 || '').trim();
+    const usarg3 = dirty.USARG3 !== undefined ? dirty.USARG3 : (r.USARG3 || '').trim();
+    const usarg4 = dirty.USARG4 !== undefined ? dirty.USARG4 : (r.USARG4 || 'N').trim();
+    const usarg5 = dirty.USARG5 !== undefined ? dirty.USARG5 : (r.USARG5 || '').trim();
+    const cdesc1 = dirty.CDESC1 !== undefined ? dirty.CDESC1 : (r.CDESC1 || '').trim();
+    const isDirty = Object.keys(dirty).length > 0;
+    return `<tr class="${isDirty ? 'crc-dirty' : ''}" data-cc="${_esc(r.CMCDVL)}">
+      <td style="text-align:center;font-weight:700;color:var(--text3);font-size:11px">${_esc(r.CMCDVL)}</td>
+      <td>${_crcCell('cc', r.CMCDVL, 'CDESC1', 'text', cdesc1)}</td>
+      <td>${_crcCell('cc', r.CMCDVL, 'USARG1', 'yn',   usarg1)}</td>
+      <td>${_crcCell('cc', r.CMCDVL, 'USARG2', 'num',  usarg2)}</td>
+      <td>${_crcCell('cc', r.CMCDVL, 'USARG3', 'num',  usarg3)}</td>
+      <td>${_crcCell('cc', r.CMCDVL, 'USARG4', 'yn',   usarg4)}</td>
+      <td>${_crcCell('cc', r.CMCDVL, 'USARG5', 'num',  usarg5)}</td>
+      <td class="crc-status-cell" style="text-align:center">
+        ${isDirty
+          ? `<span class="crc-st-badge modified">●수정</span>`
+          : `<span class="crc-st-badge normal">-</span>`}
+      </td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="crc-section">
+    <div class="crc-section-hdr">
+      <h3>🗂️ 차량 클래스 기준 정보 <span style="font-size:10px;font-weight:400;color:var(--text3)">(공통코드 TMS_CARCLASS)</span></h3>
+      <span class="hdr-badge">${rows.length}건</span>
+      <span style="font-size:10px;color:var(--text3);margin-left:8px">💡 셀을 클릭하면 바로 수정 가능합니다</span>
+    </div>
+    <div class="crc-scroll">
+      <table class="crc-tbl">
+        <thead>
+          <tr>
+            <th style="width:70px">코드키</th>
+            <th style="width:100px">차량톤수명</th>
+            <th style="width:80px">사용유무</th>
+            <th style="width:80px">파렛트수</th>
+            <th style="width:110px">적재중량(KG)</th>
+            <th style="width:80px">장축여부</th>
+            <th style="width:90px">고정차량 대수</th>
+            <th style="width:60px">상태</th>
+          </tr>
+        </thead>
+        <tbody id="crc-cc-tbody">
+          ${rowsHtml}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+/* ── 섹션2: DS_VEHICLE 차량마스터 (TMS_CARCLASS 전체 톤수 기준 표시) ── */
+function _crcBuildVhcSection() {
+  // merged = TMS_CARCLASS 16건 기준 LEFT JOIN (HAS_VHC=true/false)
+  const merged  = crcState.mergedRows;
+  // 신규 추가 행은 맨 뒤에 붙임
+  const newRows = crcState.vhcNew;
+  const totalCnt = merged.length + newRows.length;
+
+  // merged 기반 행 렌더
+  const mergedHtml = merged.map(r => {
+    // CMCDVL을 키로 사용 (공통코드 고유키)
+    const cmcdvl  = r.CMCDVL;
+    const cdesc1  = r.CDESC1 || '';
+    const hasVhc  = r.HAS_VHC;
+    const dirty   = crcState.vhcDirty[cmcdvl] || {};
+    const isDirty = Object.keys(dirty).length > 0;
+
+    const len  = dirty.LENGTH_M !== undefined ? dirty.LENGTH_M : (r.LENGTH_M ?? '');
+    const wid  = dirty.WIDTH_M  !== undefined ? dirty.WIDTH_M  : (r.WIDTH_M  ?? '');
+    const hei  = dirty.HEIGHT_M !== undefined ? dirty.HEIGHT_M : (r.HEIGHT_M ?? '');
+    const lton = dirty.LOAD_TON !== undefined ? dirty.LOAD_TON : (r.LOAD_TON ?? '');
+    const seq  = dirty.SORT_SEQ !== undefined ? dirty.SORT_SEQ : (r.SORT_SEQ ?? '');
+
+    const trClass = isDirty ? 'crc-dirty' : (!hasVhc ? 'crc-no-vhc' : '');
+    const upddat  = r.UPDDAT ? r.UPDDAT.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3') : '';
+
+    return `<tr class="${trClass}" data-vhc="${_esc(cmcdvl)}">
+      <td style="text-align:center">
+        <span style="font-size:10px;font-weight:700;color:var(--text3)">${_esc(cmcdvl)}</span>
+      </td>
+      <td style="font-weight:700;color:var(--text2);text-align:center">${_esc(cdesc1)}</td>
+      <td>${_crcCell('vhc', cmcdvl, 'LENGTH_M', 'text', len)}</td>
+      <td>${_crcCell('vhc', cmcdvl, 'WIDTH_M',  'text', wid)}</td>
+      <td>${_crcCell('vhc', cmcdvl, 'HEIGHT_M', 'text', hei)}</td>
+      <td>${_crcCell('vhc', cmcdvl, 'LOAD_TON', 'text', lton)}</td>
+      <td>${_crcCell('vhc', cmcdvl, 'SORT_SEQ', 'num',  seq)}</td>
+      <td style="text-align:center">
+        <span style="font-size:10px;color:var(--text3)">${upddat || (hasVhc ? '-' : '<span class="crc-no-vhc-badge">미등록</span>')}</span>
+      </td>
+      <td class="crc-status-cell" style="text-align:center">
+        ${isDirty
+          ? `<span class="crc-st-badge modified">●수정</span>`
+          : hasVhc
+            ? `<span class="crc-st-badge normal">-</span>`
+            : `<span class="crc-no-vhc-badge">-</span>`}
+      </td>
+      <td></td>
+    </tr>`;
+  }).join('');
+
+  // 신규 추가 행 렌더 (수동 추가분)
+  const newHtml = newRows.map((r, idx) => {
+    const dirty = crcState.vhcDirty[r.CARTYPE] || {};
+    const len   = dirty.LENGTH_M !== undefined ? dirty.LENGTH_M : '';
+    const wid   = dirty.WIDTH_M  !== undefined ? dirty.WIDTH_M  : '';
+    const hei   = dirty.HEIGHT_M !== undefined ? dirty.HEIGHT_M : '';
+    const lton  = dirty.LOAD_TON !== undefined ? dirty.LOAD_TON : '';
+    const seq   = dirty.SORT_SEQ !== undefined ? dirty.SORT_SEQ : (merged.length + idx + 1);
+    return `<tr class="crc-new" data-vhc-new="${_esc(r.CARTYPE)}">
+      <td colspan="2">
+        <input class="crc-cell-edit" type="text" placeholder="차량유형(CARTYPE) 입력"
+          style="display:block;width:100%;box-sizing:border-box"
+          value="${_esc(r.CARTYPE)}"
+          onblur="crcCartypeBlur(this,'${_esc(r.CARTYPE)}')"
+          onkeydown="if(event.key==='Enter')this.blur()">
+      </td>
+      <td>${_crcCell('vhc-new', r.CARTYPE, 'LENGTH_M', 'text', len)}</td>
+      <td>${_crcCell('vhc-new', r.CARTYPE, 'WIDTH_M',  'text', wid)}</td>
+      <td>${_crcCell('vhc-new', r.CARTYPE, 'HEIGHT_M', 'text', hei)}</td>
+      <td>${_crcCell('vhc-new', r.CARTYPE, 'LOAD_TON', 'text', lton)}</td>
+      <td>${_crcCell('vhc-new', r.CARTYPE, 'SORT_SEQ', 'num',  seq)}</td>
+      <td style="text-align:center"><span style="font-size:10px;color:#22c55e">신규</span></td>
+      <td class="crc-status-cell" style="text-align:center">
+        <span class="crc-st-badge new">●신규</span>
+      </td>
+      <td style="text-align:center">
+        <button class="crc-btn danger" style="padding:2px 8px;font-size:11px"
+          onclick="crcDeleteNewVhc('${_esc(r.CARTYPE)}')">삭제</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const vhcCnt = merged.filter(r => r.HAS_VHC).length;
+
+  return `<div class="crc-section">
+    <div class="crc-section-hdr">
+      <h3>🚛 차량 마스터 제원 정보 <span style="font-size:10px;font-weight:400;color:var(--text3)">(DS_VEHICLE ← TMS_CARCLASS 기준)</span></h3>
+      <span class="hdr-badge">${totalCnt}건 (제원등록: ${vhcCnt}건)</span>
+      <button class="crc-btn" style="padding:3px 10px;font-size:11px" onclick="crcAddVhcRow()">+ 차량 추가</button>
+      <span style="font-size:10px;color:var(--text3);margin-left:4px">💡 셀을 클릭하면 바로 수정 가능합니다</span>
+    </div>
+    <div class="crc-scroll">
+      <table class="crc-tbl">
+        <thead>
+          <tr>
+            <th style="width:65px">코드키</th>
+            <th style="width:85px">차량톤수명</th>
+            <th style="width:75px">길이(m)</th>
+            <th style="width:100px">너비(m)</th>
+            <th style="width:75px">높이(m)</th>
+            <th style="width:90px">적재중량(ton)</th>
+            <th style="width:60px">정렬순서</th>
+            <th style="width:90px">수정일</th>
+            <th style="width:60px">상태</th>
+            <th style="width:50px">삭제</th>
+          </tr>
+        </thead>
+        <tbody id="crc-vhc-tbody">
+          ${mergedHtml}
+          ${newHtml}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+/* ── 셀 빌더 공통 팩토리 ── */
+function _esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// type: 'text' | 'num' | 'yn'
+function _crcCell(src, key, field, type, val) {
+  const safeKey = _esc(key);
+  let viewHtml, editHtml;
+
+  if (type === 'yn') {
+    const isY = String(val||'Y').trim().toUpperCase() === 'Y';
+    viewHtml = `<span class="${isY ? 'crc-badge-y' : 'crc-badge-n'}">${isY ? 'Y' : 'N'}</span>`;
+    editHtml = `<select class="crc-cell-sel"
+        data-src="${src}" data-key="${safeKey}" data-field="${field}"
+        onchange="_crcOnChange(this)"
+        onblur="_crcOnBlur(this)">
+        <option value="Y"${isY?' selected':''}>Y (사용)</option>
+        <option value="N"${!isY?' selected':''}>N (미사용)</option>
+      </select>`;
+  } else if (type === 'num') {
+    const disp = (val !== '' && val !== null && val !== undefined) ? String(val) : '-';
+    viewHtml = `<span style="display:block;text-align:right;padding-right:4px">${_esc(disp)}</span>`;
+    editHtml = `<input class="crc-cell-edit" type="number"
+        style="text-align:right"
+        data-src="${src}" data-key="${safeKey}" data-field="${field}"
+        value="${_esc(String(val??''))}"
+        onblur="_crcOnBlur(this)"
+        onkeydown="_crcOnKey(event,this)">`;
+  } else { // text
+    const disp = (val !== '' && val !== null && val !== undefined) ? String(val) : '-';
+    viewHtml = `<span>${_esc(disp)}</span>`;
+    editHtml = `<input class="crc-cell-edit" type="text"
+        data-src="${src}" data-key="${safeKey}" data-field="${field}"
+        value="${_esc(String(val??''))}"
+        onblur="_crcOnBlur(this)"
+        onkeydown="_crcOnKey(event,this)">`;
+  }
+
+  return `<div class="crc-cell-wrap" data-type="${type}"
+      onclick="_crcCellClick(this)">
+    <span class="crc-cell-view">${viewHtml}</span>
+    ${editHtml}
+  </div>`;
+}
+
+function _crcVhcCartype(cartype, isNew) {
+  if (isNew) {
+    return `<input class="crc-cell-edit" type="text" placeholder="차량유형 입력"
+      style="display:block;width:100%;box-sizing:border-box"
+      value="${_esc(cartype)}"
+      onblur="crcCartypeBlur(this,'${_esc(cartype)}')"
+      onkeydown="if(event.key==='Enter')this.blur()">`;
+  }
+  return `<span style="font-weight:700;color:var(--text2)">${_esc(cartype)}</span>`;
+}
+
+/* ── 셀 이벤트 핸들러 (단일화) ── */
+function _crcCellClick(wrap) {
+  if (wrap.classList.contains('editing')) return;
+  // 열려있는 다른 편집 먼저 닫기
+  document.querySelectorAll('.crc-cell-wrap.editing').forEach(w => {
+    if (w !== wrap) _crcCloseEdit(w, true);
+  });
+  wrap.classList.add('editing');
+  const el = wrap.querySelector('.crc-cell-edit, .crc-cell-sel');
+  if (!el) return;
+  el.focus();
+  if (typeof el.select === 'function' && el.tagName === 'INPUT') el.select();
+}
+
+function _crcOnBlur(el) {
+  // mousedown으로 다른 셀 클릭 시 blur가 먼저 오므로 잠깐 delay
+  setTimeout(() => {
+    const wrap = el.closest('.crc-cell-wrap');
+    if (!wrap || !wrap.classList.contains('editing')) return;
+    const src   = el.dataset.src;
+    const key   = el.dataset.key;
+    const field = el.dataset.field;
+    const val   = el.value;
+    _crcCommitVal(src, key, field, val);
+    _crcRefreshView(wrap, el.dataset.type || 'text', val);
+    wrap.classList.remove('editing');
+  }, 80);
+}
+
+function _crcOnChange(sel) {
+  // select: change 즉시 반영 + blur 트리거
+  const wrap  = sel.closest('.crc-cell-wrap');
+  const src   = sel.dataset.src;
+  const key   = sel.dataset.key;
+  const field = sel.dataset.field;
+  const val   = sel.value;
+  _crcCommitVal(src, key, field, val);
+  _crcRefreshView(wrap, 'yn', val);
+  // 약간 뒤에 닫기 (option 선택 UX)
+  setTimeout(() => { if (wrap) wrap.classList.remove('editing'); }, 50);
+}
+
+function _crcOnKey(e, inp) {
+  if (e.key === 'Enter')  { e.preventDefault(); inp.blur(); }
+  if (e.key === 'Escape') {
+    const wrap = inp.closest('.crc-cell-wrap');
+    if (wrap) wrap.classList.remove('editing');
+    inp.value = inp.defaultValue; // 원래 값 복원
+  }
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    inp.blur();
+    // 같은 tr에서 다음 편집 가능 셀로 이동
+    const allWraps = [...document.querySelectorAll('.crc-cell-wrap')];
+    const idx = allWraps.indexOf(inp.closest('.crc-cell-wrap'));
+    const next = allWraps[idx + (e.shiftKey ? -1 : 1)];
+    if (next) _crcCellClick(next);
+  }
+}
+
+function _crcCloseEdit(wrap, commit=false) {
+  if (!wrap || !wrap.classList.contains('editing')) return;
+  const el = wrap.querySelector('.crc-cell-edit, .crc-cell-sel');
+  if (commit && el) {
+    const src   = el.dataset.src;
+    const key   = el.dataset.key;
+    const field = el.dataset.field;
+    if (src && key && field) {
+      _crcCommitVal(src, key, field, el.value);
+      _crcRefreshView(wrap, wrap.dataset.type || 'text', el.value);
+    }
+  }
+  wrap.classList.remove('editing');
+}
+
+function _crcCommitVal(src, key, field, val) {
+  const trimVal = String(val ?? '').trim();
+  if (src === 'cc') {
+    if (!crcState.ccDirty[key]) crcState.ccDirty[key] = {};
+    crcState.ccDirty[key][field] = trimVal;
+  } else {
+    // src === 'vhc' (merged 행, 키=CMCDVL) or 'vhc-new' (신규행, 키=CARTYPE)
+    if (!crcState.vhcDirty[key]) crcState.vhcDirty[key] = {};
+    crcState.vhcDirty[key][field] = trimVal;
+  }
+  _crcUpdateDirtyCnt();
+  // 행 dirty 상태 DOM 갱신
+  let tr = null;
+  if (src === 'cc') {
+    tr = document.querySelector(`tr[data-cc="${CSS.escape(key)}"]`);
+  } else if (src === 'vhc') {
+    tr = document.querySelector(`tr[data-vhc="${CSS.escape(key)}"]`);
+  } else if (src === 'vhc-new') {
+    tr = document.querySelector(`tr[data-vhc-new="${CSS.escape(key)}"]`);
+  }
+  if (!tr) return;
+  if (!tr.classList.contains('crc-new')) tr.classList.add('crc-dirty');
+  // 상태 td: .crc-status-cell 클래스로 정확히 찾기
+  const statusTd = tr.querySelector('.crc-status-cell');
+  if (statusTd) statusTd.innerHTML = `<span class="crc-st-badge modified">●수정</span>`;
+}
+
+function _crcRefreshView(wrap, type, val) {
+  if (!wrap) return;
+  const view = wrap.querySelector('.crc-cell-view');
+  if (!view) return;
+  if (type === 'yn') {
+    const isY = String(val||'').trim().toUpperCase() === 'Y';
+    view.innerHTML = `<span class="${isY ? 'crc-badge-y' : 'crc-badge-n'}">${isY ? 'Y' : 'N'}</span>`;
+  } else {
+    const disp = val !== '' ? val : '-';
+    view.innerHTML = `<span>${_esc(disp)}</span>`;
+  }
+}
+
+function _crcUpdateDirtyCnt() {
+  const cc    = Object.keys(crcState.ccDirty).length;
+  const vhc   = Object.keys(crcState.vhcDirty).length + crcState.vhcNew.length;
+  const total = cc + vhc;
+  const el = document.getElementById('crc-dirty-cnt');
+  if (!el) return;
+  el.textContent = `변경 ${total}건 (클래스:${cc} / 차량:${vhc})`;
+  el.classList.toggle('visible', total > 0);
+  const btn = document.getElementById('crc-save-btn');
+  if (btn) btn.disabled = total === 0;
+}
+
+/* ── 차량 추가 ── */
+function crcAddVhcRow() {
+  const newRow = { CARTYPE: '', LENGTH_M: null, WIDTH_M: null, HEIGHT_M: null, LOAD_TON: null, SORT_SEQ: crcState.vhcRows.length + crcState.vhcNew.length + 1, UPDDAT: null };
+  crcState.vhcNew.push(newRow);
+  _crcRender();
+  // 새 행 스크롤 및 포커스
+  setTimeout(() => {
+    const rows = document.querySelectorAll('#crc-vhc-tbody tr.crc-new');
+    const last = rows[rows.length - 1];
+    if (last) {
+      last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      const inp = last.querySelector('input');
+      if (inp) inp.focus();
+    }
+  }, 80);
+}
+
+function crcCartypeBlur(inp, oldKey) {
+  const newVal = inp.value.trim();
+  // vhcNew에서 해당 행 찾아 CARTYPE 업데이트
+  const row = crcState.vhcNew.find(r => r.CARTYPE === oldKey);
+  if (row) {
+    row.CARTYPE = newVal;
+    if (newVal && !crcState.vhcDirty[newVal]) crcState.vhcDirty[newVal] = {};
+  }
+  _crcUpdateDirtyCnt();
+}
+
+/* ── 신규 추가 행 삭제 ── */
+function crcDeleteNewVhc(cartype) {
+  if (!confirm(`신규 추가 행 "${cartype || '(미입력)'}"을 삭제하시겠습니까?`)) return;
+  crcState.vhcNew = crcState.vhcNew.filter(r => r.CARTYPE !== cartype);
+  delete crcState.vhcDirty[cartype];
+  _crcRender();
+}
+
+/* ── 전체 저장 ── */
+async function crcSaveAll() {
+  const btn = document.getElementById('crc-save-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 저장 중...'; }
+
+  const promises = [];
+  const errors   = [];
+
+  // 1) 공통코드(TMS_CARCLASS) 변경 저장
+  for (const [cmcdvl, fields] of Object.entries(crcState.ccDirty)) {
+    promises.push(
+      fetch('/api/carclass/save', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ table: 'carclass', CMCDVL: cmcdvl, ...fields })
+      }).then(r => r.json()).then(d => {
+        if (!d.ok) errors.push(`공통코드 ${cmcdvl}: ${d.error}`);
+        else {
+          // 로컬 ccRows 상태도 업데이트
+          const row = crcState.ccRows.find(r => r.CMCDVL === cmcdvl);
+          if (row) Object.assign(row, fields);
+          delete crcState.ccDirty[cmcdvl];
+        }
+      }).catch(e => errors.push(`공통코드 ${cmcdvl}: ${e.message}`))
+    );
+  }
+
+  // 2) 기존 DS_VEHICLE 변경 저장
+  //    vhcDirty 키 = CMCDVL (merged 행 기준)
+  //    실제 DS_VEHICLE.CARTYPE = 해당 merged 행의 CDESC1 (또는 신규행은 CARTYPE 직접)
+  for (const [cmcdvl, fields] of Object.entries(crcState.vhcDirty)) {
+    // 신규 추가분과 겹치는 경우 skip (vhcNew INSERT에서 처리)
+    if (crcState.vhcNew.find(r => r.CARTYPE === cmcdvl)) continue;
+
+    // merged 행에서 실제 CARTYPE(=CDESC1) 찾기
+    const mrow = crcState.mergedRows.find(r => r.CMCDVL === cmcdvl);
+    const cartype = mrow ? (mrow.CDESC1 || '').trim() : cmcdvl;
+
+    promises.push(
+      fetch('/api/carclass/save', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ table: 'vehicle', CARTYPE: cartype, ...fields })
+      }).then(r => r.json()).then(d => {
+        if (!d.ok) errors.push(`DS_VEHICLE ${cartype}: ${d.error}`);
+        else {
+          // 로컬 mergedRows 상태 업데이트
+          if (mrow) { Object.assign(mrow, fields); mrow.HAS_VHC = true; }
+          // vhcRows도 업데이트
+          const vrow = crcState.vhcRows.find(r => r.CARTYPE === cartype);
+          if (vrow) Object.assign(vrow, fields);
+          delete crcState.vhcDirty[cmcdvl];
+        }
+      }).catch(e => errors.push(`DS_VEHICLE ${cartype}: ${e.message}`))
+    );
+  }
+
+  // 3) 신규 DS_VEHICLE INSERT (수동 추가 행)
+  for (const row of crcState.vhcNew) {
+    if (!row.CARTYPE) { errors.push('신규 차량: CARTYPE(차량유형)이 비어있습니다'); continue; }
+    const extra = crcState.vhcDirty[row.CARTYPE] || {};
+    promises.push(
+      fetch('/api/carclass/save', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ table: 'vehicle', CARTYPE: row.CARTYPE, ...extra })
+      }).then(r => r.json()).then(d => {
+        if (!d.ok) errors.push(`신규 ${row.CARTYPE}: ${d.error}`);
+        else {
+          crcState.vhcRows.push({ ...row, ...extra });
+          delete crcState.vhcDirty[row.CARTYPE];
+        }
+      }).catch(e => errors.push(`신규 ${row.CARTYPE}: ${e.message}`))
+    );
+  }
+
+  await Promise.all(promises);
+
+  if (errors.length === 0) {
+    crcState.vhcNew = [];
+    showToast('✅ 모든 변경 사항이 저장되었습니다');
+  } else {
+    showToast('⚠️ 일부 저장 실패:\n' + errors.join('\n'), 'warn');
+  }
+
+  // 재렌더 후 버튼 상태 복구
+  _crcRender();
+  if (btn) { btn.textContent = '💾 전체 저장'; }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -5093,6 +5824,11 @@ function _dsBuildInchTable(tableId, title, cars, rows) {
 function _dsBuildVehicleTable(rows) {
   const tbodyRows = rows.map(r => {
     const ccls = DS_CAR_COLOR[r.CARTYPE] || 'car-11t';
+    const palH  = r.PALLET_HEIGHT_M ?? '';
+    const carH  = parseFloat(r.HEIGHT_M  || 0);
+    const palHv = parseFloat(palH || 0);
+    const effH  = palHv > 0 ? (carH - palHv).toFixed(2) : '';
+    const effTip = effH !== '' ? ` title="가용높이: ${effH}m (차량${carH}m - 파렛트${palHv}m)"` : '';
     return `<tr>
       <td class="ds-cartype">
         <span style="display:inline-block;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700;" class="${ccls}">🚛 ${r.CARTYPE}</span>
@@ -5103,6 +5839,10 @@ function _dsBuildVehicleTable(rows) {
         data-table="vehicle" data-car="${r.CARTYPE}" data-col="WIDTH_M" value="${r.WIDTH_M ?? ''}"></td>
       <td><input class="ds-input wide" type="number" step="0.1" min="0"
         data-table="vehicle" data-car="${r.CARTYPE}" data-col="HEIGHT_M" value="${r.HEIGHT_M ?? ''}"></td>
+      <td><input class="ds-input wide" type="number" step="0.01" min="0"
+        data-table="vehicle" data-car="${r.CARTYPE}" data-col="PALLET_HEIGHT_M" value="${palH}"
+        style="background:var(--bg3);border-color:var(--warning);"${effTip}
+        placeholder="0.00"></td>
       <td><input class="ds-input wide" type="number" step="0.1" min="0"
         data-table="vehicle" data-car="${r.CARTYPE}" data-col="LOAD_TON" value="${r.LOAD_TON ?? ''}"></td>
     </tr>`;
@@ -5111,16 +5851,17 @@ function _dsBuildVehicleTable(rows) {
   return `<div class="ds-section">
     <div class="ds-section-hdr">
       <h3>🚚 차량 제원 및 상차량 기준 <span class="ds-badge" style="background:var(--success)">판지 기준</span></h3>
-      <div style="font-size:10px;color:var(--text3)">판지제품 적재 시 차량 제원 및 최대 상차량 기준</div>
+      <div style="font-size:10px;color:var(--text3)">판지제품 적재 시 차량 제원 및 최대 상차량 기준 | 파렛트 높이 입력 시 자동배차 가용높이(차량높이 - 파렛트높이)로 검사됩니다</div>
     </div>
-    <div style="padding:12px 16px;overflow-y:auto;max-height:295px">
-      <table class="ds-table">
+    <div style="padding:12px 16px;overflow-y:auto;overflow-x:auto;max-height:295px">
+      <table class="ds-table" style="min-width:600px">
         <thead>
           <tr>
             <th class="ds-cartype" style="position:sticky;top:0;z-index:2">차량 톤수</th>
             <th style="position:sticky;top:0;z-index:2">길이 (m)</th>
             <th style="position:sticky;top:0;z-index:2">너비 (m)<br><small style="font-weight:400;color:var(--text3)">범위 입력 가능</small></th>
             <th style="position:sticky;top:0;z-index:2">높이 (m)</th>
+            <th style="position:sticky;top:0;z-index:2;background:var(--warning);color:#1a1a1a;">파렛트 높이 (m)<br><small style="font-weight:400">차량높이에서 차감</small></th>
             <th style="position:sticky;top:0;z-index:2">상차량 (ton)<br><small style="font-weight:400;color:var(--success)">★ 배차 기준</small></th>
           </tr>
         </thead>
@@ -5351,6 +6092,11 @@ function psdShpmtyToggle() {
     panel.classList.remove('open');
     btn.classList.remove('open');
   } else {
+    // position:fixed 좌표를 버튼 위치 기준으로 계산
+    const rect = btn.getBoundingClientRect();
+    panel.style.top   = (rect.bottom + 2) + 'px';
+    panel.style.left  = rect.left + 'px';
+    panel.style.width = rect.width + 'px';
     panel.classList.add('open');
     btn.classList.add('open');
   }
@@ -5390,11 +6136,12 @@ document.addEventListener('change', function(e) {
   }
 });
 
-// 패널 외부 클릭 시 닫기
+// 패널 외부 클릭 시 닫기 (패널은 fixed라 wrap 밖에 있으므로 둘 다 체크)
 document.addEventListener('mousedown', function(e) {
-  const wrap = document.getElementById('psd-shpmty-wrap');
-  if (wrap && !wrap.contains(e.target)) {
-    document.getElementById('psd-shpmty-panel')?.classList.remove('open');
+  const wrap  = document.getElementById('psd-shpmty-wrap');
+  const panel = document.getElementById('psd-shpmty-panel');
+  if (wrap && !wrap.contains(e.target) && panel && !panel.contains(e.target)) {
+    panel.classList.remove('open');
     document.getElementById('psd-shpmty-btn')?.classList.remove('open');
   }
 });
@@ -5466,10 +6213,10 @@ function psdRestoreWidth() {
 
 const PSD_CAR_COLOR = {
   '1.4톤':'car-1t4','3.5톤':'car-3t5','5톤':'car-5t',
-  '5톤축':'car-5tax','11톤':'car-11t','15톤':'car-15t','18톤':'car-18t'
+  '5톤축':'car-5tax','8톤':'car-8t','11톤':'car-11t','15톤':'car-15t','18톤':'car-18t'
 };
-const PSD_INCH12 = new Set(['a11','ab1','ag1','am1','111','s11','i11','k11']);
-const PSD_INCH3  = new Set(['ar1','ae1','aj1','al1','sr1','ir1']);
+const PSD_INCH12 = new Set(['a11','ab1','ag1','am1','111','s11','i11','k11','sm1']);
+const PSD_INCH3  = new Set(['ar1','ae1','aj1','al1','sr1','ir1','rw1']);
 
 /* 인치 판별 */
 function psdGetInch(skukey) {
@@ -5481,13 +6228,16 @@ function psdGetInch(skukey) {
 
 /* 배차 상태 */
 const psdState = {
-  searchRows: [],       // 우측 납품문서 목록
-  vehicles:   [],       // 좌측 차량(배차) 목록 [{dispatch_no,cartype,items,...}]
-  selectedVehicle: null,// 선택된 배차번호
+  searchRows: [],           // 우측 납품문서 목록
+  vehicles:   [],           // 좌측 차량(배차) 목록 [{dispatch_no,cartype,items,...}]
+  selectedVehicles: new Set(), // 선택된 배차번호 집합 (다중선택)
   selectedDocs: new Set(),  // 우측 체크된 SHPOKY|SHPOIT
-  dragItem: null,       // 드래그 중인 아이템
-  dragSource: null,     // 'right'|'vehicle-[no]'
-  splitTarget: null,    // 분할 대상 아이템
+  dragItem: null,           // 드래그 중인 아이템
+  dragSource: null,         // 'right'|'vehicle-[no]'
+  splitTarget: null,        // 분할 대상 아이템
+  /* ── 검색조건 보존 (화면 이동 후 복원용) ── */
+  savedForm: null,          // {dateFrom, dateTo, dptnky, shpoky, dispStat, shpmty:[]}
+  initialized: false,       // 최초 렌더 여부
 };
 
 /* 날짜 포맷 */
@@ -5514,10 +6264,51 @@ function psdCarCls(cartype) {
   return PSD_CAR_COLOR[cartype] || 'car-11t';
 }
 
+/* ── 검색조건 저장 (화면 이탈 전 폼 값 캡처) ──────── */
+function psdSaveForm() {
+  const shpmtyChks = [...document.querySelectorAll('.psd-shpmty-chk')].map(c => ({
+    value: c.value, checked: c.checked
+  }));
+  const allChk = document.getElementById('psd-shpmty-all');
+  psdState.savedForm = {
+    dateFrom:  document.getElementById('psd-date-from')?.value || '',
+    dateTo:    document.getElementById('psd-date-to')?.value   || '',
+    dptnky:    document.getElementById('psd-dptnky')?.value    || '',
+    shpoky:    document.getElementById('psd-shpoky')?.value    || '',
+    dispStat:  document.getElementById('psd-disp-stat')?.value || 'undispatched',
+    shpmtyAll: allChk?.checked ?? true,
+    shpmty:    shpmtyChks,
+  };
+}
+
+/* ── 검색조건 복원 (화면 복귀 시 폼 값 복원) ──────── */
+function psdRestoreForm(saved) {
+  if (!saved) return;
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  setVal('psd-date-from',  saved.dateFrom);
+  setVal('psd-date-to',    saved.dateTo);
+  setVal('psd-dptnky',     saved.dptnky);
+  setVal('psd-shpoky',     saved.shpoky);
+  setVal('psd-disp-stat',  saved.dispStat);
+  // 출하유형 체크박스 복원
+  if (Array.isArray(saved.shpmty)) {
+    saved.shpmty.forEach(item => {
+      const cb = document.querySelector(`.psd-shpmty-chk[value="${item.value}"]`);
+      if (cb) cb.checked = item.checked;
+    });
+  }
+  const allCb = document.getElementById('psd-shpmty-all');
+  if (allCb) allCb.checked = saved.shpmtyAll ?? true;
+  psdShpmtyUpdateLabel();
+}
+
 /* ── 메인 렌더 ───────────────────────────────────── */
 async function renderPsDispatch() {
   const c = document.getElementById('content');
   c.style.overflowY = 'hidden';
+
+  // ── 이미 초기화된 경우: _doShowPage에서 이미 복원 처리됨 → 종료 ──
+  if (psdState.initialized) return;
 
   // 기본 날짜 (오늘)
   const today = new Date();
@@ -5605,6 +6396,26 @@ async function renderPsDispatch() {
         <div class="psd-panel-hdr-title">🚛 선적(차량) 배차 목록</div>
         <div class="psd-panel-hdr-info" id="psd-left-info">배차 0건</div>
       </div>
+      <!-- 차량 목록 필터바 -->
+      <div class="psd-veh-filter">
+        <!-- 전체선택 체크박스 -->
+        <label class="psd-veh-all-chk-wrap" title="전체 선택 / 해제">
+          <input type="checkbox" id="psd-veh-all-chk" onclick="psdSelectAllVehicles(this.checked)">
+          <span>전체선택</span>
+        </label>
+        <div style="width:1px;height:16px;background:var(--border);flex-shrink:0"></div>
+        <label>상태</label>
+        <select id="psd-veh-stat" onchange="psdLoadVehicles()">
+          <option value="">전체</option>
+          <option value="DRAFT">가배차</option>
+          <option value="CONFIRMED">확정</option>
+        </select>
+        <label style="margin-left:2px">납품처</label>
+        <input type="text" id="psd-veh-dptnky" placeholder="코드/명" style="width:72px"
+               onkeydown="if(event.key==='Enter')psdLoadVehicles()">
+        <button class="psd-btn" style="padding:2px 8px;font-size:11px" onclick="psdLoadVehicles()">🔄</button>
+        <span class="psd-veh-filter-cnt" id="psd-veh-sel-info"></span>
+      </div>
       <div class="psd-panel-body" id="psd-vehicle-area">
         <div class="psd-empty">
           <div class="psd-empty-icon">🚛</div>
@@ -5661,7 +6472,9 @@ async function renderPsDispatch() {
               <col style="width:180px">     <!-- 품목명 -->
               <col style="width:72px">      <!-- 납품수량 -->
               <col style="width:40px">      <!-- 단위 -->
+              <col style="width:52px">      <!-- 유형 -->
               <col style="width:52px">      <!-- 인치 -->
+              <col style="width:52px">      <!-- 원지개수 -->
               <col style="width:76px">      <!-- 납품일 -->
               <col style="width:64px">      <!-- 출하유형 -->
               <col style="width:56px">      <!-- 배차 -->
@@ -5671,11 +6484,11 @@ async function renderPsDispatch() {
                 <th><input type="checkbox" id="psd-chk-all" onchange="psdToggleAll(this.checked)"></th>
                 <th>납품문서</th><th>IT</th><th>납품처코드</th><th>납품처명</th>
                 <th>품목코드</th><th>품목명</th><th>납품수량</th><th>단위</th>
-                <th>인치</th><th>납품일</th><th>출하유형</th><th>배차</th>
+                <th>유형</th><th>인치</th><th>원지<br>개수</th><th>납품일</th><th>출하유형</th><th>배차</th>
               </tr>
             </thead>
             <tbody id="psd-doc-tbody">
-              <tr><td colspan="13" class="psd-empty"><div class="psd-empty-icon" style="font-size:24px">📋</div><p>조회 버튼을 클릭하세요</p></td></tr>
+              <tr><td colspan="15" class="psd-empty"><div class="psd-empty-icon" style="font-size:24px">📋</div><p>조회 버튼을 클릭하세요</p></td></tr>
             </tbody>
           </table>
         </div>
@@ -5696,6 +6509,8 @@ async function renderPsDispatch() {
 
   // 저장된 패널 너비 복원
   psdRestoreWidth();
+  // 최초 초기화 완료 표시
+  psdState.initialized = true;
   // 기존 배차 목록 로드
   await psdLoadVehicles();
   // 자동 조회
@@ -5716,7 +6531,7 @@ async function psdSearch() {
   const tbody    = document.getElementById('psd-doc-tbody');
   if (!tbody) return;
 
-  tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;padding:20px"><div class="spinner" style="margin:0 auto 8px"></div>조회 중...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="15" style="text-align:center;padding:20px"><div class="spinner" style="margin:0 auto 8px"></div>조회 중...</td></tr>`;
 
   try {
     const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo, dptnky, shpoky, status });
@@ -5731,7 +6546,7 @@ async function psdSearch() {
     psdRenderDocTable();
     psdUpdateToolbar();
   } catch(e) {
-    tbody.innerHTML = `<tr><td colspan="13" style="color:var(--danger);text-align:center;padding:20px">❌ 조회 실패: ${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="15" style="color:var(--danger);text-align:center;padding:20px">❌ 조회 실패: ${e.message}</td></tr>`;
   }
 }
 
@@ -5766,7 +6581,7 @@ function psdRenderDocTable(filterText) {
   document.getElementById('psd-right-info').textContent = `총 ${rows.length}건`;
 
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="13" class="psd-empty"><div class="psd-empty-icon" style="font-size:24px">📋</div><p>조회 결과가 없습니다</p></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="15" class="psd-empty"><div class="psd-empty-icon" style="font-size:24px">📋</div><p>조회 결과가 없습니다</p></td></tr>`;
     return;
   }
 
@@ -5779,6 +6594,12 @@ function psdRenderDocTable(filterText) {
       ? `<span class="psd-disp-badge">배차</span>`
       : `<span class="psd-undisp-badge">미배차</span>`;
     const shpmtyNm = r.SHPMTY_NM || r.SHPMTY || '';
+    // 상품 유형 배지 (원지/판지/기타)
+    const skuTypeBadge = r.SKU_TYPE === 'roll'
+      ? `<span style="display:inline-block;padding:1px 5px;border-radius:6px;font-size:10px;font-weight:700;background:#2563eb;color:#fff">원지</span>`
+      : r.SKU_TYPE === 'board'
+      ? `<span style="display:inline-block;padding:1px 5px;border-radius:6px;font-size:10px;font-weight:700;background:#059669;color:#fff">판지</span>`
+      : `<span style="display:inline-block;padding:1px 5px;border-radius:6px;font-size:10px;font-weight:700;background:#6b7280;color:#fff">기타</span>`;
 
     return `<tr class="${r.DISPATCHED?'dispatched':''} ${sel?'selected-row':''}"
       id="psd-row-${key.replace(/\|/g,'_')}"
@@ -5798,8 +6619,12 @@ function psdRenderDocTable(filterText) {
       <td style="font-family:monospace;font-size:10px" title="${r.SKUKEY||''}">${r.SKUKEY||''}</td>
       <td class="col-nm" title="${r.DESC01||''}">${r.DESC01||''}</td>
       <td style="text-align:right;font-weight:600">${psdFmtNum(r.QTSHPO)}</td>
-      <td style="text-align:center">${r.UOMKEY||'KG'}</td>
+      <td style="text-align:center">${r.UOMKEY||''}</td>
+      <td style="text-align:center">${skuTypeBadge}</td>
       <td style="text-align:center">${inchBadge}</td>
+      <td style="text-align:center;font-weight:600;color:${r.SKU_TYPE==='roll'?'var(--primary)':'var(--text3)'}">
+        ${r.SKU_TYPE==='roll' ? Math.ceil(parseFloat(r.QTSHPO||0)/600) : '-'}
+      </td>
       <td style="text-align:center">${psdFmtDate(r.RQSHPD)}</td>
       <td style="text-align:center" title="${shpmtyNm}">${shpmtyNm}</td>
       <td style="text-align:center">${dispBadge}</td>
@@ -5874,27 +6699,40 @@ function psdUpdateSelCnt() {
 
 /* ── 툴바 버튼 활성화 제어 ───────────────────────── */
 function psdUpdateToolbar() {
-  const selCnt = psdState.selectedDocs.size;
-  const vehCnt = psdState.vehicles.length;
-  const selVeh = psdState.selectedVehicle;
+  const selCnt    = psdState.selectedDocs.size;
+  const selVehCnt = psdState.selectedVehicles.size;
 
   const btn = id => document.getElementById(id);
   if (btn('psd-btn-auto'))    btn('psd-btn-auto').disabled    = psdState.searchRows.filter(r=>!r.DISPATCHED).length === 0;
   if (btn('psd-btn-manual'))  btn('psd-btn-manual').disabled  = selCnt === 0;
   if (btn('psd-btn-split'))   btn('psd-btn-split').disabled   = selCnt === 0;
-  if (btn('psd-btn-confirm')) btn('psd-btn-confirm').disabled = !selVeh;
-  if (btn('psd-btn-del'))     btn('psd-btn-del').disabled     = !selVeh;
+  if (btn('psd-btn-confirm')) btn('psd-btn-confirm').disabled = selVehCnt === 0;
+  if (btn('psd-btn-del'))     btn('psd-btn-del').disabled     = selVehCnt === 0;
+
+  // 선택된 차량 수 표시
+  const selInfo = document.getElementById('psd-veh-sel-info');
+  if (selInfo) selInfo.textContent = selVehCnt > 0 ? `${selVehCnt}대 선택됨` : '';
 }
 
 /* ── 기존 배차 로드 ──────────────────────────────── */
 async function psdLoadVehicles() {
   const dateFrom = document.getElementById('psd-date-from')?.value || '';
   const dateTo   = document.getElementById('psd-date-to')?.value   || '';
+  const vehStat  = document.getElementById('psd-veh-stat')?.value  || '';
+  const vehDptnky= document.getElementById('psd-veh-dptnky')?.value.trim() || '';
   try {
-    const params = new URLSearchParams({date_from: dateFrom, date_to: dateTo});
-    const res  = await fetch(`/api/ps-dispatch/list?${params}`);
+    const p = new URLSearchParams();
+    if (dateFrom) p.set('date_from', dateFrom.replace(/-/g,''));
+    if (dateTo)   p.set('date_to',   dateTo.replace(/-/g,''));
+    if (vehStat)   p.set('status',  vehStat);
+    if (vehDptnky) p.set('dptnky',  vehDptnky);
+    const res  = await fetch(`/api/ps-dispatch/list?${p}`);
     const data = await res.json();
     if (!data.ok) return;
+    // 선택 초기화 (재조회 시)
+    psdState.selectedVehicles.clear();
+    const allChkEl = document.getElementById('psd-veh-all-chk');
+    if (allChkEl) { allChkEl.checked = false; allChkEl.indeterminate = false; }
     psdState.vehicles = (data.rows||[]).map(h => ({
       dispatch_no: h.DISPATCH_NO,
       rqshpd:      h.RQSHPD,
@@ -5904,9 +6742,11 @@ async function psdLoadVehicles() {
       status:      h.STATUS,
       total_kg:    h.TOTAL_KG,
       total_cnt:   h.TOTAL_CNT,
+      load_kg:     h.LOAD_KG,   // 적재가능중량 (LOAD_TON×1000)
       items:       h.items || [],
     }));
     psdRenderVehicleArea();
+    psdUpdateToolbar();
   } catch(e) { /* ignore */ }
 }
 
@@ -5959,7 +6799,7 @@ function psdRenderVehicleArea() {
 /* ── 차량 카드 HTML 빌드 ─────────────────────────── */
 function psdBuildVehicleCard(v) {
   const ccls     = psdCarCls(v.cartype);
-  const selected = psdState.selectedVehicle === v.dispatch_no;
+  const selected = psdState.selectedVehicles.has(v.dispatch_no);
   const statusBadge = v.status==='CONFIRMED'
     ? `<span class="psd-car-status confirmed">확정</span>`
     : `<span class="psd-car-status draft">가배차</span>`;
@@ -5975,27 +6815,69 @@ function psdBuildVehicleCard(v) {
       <span class="psd-car-item-shpo">${it.SHPOKY}</span>
       <span class="psd-car-item-desc" title="${it.DESC01||''}">${it.DESC01||it.SKUKEY||''}</span>
       ${psdInchBadge(it.SKUKEY)}
-      <span class="psd-car-item-qty">${psdFmtNum(it.QTSHPO)}</span>
-      <span class="psd-car-item-unit">${it.UOMKEY||'KG'}</span>
+      ${(it.UOMKEY||'').trim()==='R' && it.KG_WEIGHT
+        ? `<span class="psd-car-item-qty">${psdFmtNum(it.QTSHPO)}</span><span class="psd-car-item-unit">R</span><span style="font-size:10px;color:var(--text3);margin-left:2px">(${psdFmtNum(it.KG_WEIGHT)}KG)</span>`
+        : `<span class="psd-car-item-qty">${psdFmtNum(it.QTSHPO)}</span><span class="psd-car-item-unit">${it.UOMKEY||'KG'}</span>`
+      }
     </div>`).join('');
 
   const emptyHint = !(v.items&&v.items.length)
     ? `<div style="padding:12px;text-align:center;font-size:11px;color:var(--text3)">납품문서를 드래그하여 추가하세요</div>`
     : '';
 
+  // ── 적재 정보 계산 ──────────────────────────────────
+  const loadKg    = v.load_kg != null ? v.load_kg : null;   // 적재가능중량 (null=미등록)
+  const usedKg    = v.total_kg || 0;
+  const spareKg   = loadKg != null ? loadKg - usedKg : null; // 여유중량
+  const ratioVal  = loadKg > 0 ? Math.round(usedKg / loadKg * 100) : null;
+  // 색상 구간: ≥100% 초과(red), ≥90% 경고(orange), 정상(green)
+  const ratioCls  = ratioVal == null ? 'na' : ratioVal >= 100 ? 'over' : ratioVal >= 90 ? 'warn' : 'ok';
+  const barColor  = ratioCls === 'over' ? '#dc2626' : ratioCls === 'warn' ? '#d97706' : ratioCls === 'ok' ? '#059669' : '#94a3b8';
+  const barWidth  = ratioVal != null ? Math.min(ratioVal, 100) : 0;
+  const ratioText = ratioVal != null ? `${ratioVal}%` : '-';
+  const spareTxt  = spareKg != null ? (spareKg >= 0 ? `+${psdFmtNum(spareKg)}` : `${psdFmtNum(spareKg)}`) : '-';
+  const spareCls  = spareKg == null ? '' : spareKg < 0 ? 'over' : spareKg < loadKg * 0.1 ? 'warn' : 'ok';
+
+  const loadBarHtml = `
+    <div class="psd-car-load-bar">
+      <div class="psd-car-load-nums">
+        <span class="psd-car-load-item">
+          <span class="psd-car-load-label">적재가능</span>
+          <span class="psd-car-load-val">${loadKg != null ? psdFmtNum(loadKg) : '-'} KG</span>
+        </span>
+        <span style="color:var(--border)">│</span>
+        <span class="psd-car-load-item">
+          <span class="psd-car-load-label">현재적재</span>
+          <span class="psd-car-load-val ${ratioCls}">${psdFmtNum(usedKg)} KG</span>
+        </span>
+        <span style="color:var(--border)">│</span>
+        <span class="psd-car-load-item">
+          <span class="psd-car-load-label">여유</span>
+          <span class="psd-car-load-val ${spareCls}">${spareTxt} KG</span>
+        </span>
+        <span class="psd-car-load-ratio ${ratioCls}">${ratioText}</span>
+      </div>
+      <div class="psd-car-prog-wrap">
+        <div class="psd-car-prog-bar" style="width:${barWidth}%;background:${barColor}"></div>
+      </div>
+    </div>`;
+
   return `
   <div class="psd-car-card ${selected?'selected':''}" id="psd-veh-${v.dispatch_no}"
-       onclick="psdSelectVehicle('${v.dispatch_no}')"
        ondragover="psdVehicleCardDragOver(event,'${v.dispatch_no}')"
        ondragleave="psdVehicleCardDragLeave(event,'${v.dispatch_no}')"
        ondrop="psdDropToVehicle(event,'${v.dispatch_no}')">
-    <div class="psd-car-card-hdr">
+    <div class="psd-car-card-hdr" onclick="psdSelectVehicle('${v.dispatch_no}',event)">
+      <input type="checkbox" class="psd-car-chk" ${selected?'checked':''}
+             onclick="event.stopPropagation();psdToggleVehicle('${v.dispatch_no}',this.checked)">
       <span class="psd-car-badge ${ccls}">🚛 ${v.cartype||'미정'}</span>
       <span class="psd-car-no">${v.dispatch_no}</span>
-      <span class="psd-car-kg">${psdFmtNum(v.total_kg)} KG · ${v.total_cnt||0}건</span>
+      <span class="psd-car-kg">${usedKg > 0 ? psdFmtNum(usedKg)+' KG · ' : ''}${v.total_cnt||0}건</span>
       ${statusBadge}
       <span style="font-size:11px;color:var(--text3)">${psdFmtDate(v.rqshpd)}</span>
     </div>
+    ${loadBarHtml}
+    ${(v.dptnm||v.dptnky) ? `<div style="padding:3px 12px 4px;font-size:11px;color:var(--text2);background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:4px"><span style="color:var(--text3)">📍</span><span style="font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${v.dptnm||v.dptnky}</span></div>` : ''}
     <div class="psd-car-items" id="psd-veh-items-${v.dispatch_no}">
       ${itemsHtml}${emptyHint}
     </div>
@@ -6007,18 +6889,53 @@ function psdBindVehicleCard(dispatch_no) {
   // 이미 HTML에 인라인으로 처리됨
 }
 
-/* ── 차량 선택 ────────────────────────────────────── */
-function psdSelectVehicle(dispatch_no) {
-  if (psdState.selectedVehicle === dispatch_no) {
-    psdState.selectedVehicle = null;
+/* ── 차량 선택 (헤더 클릭 → 단독 선택 또는 토글) ── */
+function psdSelectVehicle(dispatch_no, event) {
+  // Ctrl/Cmd 누르면 다중 토글, 아니면 단독 선택(또는 해제)
+  if (event && (event.ctrlKey || event.metaKey || event.shiftKey)) {
+    psdToggleVehicle(dispatch_no, !psdState.selectedVehicles.has(dispatch_no));
   } else {
-    psdState.selectedVehicle = dispatch_no;
+    const alreadySingle = psdState.selectedVehicles.has(dispatch_no) && psdState.selectedVehicles.size === 1;
+    psdState.selectedVehicles.clear();
+    if (!alreadySingle) psdState.selectedVehicles.add(dispatch_no);
+    psdRefreshVehicleSelection();
   }
-  // 모든 카드 클래스 갱신
+}
+
+/* ── 차량 체크박스 토글 ─────────────────────────── */
+function psdToggleVehicle(dispatch_no, checked) {
+  if (checked) psdState.selectedVehicles.add(dispatch_no);
+  else         psdState.selectedVehicles.delete(dispatch_no);
+  psdRefreshVehicleSelection();
+}
+
+/* ── 차량 전체 선택 / 해제 ──────────────────────── */
+function psdSelectAllVehicles(checked) {
+  if (checked) {
+    psdState.vehicles.forEach(v => psdState.selectedVehicles.add(v.dispatch_no));
+  } else {
+    psdState.selectedVehicles.clear();
+  }
+  psdRefreshVehicleSelection();
+}
+
+/* ── 카드 선택 스타일 일괄 갱신 ─────────────────── */
+function psdRefreshVehicleSelection() {
+  const total = psdState.vehicles.length;
+  const selCnt = psdState.selectedVehicles.size;
   psdState.vehicles.forEach(v => {
-    const el = document.getElementById(`psd-veh-${v.dispatch_no}`);
-    if (el) el.classList.toggle('selected', v.dispatch_no === psdState.selectedVehicle);
+    const el  = document.getElementById(`psd-veh-${v.dispatch_no}`);
+    const chk = el?.querySelector('.psd-car-chk');
+    const sel = psdState.selectedVehicles.has(v.dispatch_no);
+    if (el)  el.classList.toggle('selected', sel);
+    if (chk) chk.checked = sel;
   });
+  // 전체선택 체크박스 상태 연동 (전체선택=checked, 일부=indeterminate, 없음=unchecked)
+  const allChk = document.getElementById('psd-veh-all-chk');
+  if (allChk) {
+    allChk.checked       = total > 0 && selCnt === total;
+    allChk.indeterminate = selCnt > 0 && selCnt < total;
+  }
   psdUpdateToolbar();
 }
 
@@ -6253,14 +7170,17 @@ async function psdAutoDispatch() {
   }
 }
 
-/* 자동배차 결과 미리보기 모달 */
+/* 자동배차 결과 미리보기 모달 (강화판: 원지/판지 구분, 여유중량, 2단높이, 치수정보) */
 function psdShowAutoResultModal(vehicles) {
   const existing = document.getElementById('psd-auto-modal');
   if (existing) existing.remove();
 
-  const totalVeh = vehicles.length;
-  const totalKg  = vehicles.reduce((s,v)=>s+v.total_kg,0);
-  const totalDoc  = vehicles.reduce((s,v)=>s+(v.item_cnt||0),0);
+  const totalVeh   = vehicles.length;
+  const totalKg    = vehicles.reduce((s,v)=>s+v.total_kg,0);
+  const totalDoc   = vehicles.reduce((s,v)=>s+(v.item_cnt||0),0);
+  const totalAdded = vehicles.reduce((s,v)=>s+(v.added_cnt||0),0);
+  const rollCnt    = vehicles.filter(v=>v.material_type==='ROLL').length;
+  const boardCnt   = vehicles.filter(v=>v.material_type==='BOARD').length;
 
   // 요약 배지
   const carSummary = {};
@@ -6274,43 +7194,121 @@ function psdShowAutoResultModal(vehicles) {
   }).join('');
 
   const vehListHtml = vehicles.map((v,idx) => {
-    const ccls = psdCarCls(v.cartype);
-    const itemsHtml = (v.items||[]).map(it => {
-      const inch = psdGetInch(it.SKUKEY||'');
+    const ccls   = psdCarCls(v.cartype);
+    const mtype  = v.material_type || '';
+    const mtypeBadge = mtype==='ROLL'
+      ? `<span class="psd-auto-mtype psd-auto-mtype-roll">원지</span>`
+      : mtype==='BOARD'
+        ? `<span class="psd-auto-mtype psd-auto-mtype-board">판지</span>`
+        : `<span class="psd-auto-mtype psd-auto-mtype-other">기타</span>`;
+
+    // 적재율 바
+    const loadCap  = v.load_cap || 0;
+    const usedKg   = v.total_kg || 0;
+    const spareKg  = Math.max(0, loadCap - usedKg);
+    const usedPct  = loadCap > 0 ? Math.min(100, usedKg / loadCap * 100) : 0;
+    const addedKg  = v.added_kg || 0;
+    const warnColor = usedPct >= 95 ? '#ef4444' : usedPct >= 80 ? '#f59e0b' : '#4ade80';
+    const loadBar  = loadCap > 0 ? `
+      <div class="psd-auto-loadbar-wrap" title="적재 ${psdFmtNum(usedKg)}KG / ${psdFmtNum(loadCap)}KG (${usedPct.toFixed(0)}%)">
+        <div class="psd-auto-loadbar" style="width:${usedPct.toFixed(1)}%;background:${warnColor}"></div>
+      </div>` : '';
+
+    // 추가 배차 배지
+    const addedBadge = v.added_cnt > 0
+      ? `<span class="psd-auto-added-badge">+${v.added_cnt}건 추가(${psdFmtNum(addedKg)}KG)</span>`
+      : '';
+
+    // 판지 치수 정보
+    const boardInfo = (mtype==='BOARD' && v.board_dims) ? (() => {
+      const bd = v.board_dims;
+      const parts = [];
+      if (bd.max_w_mm) parts.push(`${bd.max_w_mm}×${bd.max_l_mm}mm`);
+      if (bd.total_height_m) parts.push(`적재${bd.total_height_m.toFixed(2)}m`);
+      return parts.length ? `<span class="psd-auto-dim-info">${parts.join(' · ')}</span>` : '';
+    })() : '';
+
+    // 주의사항
+    const notesHtml = (v.notes||[]).length > 0
+      ? `<div class="psd-auto-notes">${(v.notes||[]).map(n=>`<div class="psd-auto-note-item">⚠ ${n}</div>`).join('')}</div>`
+      : '';
+
+    const origCnt   = (v.item_cnt||0) - (v.added_cnt||0);
+
+    // 판지 합계 수량 (R 단위) 계산
+    const isBoardVeh = (mtype === 'BOARD');
+    let totalBoardR = 0;
+    if (isBoardVeh) {
+      (v.items||[]).forEach(it => {
+        if ((it.UOMKEY||'').trim() === 'R') totalBoardR += parseFloat(it.QTSHPO||0);
+      });
+    }
+
+    const itemsHtml = (v.items||[]).map((it, itIdx) => {
+      const inch      = psdGetInch(it.SKUKEY||'');
       const inchBadge = inch ? `<span class="psd-car-item-inch ${inch==='12인치'?'inch-12':'inch-3'}">${inch}</span>` : '';
-      return `<div class="psd-auto-item">
+      const isAdded   = itIdx >= origCnt;
+      const addedMark = isAdded ? `<span class="psd-auto-item-added">+추가</span>` : '';
+      const uom       = (it.UOMKEY||'KG').trim();
+      // R단위 판지: "27 R = 2,781 KG" 형식으로 표시
+      const qtyHtml   = uom === 'R' && it.KG_WEIGHT
+        ? `<span style="font-weight:600;min-width:70px;text-align:right">${psdFmtNum(it.QTSHPO)} R</span>
+           <span style="color:var(--text3);margin-left:4px;font-size:10px">= ${psdFmtNum(it.KG_WEIGHT)} KG</span>`
+        : `<span style="font-weight:600;min-width:70px;text-align:right">${psdFmtNum(it.QTSHPO)}</span>
+           <span style="color:var(--text3);margin-left:4px">${uom}</span>`;
+      return `<div class="psd-auto-item${isAdded?' psd-auto-item-new':''}">
         <span style="font-family:monospace;color:var(--primary);min-width:90px">${it.SHPOKY}</span>
-        ${inchBadge}
+        <span style="color:var(--text3);min-width:22px;font-size:10px">#${it.SHPOIT}</span>
+        ${inchBadge}${addedMark}
         <span style="flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${it.DESC01||''}">${it.DESC01||it.SKUKEY||''}</span>
-        <span style="font-weight:600;min-width:70px;text-align:right">${psdFmtNum(it.QTSHPO)}</span>
-        <span style="color:var(--text3);margin-left:4px">${it.UOMKEY||'KG'}</span>
+        ${qtyHtml}
       </div>`;
     }).join('');
 
+    // 판지 차량: 합계 R + KG 병행 표시
+    const boardTotalHtml = isBoardVeh && totalBoardR > 0
+      ? `<span class="veh-kg" style="font-weight:700;color:var(--text)">${psdFmtNum(v.total_kg)}KG</span>
+         <span style="font-size:10px;color:#059669;font-weight:600">(${psdFmtNum(totalBoardR)}R)</span>`
+      : `<span class="veh-kg" style="font-weight:700;color:var(--text)">${psdFmtNum(v.total_kg)}KG</span>`;
+
     return `<div class="psd-auto-veh">
       <div class="psd-auto-veh-hdr">
+        ${mtypeBadge}
         <span class="psd-car-badge ${ccls}">🚛 ${v.cartype||'미정'}</span>
         <span class="veh-no">차량 ${idx+1}</span>
         <span class="veh-kg">${psdFmtDate(v.rqshpd)}</span>
-        <span class="veh-kg">${v.dptnm||v.dptnky||''}</span>
-        <span class="veh-kg" style="margin-left:auto">${psdFmtNum(v.total_kg)} KG · ${v.item_cnt}건</span>
+        <span class="veh-kg" style="font-size:11px;color:var(--text2);font-weight:600">${v.dptnm||v.dptnky||''}</span>
+        <span style="margin-left:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          ${addedBadge}${boardInfo}
+          ${boardTotalHtml}
+          <span class="veh-kg">/ ${psdFmtNum(loadCap)}KG · ${v.item_cnt}건</span>
+          ${spareKg>0?`<span class="psd-auto-spare">여유 ${psdFmtNum(spareKg)}KG</span>`:''}
+        </span>
       </div>
+      ${loadBar}
+      ${notesHtml}
       <div class="psd-auto-veh-items">${itemsHtml}</div>
     </div>`;
   }).join('');
+
+  const addedSummary = totalAdded > 0
+    ? `<span style="font-size:11px;color:#4ade80;margin-left:4px">⬆ 추가배차 ${totalAdded}건</span>`
+    : '';
+  const typeSummary = `<span style="font-size:11px;color:var(--text3)">(원지 ${rollCnt}대 · 판지 ${boardCnt}대)</span>`;
 
   const modal = document.createElement('div');
   modal.id = 'psd-auto-modal';
   modal.className = 'psd-modal-overlay';
   modal.innerHTML = `
-    <div class="psd-modal" style="width:780px">
+    <div class="psd-modal" style="width:820px">
       <div class="psd-modal-hdr">
         <h3>⚡ 자동배차 결과 미리보기</h3>
         <button class="psd-modal-close" onclick="document.getElementById('psd-auto-modal').remove()">✕</button>
       </div>
-      <div style="padding:12px 20px;background:var(--th-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="padding:10px 20px;background:var(--th-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span style="font-size:12px;font-weight:700;color:var(--text)">차량 ${totalVeh}대 · 문서 ${totalDoc}건 · 총 ${psdFmtNum(totalKg)} KG</span>
-        <div style="display:flex;gap:4px;flex-wrap:wrap">${summaryBadges}</div>
+        ${typeSummary}${addedSummary}
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-left:auto">${summaryBadges}</div>
       </div>
       <div class="psd-modal-body psd-auto-result">
         <div class="psd-auto-veh-list">${vehListHtml}</div>
@@ -6592,20 +7590,23 @@ async function psdExecuteSplit() {
    배차 확정 / 삭제 / 저장
 ═══════════════════════════════════════════════════ */
 async function psdConfirmDispatch() {
-  const no = psdState.selectedVehicle;
-  if (!no) { showToast('확정할 배차를 선택하세요.'); return; }
-  const veh = psdState.vehicles.find(v => v.dispatch_no===no);
-  if (veh?.status==='CONFIRMED') { showToast('이미 확정된 배차입니다.'); return; }
-  if (!confirm(`배차번호 ${no}을(를) 확정하시겠습니까?\n확정 후에는 수정이 제한됩니다.`)) return;
+  const nos = [...psdState.selectedVehicles];
+  if (!nos.length) { showToast('확정할 배차를 선택하세요.'); return; }
+  const allConfirmed = nos.every(no => psdState.vehicles.find(v=>v.dispatch_no===no)?.status==='CONFIRMED');
+  if (allConfirmed) { showToast('선택한 배차가 이미 모두 확정되어 있습니다.'); return; }
+  if (!confirm(`선택한 배차 ${nos.length}건을 확정하시겠습니까?\n확정 후에는 수정이 제한됩니다.`)) return;
   try {
     const res = await fetch('/api/ps-dispatch/confirm', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ dispatch_nos: [no] })
+      body: JSON.stringify({ dispatch_nos: nos })
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error);
-    showToast(`✅ ${no} 배차 확정`);
-    if (veh) veh.status = 'CONFIRMED';
+    showToast(`✅ ${nos.length}건 배차 확정 완료`);
+    nos.forEach(no => {
+      const veh = psdState.vehicles.find(v => v.dispatch_no===no);
+      if (veh) veh.status = 'CONFIRMED';
+    });
     psdRenderVehicleArea();
   } catch(e) {
     showToast(`❌ 확정 실패: ${e.message}`);
@@ -6613,19 +7614,20 @@ async function psdConfirmDispatch() {
 }
 
 async function psdDeleteDispatch() {
-  const no = psdState.selectedVehicle;
-  if (!no) { showToast('삭제할 배차를 선택하세요.'); return; }
-  if (!confirm(`배차번호 ${no}을(를) 삭제하시겠습니까?`)) return;
+  const nos = [...psdState.selectedVehicles];
+  if (!nos.length) { showToast('삭제할 배차를 선택하세요.'); return; }
+  const label = nos.length === 1 ? `배차번호 ${nos[0]}` : `선택한 배차 ${nos.length}건`;
+  if (!confirm(`${label}을(를) 삭제하시겠습니까?`)) return;
   try {
     const res = await fetch('/api/ps-dispatch/delete', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ dispatch_nos: [no] })
+      body: JSON.stringify({ dispatch_nos: nos })
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error||'삭제 실패');
-    showToast(`🗑️ ${no} 삭제됨`);
-    psdState.vehicles = psdState.vehicles.filter(v => v.dispatch_no!==no);
-    psdState.selectedVehicle = null;
+    showToast(`🗑️ ${nos.length}건 삭제됨`);
+    psdState.vehicles = psdState.vehicles.filter(v => !nos.includes(v.dispatch_no));
+    psdState.selectedVehicles.clear();
     psdRenderVehicleArea();
     psdUpdateToolbar();
     await psdSearch();
@@ -6714,7 +7716,7 @@ async function renderShipSchedule() {
 <div style="padding:16px 20px;box-sizing:border-box;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">
 
   <!-- 검색 패널 -->
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:16px;flex-shrink:0;">
+  <div id="ss-search-panel" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:0;flex-shrink:0;overflow:hidden;">
     <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px;">
       🔍 검색조건
       <span style="font-weight:400;font-size:11px;color:var(--text3);">${_isShpdi ? '출고문서 아이템 — 출하요청일자 기준 조회' : '출하요청일자 기준 조회'}</span>
@@ -6786,8 +7788,8 @@ async function renderShipSchedule() {
       </div>
     </div>
 
-    <!-- 2행: 배차상태 / 제품군 / 납품처 -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;align-items:end;">
+    <!-- 2행: 배차상태 / 제품군 / 품목코드 / 납품처 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px;align-items:end;">
 
       <!-- 배차상태: STKNUM 유무 라디오 -->
       <div>
@@ -6812,6 +7814,14 @@ async function renderShipSchedule() {
           <option value="">전체</option>
           ${skug05Opts}
         </select>
+      </div>
+
+      <!-- 품목코드 (SKUKEY) 직접 입력 -->
+      <div>
+        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">품목코드 (SKUKEY)</label>
+        <input id="ss-skukey" type="text"
+          style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;box-sizing:border-box;"
+          placeholder="품목코드 일부 입력 (부분일치)">
       </div>
 
       <!-- 납품처: 팝업 검색 (구 부서 DPTNKY → STKNUM 기반 납품처코드) -->
@@ -6882,6 +7892,9 @@ async function renderShipSchedule() {
     </div>
   </div>
 
+  <!-- 검색조건↔결과 드래그 핸들 -->
+  <div id="ss-resizer" class="panel-resizer" style="margin:4px 0;flex-shrink:0;" onmousedown="ssResizerDown(event)" title="드래그하여 검색조건 영역 높이 조절"></div>
+
   <!-- 결과 영역 -->
   <div id="ss-result-area" style="flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0;">
     <div style="text-align:center;padding:40px;color:var(--text3);font-size:13px;">
@@ -6891,7 +7904,7 @@ async function renderShipSchedule() {
 </div>`;
 
   /* Enter 키 조회 */
-  ['ss-rqshpd-from','ss-rqshpd-to'].forEach(id => {
+  ['ss-rqshpd-from','ss-rqshpd-to','ss-skukey'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('keydown', e => { if (e.key==='Enter') loadShipSchedule(1); });
   });
@@ -6931,6 +7944,69 @@ async function renderShipSchedule() {
     const allCb = document.getElementById('ss-lota02-all');
     if (allCb) allCb.checked = all.every(c=>c.checked);
   }));
+
+  /* ── 검색 패널 리사이저 초기화 ── */
+  _ssResizerInit();
+}
+
+/* ════════════════════════════════════════════════════════
+   출고예정정보 검색패널 상하 드래그 리사이저
+════════════════════════════════════════════════════════ */
+const SS_RESIZER_KEY = 'ss_search_panel_h';  // localStorage 키
+
+function _ssResizerInit() {
+  const panel = document.getElementById('ss-search-panel');
+  if (!panel) return;
+  /* 저장된 높이 복원 */
+  const saved = parseInt(localStorage.getItem(SS_RESIZER_KEY), 10);
+  if (saved && saved > 80) {
+    panel.style.height    = saved + 'px';
+    panel.style.maxHeight = saved + 'px';
+  } else {
+    /* 초기 자연 높이를 고정값으로 확정 (이후 flex가 찌그러뜨리지 않게) */
+    const h = panel.getBoundingClientRect().height;
+    if (h > 0) {
+      panel.style.height    = h + 'px';
+      panel.style.maxHeight = h + 'px';
+    }
+  }
+}
+
+function ssResizerDown(e) {
+  e.preventDefault();
+  const panel   = document.getElementById('ss-search-panel');
+  const resizer = document.getElementById('ss-resizer');
+  if (!panel || !resizer) return;
+
+  resizer.classList.add('dragging');
+  const startY = e.clientY;
+  const startH = panel.getBoundingClientRect().height;
+
+  /* 드래그 중 텍스트 선택 방지 */
+  document.body.style.userSelect = 'none';
+  document.body.style.cursor     = 'ns-resize';
+
+  function onMove(ev) {
+    const delta  = ev.clientY - startY;
+    /* 최소 80px, 최대 화면의 75% */
+    const newH   = Math.max(80, Math.min(window.innerHeight * 0.75, startH + delta));
+    panel.style.height    = newH + 'px';
+    panel.style.maxHeight = newH + 'px';
+  }
+
+  function onUp() {
+    resizer.classList.remove('dragging');
+    document.body.style.userSelect = '';
+    document.body.style.cursor     = '';
+    /* 최종 높이 저장 */
+    const finalH = panel.getBoundingClientRect().height;
+    try { localStorage.setItem(SS_RESIZER_KEY, Math.round(finalH)); } catch(_) {}
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup',   onUp);
+  }
+
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup',   onUp);
 }
 
 function resetShipScheduleSearch() {
@@ -6952,6 +8028,7 @@ function resetShipScheduleSearch() {
   /* 배차상태 전체로 리셋 */
   const allocAll = document.querySelector('input[name="ss-alloc"][value=""]');
   if (allocAll) allocAll.checked = true;
+  if (el('ss-skukey'))          el('ss-skukey').value = '';
   if (el('ss-skug05'))          el('ss-skug05').value = '';
   document.querySelectorAll('.ss-shpmty').forEach(cb => cb.checked = true);
   const shpmtyAll = el('ss-shpmty-all'); if (shpmtyAll) shpmtyAll.checked = true;
@@ -6959,6 +8036,17 @@ function resetShipScheduleSearch() {
   const lota02All = el('ss-lota02-all'); if (lota02All) lota02All.checked = true;
   document.getElementById('ss-result-area').innerHTML =
     '<div style="text-align:center;padding:40px;color:var(--text3);font-size:13px;">⬆ 검색 조건을 입력하고 조회 버튼을 클릭하세요.</div>';
+  /* 패널 높이도 초기화 (저장값 삭제 + 자연높이 재확정) */
+  try { localStorage.removeItem(SS_RESIZER_KEY); } catch(_) {}
+  const panel = document.getElementById('ss-search-panel');
+  if (panel) {
+    panel.style.height    = '';
+    panel.style.maxHeight = '';
+    requestAnimationFrame(() => {
+      const h = panel.getBoundingClientRect().height;
+      if (h > 0) { panel.style.height = h + 'px'; panel.style.maxHeight = h + 'px'; }
+    });
+  }
 }
 
 async function loadShipSchedule(pg) {
@@ -6969,6 +8057,7 @@ async function loadShipSchedule(pg) {
   const rqshpdFrom = el('ss-rqshpd-from')?.value || '';
   const rqshpdTo   = el('ss-rqshpd-to')?.value   || '';
   const skug05     = el('ss-skug05')?.value       || '';
+  const skukey     = (el('ss-skukey')?.value || '').trim();
   const size       = parseInt(el('ss-page-size')?.value || '50');
 
   /* 납품문서(SVBELN) 팝업 선택 목록 */
@@ -6984,7 +8073,7 @@ async function loadShipSchedule(pg) {
   const lota02Arr = [...document.querySelectorAll('.ss-lota02:checked')].map(cb => cb.value);
 
   const body = {
-    wareky, skug05, ptnrky,
+    wareky, skug05, skukey, ptnrky,
     alloc_status: allocSt,
     svbeln: svbelnArr,
     rqshpd_from: rqshpdFrom,
@@ -7053,7 +8142,7 @@ function _ssColDefs() {
   return [
     /* ── 기본정보 ── */
     { key:'RQSHPD',     label:'출하요청일',   fmt:fmtDate,                             w:90  },
-    { key:'STKNUM',     label:'선적번호',     fmt:v=>v||'-',                           w:90  },
+    { key:'STKNUM',     label:'선적번호',     fmt:()=>'',                              w:90  },
     { key:'SVBELN',     label:'납품문서번호', fmt:v=>v||'-',                           w:115 },
     { key:'SHPOKY',     label:'출고문서키',   fmt:v=>v||'-',                           w:110 },
     { key:'LOTA02',     label:'플랜트',       fmt:(v,r)=>`${v||'-'}<br><span style="font-size:10px;color:var(--text3);">${(r&&r.LOTA02NM)||''}</span>`, w:90 },
@@ -7068,9 +8157,9 @@ function _ssColDefs() {
     /* ── 단위/수량 ── */
     { key:'UOMKEY',     label:'단위',         fmt:v=>v||'-',                           w:50  },
     { key:'_STOCKTYPE', label:'재고유형',     fmt:(v,r)=>{ const u=String(r.UOMKEY||'').trim(); return u==='KG'?'원지':u==='R'?'판지':''; }, w:60 },
-    { key:'_INCH',      label:'인치',         fmt:(v,r)=>{ const u=String(r.UOMKEY||'').trim(); if(u!=='KG') return ''; const m=String(r.SKUKEY||'').toLowerCase().slice(2,5); return ['a11','ab1','ag1','am1','111','s11','i11','k11'].includes(m)?'12인치':['ar1','ae1','aj1','al1','sr1','ir1'].includes(m)?'3인치':''; }, w:58 },
+    { key:'_INCH',      label:'인치',         fmt:(v,r)=>{ const u=String(r.UOMKEY||'').trim(); if(u!=='KG') return ''; const m=String(r.SKUKEY||'').toLowerCase().slice(2,5); return ['a11','ab1','ag1','am1','111','s11','i11','k11','sm1'].includes(m)?'12인치':['ar1','ae1','aj1','al1','sr1','ir1','rw1'].includes(m)?'3인치':''; }, w:58 },
     { key:'_GRAMMAGE',  label:'평량',         fmt:(v,r)=>{ const s=String(r.SKUKEY||''); const g=s.slice(5,8); return g||''; },                                                                                                                                                                      w:50 },
-    { key:'_WIDTH',     label:'너비',         fmt:(v,r)=>{ const u=String(r.UOMKEY||'').trim(); if(u!=='KG') return ''; const m=String(r.SKUKEY||'').toLowerCase().slice(2,5); const inch=['a11','ab1','ag1','am1','111','s11','i11','k11'].includes(m)?'12인치':['ar1','ae1','aj1','al1','sr1','ir1'].includes(m)?'3인치':''; if(inch==='12인치') return '1,500'; if(inch==='3인치'){ const g=Number(String(r.SKUKEY||'').slice(5,8)); return g<=240?'1,400':'1,100'; } return ''; },                                                                      w:58, align:'right' },
+    { key:'_WIDTH',     label:'너비',         fmt:(v,r)=>{ const u=String(r.UOMKEY||'').trim(); if(u!=='KG') return ''; const m=String(r.SKUKEY||'').toLowerCase().slice(2,5); const inch=['a11','ab1','ag1','am1','111','s11','i11','k11','sm1'].includes(m)?'12인치':['ar1','ae1','aj1','al1','sr1','ir1','rw1'].includes(m)?'3인치':''; if(inch==='12인치') return '1,500'; if(inch==='3인치'){ const g=Number(String(r.SKUKEY||'').slice(5,8)); return g<=240?'1,400':'1,100'; } return ''; },                                                                      w:58, align:'right' },
     { key:'_HEIGHT',    label:'높이',         fmt:(v,r)=>{ const s=String(r.SKUKEY||''); const h=s.slice(9,13); return h?String(parseInt(h,10)||h):''; },                                                                                                                                            w:55, align:'right' },
     { key:'QTUALO',     label:'납품수량',     fmt:fmtN,  w:80,  align:'right' },
     { key:'QTSHPO',     label:'주문수량',     fmt:fmtN,  w:80,  align:'right' },
@@ -7088,6 +8177,7 @@ function _ssColDefs() {
     { key:'DOCUTYNM',   label:'문서유형코드', fmt:v=>v||'-',                           w:85  },
     { key:'_SHPMTY_NM', label:'문서유형명',   fmt:(v,r)=>shpmtyNmMap[String(r.DOCUTYNM||'').trim()]||r.DOCUTYNM||'-', w:100 },
     { key:'LOTA01NM',   label:'납품처유형',   fmt:v=>(v&&v.trim())||'-',               w:80  },
+    { key:'LOTA03',      label:'포장Y/N',     fmt:v=>{const t=(v&&v.trim())||'';return t==='Y'?'<span class="badge-Y">Y</span>':t==='N'?'<span class="badge-N">N</span>':'-';},  w:60  },
   ];
 }
 
@@ -8012,6 +9102,7 @@ function mmgrDefaultConfig() {
     { type:'item',    id:'nav-delivery',  label:'납품처 관리',     icon:'📍', page:'delivery', cnt:true },
     { type:'section', id:'sec-tms-base',  label:'TMS 기준정보' },
     { type:'item',    id:'nav-vehicle',   label:'차량관리',        icon:'🚛', page:'vehicle',  cnt:true },
+    { type:'item',    id:'nav-carClass',  label:'고정차량 관리',   icon:'📋', page:'carClass', cnt:false },
     { type:'section', id:'sec-tms-disp',  label:'TMS 배차' },
     { type:'item',    id:'nav-BZPTN_DETAIL', label:'납품처 상세',  icon:'🗺️', page:'BZPTN_DETAIL', cnt:true },
     { type:'item',    id:'nav-VHCMA',     label:'차량 마스터',     icon:'🚛', page:'VHCMA',    cnt:true },
@@ -8027,7 +9118,24 @@ function mmgrDefaultConfig() {
 function mmgrLoadConfig() {
   try {
     const s = localStorage.getItem(MMGR_STORE_KEY);
-    return s ? JSON.parse(s) : mmgrDefaultConfig();
+    if (!s) return mmgrDefaultConfig();
+    const saved = JSON.parse(s);
+    // 기본 설정에 있지만 저장된 설정에 없는 항목을 자동으로 병합 (신규 메뉴 추가 대응)
+    const def = mmgrDefaultConfig();
+    const savedIds = new Set(saved.map(i => i.id));
+    let merged = [...saved];
+    def.forEach((defItem, defIdx) => {
+      if (!savedIds.has(defItem.id)) {
+        // 앞 항목 기준으로 삽입 위치 찾기
+        const prevDef = def[defIdx - 1];
+        if (prevDef) {
+          const prevIdx = merged.findIndex(i => i.id === prevDef.id);
+          if (prevIdx >= 0) { merged.splice(prevIdx + 1, 0, defItem); return; }
+        }
+        merged.push(defItem);
+      }
+    });
+    return merged;
   } catch(e) { return mmgrDefaultConfig(); }
 }
 
