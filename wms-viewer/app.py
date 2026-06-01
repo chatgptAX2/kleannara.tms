@@ -2744,6 +2744,122 @@ def api_ps_dispatch_auto():
             key = (it.get('DPTNKY',''), it.get('DPTNM',''), it.get('RQSHPD',''))
             groups[key].append(it)
 
+        # ──────────────────────────────────────────────────────────────────
+        # ★ 납품처 TMS 정보 일괄 조회 (DEADLINE_TIME / FORKLIFT_YN / MAX_TON)
+        #   dptnky 목록을 한 번에 SELECT하여 딕셔너리로 캐싱
+        # ──────────────────────────────────────────────────────────────────
+        all_dptnky_list = list({k[0] for k in groups.keys() if k[0]})
+        ptnr_info = {}   # {dptnky: {deadline_time, forklift_yn, max_ton, max_ton_label, max_load_kg}}
+        if all_dptnky_list:
+            placeholders = ','.join('?' * len(all_dptnky_list))
+            ptnr_rows = conn.execute(
+                f"SELECT PTNRKY, DEADLINE_TIME, FORKLIFT_YN, MAX_TON "
+                f"FROM BZPTN_DETAIL "
+                f"WHERE PTNRKY IN ({placeholders}) AND PTNRTY='CT' AND DEL_YN!='Y'",
+                all_dptnky_list
+            ).fetchall()
+            # TMS_CARCLASS 코드 → 톤수명 매핑 로드
+            carclass_rows = conn.execute(
+                "SELECT CMCDVL, CDESC1 FROM CMCDV WHERE CMCDKY='TMS_CARCLASS'"
+            ).fetchall()
+            carclass_map = {r['CMCDVL']: r['CDESC1'] for r in carclass_rows}
+            # 톤수명 → DS_VEHICLE.LOAD_TON(kg) 매핑
+            # (DS_VEHICLE.CARTYPE = TMS_CARCLASS.CDESC1)
+            veh_load_map = {c['CARTYPE']: veh_info.get(c['CARTYPE'], {}).get('load_kg', 0)
+                            for c in car_order}
+            for pr in ptnr_rows:
+                dk = pr['PTNRKY']
+                mt = (pr['MAX_TON'] or '').strip()
+                mt_label = carclass_map.get(mt, mt) if mt else ''
+                # 최대톤수 코드 → 차량명 → 허용 최대 load_kg
+                mt_load_kg = veh_load_map.get(mt_label, 0) if mt_label else 0
+                ptnr_info[dk] = {
+                    'deadline_time': (pr['DEADLINE_TIME'] or '').strip(),
+                    'forklift_yn':   (pr['FORKLIFT_YN'] or '').strip(),
+                    'max_ton':       mt,
+                    'max_ton_label': mt_label,
+                    'max_load_kg':   mt_load_kg,
+                }
+
+        # 자동배차 실행 시각 (납기시간 비교용)
+        now_dt = datetime.now()
+        now_hhmm = now_dt.strftime('%H:%M')
+
+        def _cap_valid_cars(dptnky):
+            """
+            납품처 MAX_TON 기준으로 배차 허용 차량 목록 반환
+            - MAX_TON 미설정 또는 해당 차량 LOAD_TON 미확인 → _valid_cars 그대로 반환
+            - MAX_TON 설정 → 해당 톤수 이하(load_kg ≤ max_load_kg) 차량만 반환
+              단, 필터 결과가 빈 경우 _valid_cars 그대로 (예외 방지)
+            """
+            pi = ptnr_info.get(dptnky, {})
+            max_load_kg = pi.get('max_load_kg', 0)
+            if max_load_kg <= 0:
+                return _valid_cars   # 제한 없음
+            filtered = [c for c in _valid_cars
+                        if veh_info.get(c['CARTYPE'], {}).get('load_kg', 0) <= max_load_kg]
+            return filtered if filtered else _valid_cars   # 빈 경우 원본 반환
+
+        def _build_ptnr_notes(dptnky, rqshpd, assigned_car):
+            """
+            납품처 TMS 조건 체크 노트 생성
+            ① 최대톤수: 배정 차량 > 허용 톤수 → 경고
+            ② 지게차: FORKLIFT_YN 정보 표시
+            ③ 납기시간: DEADLINE_TIME vs 당일 now_hhmm 비교 → 초과 경고
+            Returns: (notes:list[str], warnings:list[str])
+              notes   = 정보성 메시지
+              warnings = 경고 메시지 (모달에서 강조 표시)
+            """
+            pi = ptnr_info.get(dptnky, {})
+            notes, warnings = [], []
+            if not pi:
+                return notes, warnings
+
+            # ① 최대톤수 체크
+            max_ton_label = pi.get('max_ton_label', '')
+            max_load_kg   = pi.get('max_load_kg', 0)
+            if max_ton_label:
+                assigned_load_kg = veh_info.get(assigned_car, {}).get('load_kg', 0)
+                if max_load_kg > 0 and assigned_load_kg > max_load_kg:
+                    warnings.append(
+                        f"[최대톤수초과] 납품처 허용 {max_ton_label}({max_load_kg:.0f}kg) < "
+                        f"배정차량 {assigned_car}({assigned_load_kg:.0f}kg) — 수동확인필요"
+                    )
+                else:
+                    notes.append(
+                        f"[최대톤수OK] 납품처 허용 {max_ton_label}({max_load_kg:.0f}kg) / "
+                        f"배정 {assigned_car}({assigned_load_kg:.0f}kg)"
+                    )
+
+            # ② 지게차 여부 표시
+            forklift = pi.get('forklift_yn', '')
+            if forklift == 'Y':
+                notes.append("[지게차] ✅ 납품처 지게차 사용가능")
+            elif forklift == 'N':
+                notes.append("[지게차] ⚠ 납품처 지게차 없음 — 수작업 하차 필요")
+
+            # ③ 납기시간 체크 (당일 납품 기준)
+            deadline = pi.get('deadline_time', '')
+            if deadline:
+                # 납품일(RQSHPD=YYYYMMDD)과 현재 날짜가 같을 때만 시간 비교
+                today_str = now_dt.strftime('%Y%m%d')
+                rqshpd_str = (rqshpd or '').replace('-', '')
+                if rqshpd_str == today_str:
+                    if now_hhmm > deadline:
+                        warnings.append(
+                            f"[납기시간초과] 납기시간 {deadline} < 현재시각 {now_hhmm} "
+                            f"— 당일 납기 불가 가능성, 수동확인필요"
+                        )
+                    else:
+                        notes.append(
+                            f"[납기시간OK] 납기시간 {deadline} / 현재시각 {now_hhmm} (당일 납기 가능)"
+                        )
+                else:
+                    # 납품일이 당일이 아닌 경우: 납기시간 정보만 표시
+                    notes.append(f"[납기시간] 납품처 납기시간 {deadline} (납품일 {rqshpd_str})")
+
+            return notes, warnings
+
         all_vehicles = []   # 최종 배차 결과
 
         for (dptnky, dptnm, rqshpd), grp_items in sorted(groups.items()):
@@ -2754,6 +2870,12 @@ def api_ps_dispatch_auto():
             other_items = [it for it in grp_items
                            if not _ps_is_roll(it.get('SKUKEY',''))
                            and not _ps_is_board(it.get('SKUKEY',''))]
+
+            # 이 납품처에 적용될 허용 차량 목록 (MAX_TON 필터 적용)
+            # _valid_cars를 납품처별 제한 목록으로 임시 교체 → 내부 헬퍼 함수가 자동 적용
+            _orig_valid_cars = _valid_cars
+            _valid_cars = _cap_valid_cars(dptnky)
+            _max_ton_applied = (len(_valid_cars) < len(_orig_valid_cars))
 
             # =================================================================
             # ① 원지(롤) 배차
@@ -2993,6 +3115,16 @@ def api_ps_dispatch_auto():
                     final_items = veh['items'] + added_items
                     final_kg    = veh_kg + added_kg
 
+                    # ── 납품처 조건 체크 노트 추가 ──
+                    ptnr_notes, ptnr_warns = _build_ptnr_notes(dptnky, rqshpd, veh_car)
+                    if _max_ton_applied:
+                        pi = ptnr_info.get(dptnky, {})
+                        add_notes.insert(0,
+                            f"[최대톤수 적용] 납품처 허용 {pi.get('max_ton_label','')} 기준 "
+                            f"배차 차량 제한 적용"
+                        )
+                    add_notes = ptnr_warns + add_notes + ptnr_notes
+
                     all_vehicles.append({
                         'dptnky':        dptnky,
                         'dptnm':         dptnm,
@@ -3007,6 +3139,10 @@ def api_ps_dispatch_auto():
                         'added_kg':      round(added_kg, 2),
                         'material_type': 'ROLL',
                         'notes':         add_notes,
+                        'ptnr_warns':    ptnr_warns,
+                        'forklift_yn':   ptnr_info.get(dptnky, {}).get('forklift_yn', ''),
+                        'deadline_time': ptnr_info.get(dptnky, {}).get('deadline_time', ''),
+                        'max_ton_label': ptnr_info.get(dptnky, {}).get('max_ton_label', ''),
                     })
 
             # =================================================================
@@ -3157,6 +3293,16 @@ def api_ps_dispatch_auto():
                             f"가용높이 {ci.get('effective_height_m', ci.get('height_m', 0)):.2f}m"
                         )
 
+                    # ── 납품처 조건 체크 노트 추가 ──
+                    ptnr_notes, ptnr_warns = _build_ptnr_notes(dptnky, rqshpd, veh_car)
+                    if _max_ton_applied:
+                        pi = ptnr_info.get(dptnky, {})
+                        board_notes.insert(0,
+                            f"[최대톤수 적용] 납품처 허용 {pi.get('max_ton_label','')} 기준 "
+                            f"배차 차량 제한 적용"
+                        )
+                    board_notes = ptnr_warns + board_notes + ptnr_notes
+
                     all_vehicles.append({
                         'dptnky':        dptnky,
                         'dptnm':         dptnm,
@@ -3178,6 +3324,10 @@ def api_ps_dispatch_auto():
                             'car_cbm':        round(car_cbm, 4),
                         },
                         'notes':         board_notes,
+                        'ptnr_warns':    ptnr_warns,
+                        'forklift_yn':   ptnr_info.get(dptnky, {}).get('forklift_yn', ''),
+                        'deadline_time': ptnr_info.get(dptnky, {}).get('deadline_time', ''),
+                        'max_ton_label': ptnr_info.get(dptnky, {}).get('max_ton_label', ''),
                     })
 
             # =================================================================
@@ -3203,11 +3353,30 @@ def api_ps_dispatch_auto():
                 for veh in veh_list_o:
                     veh_kg  = veh['total_kg']
                     veh_car = '판별불가'
-                    for car in reversed(car_order):
+                    # _valid_cars (MAX_TON 필터 적용된 목록) 기준으로 차량 선택
+                    for car in reversed(_valid_cars):
                         ct = car['CARTYPE']
                         if veh_info.get(ct, {}).get('load_kg', 0) >= veh_kg:
                             veh_car = ct
+                    # _valid_cars 내에 적합한 차량 없으면 전체 car_order에서 재탐색
+                    if veh_car == '판별불가':
+                        for car in reversed(car_order):
+                            ct = car['CARTYPE']
+                            if veh_info.get(ct, {}).get('load_kg', 0) >= veh_kg:
+                                veh_car = ct
                     veh_load_cap = veh_info.get(veh_car, {}).get('load_kg', 0)
+
+                    # ── 납품처 조건 체크 노트 추가 ──
+                    other_notes = []
+                    ptnr_notes_o, ptnr_warns_o = _build_ptnr_notes(dptnky, rqshpd, veh_car)
+                    if _max_ton_applied:
+                        pi = ptnr_info.get(dptnky, {})
+                        other_notes.insert(0,
+                            f"[최대톤수 적용] 납품처 허용 {pi.get('max_ton_label','')} 기준 "
+                            f"배차 차량 제한 적용"
+                        )
+                    other_notes = ptnr_warns_o + other_notes + ptnr_notes_o
+
                     all_vehicles.append({
                         'dptnky':        dptnky,
                         'dptnm':         dptnm,
@@ -3221,8 +3390,15 @@ def api_ps_dispatch_auto():
                         'added_cnt':     0,
                         'added_kg':      0.0,
                         'material_type': 'OTHER',
-                        'notes':         [],
+                        'notes':         other_notes,
+                        'ptnr_warns':    ptnr_warns_o,
+                        'forklift_yn':   ptnr_info.get(dptnky, {}).get('forklift_yn', ''),
+                        'deadline_time': ptnr_info.get(dptnky, {}).get('deadline_time', ''),
+                        'max_ton_label': ptnr_info.get(dptnky, {}).get('max_ton_label', ''),
                     })
+
+            # ── 납품처별 _valid_cars 임시 교체 복원 ──
+            _valid_cars = _orig_valid_cars
 
         return jsonify({"ok": True, "total": len(all_vehicles), "vehicles": all_vehicles})
     except Exception as e:
