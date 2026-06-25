@@ -4,8 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>kleannara TMS</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
+input,select,textarea,button{font-family:'Pretendard Variable','Pretendard','Apple SD Gothic Neo','Malgun Gothic','\ub9d1\uc740 \uace0\ub515',sans-serif}
 
 /* ═══════════════════════════════════════════════
    THEME VARIABLES
@@ -98,7 +101,7 @@
   --pastel-orange-bg:#431407;--pastel-orange-fg:#fdba74;
   --pastel-gray-bg:#1e293b;--pastel-gray-fg:#94a3b8;
 }
-body{background:var(--bg);color:var(--text);font-family:'Pretendard','Segoe UI','Inter',system-ui,sans-serif;height:100vh;display:flex;overflow:hidden;font-size:13px;line-height:1.5}
+body{background:var(--bg);color:var(--text);font-family:'Pretendard Variable','Pretendard','Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-serif;height:100vh;display:flex;overflow:hidden;font-size:13px;line-height:1.5}
 
 /* ── SIDEBAR (LNB) — 딥 네이비 ── */
 #sidebar{width:216px;min-width:216px;background:var(--lnb-bg);border-right:1px solid var(--lnb-border);display:flex;flex-direction:column;overflow:hidden}
@@ -486,7 +489,7 @@ body.dc-dragging{user-select:none !important;-webkit-user-select:none !important
 .sql-editor{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;flex-shrink:0;box-shadow:var(--shadow-sm)}
 .sql-editor-toolbar{padding:7px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--th-bg)}
 .sql-editor-toolbar span{font-size:11px;color:var(--text3)}
-textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg);border:none;outline:none;resize:vertical;font-family:'JetBrains Mono','Consolas','Monaco',monospace;font-size:12px;color:var(--td-num);line-height:1.7}
+textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg);border:none;outline:none;resize:vertical;font-family:'Pretendard Variable','Pretendard',monospace;font-size:12px;color:var(--td-num);line-height:1.7}
 .sql-result{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;flex:1;min-height:60px;display:flex;flex-direction:column;box-shadow:var(--shadow-sm)}
 .sql-result-ctrl{display:flex;align-items:center;gap:6px;padding:4px 0;flex-shrink:0}
 .examples{display:flex;flex-wrap:wrap;gap:6px}
