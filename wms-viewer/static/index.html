@@ -2243,6 +2243,43 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 }
 .psd-sap-tbl tbody td.num{text-align:right}
 .psd-sap-tbl tbody td.center{text-align:center}
+/* SAP 선적목록 / SAP 납품문서 — 컬럼 드래그+리사이즈 전용 스타일 */
+.sap-left-tbl,.sap-doc-tbl{table-layout:fixed;border-collapse:collapse;font-size:11px}
+.sap-left-tbl thead th,.sap-doc-tbl thead th{
+  position:sticky;top:0;z-index:2;
+  background:var(--th-bg);color:var(--text3);font-weight:700;font-size:10px;
+  padding:6px 7px 6px 8px;border-bottom:1px solid var(--border);white-space:nowrap;
+  text-align:center;overflow:hidden;text-overflow:ellipsis;
+  position:relative; /* col-rz 기준 */
+}
+.sap-left-tbl thead th .col-rz,.sap-doc-tbl thead th .col-rz{
+  position:absolute;right:-1px;top:0;bottom:0;width:8px;
+  cursor:col-resize;z-index:10;background:transparent;
+}
+.sap-left-tbl thead th .col-rz:hover,.sap-left-tbl thead th .col-rz.rz-active,
+.sap-doc-tbl thead th .col-rz:hover,.sap-doc-tbl thead th .col-rz.rz-active{
+  background:var(--primary);opacity:.7;
+}
+.sap-left-tbl thead th[draggable="true"],.sap-doc-tbl thead th[draggable="true"]{cursor:grab}
+.sap-left-tbl thead th[draggable="true"]:active,.sap-doc-tbl thead th[draggable="true"]:active{cursor:grabbing}
+/* sap-left-tbl drag 클래스 */
+.sap-left-tbl thead th.sap-left-col-dragging{opacity:.35;cursor:grabbing;background:var(--surface2)}
+.sap-left-tbl thead th.sap-left-col-drag-over-left{box-shadow:inset 3px 0 0 var(--primary)}
+.sap-left-tbl thead th.sap-left-col-drag-over-right{box-shadow:inset -3px 0 0 var(--primary)}
+/* sap-doc-tbl drag 클래스 */
+.sap-doc-tbl thead th.sap-doc-col-dragging{opacity:.35;cursor:grabbing;background:var(--surface2)}
+.sap-doc-tbl thead th.sap-doc-col-drag-over-left{box-shadow:inset 3px 0 0 var(--primary)}
+.sap-doc-tbl thead th.sap-doc-col-drag-over-right{box-shadow:inset -3px 0 0 var(--primary)}
+.sap-left-tbl tbody tr{cursor:pointer;border-bottom:1px solid var(--tr-border);transition:.1s}
+.sap-left-tbl tbody tr:hover{background:var(--tr-hover)}
+.sap-left-tbl tbody tr.selected{background:rgba(66,165,245,.18)!important}
+.sap-left-tbl tbody td,.sap-doc-tbl tbody td{
+  padding:5px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;
+}
+.sap-left-tbl tbody td.num,.sap-doc-tbl tbody td.num{text-align:right}
+.sap-left-tbl tbody td.center,.sap-doc-tbl tbody td.center{text-align:center}
+.sap-doc-tbl tbody tr{border-bottom:1px solid var(--tr-border);transition:.1s}
+.sap-doc-tbl tbody tr:hover{background:var(--tr-hover)}
 /* ── MULTI-SELECT DROPDOWN ── */
 .ms-wrap{position:relative}
 .ms-trigger{background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:5px 9px;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:130px;white-space:nowrap;user-select:none;transition:.15s;width:100%}
@@ -3707,6 +3744,8 @@ const _dlvColW    = {}; // 납품처 리스트 컬럼 너비 저장
 const _vhcColW    = {}; // 차량 리스트 컬럼 너비 저장
 const _ssColW     = {}; // 출고문서아이템 컬럼 너비 저장
 const _psopDocColW = {}; // PS배차(최적화) 납품문서 컬럼 너비 저장
+const _sapLeftColW = {}; // SAP 선적목록 컬럼 너비 저장
+const _sapDocColW  = {}; // SAP 납품문서 컬럼 너비 저장
 
 (function(){
   let _dragging = false;
@@ -3727,6 +3766,8 @@ const _psopDocColW = {}; // PS배차(최적화) 납품문서 컬럼 너비 저�
                : tableSelector === '.wahma-table'    ? _wahmaColW
                : tableSelector === '.ss-table'       ? _ssColW
                : tableSelector === '.psd-doc-tbl'    ? _psopDocColW
+               : tableSelector === '.sap-left-tbl'   ? _sapLeftColW
+               : tableSelector === '.sap-doc-tbl'    ? _sapDocColW
                : _vhcColW;
     _startX    = e.clientX;
 
@@ -3923,6 +3964,237 @@ function psopResetColOrder() {
   };
 
   window.psopColDragEnd = function() { _clearCls(); _src = null; };
+})();
+
+/* ═══════════════════════════════════════════════════════════
+   SAP 탭 선적목록(sap-left-tbl) — 컬럼 정의 + 순서 드래그
+═══════════════════════════════════════════════════════════ */
+const SAP_LEFT_COL_LS_KEY = 'psop_sap_left_col_order_v1';
+
+const _sapLeftColDefs = [
+  { id:'chk',     label:'',              w:28,   fixed:true },
+  { id:'stdlnr',  label:'가선적번호',    w:108 },
+  { id:'sapstknum',label:'SAP 선적번호', w:108 },
+  { id:'rqshpd',  label:'출하예정일',    w:82  },
+  { id:'dptnky',  label:'납품처',        w:120 },
+  { id:'cartype', label:'차량유형',      w:58  },
+  { id:'carno',   label:'차량번호',      w:88  },
+  { id:'driver',  label:'기사명',        w:66  },
+  { id:'drivercel',label:'연락처',       w:96  },
+  { id:'totalkg', label:'총중량(kg)',    w:68  },
+  { id:'svbeln',  label:'문서수',        w:42  },
+  { id:'loadview',label:'적재뷰',        w:62  },
+];
+
+let _sapLeftColOrder = null;
+
+function _sapLeftGetColOrder() {
+  if (_sapLeftColOrder) return _sapLeftColOrder;
+  try {
+    const saved = JSON.parse(localStorage.getItem(SAP_LEFT_COL_LS_KEY) || 'null');
+    if (Array.isArray(saved) && saved.length > 1) {
+      const defIds  = _sapLeftColDefs.map(c => c.id);
+      const valid   = saved.filter(id => defIds.includes(id));
+      const missing = defIds.filter(id => !valid.includes(id));
+      _sapLeftColOrder = [...valid, ...missing];
+      return _sapLeftColOrder;
+    }
+  } catch(_){}
+  _sapLeftColOrder = _sapLeftColDefs.map(c => c.id);
+  return _sapLeftColOrder;
+}
+
+function _sapLeftSaveColOrder() {
+  try { localStorage.setItem(SAP_LEFT_COL_LS_KEY, JSON.stringify(_sapLeftColOrder)); } catch(_){}
+  const btn = document.getElementById('sap-left-col-reset-btn');
+  if (btn) btn.style.display = '';
+}
+
+function sapLeftResetColOrder() {
+  _sapLeftColOrder = _sapLeftColDefs.map(c => c.id);
+  try { localStorage.removeItem(SAP_LEFT_COL_LS_KEY); } catch(_){}
+  const btn = document.getElementById('sap-left-col-reset-btn');
+  if (btn) btn.style.display = 'none';
+  _sapRenderLeft();
+  if (typeof showToast === 'function') showToast('선적목록 컬럼 순서가 초기화되었습니다');
+}
+
+(function(){
+  let _src = null;
+  const SEL   = '.sap-left-tbl';
+  const CLS_D = 'sap-left-col-dragging';
+  const CLS_L = 'sap-left-col-drag-over-left';
+  const CLS_R = 'sap-left-col-drag-over-right';
+
+  function _clearCls() {
+    document.querySelectorAll(`${SEL} thead th`)
+      .forEach(th => th.classList.remove(CLS_D, CLS_L, CLS_R));
+  }
+
+  window.sapLeftColDragStart = function(e, id) {
+    if (e.target.classList.contains('col-rz')) { e.preventDefault(); return; }
+    _src = id;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id);
+    const th = document.querySelector(`${SEL} thead th[data-colid="${id}"]`);
+    if (th) th.classList.add(CLS_D);
+  };
+
+  window.sapLeftColDragOver = function(e, id) {
+    if (!_src || _src === id) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    _clearCls();
+    const th = document.querySelector(`${SEL} thead th[data-colid="${id}"]`);
+    if (!th) return;
+    const mid = th.getBoundingClientRect().left + th.getBoundingClientRect().width / 2;
+    th.classList.add(e.clientX < mid ? CLS_L : CLS_R);
+  };
+
+  window.sapLeftColDragLeave = function(e) {
+    e.currentTarget.classList.remove(CLS_L, CLS_R);
+  };
+
+  window.sapLeftColDrop = function(e, id) {
+    e.preventDefault();
+    if (!_src || _src === id) { _clearCls(); _src = null; return; }
+    const srcDef = _sapLeftColDefs.find(c => c.id === _src);
+    const tgtDef = _sapLeftColDefs.find(c => c.id === id);
+    if (srcDef?.fixed || tgtDef?.fixed) { _clearCls(); _src = null; return; }
+
+    const order = [..._sapLeftGetColOrder()];
+    const si = order.indexOf(_src);
+    const ti = order.indexOf(id);
+    if (si < 0 || ti < 0) { _clearCls(); _src = null; return; }
+
+    const th  = document.querySelector(`${SEL} thead th[data-colid="${id}"]`);
+    const mid = th ? th.getBoundingClientRect().left + th.getBoundingClientRect().width / 2 : 0;
+
+    order.splice(si, 1);
+    let ins = e.clientX >= mid ? (si < ti ? ti : ti + 1) : (si < ti ? ti - 1 : ti);
+    ins = Math.max(1, Math.min(ins, order.length));
+    order.splice(ins, 0, _src);
+
+    _sapLeftColOrder = order;
+    _clearCls(); _src = null;
+    _sapLeftSaveColOrder();
+    _sapRenderLeft();
+  };
+
+  window.sapLeftColDragEnd = function() { _clearCls(); _src = null; };
+})();
+
+/* ═══════════════════════════════════════════════════════════
+   SAP 탭 납품문서(sap-doc-tbl) — 컬럼 정의 + 순서 드래그
+═══════════════════════════════════════════════════════════ */
+const SAP_DOC_COL_LS_KEY = 'psop_sap_doc_col_order_v1';
+
+const _sapDocColDefs = [
+  { id:'svbeln',  label:'SAP오더번호',   w:88  },
+  { id:'shpoky',  label:'출고문서번호',  w:90  },
+  { id:'shpoit',  label:'IT',            w:34  },
+  { id:'rqshpd',  label:'출하예정일',    w:80  },
+  { id:'dptnkynm',label:'납품처',        w:140 },
+  { id:'skukey',  label:'SKU',           w:90  },
+  { id:'desc01',  label:'품목명',        w:120, flex:true },
+  { id:'qtshpo',  label:'수량',          w:52  },
+  { id:'uomkey',  label:'단위',          w:34  },
+  { id:'linekg',  label:'중량(kg)',      w:66  },
+];
+
+let _sapDocColOrder = null;
+
+function _sapDocGetColOrder() {
+  if (_sapDocColOrder) return _sapDocColOrder;
+  try {
+    const saved = JSON.parse(localStorage.getItem(SAP_DOC_COL_LS_KEY) || 'null');
+    if (Array.isArray(saved) && saved.length > 0) {
+      const defIds  = _sapDocColDefs.map(c => c.id);
+      const valid   = saved.filter(id => defIds.includes(id));
+      const missing = defIds.filter(id => !valid.includes(id));
+      _sapDocColOrder = [...valid, ...missing];
+      return _sapDocColOrder;
+    }
+  } catch(_){}
+  _sapDocColOrder = _sapDocColDefs.map(c => c.id);
+  return _sapDocColOrder;
+}
+
+function _sapDocSaveColOrder() {
+  try { localStorage.setItem(SAP_DOC_COL_LS_KEY, JSON.stringify(_sapDocColOrder)); } catch(_){}
+  const btn = document.getElementById('sap-doc-col-reset-btn');
+  if (btn) btn.style.display = '';
+}
+
+function sapDocResetColOrder() {
+  _sapDocColOrder = _sapDocColDefs.map(c => c.id);
+  try { localStorage.removeItem(SAP_DOC_COL_LS_KEY); } catch(_){}
+  const btn = document.getElementById('sap-doc-col-reset-btn');
+  if (btn) btn.style.display = 'none';
+  if (_sapState.selectedStknum) _sapLoadDocs(_sapState.selectedStknum);
+  if (typeof showToast === 'function') showToast('납품문서 컬럼 순서가 초기화되었습니다');
+}
+
+(function(){
+  let _src = null;
+  const SEL   = '.sap-doc-tbl';
+  const CLS_D = 'sap-doc-col-dragging';
+  const CLS_L = 'sap-doc-col-drag-over-left';
+  const CLS_R = 'sap-doc-col-drag-over-right';
+
+  function _clearCls() {
+    document.querySelectorAll(`${SEL} thead th`)
+      .forEach(th => th.classList.remove(CLS_D, CLS_L, CLS_R));
+  }
+
+  window.sapDocColDragStart = function(e, id) {
+    if (e.target.classList.contains('col-rz')) { e.preventDefault(); return; }
+    _src = id;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id);
+    const th = document.querySelector(`${SEL} thead th[data-colid="${id}"]`);
+    if (th) th.classList.add(CLS_D);
+  };
+
+  window.sapDocColDragOver = function(e, id) {
+    if (!_src || _src === id) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    _clearCls();
+    const th = document.querySelector(`${SEL} thead th[data-colid="${id}"]`);
+    if (!th) return;
+    const mid = th.getBoundingClientRect().left + th.getBoundingClientRect().width / 2;
+    th.classList.add(e.clientX < mid ? CLS_L : CLS_R);
+  };
+
+  window.sapDocColDragLeave = function(e) {
+    e.currentTarget.classList.remove(CLS_L, CLS_R);
+  };
+
+  window.sapDocColDrop = function(e, id) {
+    e.preventDefault();
+    if (!_src || _src === id) { _clearCls(); _src = null; return; }
+
+    const order = [..._sapDocGetColOrder()];
+    const si = order.indexOf(_src);
+    const ti = order.indexOf(id);
+    if (si < 0 || ti < 0) { _clearCls(); _src = null; return; }
+
+    const th  = document.querySelector(`${SEL} thead th[data-colid="${id}"]`);
+    const mid = th ? th.getBoundingClientRect().left + th.getBoundingClientRect().width / 2 : 0;
+
+    order.splice(si, 1);
+    let ins = e.clientX >= mid ? (si < ti ? ti : ti + 1) : (si < ti ? ti - 1 : ti);
+    ins = Math.max(0, Math.min(ins, order.length));
+    order.splice(ins, 0, _src);
+
+    _sapDocColOrder = order;
+    _clearCls(); _src = null;
+    _sapDocSaveColOrder();
+    if (_sapState.selectedStknum) _sapLoadDocs(_sapState.selectedStknum);
+  };
+
+  window.sapDocColDragEnd = function() { _clearCls(); _src = null; };
 })();
 
 /* ═══════════════════════════════════════════════════════════
@@ -10286,6 +10558,15 @@ function psopSapTabInit() {
       dtTo.value   = `${y}-${m}-${String(now.getDate()).padStart(2,'0')}`;
     }
   }
+  // localStorage 저장 순서가 있으면 컬럼초기화 버튼 표시
+  if (localStorage.getItem(SAP_LEFT_COL_LS_KEY)) {
+    const btn = document.getElementById('sap-left-col-reset-btn');
+    if (btn) btn.style.display = '';
+  }
+  if (localStorage.getItem(SAP_DOC_COL_LS_KEY)) {
+    const btn = document.getElementById('sap-doc-col-reset-btn');
+    if (btn) btn.style.display = '';
+  }
   psopLoadSapList();
 }
 
@@ -10337,88 +10618,94 @@ async function _sapRenderLeft() {
     return;
   }
 
-  const tbody = rows.map((r, idx) => {
-    const chk      = _sapState.checkedSet.has(r.STDLNR) ? 'checked' : '';
-    const selCls   = idx === _sapState.selectedIdx ? 'selected' : '';
-    // 서버에서 이미 정규화된 CARTYPE(명칭)과 CARCLASS_CD(코드) 직접 사용
-    const cartype    = r.CARTYPE    || '';   // 예: "15톤"  (명칭)
-    const carclassCd = r.CARCLASS_CD || '';  // 예: "Z150"  (코드)
-    const carDisp    = cartype || (carclassCd ? `[${carclassCd}]` : '-');
-    const hasCarno = r.CARNO && r.CARNO.trim();
-    const driver   = r.DRIVER    || '-';
-    const drvcel   = r.DRIVERCEL || '-';
-    const rqFrom   = _sapFmtDate(r.RQSHPD_FROM);
-    const rqTo     = _sapFmtDate(r.RQSHPD_TO);
-    const rqTxt    = rqFrom === rqTo ? rqFrom : `${rqFrom}~${rqTo}`;
-    const kg       = r.TOTAL_KG ? Number(r.TOTAL_KG).toLocaleString() : '0';
-    const sapStk   = r.SAP_STKNUM || '-';
-    // 차량번호란: 있으면 번호표시(클릭시 변경), 없으면 차량선택 버튼
-    // _sapOpenVehiclePick 에 carclassCd(코드) 전달
+  const order   = _sapLeftGetColOrder();
+  const colMap  = Object.fromEntries(_sapLeftColDefs.map(c => [c.id, c]));
+
+  // ── 컬럼 너비 계산: 저장된 너비 or 정의 기본값 ──
+  const colW = {};
+  _sapLeftColDefs.forEach(def => {
+    colW[def.id] = _sapLeftColW[def.id] || def.w;
+  });
+
+  // ── colgroup 동적 생성 ──
+  const cgHtml = order.map(id => {
+    const w = colW[id];
+    return `<col id="sap-left-col-${id}" style="width:${w}px">`;
+  }).join('');
+
+  // ── thead 동적 생성 ──
+  const theadHtml = `<tr>${order.map(id => {
+    const def = colMap[id];
+    const w   = colW[id];
+    if (def.fixed) {
+      return `<th data-rzid="${id}" data-colid="${id}" style="width:${w}px;min-width:${w}px;max-width:${w}px">
+        <input type="checkbox" id="sap-chk-all" onclick="_sapCheckAll(this.checked)" title="전체선택">
+      </th>`;
+    }
+    const rzHandle = `<span class="col-rz" onmousedown="tableResizerDown(event,'${id}','.sap-left-tbl')"></span>`;
+    return `<th data-rzid="${id}" data-colid="${id}"
+        style="width:${w}px;min-width:${w}px;max-width:${w}px"
+        draggable="true"
+        ondragstart="sapLeftColDragStart(event,'${id}')"
+        ondragover="sapLeftColDragOver(event,'${id}')"
+        ondragleave="sapLeftColDragLeave(event)"
+        ondrop="sapLeftColDrop(event,'${id}')"
+        ondragend="sapLeftColDragEnd(event)">${def.label}${rzHandle}</th>`;
+  }).join('')}</tr>`;
+
+  // ── tbody: cellMap 패턴으로 컬럼 순서 적용 ──
+  const tbodyRows = rows.map((r, idx) => {
+    const chk       = _sapState.checkedSet.has(r.STDLNR) ? 'checked' : '';
+    const selCls    = idx === _sapState.selectedIdx ? 'selected' : '';
+    const cartype   = r.CARTYPE    || '';
+    const carclassCd= r.CARCLASS_CD || '';
+    const carDisp   = cartype || (carclassCd ? `[${carclassCd}]` : '-');
+    const hasCarno  = r.CARNO && r.CARNO.trim();
+    const driver    = r.DRIVER    || '-';
+    const drvcel    = r.DRIVERCEL || '-';
+    const rqFrom    = _sapFmtDate(r.RQSHPD_FROM);
+    const rqTo      = _sapFmtDate(r.RQSHPD_TO);
+    const rqTxt     = rqFrom === rqTo ? rqFrom : `${rqFrom}~${rqTo}`;
+    const kg        = r.TOTAL_KG ? Number(r.TOTAL_KG).toLocaleString() : '0';
+    const sapStk    = r.SAP_STKNUM || '-';
+    const dptnky    = r.DPTNKY  || '';
+    const dptnkynm  = r.DPTNKYNM || dptnky;
     const carnoCell = hasCarno
       ? `<span style="font-size:10px;font-family:monospace;cursor:pointer;text-decoration:underline;color:var(--primary)"
            onclick="event.stopPropagation();_sapOpenVehiclePick('${r.STDLNR}','${carclassCd}','${r.VEHINO||''}')" title="클릭하여 차량 변경">${r.CARNO}</span>`
       : `<button class="psd-btn" style="padding:2px 6px;font-size:10px;white-space:nowrap"
            onclick="event.stopPropagation();_sapOpenVehiclePick('${r.STDLNR}','${carclassCd}','${r.VEHINO||''}')">🚛 차량선택</button>`;
-    const dptnky  = r.DPTNKY  || '';
-    const dptnkynm= r.DPTNKYNM|| dptnky;
-    // 납품처 셀: 복수 납품처면 회색 이탤릭, 단일이면 코드+명
     const dptnCell = dptnky.startsWith('(')
       ? `<span style="font-size:9px;color:var(--text3);font-style:italic">${dptnky}</span>`
       : `<span style="font-size:10px" title="${dptnky}">${dptnkynm || dptnky}</span>`;
-    return `<tr class="${selCls}" data-idx="${idx}" data-stdlnr="${r.STDLNR}" onclick="_sapSelectRow(${idx})">
-      <td class="center"><input type="checkbox" ${chk} onclick="event.stopPropagation();_sapToggleCheck('${r.STDLNR}',this.checked)"></td>
-      <td style="font-family:monospace;font-size:10px;white-space:nowrap" title="${r.STDLNR}">${r.STDLNR}</td>
-      <td style="font-family:monospace;font-size:10px;white-space:nowrap;color:#90caf9" title="${sapStk}">${sapStk}</td>
-      <td class="center" style="white-space:nowrap;font-size:10px">${rqTxt}</td>
-      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dptnCell}</td>
-      <td class="center"><span class="psd-car-badge" title="${carclassCd}">${carDisp}</span></td>
-      <td class="center">${carnoCell}</td>
-      <td style="font-size:10px;white-space:nowrap">${driver}</td>
-      <td style="font-size:10px;white-space:nowrap">${drvcel}</td>
-      <td class="num" style="white-space:nowrap">${kg}</td>
-      <td class="center"><span class="psd-car-badge" style="background:#37474f;color:#b0bec5">${r.SVBELN_CNT}건</span></td>
-      <td class="center">
-        <button class="psd-img-btn" title="적재 3D 시각화"
-          onclick="event.stopPropagation();_sapShowLoadImage('${r.STDLNR}','${cartype}','${carclassCd}')">
-          🖼 3D보기
-        </button>
-      </td>
-    </tr>`;
+
+    const cellMap = {
+      chk:      `<td class="center"><input type="checkbox" ${chk} onclick="event.stopPropagation();_sapToggleCheck('${r.STDLNR}',this.checked)"></td>`,
+      stdlnr:   `<td style="font-family:monospace;font-size:10px;white-space:nowrap" title="${r.STDLNR}">${r.STDLNR}</td>`,
+      sapstknum:`<td style="font-family:monospace;font-size:10px;white-space:nowrap;color:#90caf9" title="${sapStk}">${sapStk}</td>`,
+      rqshpd:   `<td class="center" style="white-space:nowrap;font-size:10px">${rqTxt}</td>`,
+      dptnky:   `<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dptnCell}</td>`,
+      cartype:  `<td class="center"><span class="psd-car-badge" title="${carclassCd}">${carDisp}</span></td>`,
+      carno:    `<td class="center">${carnoCell}</td>`,
+      driver:   `<td style="font-size:10px;white-space:nowrap">${driver}</td>`,
+      drivercel:`<td style="font-size:10px;white-space:nowrap">${drvcel}</td>`,
+      totalkg:  `<td class="num" style="white-space:nowrap">${kg}</td>`,
+      svbeln:   `<td class="center"><span class="psd-car-badge" style="background:#37474f;color:#b0bec5">${r.SVBELN_CNT}건</span></td>`,
+      loadview: `<td class="center"><button class="psd-img-btn" title="적재 3D 시각화"
+          onclick="event.stopPropagation();_sapShowLoadImage('${r.STDLNR}','${cartype}','${carclassCd}')">🖼 3D보기</button></td>`,
+    };
+    const tds = order.map(id => cellMap[id] || '<td>-</td>').join('');
+    return `<tr class="${selCls}" data-idx="${idx}" data-stdlnr="${r.STDLNR}" onclick="_sapSelectRow(${idx})">${tds}</tr>`;
   }).join('');
 
+  // 전체 너비 계산
+  const totalW = order.reduce((s, id) => s + (colW[id] || 60), 0);
+
   wrap.innerHTML = `
-    <table class="psd-sap-tbl">
-      <colgroup>
-        <col style="width:28px">
-        <col style="width:108px">
-        <col style="width:108px">
-        <col style="width:82px">
-        <col style="min-width:100px;max-width:150px">
-        <col style="width:58px">
-        <col style="width:88px">
-        <col style="width:66px">
-        <col style="width:96px">
-        <col style="width:68px">
-        <col style="width:42px">
-        <col style="width:62px">
-      </colgroup>
-      <thead>
-        <tr>
-          <th><input type="checkbox" id="sap-chk-all" onclick="_sapCheckAll(this.checked)" title="전체선택"></th>
-          <th>가선적번호</th>
-          <th>SAP 선적번호</th>
-          <th>출하예정일</th>
-          <th>납품처</th>
-          <th>차량유형</th>
-          <th>차량번호</th>
-          <th>기사명</th>
-          <th>연락처</th>
-          <th>총중량(kg)</th>
-          <th>문서수</th>
-          <th>적재뷰</th>
-        </tr>
-      </thead>
-      <tbody>${tbody}</tbody>
+    <table class="sap-left-tbl" style="width:${totalW}px;min-width:${totalW}px">
+      <colgroup>${cgHtml}</colgroup>
+      <thead>${theadHtml}</thead>
+      <tbody>${tbodyRows}</tbody>
     </table>`;
 }
 
@@ -10426,7 +10713,7 @@ function _sapSelectRow(idx) {
   _sapState.selectedIdx    = idx;
   _sapState.selectedStknum = _sapState.rows[idx]?.STDLNR || null;
   // 선택행 하이라이트 갱신
-  document.querySelectorAll('#sap-left-wrap .psd-sap-tbl tbody tr').forEach((tr,i) => {
+  document.querySelectorAll('#sap-left-wrap .sap-left-tbl tbody tr').forEach((tr,i) => {
     tr.classList.toggle('selected', i === idx);
   });
   // 오른쪽 납품문서 로드
@@ -10448,7 +10735,7 @@ function _sapCheckAll(checked) {
     if (checked) _sapState.checkedSet.add(r.STDLNR);
     else         _sapState.checkedSet.delete(r.STDLNR);
   });
-  document.querySelectorAll('#sap-left-wrap .psd-sap-tbl tbody tr input[type=checkbox]').forEach(cb => cb.checked = checked);
+  document.querySelectorAll('#sap-left-wrap .sap-left-tbl tbody tr input[type=checkbox]').forEach(cb => cb.checked = checked);
   _sapSyncButtons();
   document.getElementById('sap-stat-sel').textContent = _sapState.checkedSet.size;
 }
@@ -10867,52 +11154,67 @@ async function _sapLoadDocs(stknum) {
       return;
     }
 
-    const tbody = _sapState.docRows.map(r => {
-      const kg = r.LINE_KG !== null ? Number(r.LINE_KG).toLocaleString() : '-';
-      const rq = _sapFmtDate(r.RQSHPD);
-      return `<tr>
-        <td style="font-family:monospace;font-size:10px">${r.SVBELN || '-'}</td>
-        <td style="font-size:10px">${r.SHPOKY || '-'}</td>
-        <td class="center" style="font-size:10px">${r.SHPOIT || '-'}</td>
-        <td class="center">${rq}</td>
-        <td style="font-size:10px;max-width:130px;overflow:hidden;text-overflow:ellipsis" title="${r.DPTNKYNM||''}">${r.DPTNKYNM || r.DPTNKY || '-'}</td>
-        <td style="font-family:monospace;font-size:10px">${r.SKUKEY || '-'}</td>
-        <td style="font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis" title="${r.DESC01||''}">${r.DESC01 || '-'}</td>
-        <td class="num">${Number(r.QTSHPO||0).toLocaleString()}</td>
-        <td class="center" style="font-size:10px">${r.UOMKEY || '-'}</td>
-        <td class="num">${kg}</td>
-      </tr>`;
+    const order  = _sapDocGetColOrder();
+    const colMap = Object.fromEntries(_sapDocColDefs.map(c => [c.id, c]));
+
+    // ── 컬럼 너비 계산 ──
+    const colW = {};
+    _sapDocColDefs.forEach(def => {
+      colW[def.id] = _sapDocColW[def.id] || def.w;
+    });
+
+    // ── colgroup 동적 생성 ──
+    const cgHtml = order.map(id => {
+      const def = colMap[id];
+      const w = colW[id];
+      return def?.flex
+        ? `<col id="sap-doc-col-${id}" style="min-width:${w}px">`
+        : `<col id="sap-doc-col-${id}" style="width:${w}px">`;
     }).join('');
 
+    // ── thead 동적 생성 ──
+    const theadHtml = `<tr>${order.map(id => {
+      const def = colMap[id];
+      const w   = colW[id];
+      const rzHandle = `<span class="col-rz" onmousedown="tableResizerDown(event,'${id}','.sap-doc-tbl')"></span>`;
+      return `<th data-rzid="${id}" data-colid="${id}"
+          style="width:${w}px;min-width:${w}px;max-width:${w}px"
+          draggable="true"
+          ondragstart="sapDocColDragStart(event,'${id}')"
+          ondragover="sapDocColDragOver(event,'${id}')"
+          ondragleave="sapDocColDragLeave(event)"
+          ondrop="sapDocColDrop(event,'${id}')"
+          ondragend="sapDocColDragEnd(event)">${def.label}${rzHandle}</th>`;
+    }).join('')}</tr>`;
+
+    // ── tbody: cellMap으로 컬럼 순서 적용 ──
+    const tbodyRows = _sapState.docRows.map(r => {
+      const kg = r.LINE_KG !== null ? Number(r.LINE_KG).toLocaleString() : '-';
+      const rq = _sapFmtDate(r.RQSHPD);
+      const cellMap = {
+        svbeln:  `<td style="font-family:monospace;font-size:10px">${r.SVBELN || '-'}</td>`,
+        shpoky:  `<td style="font-size:10px">${r.SHPOKY || '-'}</td>`,
+        shpoit:  `<td class="center" style="font-size:10px">${r.SHPOIT || '-'}</td>`,
+        rqshpd:  `<td class="center">${rq}</td>`,
+        dptnkynm:`<td style="font-size:10px;overflow:hidden;text-overflow:ellipsis" title="${r.DPTNKYNM||''}">${r.DPTNKYNM || r.DPTNKY || '-'}</td>`,
+        skukey:  `<td style="font-family:monospace;font-size:10px">${r.SKUKEY || '-'}</td>`,
+        desc01:  `<td style="font-size:10px;overflow:hidden;text-overflow:ellipsis" title="${r.DESC01||''}">${r.DESC01 || '-'}</td>`,
+        qtshpo:  `<td class="num">${Number(r.QTSHPO||0).toLocaleString()}</td>`,
+        uomkey:  `<td class="center" style="font-size:10px">${r.UOMKEY || '-'}</td>`,
+        linekg:  `<td class="num">${kg}</td>`,
+      };
+      const tds = order.map(id => cellMap[id] || '<td>-</td>').join('');
+      return `<tr>${tds}</tr>`;
+    }).join('');
+
+    // 전체 너비 계산
+    const totalW = order.reduce((s, id) => s + (colW[id] || 60), 0);
+
     wrap.innerHTML = `
-      <table class="psd-sap-tbl">
-        <colgroup>
-          <col style="width:88px">
-          <col style="width:90px">
-          <col style="width:34px">
-          <col style="width:80px">
-          <col style="width:140px">
-          <col style="width:90px">
-          <col style="min-width:120px">
-          <col style="width:52px">
-          <col style="width:34px">
-          <col style="width:66px">
-        </colgroup>
-        <thead>
-          <tr>
-            <th>SAP오더번호</th>
-            <th>출고문서번호</th>
-            <th>IT</th>
-            <th>출하예정일</th>
-            <th>납품처</th>
-            <th>SKU</th>
-            <th>품목명</th>
-            <th>수량</th>
-            <th>단위</th>
-            <th>중량(kg)</th>
-          </tr>
-        </thead>
-        <tbody>${tbody}</tbody>
+      <table class="sap-doc-tbl" style="width:${totalW}px;min-width:${totalW}px">
+        <colgroup>${cgHtml}</colgroup>
+        <thead>${theadHtml}</thead>
+        <tbody>${tbodyRows}</tbody>
       </table>`;
   } catch(e) {
     wrap.innerHTML = `<div class="psd-empty-state" style="color:#ef5350">오류: ${e.message}</div>`;
@@ -11698,6 +12000,7 @@ async function renderPsDispatchOpt() {
           <div class="psd-panel-hdr">
             <div class="psd-panel-hdr-title">📋 선적번호 목록 <span class="psd-sel-badge" id="sap-left-cnt">0</span></div>
             <div class="psd-panel-hdr-info">행 클릭 시 납품문서 표시</div>
+            <button id="sap-left-col-reset-btn" class="psd-btn" style="display:none;margin-left:auto;font-size:10px;padding:2px 7px" onclick="sapLeftResetColOrder()" title="컬럼 순서 초기화">↺ 컬럼초기화</button>
           </div>
           <div class="psd-panel-body" id="sap-left-wrap">
             <div class="psd-empty-state">조회 버튼을 눌러 데이터를 불러오세요</div>
@@ -11708,6 +12011,7 @@ async function renderPsDispatchOpt() {
           <div class="psd-panel-hdr">
             <div class="psd-panel-hdr-title">📄 납품문서 상세 <span class="psd-sel-badge" id="sap-right-cnt">0</span></div>
             <div class="psd-panel-hdr-info" id="sap-right-stknum"></div>
+            <button id="sap-doc-col-reset-btn" class="psd-btn" style="display:none;margin-left:auto;font-size:10px;padding:2px 7px" onclick="sapDocResetColOrder()" title="컬럼 순서 초기화">↺ 컬럼초기화</button>
           </div>
           <div class="psd-panel-body" id="sap-right-wrap">
             <div class="psd-sap-select-prompt">
