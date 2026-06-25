@@ -225,10 +225,22 @@ if __name__ == '__main__':
     conn.commit()
     print("✅ Tables created: BZPTN_DETAIL, VHCMA")
 
-    # BZPTN_DETAIL 삽입
+    # BZPTN_DETAIL 삽입 (컬럼명 지정 방식 — DDL 버전 차이에 안전)
     bd_rows = make_bzptn_detail()
-    ph = ','.join(['?'] * 32)
-    conn.executemany(f"INSERT OR REPLACE INTO BZPTN_DETAIL VALUES({ph})", bd_rows)
+    bd_cols = [
+        'PTNRKY','PTNRTY','OWNRKY','WAREKY',
+        'ROUTE_CD','ITEM_GROUP','UNLOAD_TIME',
+        'INB_TIME_FROM1','INB_TIME_TO1',
+        'AREA_CD','MAX_HEIGHT','FORKLIFT_YN','HANDWORK_YN',
+        'AUTO_PLT','MAX_BOX_QTY','AUTO_ALLOC_YN',
+        'SINGLE_ITEM_YN','NY_TYPE','SINGLE_HEIGHT',
+        'DYNAMIC_YN','LTL_YN','PRIORITY_YN','MIN_QTSIWH',
+        'LATITUDE','LONGITUDE',
+        'DEL_YN','CREDAT','CRETIM','CREUSR','LMODAT','LMOTIM','LMOUSR',
+    ]
+    ph = ','.join(['?'] * len(bd_cols))
+    col_str = ','.join(bd_cols)
+    conn.executemany(f"INSERT OR REPLACE INTO BZPTN_DETAIL ({col_str}) VALUES({ph})", bd_rows)
     conn.commit()
     print(f"✅ BZPTN_DETAIL : {len(bd_rows):>5,} rows")
 

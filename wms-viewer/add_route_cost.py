@@ -1,7 +1,7 @@
 import sqlite3, openpyxl, re
 
 DB_PATH   = "/home/user/webapp/wms-viewer/wms.db"
-XLSX_PATH = "/home/user/uploaded_files/운송경로 별 비용_업로드.xlsx"
+XLSX_PATH = "/home/user/webapp/wms-viewer/data/운송경로 별 비용_업로드.xlsx"
 
 DDL = """
 CREATE TABLE IF NOT EXISTS ROUTE_COST (
