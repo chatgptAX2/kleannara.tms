@@ -22,10 +22,10 @@ input,select,textarea,button{font-family:'Pretendard Variable','Pretendard','App
   --lnb-bg:#0f172a;--lnb-surface2:#1e293b;--lnb-border:#1e3a5f;
   --lnb-text:#e2e8f0;--lnb-text2:#94a3b8;--lnb-text3:#475569;
   --lnb-active-bg:#0ea5e9;
-  /* GNB: 약간 밝은 네이비 */
-  --gnb-bg:#1e293b;--gnb-border:#334155;
-  --gnb-tab-active-bg:#f8fafc;--gnb-tab-active-text:#0f172a;
-  --gnb-tab-hover-bg:#263449;--gnb-tab-text:#94a3b8;
+  /* GNB: 올리브 그린 (#68782F 기반) */
+  --gnb-bg:#68782f;--gnb-border:#55621f;
+  --gnb-tab-active-bg:#f8fafc;--gnb-tab-active-text:#3a4015;
+  --gnb-tab-hover-bg:#7a8c38;--gnb-tab-text:#e8ecc8;
 }
 
 /* ── LIGHT 테마 (기본) — 네이비+스카이블루 시스템 ── */
@@ -162,17 +162,17 @@ body{background:var(--bg);color:var(--text);font-family:'Pretendard Variable','P
 .topbar-row1{display:flex;align-items:center;gap:10px}
 .topbar h2{
   font-size:14px;font-weight:700;flex:1;white-space:nowrap;
-  overflow:hidden;text-overflow:ellipsis;color:#e2e8f0;
+  overflow:hidden;text-overflow:ellipsis;color:#f5f7e8;
 }
 .topbar .badge{
-  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);
-  padding:3px 10px;border-radius:20px;font-size:11px;color:#94a3b8;white-space:nowrap;
+  background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);
+  padding:3px 10px;border-radius:20px;font-size:11px;color:#e8ecc8;white-space:nowrap;
 }
 /* ── BREADCRUMB ── */
-.breadcrumb{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--lnb-text3);padding:2px 0 3px}
-.breadcrumb-sep{color:rgba(255,255,255,.15);font-size:10px}
-.breadcrumb-item{color:#64748b;cursor:pointer;padding:1px 5px;border-radius:4px;transition:.12s}
-.breadcrumb-item:hover{color:#94a3b8;background:rgba(255,255,255,.06)}
+.breadcrumb{display:flex;align-items:center;gap:4px;font-size:11px;color:#c8cc9a;padding:2px 0 3px}
+.breadcrumb-sep{color:rgba(255,255,255,.25);font-size:10px}
+.breadcrumb-item{color:#c8cc9a;cursor:pointer;padding:1px 5px;border-radius:4px;transition:.12s}
+.breadcrumb-item:hover{color:#f5f7e8;background:rgba(255,255,255,.1)}
 .breadcrumb-item.active{color:#38bdf8;font-weight:600;cursor:default}
 .breadcrumb-item.active:hover{background:none}
 /* ── SORT ── */
@@ -2343,14 +2343,14 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
   transition:background .12s,color .12s;
   user-select:none;white-space:nowrap;overflow:hidden;
 }
-.tab-item:hover{background:rgba(255,255,255,.05);color:#94a3b8}
+.tab-item:hover{background:rgba(255,255,255,.1);color:#f5f7e8}
 .tab-item.active{
   background:var(--gnb-tab-active-bg);color:var(--gnb-tab-active-text);font-weight:700;
 }
 .tab-item.active::after{
   content:'';position:absolute;bottom:-2px;left:0;right:0;
-  height:2px;background:var(--primary);
-  box-shadow:0 0 8px rgba(14,165,233,.6);
+  height:2px;background:#d4e157;
+  box-shadow:0 0 8px rgba(212,225,87,.5);
 }
 .tab-icon{font-size:13px;flex-shrink:0}
 .tab-label{flex:1;overflow:hidden;text-overflow:ellipsis;font-size:11.5px}
@@ -2361,8 +2361,8 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
   display:flex;align-items:center;justify-content:center;
   transition:.12s;padding:0;line-height:1;
 }
-.tab-close:hover{background:rgba(239,68,68,.2);color:#fca5a5}
-.tab-item.active .tab-close{color:#64748b}
+.tab-close:hover{background:rgba(239,68,68,.25);color:#fca5a5}
+.tab-item.active .tab-close{color:#7a8c38}
 /* 탭 없을때 빈 공간 */
 #tab-bar-empty{
   display:flex;align-items:center;padding:0 14px;
