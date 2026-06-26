@@ -14896,173 +14896,167 @@ async function renderShipSchedule() {
 <div style="padding:16px 20px;box-sizing:border-box;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">
 
   <!-- 검색 패널 -->
-  <div id="ss-search-panel" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:0;flex-shrink:0;overflow:hidden;">
+  <div id="ss-search-panel" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 16px;margin-bottom:0;flex-shrink:0;overflow:hidden;">
     <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:8px;">
       🔍 검색조건
       <span style="font-weight:400;font-size:11px;color:var(--text3);">${_isShpdi ? '출고문서 아이템 — 출하요청일자 기준 조회' : '출하요청일자 기준 조회'}</span>
       ${_dataRangeHint ? `<span style="margin-left:auto;font-size:11px;font-weight:500;color:#d97706;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:2px 8px;">⚠ ${_dataRangeHint}</span>` : ''}
     </div>
 
-    <!-- 1행: 창고 / 출하요청일자 / 납품문서(SVBELN) -->
-    <div style="display:grid;grid-template-columns:140px 280px 200px;gap:10px;margin-bottom:10px;align-items:end;">
-      <div>
-        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">창고(WAREKY)</label>
-        <select id="ss-wareky" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;">
-          <option value="">전체</option>
-          ${warekyOpts}
-        </select>
-      </div>
 
-      <!-- 출하요청일자: 텍스트 직접입력 + 달력 아이콘 -->  
-      <div>
-        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">출하요청일자 (RQSHPD)</label>
-        <div style="display:flex;align-items:center;gap:6px;">
-          <!-- FROM -->
-          <div style="position:relative;flex:1;">
-            <input type="text" id="ss-rqshpd-from" value="${defFrom}" maxlength="8"
-              style="width:100%;padding:6px 28px 6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;box-sizing:border-box;"
-              placeholder="YYYYMMDD" oninput="_ssDateSync('from',this.value)">
-            <input type="date" id="ss-rqshpd-from-cal" value="${defFromH}"
-              style="position:absolute;right:4px;top:50%;transform:translateY(-50%);width:18px;height:18px;opacity:0;cursor:pointer;"
-              onchange="_ssCalSync('from',this.value)">
-            <span onclick="document.getElementById('ss-rqshpd-from-cal').showPicker()"
-              style="position:absolute;right:6px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:14px;pointer-events:all;">📅</span>
-          </div>
-          <span style="color:var(--text3);font-size:12px;flex-shrink:0;">~</span>
-          <!-- TO -->
-          <div style="position:relative;flex:1;">
-            <input type="text" id="ss-rqshpd-to" value="${defTo}" maxlength="8"
-              style="width:100%;padding:6px 28px 6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;box-sizing:border-box;"
-              placeholder="YYYYMMDD" oninput="_ssDateSync('to',this.value)">
-            <input type="date" id="ss-rqshpd-to-cal" value="${defToH}"
-              style="position:absolute;right:4px;top:50%;transform:translateY(-50%);width:18px;height:18px;opacity:0;cursor:pointer;"
-              onchange="_ssCalSync('to',this.value)">
-            <span onclick="document.getElementById('ss-rqshpd-to-cal').showPicker()"
-              style="position:absolute;right:6px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:14px;pointer-events:all;">📅</span>
-          </div>
-        </div>
-      </div>
+    <!-- ★ 2컬럼 레이아웃: 좌(입력필드 2행) + 우(체크박스+버튼) ★ -->
+    <div style="display:grid;grid-template-columns:1fr auto;gap:0 16px;align-items:start;">
 
-      <!-- 납품문서(SVBELN) 팝업 검색 -->
-      <div>
-        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">
-          납품문서 (SVBELN)
-          <span style="font-weight:400;color:var(--text3);font-size:10px;">다중 선택 가능</span>
-        </label>
-        <div style="display:flex;gap:4px;align-items:flex-start;">
-          <div style="flex:1;position:relative;">
-            <div id="ss-svbeln-tags"
-              style="height:34px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);
-                     font-size:11px;color:var(--text);display:flex;flex-wrap:nowrap;gap:3px;align-items:center;cursor:default;
-                     overflow-x:auto;overflow-y:hidden;scrollbar-width:none;"
-              onclick="openSvbelnPopup()">
-              <span id="ss-svbeln-placeholder" style="color:var(--text3);font-size:11px;">전체 (클릭하여 선택)</span>
+      <!-- ── 좌: 입력 필드 2행 ── -->
+      <div style="display:flex;flex-direction:column;gap:8px;">
+
+        <!-- 1행: 창고 / 출하요청일자 / 납품문서(SVBELN) -->
+        <div style="display:grid;grid-template-columns:120px 1fr 220px;gap:8px;align-items:end;">
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">창고(WAREKY)</label>
+            <select id="ss-wareky" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;">
+              <option value="">전체</option>
+              ${warekyOpts}
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">출하요청일자 (RQSHPD)</label>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <div style="position:relative;flex:1;">
+                <input type="text" id="ss-rqshpd-from" value="${defFrom}" maxlength="8"
+                  style="width:100%;padding:5px 28px 5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;box-sizing:border-box;"
+                  placeholder="YYYYMMDD" oninput="_ssDateSync('from',this.value)">
+                <input type="date" id="ss-rqshpd-from-cal" value="${defFromH}"
+                  style="position:absolute;right:4px;top:50%;transform:translateY(-50%);width:18px;height:18px;opacity:0;cursor:pointer;"
+                  onchange="_ssCalSync('from',this.value)">
+                <span onclick="document.getElementById('ss-rqshpd-from-cal').showPicker()"
+                  style="position:absolute;right:6px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:13px;pointer-events:all;">📅</span>
+              </div>
+              <span style="color:var(--text3);font-size:12px;flex-shrink:0;">~</span>
+              <div style="position:relative;flex:1;">
+                <input type="text" id="ss-rqshpd-to" value="${defTo}" maxlength="8"
+                  style="width:100%;padding:5px 28px 5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;box-sizing:border-box;"
+                  placeholder="YYYYMMDD" oninput="_ssDateSync('to',this.value)">
+                <input type="date" id="ss-rqshpd-to-cal" value="${defToH}"
+                  style="position:absolute;right:4px;top:50%;transform:translateY(-50%);width:18px;height:18px;opacity:0;cursor:pointer;"
+                  onchange="_ssCalSync('to',this.value)">
+                <span onclick="document.getElementById('ss-rqshpd-to-cal').showPicker()"
+                  style="position:absolute;right:6px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:13px;pointer-events:all;">📅</span>
+              </div>
             </div>
           </div>
-          <button type="button" onclick="openSvbelnPopup()"
-            style="flex-shrink:0;padding:0 8px;height:34px;font-size:13px;border-radius:6px;
-                   border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;" title="납품문서 검색">🔍</button>
-          <button type="button" onclick="clearSvbelnTags()"
-            style="flex-shrink:0;padding:0 8px;height:34px;font-size:12px;border-radius:6px;
-                   border:1px solid var(--border);background:var(--surface2);color:var(--text3);cursor:pointer;" title="선택 초기화">✕</button>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">
+              납품문서 (SVBELN) <span style="font-weight:400;color:var(--text3);font-size:10px;">다중 선택 가능</span>
+            </label>
+            <div style="display:flex;gap:4px;align-items:flex-start;">
+              <div style="flex:1;position:relative;">
+                <div id="ss-svbeln-tags"
+                  style="height:30px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);
+                         font-size:11px;color:var(--text);display:flex;flex-wrap:nowrap;gap:3px;align-items:center;cursor:default;
+                         overflow-x:auto;overflow-y:hidden;scrollbar-width:none;"
+                  onclick="openSvbelnPopup()">
+                  <span id="ss-svbeln-placeholder" style="color:var(--text3);font-size:11px;">전체 (클릭하여 선택)</span>
+                </div>
+              </div>
+              <button type="button" onclick="openSvbelnPopup()"
+                style="flex-shrink:0;padding:0 8px;height:30px;font-size:13px;border-radius:6px;
+                       border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;" title="납품문서 검색">🔍</button>
+              <button type="button" onclick="clearSvbelnTags()"
+                style="flex-shrink:0;padding:0 8px;height:30px;font-size:12px;border-radius:6px;
+                       border:1px solid var(--border);background:var(--surface2);color:var(--text3);cursor:pointer;" title="선택 초기화">✕</button>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
 
-    <!-- 2행: 배차상태 / 제품군 / 품목코드 / 납품처 -->
-    <div style="display:grid;grid-template-columns:160px 120px 160px 200px;gap:10px;margin-bottom:10px;align-items:end;">
-
-      <!-- 배차상태: STKNUM 유무 라디오 -->
-      <div>
-        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:5px;">배차상태</label>
-        <div style="display:flex;align-items:center;gap:14px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);">
-          <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
-            <input type="radio" name="ss-alloc" value="" checked> 전체
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
-            <input type="radio" name="ss-alloc" value="done"> 완료
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
-            <input type="radio" name="ss-alloc" value="notdone"> 미완료
-          </label>
+        <!-- 2행: 배차상태 / 제품군 / 품목코드 / 납품처 -->
+        <div style="display:grid;grid-template-columns:170px 110px 1fr 200px;gap:8px;align-items:end;">
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">배차상태</label>
+            <div style="display:flex;align-items:center;gap:12px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);height:30px;">
+              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+                <input type="radio" name="ss-alloc" value="" checked> 전체
+              </label>
+              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+                <input type="radio" name="ss-alloc" value="done"> 완료
+              </label>
+              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+                <input type="radio" name="ss-alloc" value="notdone"> 미완료
+              </label>
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">제품군(SKUG05)</label>
+            <select id="ss-skug05" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;">
+              <option value="">전체</option>
+              ${skug05Opts}
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">품목코드 (SKUKEY)</label>
+            <input id="ss-skukey" type="text"
+              style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;box-sizing:border-box;"
+              placeholder="품목코드 일부 입력 (부분일치)">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">납품처</label>
+            <div style="display:flex;gap:4px;align-items:center;">
+              <input id="ss-ptnrky" type="text" readonly
+                style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);
+                       color:var(--text);font-size:12px;cursor:default;" placeholder="전체 (클릭하여 선택)">
+              <button type="button" onclick="openSsPtnrPopup()"
+                style="flex-shrink:0;padding:0 8px;height:30px;font-size:13px;border-radius:6px;
+                       border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;" title="납품처 검색">🔍</button>
+              <button type="button" onclick="clearSsPtnr()"
+                style="flex-shrink:0;padding:0 8px;height:30px;font-size:12px;border-radius:6px;
+                       border:1px solid var(--border);background:var(--surface2);color:var(--text3);cursor:pointer;" title="초기화">✕</button>
+            </div>
+          </div>
         </div>
-      </div>
 
-      <!-- 제품군 (구 온도구분 SKUG05) -->
-      <div>
-        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">제품군 (SKUG05)</label>
-        <select id="ss-skug05" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;">
-          <option value="">전체</option>
-          ${skug05Opts}
-        </select>
-      </div>
+      </div><!-- /좌 -->
 
-      <!-- 품목코드 (SKUKEY) 직접 입력 -->
-      <div>
-        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">품목코드 (SKUKEY)</label>
-        <input id="ss-skukey" type="text"
-          style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;box-sizing:border-box;"
-          placeholder="품목코드 일부 입력 (부분일치)">
-      </div>
-
-      <!-- 납품처: 팝업 검색 (구 부서 DPTNKY → STKNUM 기반 납품처코드) -->
-      <div>
-        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">납품처</label>
-        <div style="display:flex;gap:4px;align-items:center;">
-          <input id="ss-ptnrky" type="text" readonly
-            style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);
-                   color:var(--text);font-size:12px;cursor:default;" placeholder="전체 (클릭하여 선택)">
-          <button type="button" onclick="openSsPtnrPopup()"
-            style="flex-shrink:0;padding:0 8px;height:32px;font-size:13px;border-radius:6px;
-                   border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;" title="납품처 검색">🔍</button>
-          <button type="button" onclick="clearSsPtnr()"
-            style="flex-shrink:0;padding:0 8px;height:32px;font-size:12px;border-radius:6px;
-                   border:1px solid var(--border);background:var(--surface2);color:var(--text3);cursor:pointer;" title="초기화">✕</button>
+      <!-- ── 우: 체크박스 그룹 + 버튼 ── -->
+      <div style="display:flex;flex-direction:column;gap:6px;padding-left:14px;border-left:1px solid var(--border);min-width:290px;align-self:stretch;justify-content:center;">
+        <!-- 출하유형(SHPMTY) -->
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">출하유형 (SHPMTY)</label>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+            <label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer;
+                          padding:2px 8px;border-radius:10px;border:1px solid var(--primary);color:var(--primary);font-weight:600;">
+              <input type="checkbox" id="ss-shpmty-all" checked
+                onchange="_ssToggleAll('ss-shpmty','ss-shpmty-all')"> 전체
+            </label>
+            <span style="color:var(--border);font-size:12px;">|</span>
+            ${shpmtyChecks}
+          </div>
         </div>
-      </div>
-    </div>
+        <!-- 로트구분(LOTA02) -->
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">로트구분 (LOTA02)</label>
+          <div id="ss-lota02-wrap" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+            <label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer;
+                          padding:2px 8px;border-radius:10px;border:1px solid var(--primary);color:var(--primary);font-weight:600;">
+              <input type="checkbox" id="ss-lota02-all" checked
+                onchange="_ssToggleAll('ss-lota02','ss-lota02-all')"> 전체
+            </label>
+            <span style="color:var(--border);font-size:12px;">|</span>
+            ${lota02Checks || '<span style="font-size:11px;color:var(--text3);">로드 중...</span>'}
+          </div>
+        </div>
+        <!-- 조회/초기화 버튼 -->
+        <div style="display:flex;align-items:center;gap:8px;margin-top:2px;">
+          <button onclick="loadShipSchedule(1)" style="padding:6px 18px;background:var(--primary);color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;">
+            🔍 조회
+          </button>
+          <button onclick="resetShipScheduleSearch()" style="padding:6px 12px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px;">
+            초기화
+          </button>
+          <input type="hidden" id="ss-page-size" value="99999">
+        </div>
+      </div><!-- /우 -->
 
-    <!-- 3행: 출하유형(SHPMTY) + 전체선택 -->
-    <div style="margin-bottom:10px;">
-      <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:5px;">출하유형 (SHPMTY)</label>
-      <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
-        <!-- 전체선택 토글 -->
-        <label style="display:inline-flex;align-items:center;gap:3px;margin-right:6px;font-size:12px;cursor:pointer;
-                      padding:2px 8px;border-radius:10px;border:1px solid var(--primary);color:var(--primary);font-weight:600;">
-          <input type="checkbox" id="ss-shpmty-all" checked
-            onchange="_ssToggleAll('ss-shpmty','ss-shpmty-all')"> 전체
-        </label>
-        <span style="color:var(--border);font-size:14px;margin-right:4px;">|</span>
-        ${shpmtyChecks}
-      </div>
-    </div>
-
-    <!-- 4행: 로트구분(LOTA02) + 전체선택 -->
-    <div style="margin-bottom:14px;">
-      <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:5px;">로트구분 (LOTA02)</label>
-      <div id="ss-lota02-wrap" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
-        <!-- 전체선택 토글 -->
-        <label style="display:inline-flex;align-items:center;gap:3px;margin-right:6px;font-size:12px;cursor:pointer;
-                      padding:2px 8px;border-radius:10px;border:1px solid var(--primary);color:var(--primary);font-weight:600;">
-          <input type="checkbox" id="ss-lota02-all" checked
-            onchange="_ssToggleAll('ss-lota02','ss-lota02-all')"> 전체
-        </label>
-        <span style="color:var(--border);font-size:14px;margin-right:4px;">|</span>
-        ${lota02Checks || '<span style="font-size:11px;color:var(--text3);">로드 중...</span>'}
-      </div>
-    </div>
-
-    <!-- 버튼 -->
-    <div style="display:flex;align-items:center;gap:8px;">
-      <button onclick="loadShipSchedule(1)" style="padding:7px 20px;background:var(--primary);color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;">
-        🔍 조회
-      </button>
-      <button onclick="resetShipScheduleSearch()" style="padding:7px 14px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px;">
-        초기화
-      </button>
-      <!-- 페이지당 건수 셀렉트 제거 — 전체 한 페이지로 표시 -->
-      <input type="hidden" id="ss-page-size" value="99999">
-    </div>
+    </div><!-- /2컬럼 -->
   </div>
 
   <!-- 검색조건↔결과 드래그 핸들 -->
