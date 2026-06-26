@@ -14970,7 +14970,7 @@ async function renderShipSchedule() {
         </div>
 
         <!-- 2행: 배차상태 / 제품군 / 품목코드 / 납품처 -->
-        <div style="display:grid;grid-template-columns:160px 100px 1fr minmax(180px,1fr);gap:8px;align-items:end;">
+        <div style="display:grid;grid-template-columns:160px 100px 1fr minmax(210px,1fr);gap:8px;align-items:end;">
           <div>
             <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">배차상태</label>
             <div style="display:flex;align-items:center;gap:12px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);height:30px;">
@@ -15000,15 +15000,17 @@ async function renderShipSchedule() {
           </div>
           <div>
             <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">납품처</label>
-            <div style="display:flex;gap:4px;align-items:center;">
-              <input id="ss-ptnrky" type="text" readonly
-                style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);
-                       color:var(--text);font-size:12px;cursor:default;" placeholder="전체 (클릭하여 선택)">
+            <!-- 납품처 입력란: 직접 타이핑 또는 팝업 선택 가능 -->
+            <div style="display:flex;gap:4px;align-items:center;min-width:0;">
+              <input id="ss-ptnrky" type="text"
+                style="flex:1;min-width:0;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);
+                       color:var(--text);font-size:12px;" placeholder="코드/명칭 입력 또는 팝업 선택"
+                oninput="_ssPtnrInputChange(this.value)">
               <button type="button" onclick="openSsPtnrPopup()"
-                style="flex-shrink:0;padding:0 8px;height:30px;font-size:13px;border-radius:6px;
+                style="flex-shrink:0;padding:0 7px;height:30px;font-size:13px;border-radius:6px;
                        border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;" title="납품처 검색">🔍</button>
               <button type="button" onclick="clearSsPtnr()"
-                style="flex-shrink:0;padding:0 8px;height:30px;font-size:12px;border-radius:6px;
+                style="flex-shrink:0;padding:0 7px;height:30px;font-size:12px;border-radius:6px;
                        border:1px solid var(--border);background:var(--surface2);color:var(--text3);cursor:pointer;" title="초기화">✕</button>
             </div>
           </div>
@@ -17256,7 +17258,13 @@ function closeSsPtnrPopup() {
 
 function clearSsPtnr() {
   const el = document.getElementById('ss-ptnrky');
-  if (el) { el.value = ''; el.title = ''; el.placeholder = '전체 (클릭하여 선택)'; }
+  if (el) { el.value = ''; el.title = ''; el.placeholder = '코드/명칭 입력 또는 팝업 선택'; }
+}
+
+/* 납품처 직접 입력 시 호출 — 팝업 없이 입력값을 그대로 ptnrky로 사용 */
+function _ssPtnrInputChange(val) {
+  const el = document.getElementById('ss-ptnrky');
+  if (el) el.title = val ? `입력값: ${val}` : '';
 }
 
 function ssPtnrPopupSearch() {

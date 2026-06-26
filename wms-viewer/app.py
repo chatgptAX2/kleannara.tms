@@ -1783,7 +1783,7 @@ def api_shipment_schedule():
     if rqshpd_to:
         where.append("SH.RQSHPD <= ?"); params.append(rqshpd_to)
     if stknum:
-        where.append("SI.STKNUM = ?"); params.append(stknum)
+        where.append("SI.STDLNR = ?"); params.append(stknum)
     # 납품문서번호(SVBELN) 다중 검색
     if svbelns:
         clean_svbelns = [v.strip() for v in svbelns if v.strip()]
@@ -1797,16 +1797,17 @@ def api_shipment_schedule():
         where.append("SI.SKUG05 = ?"); params.append(skug05)
     if dptnky:
         where.append("SH.DPTNKY = ?"); params.append(dptnky)
-    # 납품처 코드 (STKNUM = 납품처코드로 저장되는 구조)
+    # 납품처 코드/명칭 검색 (코드 정확일치 또는 코드/명칭 부분일치)
     if ptnrky:
-        where.append("SI.STKNUM = ?"); params.append(ptnrky)
+        where.append("(SI.PTNRKY = ? OR SI.PTNRKY LIKE ? OR SH.DPTNKY = ? OR SH.DPTNKY LIKE ? OR SI.NAME01 LIKE ?)")
+        params.extend([ptnrky, f"%{ptnrky}%", ptnrky, f"%{ptnrky}%", f"%{ptnrky}%"])
     if skukey:
         where.append("SI.SKUKEY LIKE ?"); params.append(f"%{skukey}%")
-    # 배차상태: STKNUM 유무로 판단
+    # 배차상태: STDLNR(가선적번호) 유무로 판단
     if alloc_st == 'done':
-        where.append("(SI.STKNUM IS NOT NULL AND TRIM(SI.STKNUM) != '')")
+        where.append("(SI.STDLNR IS NOT NULL AND TRIM(SI.STDLNR) != '')")
     elif alloc_st == 'notdone':
-        where.append("(SI.STKNUM IS NULL OR TRIM(SI.STKNUM) = '')")
+        where.append("(SI.STDLNR IS NULL OR TRIM(SI.STDLNR) = '')")
 
     # 출하유형 (SHPMTY) 다중선택
     default_shpmty = ['201','205','206','208','221','231']  # 출하유형
@@ -1825,7 +1826,7 @@ def api_shipment_schedule():
     # ── 기본 쿼리 (환산 컬럼 제외, 먼저 로우 추출) ───────────────
     base_sql = f"""
         SELECT
-            SI.STKNUM                                               AS STKNUM,
+            COALESCE(SI.STDLNR,' ')                                AS STKNUM,
             SI.SVBELN                                               AS SVBELN,
             SI.SHPOKY                                               AS SHPOKY,
             SH.RQSHPD                                               AS RQSHPD,
@@ -1836,7 +1837,7 @@ def api_shipment_schedule():
             SI.STATIT                                               AS STATIT,
             COALESCE((SELECT CDESC1 FROM CMCDV
                       WHERE CMCDKY='STATIT' AND CMCDVL=SI.STATIT),' ') AS STATNM,
-            COALESCE(TRIM(SI.APPOINTPICKING),' ')                   AS APPOINTPICKING,
+            COALESCE(TRIM(NULL),' ')                            AS APPOINTPICKING,
             SI.CHGFLG                                               AS CHGFLG,
             CASE WHEN SI.STATIT='NEW' THEN 'V' ELSE '' END          AS STATUS_NEW,
             CASE WHEN SI.STATIT IN ('FAL','PAL') THEN 'V' ELSE '' END AS STATUS_ALO,
@@ -1850,7 +1851,7 @@ def api_shipment_schedule():
                  ELSE COALESCE(SH.DPTNKY,' ') END                  AS DPTNKY,
             CASE WHEN SH.SHPMTY='231' THEN COALESCE(VD.NAME01,' ')
                  ELSE COALESCE(CT.NAME01,' ') END                  AS DPTNKYNM,
-            SI.SAPSTS                                               AS SAPSTS,
+            ' '                                                 AS SAPSTS,
             SI.QTSHPO                                               AS QTSHPO,
             SI.QTYORG                                               AS QTYORG,
             SI.UOMKEY                                               AS UOMKEY,
