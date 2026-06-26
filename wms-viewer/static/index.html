@@ -14848,7 +14848,7 @@ async function renderShipSchedule() {
 
   /* lota02 멀티 체크박스 (전체선택 앞에 추가) */
   const lota02Checks = opts.lota02.map(v =>
-    `<label style="display:inline-flex;align-items:center;gap:3px;margin-right:10px;font-size:12px;cursor:pointer;">
+    `<label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer;white-space:nowrap;">
        <input type="checkbox" class="ss-lota02" value="${v}" checked> ${v}
      </label>`).join('');
 
@@ -14858,7 +14858,7 @@ async function renderShipSchedule() {
     {v:'208', l:'수출출고'},  {v:'221', l:'이송출고'},     {v:'231', l:'반품출고'},
   ];
   const shpmtyChecks = shpmtyList.map(o =>
-    `<label style="display:inline-flex;align-items:center;gap:3px;margin-right:10px;font-size:12px;cursor:pointer;">
+    `<label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer;white-space:nowrap;">
        <input type="checkbox" class="ss-shpmty" value="${o.v}" checked> ${o.l}(${o.v})
      </label>`).join('');
 
@@ -14896,7 +14896,7 @@ async function renderShipSchedule() {
 <div style="padding:16px 20px;box-sizing:border-box;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">
 
   <!-- 검색 패널 -->
-  <div id="ss-search-panel" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 16px;margin-bottom:0;flex-shrink:0;overflow:hidden;">
+  <div id="ss-search-panel" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 16px;margin-bottom:0;flex-shrink:0;overflow:visible;">
     <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:8px;">
       🔍 검색조건
       <span style="font-weight:400;font-size:11px;color:var(--text3);">${_isShpdi ? '출고문서 아이템 — 출하요청일자 기준 조회' : '출하요청일자 기준 조회'}</span>
@@ -14905,13 +14905,13 @@ async function renderShipSchedule() {
 
 
     <!-- ★ 2컬럼 레이아웃: 좌(입력필드 2행) + 우(체크박스+버튼) ★ -->
-    <div style="display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:0 0;align-items:start;">
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(420px,auto);gap:0 0;align-items:start;">
 
       <!-- ── 좌: 입력 필드 2행 ── -->
       <div style="display:flex;flex-direction:column;gap:8px;">
 
         <!-- 1행: 창고 / 출하요청일자 / 납품문서(SVBELN) -->
-        <div style="display:grid;grid-template-columns:120px 1fr 220px;gap:8px;align-items:end;">
+        <div style="display:grid;grid-template-columns:110px 1fr minmax(200px,1fr);gap:8px;align-items:end;">
           <div>
             <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">창고(WAREKY)</label>
             <select id="ss-wareky" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;">
@@ -14970,7 +14970,7 @@ async function renderShipSchedule() {
         </div>
 
         <!-- 2행: 배차상태 / 제품군 / 품목코드 / 납품처 -->
-        <div style="display:grid;grid-template-columns:170px 110px 1fr 200px;gap:8px;align-items:end;">
+        <div style="display:grid;grid-template-columns:160px 100px 1fr minmax(180px,1fr);gap:8px;align-items:end;">
           <div>
             <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px;">배차상태</label>
             <div style="display:flex;align-items:center;gap:12px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);height:30px;">
@@ -15017,13 +15017,13 @@ async function renderShipSchedule() {
       </div><!-- /좌 -->
 
       <!-- ── 우: 체크박스 그룹 + 버튼 ── -->
-      <div style="display:flex;flex-direction:column;gap:6px;padding-left:20px;margin-left:16px;border-left:2px solid var(--border);align-self:stretch;justify-content:center;">
+      <div style="display:flex;flex-direction:column;gap:6px;padding-left:20px;margin-left:16px;border-left:2px solid var(--border);align-self:stretch;justify-content:center;min-width:420px;">
         <!-- 출하유형(SHPMTY) -->
         <div>
           <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">출하유형 (SHPMTY)</label>
-          <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+          <div style="display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;row-gap:4px;">
             <label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer;
-                          padding:2px 8px;border-radius:10px;border:1px solid var(--primary);color:var(--primary);font-weight:600;">
+                          padding:2px 8px;border-radius:10px;border:1px solid var(--primary);color:var(--primary);font-weight:600;white-space:nowrap;">
               <input type="checkbox" id="ss-shpmty-all" checked
                 onchange="_ssToggleAll('ss-shpmty','ss-shpmty-all')"> 전체
             </label>
@@ -15034,9 +15034,9 @@ async function renderShipSchedule() {
         <!-- 로트구분(LOTA02) -->
         <div>
           <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">로트구분 (LOTA02)</label>
-          <div id="ss-lota02-wrap" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+          <div id="ss-lota02-wrap" style="display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;row-gap:4px;">
             <label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer;
-                          padding:2px 8px;border-radius:10px;border:1px solid var(--primary);color:var(--primary);font-weight:600;">
+                          padding:2px 8px;border-radius:10px;border:1px solid var(--primary);color:var(--primary);font-weight:600;white-space:nowrap;">
               <input type="checkbox" id="ss-lota02-all" checked
                 onchange="_ssToggleAll('ss-lota02','ss-lota02-all')"> 전체
             </label>
