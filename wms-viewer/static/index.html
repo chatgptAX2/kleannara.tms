@@ -14905,7 +14905,7 @@ async function renderShipSchedule() {
 
 
     <!-- ★ 2컬럼 레이아웃: 좌(입력필드 2행) + 우(체크박스+버튼) ★ -->
-    <div style="display:grid;grid-template-columns:1fr auto;gap:0 16px;align-items:start;">
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:0 0;align-items:start;">
 
       <!-- ── 좌: 입력 필드 2행 ── -->
       <div style="display:flex;flex-direction:column;gap:8px;">
@@ -15017,7 +15017,7 @@ async function renderShipSchedule() {
       </div><!-- /좌 -->
 
       <!-- ── 우: 체크박스 그룹 + 버튼 ── -->
-      <div style="display:flex;flex-direction:column;gap:6px;padding-left:14px;border-left:1px solid var(--border);min-width:290px;align-self:stretch;justify-content:center;">
+      <div style="display:flex;flex-direction:column;gap:6px;padding-left:20px;margin-left:16px;border-left:2px solid var(--border);align-self:stretch;justify-content:center;">
         <!-- 출하유형(SHPMTY) -->
         <div>
           <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">출하유형 (SHPMTY)</label>
