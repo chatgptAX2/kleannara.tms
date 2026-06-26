@@ -549,7 +549,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .ss-table thead th.ss-drag-over-right{box-shadow:inset -3px 0 0 var(--primary)}
 .ss-table thead th .ss-drag-handle{font-size:11px;color:var(--text3);opacity:0;cursor:grab;flex-shrink:0;line-height:1}
 .ss-table thead th:hover .ss-drag-handle{opacity:.7}
-.ss-table thead th .th-cell{padding:4px 6px 4px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:3px}
+.ss-table thead th .th-cell{padding:3px 5px 3px 5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:3px;line-height:1.2}
 .ss-table thead th .col-rz{position:absolute;right:-1px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:10;background:transparent}
 .ss-table thead th .col-rz:hover,.ss-table thead th .col-rz.rz-active{background:var(--primary);opacity:.7}
 .ss-table thead th:hover{background:var(--surface2)}
@@ -560,7 +560,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .ss-table tbody tr{border-bottom:1px solid var(--tr-border);transition:background .08s;cursor:pointer}
 .ss-table tbody tr:hover{background:var(--tr-hover)}
 .ss-table tbody tr.row-selected{background:var(--tr-selected)!important;outline:2px solid var(--primary);outline-offset:-2px}
-.ss-table tbody td{padding:4px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border);font-size:11px;box-sizing:border-box;vertical-align:middle}
+.ss-table tbody td{padding:3px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border);font-size:11px;box-sizing:border-box;vertical-align:middle;line-height:1.3}
 .dlv-list-table{border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed}
 .dlv-list-table thead th{position:sticky;top:0;background:var(--th-bg);padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none;cursor:grab;box-sizing:border-box}
 .dlv-list-table thead th .th-cell{padding:6px 10px 6px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px}
@@ -15395,12 +15395,12 @@ function _ssColDefs() {
     { key:'STKNUM',     label:'선적번호',     fmt:()=>'',                              w:90  },
     { key:'SVBELN',     label:'납품문서번호', fmt:v=>v||'-',                           w:115 },
     { key:'SHPOKY',     label:'출고문서키',   fmt:v=>v||'-',                           w:110 },
-    { key:'LOTA02',     label:'플랜트',       fmt:(v,r)=>`${v||'-'}<br><span style="font-size:10px;color:var(--text3);">${(r&&r.LOTA02NM)||''}</span>`, w:90 },
+    { key:'LOTA02',     label:'플랜트',       fmt:(v,r)=>`${v||'-'} <span style="font-size:10px;color:var(--text3);">${(r&&r.LOTA02NM)||''}</span>`, w:90 },
     { key:'STATIT',     label:'상태',         fmt:(v,r)=>statBadge(v,r&&r.STATNM),    w:70  },
     /* ── 품목 ── */
     { key:'SKUKEY',     label:'품목코드',     fmt:v=>v||'-',                           w:105 },
     { key:'DESC01',     label:'품목명',       fmt:v=>`<span title="${v||''}">${v||'-'}</span>`, w:160 },
-    { key:'SKUG05',     label:'제품군',       fmt:(v,r)=>`${v||'-'}<br><span style="font-size:10px;color:var(--text3);">${(r&&r.SKUG05NM)||''}</span>`, w:70 },
+    { key:'SKUG05',     label:'제품군',       fmt:(v,r)=>`${v||'-'} <span style="font-size:10px;color:var(--text3);">${(r&&r.SKUG05NM)||''}</span>`, w:70 },
     /* ── 납품처 ── */
     { key:'DPTNKY',     label:'납품처코드',   fmt:v=>v||'-',                           w:75  },
     { key:'DPTNKYNM',   label:'납품처명',     fmt:v=>v||'-',                           w:130 },
