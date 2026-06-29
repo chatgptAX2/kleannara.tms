@@ -454,6 +454,20 @@ CREATE TABLE IF NOT EXISTS DS_DISPATCH_CONST_SET_ITEM (
   ITEM_VAL TEXT DEFAULT '',
   PRIMARY KEY (SET_ID, ITEM_KEY)
 );
+CREATE TABLE IF NOT EXISTS DS_INCH12 (
+  CARTYPE   TEXT,
+  GRM_COND  TEXT,
+  MAX_COUNT INTEGER DEFAULT 0,
+  SORT_SEQ  INTEGER DEFAULT 0,
+  UPDDAT    TEXT DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS DS_INCH3 (
+  CARTYPE   TEXT,
+  GRM_COND  TEXT,
+  MAX_COUNT INTEGER DEFAULT 0,
+  SORT_SEQ  INTEGER DEFAULT 0,
+  UPDDAT    TEXT DEFAULT ''
+);
 """
 
 # DS_VEHICLE 기준 데이터
@@ -692,6 +706,24 @@ def main():
                      DS_VEHICLE_DATA)
     conn.commit()
     print(f"  ✅ DS_VEHICLE: {len(DS_VEHICLE_DATA)}건")
+
+    # ② DS_INCH12 / DS_INCH3 기준 데이터 (DS_VEHICLE 기반 자동 생성)
+    print("\n② DS_INCH12 / DS_INCH3 기준 데이터 삽입...")
+    conn.execute("DELETE FROM DS_INCH12")
+    conn.execute("DELETE FROM DS_INCH3")
+    veh_rows = conn.execute(
+        "SELECT CARTYPE,SORT_SEQ,INCH12_LT300,INCH12_GE300,INCH3_LT300,INCH3_GE300 FROM DS_VEHICLE ORDER BY SORT_SEQ"
+    ).fetchall()
+    inch12_data, inch3_data = [], []
+    for r in veh_rows:
+        inch12_data.append((r[0], 'LT300', r[2], r[1], today_str))
+        inch12_data.append((r[0], 'GE300', r[3], r[1], today_str))
+        inch3_data.append((r[0],  'LT300', r[4], r[1], today_str))
+        inch3_data.append((r[0],  'GE300', r[5], r[1], today_str))
+    conn.executemany("INSERT INTO DS_INCH12 VALUES(?,?,?,?,?)", inch12_data)
+    conn.executemany("INSERT INTO DS_INCH3  VALUES(?,?,?,?,?)", inch3_data)
+    conn.commit()
+    print(f"  ✅ DS_INCH12: {len(inch12_data)}건, DS_INCH3: {len(inch3_data)}건")
 
     # ③ xlsx 데이터 로드
     xlsx_tables = [
