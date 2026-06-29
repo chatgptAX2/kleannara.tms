@@ -1759,8 +1759,8 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
   color:#1a3558 !important;
   border-bottom:2px solid #7096c0 !important;
   font-size:11px !important;
-  font-weight:800 !important;
-  letter-spacing:.4px !important;
+  font-weight:700 !important;
+  letter-spacing:.3px !important;
 }
 /* 선적목록(차량) 테이블 헤더 — 블루 배경 + 진한 네이비 텍스트 */
 #psop-vehicle-area .psd-sap-tbl thead th,
@@ -1931,16 +1931,16 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psd-doc-tbl-wrap::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
 .psd-doc-tbl-wrap::-webkit-scrollbar-thumb:hover{background:var(--primary)}
 .psd-doc-tbl-wrap::-webkit-scrollbar-corner{background:transparent}
-.psd-doc-tbl{table-layout:fixed;width:1382px;min-width:1382px;border-collapse:collapse;font-size:11px}
+.psd-doc-tbl{table-layout:fixed;width:1382px;min-width:1382px;border-collapse:collapse;font-size:11px;font-weight:400}
 /* 납품문서 테이블 헤더 - 그린 계열(우측 납품문서 패널 연동) */
 .psd-doc-tbl thead th{
   position:sticky;top:0;z-index:2;
   position:relative; /* col-rz 절대위치 기준점 */
   padding:5px 20px 5px 6px; /* 우측 20px: col-rz 8px + 여백 */
   background:#bbf7d0;color:#14532d;
-  font-size:10px;font-weight:800;
+  font-size:11px;font-weight:700;
   border-bottom:2px solid #22c55e;
-  border-right:1px solid #86efac; /* 코맼경계 명시 */
+  border-right:1px solid #86efac;
   white-space:nowrap;text-align:center;letter-spacing:.3px;
   overflow:hidden;text-overflow:ellipsis;
   box-sizing:border-box;
@@ -1965,7 +1965,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psd-doc-tbl tbody tr.dispatched{background:rgba(16,185,129,.05)}
 .psd-doc-tbl tbody tr.dispatched td{color:var(--text3)}
 .psd-doc-tbl tbody tr.selected-row{background:rgba(37,99,235,.08)}
-.psd-doc-tbl tbody td{padding:5px 8px;white-space:nowrap;vertical-align:middle;overflow:hidden;text-overflow:ellipsis}
+.psd-doc-tbl tbody td{padding:5px 8px;white-space:nowrap;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;font-size:11px;font-weight:400}
 .psd-doc-tbl tbody td:first-child{text-align:center}
 .psd-doc-tbl tbody td.col-nm{text-align:left}
 .psd-disp-badge{padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700;background:var(--pastel-green-bg);color:var(--pastel-green-fg);border:1px solid #10b981}
@@ -12238,23 +12238,23 @@ function psopRenderDocTable(filterText) {
       ? `<span style="display:inline-block;padding:1px 5px;border-radius:6px;font-size:10px;font-weight:700;background:#059669;color:#fff">판지</span>`
       : `<span style="display:inline-block;padding:1px 5px;border-radius:6px;font-size:10px;font-weight:700;background:#6b7280;color:#fff">기타</span>`;
 
-    /* 컬럼별 TD 셀 맵 */
+    /* 컬럼별 TD 셀 맵 — 전체 font-size:11px / font-weight:400 통일 */
     const cellMap = {
       chk:     `<td class="drag-handle-cell" onclick="event.stopPropagation()" title="드래그하여 차량에 배차"><input type="checkbox" class="psd-doc-chk" data-key="${key}" ${sel?'checked':''} onchange="psopChkDoc('${key}',this.checked)"></td>`,
-      shpoky:  `<td style="font-family:monospace;color:var(--primary);font-weight:600">${r.SVBELN||r.SHPOKY}${splitBadge}</td>`,
+      shpoky:  `<td style="color:var(--primary);font-weight:600">${r.SVBELN||r.SHPOKY}${splitBadge}</td>`,
       shpoit:  `<td style="text-align:center">${r.SHPOIT}</td>`,
-      rqshpd:  `<td style="text-align:center;font-size:11px;white-space:nowrap;color:var(--primary);font-weight:600">${psopFmtDate(r.RQSHPD)}</td>`,
+      rqshpd:  `<td style="text-align:center;white-space:nowrap;color:var(--primary);font-weight:500">${psopFmtDate(r.RQSHPD)}</td>`,
       dptnky:  `<td title="${r.DPTNKY||''}">${r.DPTNKY||''}</td>`,
       dptnm:   `<td class="col-nm" title="${r.DPTNM||''}">${r.DPTNM||''}</td>`,
-      skukey:  `<td style="font-family:monospace;font-size:10px" title="${r.SKUKEY||''}">${r.SKUKEY||''}</td>`,
+      skukey:  `<td title="${r.SKUKEY||''}">${r.SKUKEY||''}</td>`,
       desc01:  `<td class="col-nm" title="${r.DESC01||''}">${r.DESC01||''}</td>`,
       qtshpo:  `<td style="text-align:right;font-weight:600">${psopFmtNum(r.QTSHPO)}</td>`,
       uomkey:  `<td style="text-align:center">${r.UOMKEY||''}</td>`,
       skutyp:  `<td style="text-align:center">${skuTypeBadge}</td>`,
       inch:    `<td style="text-align:center">${inchBadge}</td>`,
-      unitwt:  `<td style="text-align:right;font-size:11px;color:${r.SKU_TYPE==='roll'&&(r.UNIT_WEIGHT||0)>0?'var(--success)':'var(--text3)'}" title="${r.SKU_TYPE==='roll'?(r.UNIT_WEIGHT||0)>0?'원지중량: '+(r.UNIT_WEIGHT||0)+'kg/롤 (RECDI 기반)':'원지중량 미등록 (fallback 600kg 적용)':'-'}">${r.SKU_TYPE==='roll'?((r.UNIT_WEIGHT||0)>0?parseFloat(r.UNIT_WEIGHT).toFixed(0)+'kg':'<span style="color:var(--text3);font-size:10px">-</span>'):'-'}</td>`,
+      unitwt:  `<td style="text-align:right;color:${r.SKU_TYPE==='roll'&&(r.UNIT_WEIGHT||0)>0?'var(--success)':'var(--text3)'}" title="${r.SKU_TYPE==='roll'?(r.UNIT_WEIGHT||0)>0?'원지중량: '+(r.UNIT_WEIGHT||0)+'kg/롤 (RECDI 기반)':'원지중량 미등록 (fallback 600kg 적용)':'-'}">${r.SKU_TYPE==='roll'?((r.UNIT_WEIGHT||0)>0?parseFloat(r.UNIT_WEIGHT).toFixed(0)+'kg':'-'):'-'}</td>`,
       rollcnt: `<td style="text-align:center;font-weight:600;color:${r.SKU_TYPE==='roll'?'var(--primary)':'var(--text3)'}">${r.SKU_TYPE==='roll'?((r.ROLL_COUNT||0)>0?(r.ROLL_COUNT||0):Math.ceil(parseFloat(r.QTSHPO||0)/((r.UNIT_WEIGHT||0)>0?(r.UNIT_WEIGHT||0):600))):'-'}</td>`,
-      cbm:     `<td style="text-align:right;font-size:11px;color:${(r.SKU_TYPE==='roll'&&(r.ROLL_CBM||0)>0)||(r.SKU_TYPE==='board'&&(r.BOARD_CBM||0)>0)?'var(--primary)':'var(--text3)'}">${r.SKU_TYPE==='roll'&&(r.ROLL_CBM||0)>0?parseFloat(r.ROLL_CBM).toFixed(3):r.SKU_TYPE==='board'&&(r.BOARD_CBM||0)>0?parseFloat(r.BOARD_CBM).toFixed(3):'-'}</td>`,
+      cbm:     `<td style="text-align:right;color:${(r.SKU_TYPE==='roll'&&(r.ROLL_CBM||0)>0)||(r.SKU_TYPE==='board'&&(r.BOARD_CBM||0)>0)?'var(--primary)':'var(--text3)'}">${r.SKU_TYPE==='roll'&&(r.ROLL_CBM||0)>0?parseFloat(r.ROLL_CBM).toFixed(3):r.SKU_TYPE==='board'&&(r.BOARD_CBM||0)>0?parseFloat(r.BOARD_CBM).toFixed(3):'-'}</td>`,
       shpmty:  `<td style="text-align:center" title="${shpmtyNm}">${shpmtyNm}</td>`,
       disp:    `<td style="text-align:center">${dispBadge}</td>`,
     };
