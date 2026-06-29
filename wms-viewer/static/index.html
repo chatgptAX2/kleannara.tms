@@ -3833,13 +3833,10 @@ const _sapDocColW  = {}; // SAP 납품문서 컬럼 너비 저장
       tbl.style.width    = total + 'px';
       tbl.style.minWidth = total + 'px';
     }
-    // ⑤ colgroup <col> 너비도 동기화 (psd-doc-tbl 등 colgroup 사용 테이블)
-    const colEl = document.querySelector(`${_tblSel} colgroup #${_tblSel.replace(/[^a-zA-Z0-9]/g,'')}-col-${_colId},
-      ${_tblSel} col[id*="${_colId}"]`);
-    if (colEl) colEl.style.width = newW + 'px';
-    // psop-doc-tbl 전용: col id 패턴 psop-col-{id}
+    // ⑤ colgroup <col> 너비도 동기화 (psop-doc-tbl 전용: col id 패턴 psop-col-{id})
     const psopCol = document.getElementById(`psop-col-${_colId}`);
     if (psopCol) psopCol.style.width = newW + 'px';
+  }  /* ← _onMove 닫기 */
 
   function _onUp() {
     _dragging = false;
