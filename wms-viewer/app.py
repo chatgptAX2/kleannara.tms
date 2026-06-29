@@ -6496,7 +6496,7 @@ def api_set_region_save():
 @app.route('/api/dispatch-const-set/entry-ton/list', methods=['GET'])
 def api_set_entry_ton_list():
     """납품처 진입 허용 톤수 제한 목록 반환
-    BZPTN_DETAIL 전체 활성 납품처 + BZPTN 명칭 + TMS_CARCLASS10 코드 목록
+    BZPTN_DETAIL 기준 + SHPDH 출고예정 납품처 UNION
     Returns: {
       ok,
       partners: [{ptnrky, ptnrty, ownrky, name01, area_cd, max_ton, auto_alloc_yn, wareky}],
@@ -6505,24 +6505,47 @@ def api_set_entry_ton_list():
     """
     conn = get_conn()
     try:
-        # 납품처 목록 — SHPDH(출고예정정보) 기준으로 동적 조회
-        # SHPDH.DPTNKY DISTINCT → BZPTN 명칭 LEFT JOIN → BZPTN_DETAIL 기존 설정값 LEFT JOIN
-        # 출고예정정보 변경 시 자동 반영
+        # 납품처 목록 — BZPTN_DETAIL 기준으로 조회 (설정된 값 우선 반영)
+        # BZPTN_DETAIL에 없는 납품처는 SHPDH 출고예정 기준으로 추가 (UNION)
         partners = conn.execute(
-            """SELECT DISTINCT h.DPTNKY AS PTNRKY,
-                      'CT' AS PTNRTY,
-                      COALESCE(b.OWNRKY, 'KN') AS OWNRKY,
-                      COALESCE(d.WAREKY, 'W001') AS WAREKY,
-                      COALESCE(b.NAME01, h.DPTNKY) AS NAME01,
-                      d.AREA_CD,
-                      d.MAX_TON,
-                      d.AUTO_ALLOC_YN
-               FROM SHPDH h
-               LEFT JOIN BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT'
-               LEFT JOIN BZPTN_DETAIL d ON d.PTNRKY=h.DPTNKY AND d.PTNRTY='CT'
-                                       AND (d.DEL_YN IS NULL OR d.DEL_YN != 'Y')
-               WHERE h.DPTNKY IS NOT NULL AND trim(h.DPTNKY) != ''
-               ORDER BY d.AREA_CD NULLS LAST, h.DPTNKY"""
+            """SELECT PTNRKY, PTNRTY, OWNRKY, WAREKY, NAME01, AREA_CD, MAX_TON, AUTO_ALLOC_YN
+               FROM (
+                 -- BZPTN_DETAIL에 설정된 납품처 (기존 설정값 보존)
+                 SELECT d.PTNRKY,
+                        'CT'                           AS PTNRTY,
+                        COALESCE(b.OWNRKY, 'KN')       AS OWNRKY,
+                        COALESCE(d.WAREKY, 'W001')     AS WAREKY,
+                        COALESCE(b.NAME01, d.PTNRKY)   AS NAME01,
+                        d.AREA_CD,
+                        d.MAX_TON,
+                        d.AUTO_ALLOC_YN,
+                        1 AS _src
+                 FROM BZPTN_DETAIL d
+                 LEFT JOIN BZPTN b ON b.PTNRKY=d.PTNRKY AND b.PTNRTY='CT'
+                 WHERE (d.DEL_YN IS NULL OR d.DEL_YN != 'Y')
+
+                 UNION
+
+                 -- SHPDH 출고예정 납품처 중 BZPTN_DETAIL에 없는 것 추가
+                 SELECT DISTINCT
+                        h.DPTNKY                       AS PTNRKY,
+                        'CT'                           AS PTNRTY,
+                        COALESCE(b.OWNRKY, 'KN')       AS OWNRKY,
+                        'W001'                         AS WAREKY,
+                        COALESCE(b.NAME01, h.DPTNKY)   AS NAME01,
+                        NULL                           AS AREA_CD,
+                        NULL                           AS MAX_TON,
+                        NULL                           AS AUTO_ALLOC_YN,
+                        2 AS _src
+                 FROM SHPDH h
+                 LEFT JOIN BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT'
+                 WHERE h.DPTNKY IS NOT NULL AND trim(h.DPTNKY) != ''
+                   AND h.DPTNKY NOT IN (
+                     SELECT PTNRKY FROM BZPTN_DETAIL
+                     WHERE DEL_YN IS NULL OR DEL_YN != 'Y'
+                   )
+               )
+               ORDER BY AREA_CD NULLS LAST, PTNRKY"""
         ).fetchall()
         # TMS_CARCLASS10 코드 목록 (톤수 선택 드롭다운)
         carclasses = conn.execute(
@@ -6589,7 +6612,7 @@ def api_set_entry_ton_save():
 @app.route('/api/dispatch-const-set/forklift/list', methods=['GET'])
 def api_set_forklift_list():
     """납품처 지게차 여부 목록 반환
-    BZPTN_DETAIL 전체 활성 납품처 + BZPTN 명칭
+    BZPTN_DETAIL 기준 + SHPDH 출고예정 납품처 UNION
     Returns: {
       ok,
       partners: [{ptnrky, ptnrty, ownrky, name01, area_cd, forklift_yn, auto_alloc_yn, wareky}]
@@ -6600,22 +6623,47 @@ def api_set_forklift_list():
     """
     conn = get_conn()
     try:
-        # 납품처 목록 — SHPDH(출고예정정보) 기준으로 동적 조회
+        # 납품처 목록 — BZPTN_DETAIL 기준으로 조회 (설정된 값 우선 반영)
+        # BZPTN_DETAIL에 없는 납품처는 SHPDH 출고예정 기준으로 추가 (UNION)
         partners = conn.execute(
-            """SELECT DISTINCT h.DPTNKY AS PTNRKY,
-                      'CT' AS PTNRTY,
-                      COALESCE(b.OWNRKY, 'KN') AS OWNRKY,
-                      COALESCE(d.WAREKY, 'W001') AS WAREKY,
-                      COALESCE(b.NAME01, h.DPTNKY) AS NAME01,
-                      d.AREA_CD,
-                      d.FORKLIFT_YN,
-                      d.AUTO_ALLOC_YN
-               FROM SHPDH h
-               LEFT JOIN BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT'
-               LEFT JOIN BZPTN_DETAIL d ON d.PTNRKY=h.DPTNKY AND d.PTNRTY='CT'
-                                       AND (d.DEL_YN IS NULL OR d.DEL_YN != 'Y')
-               WHERE h.DPTNKY IS NOT NULL AND trim(h.DPTNKY) != ''
-               ORDER BY d.AREA_CD NULLS LAST, h.DPTNKY"""
+            """SELECT PTNRKY, PTNRTY, OWNRKY, WAREKY, NAME01, AREA_CD, FORKLIFT_YN, AUTO_ALLOC_YN
+               FROM (
+                 -- BZPTN_DETAIL에 설정된 납품처 (기존 FORKLIFT_YN 값 보존)
+                 SELECT d.PTNRKY,
+                        'CT'                           AS PTNRTY,
+                        COALESCE(b.OWNRKY, 'KN')       AS OWNRKY,
+                        COALESCE(d.WAREKY, 'W001')     AS WAREKY,
+                        COALESCE(b.NAME01, d.PTNRKY)   AS NAME01,
+                        d.AREA_CD,
+                        d.FORKLIFT_YN,
+                        d.AUTO_ALLOC_YN,
+                        1 AS _src
+                 FROM BZPTN_DETAIL d
+                 LEFT JOIN BZPTN b ON b.PTNRKY=d.PTNRKY AND b.PTNRTY='CT'
+                 WHERE (d.DEL_YN IS NULL OR d.DEL_YN != 'Y')
+
+                 UNION
+
+                 -- SHPDH 출고예정 납품처 중 BZPTN_DETAIL에 없는 것 추가
+                 SELECT DISTINCT
+                        h.DPTNKY                       AS PTNRKY,
+                        'CT'                           AS PTNRTY,
+                        COALESCE(b.OWNRKY, 'KN')       AS OWNRKY,
+                        'W001'                         AS WAREKY,
+                        COALESCE(b.NAME01, h.DPTNKY)   AS NAME01,
+                        NULL                           AS AREA_CD,
+                        NULL                           AS FORKLIFT_YN,
+                        NULL                           AS AUTO_ALLOC_YN,
+                        2 AS _src
+                 FROM SHPDH h
+                 LEFT JOIN BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT'
+                 WHERE h.DPTNKY IS NOT NULL AND trim(h.DPTNKY) != ''
+                   AND h.DPTNKY NOT IN (
+                     SELECT PTNRKY FROM BZPTN_DETAIL
+                     WHERE DEL_YN IS NULL OR DEL_YN != 'Y'
+                   )
+               )
+               ORDER BY AREA_CD NULLS LAST, PTNRKY"""
         ).fetchall()
         return jsonify({"ok": True, "partners": [dict(r) for r in partners]})
     except Exception as e:
@@ -6681,7 +6729,7 @@ def api_set_forklift_save():
 @app.route('/api/dispatch-const-set/dynamic/list', methods=['GET'])
 def api_set_dynamic_list():
     """납품처 동적 여부 목록 반환
-    BZPTN_DETAIL 전체 활성 납품처 + BZPTN 명칭
+    BZPTN_DETAIL 기준 + SHPDH 출고예정 납품처 UNION
     Returns: {
       ok,
       partners: [{ptnrky, ptnrty, ownrky, name01, area_cd, dynamic_yn, auto_alloc_yn, wareky}]
@@ -6693,22 +6741,47 @@ def api_set_dynamic_list():
     """
     conn = get_conn()
     try:
-        # 납품처 목록 — SHPDH(출고예정정보) 기준으로 동적 조회
+        # 납품처 목록 — BZPTN_DETAIL 기준으로 조회 (설정된 값 우선 반영)
+        # BZPTN_DETAIL에 없는 납품처는 SHPDH 출고예정 기준으로 추가 (UNION)
         partners = conn.execute(
-            """SELECT DISTINCT h.DPTNKY AS PTNRKY,
-                      'CT' AS PTNRTY,
-                      COALESCE(b.OWNRKY, 'KN') AS OWNRKY,
-                      COALESCE(d.WAREKY, 'W001') AS WAREKY,
-                      COALESCE(b.NAME01, h.DPTNKY) AS NAME01,
-                      d.AREA_CD,
-                      d.DYNAMIC_YN,
-                      d.AUTO_ALLOC_YN
-               FROM SHPDH h
-               LEFT JOIN BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT'
-               LEFT JOIN BZPTN_DETAIL d ON d.PTNRKY=h.DPTNKY AND d.PTNRTY='CT'
-                                       AND (d.DEL_YN IS NULL OR d.DEL_YN != 'Y')
-               WHERE h.DPTNKY IS NOT NULL AND trim(h.DPTNKY) != ''
-               ORDER BY d.AREA_CD NULLS LAST, h.DPTNKY"""
+            """SELECT PTNRKY, PTNRTY, OWNRKY, WAREKY, NAME01, AREA_CD, DYNAMIC_YN, AUTO_ALLOC_YN
+               FROM (
+                 -- BZPTN_DETAIL에 설정된 납품처 (기존 DYNAMIC_YN 값 보존)
+                 SELECT d.PTNRKY,
+                        'CT'                           AS PTNRTY,
+                        COALESCE(b.OWNRKY, 'KN')       AS OWNRKY,
+                        COALESCE(d.WAREKY, 'W001')     AS WAREKY,
+                        COALESCE(b.NAME01, d.PTNRKY)   AS NAME01,
+                        d.AREA_CD,
+                        d.DYNAMIC_YN,
+                        d.AUTO_ALLOC_YN,
+                        1 AS _src
+                 FROM BZPTN_DETAIL d
+                 LEFT JOIN BZPTN b ON b.PTNRKY=d.PTNRKY AND b.PTNRTY='CT'
+                 WHERE (d.DEL_YN IS NULL OR d.DEL_YN != 'Y')
+
+                 UNION
+
+                 -- SHPDH 출고예정 납품처 중 BZPTN_DETAIL에 없는 것 추가
+                 SELECT DISTINCT
+                        h.DPTNKY                       AS PTNRKY,
+                        'CT'                           AS PTNRTY,
+                        COALESCE(b.OWNRKY, 'KN')       AS OWNRKY,
+                        'W001'                         AS WAREKY,
+                        COALESCE(b.NAME01, h.DPTNKY)   AS NAME01,
+                        NULL                           AS AREA_CD,
+                        NULL                           AS DYNAMIC_YN,
+                        NULL                           AS AUTO_ALLOC_YN,
+                        2 AS _src
+                 FROM SHPDH h
+                 LEFT JOIN BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT'
+                 WHERE h.DPTNKY IS NOT NULL AND trim(h.DPTNKY) != ''
+                   AND h.DPTNKY NOT IN (
+                     SELECT PTNRKY FROM BZPTN_DETAIL
+                     WHERE DEL_YN IS NULL OR DEL_YN != 'Y'
+                   )
+               )
+               ORDER BY AREA_CD NULLS LAST, PTNRKY"""
         ).fetchall()
         return jsonify({"ok": True, "partners": [dict(r) for r in partners]})
     except Exception as e:
