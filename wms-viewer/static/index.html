@@ -18594,6 +18594,11 @@ const DCON_PARAM_META = {
   MIX_HEIGHT_CHECK_YN:  { label:'혼적 높이 검증 활성',       unit:'Y/N',  hint:'파레트고+원지다단+판지총고 ≤ 차량높이' },
   MIX_3D_DEAD_SPACE_YN: { label:'혼적 3D Dead Space 검증',  unit:'Y/N',  hint:'Y=Dead Space 포함 3D 블록 검증' },
   MIX_CBM_CHECK_YN:     { label:'혼적 CBM 검증 활성',        unit:'Y/N',  hint:'Y=원지+판지 합산 CBM 초과 검증' },
+  /* ── 동적 배차 파라미터 ── */
+  DYNAMIC_GROUP_BY:       { label:'동적 그룹핑 기준',          unit:'컬럼', hint:'AREA_CD=동일 권역(구) 납품처끼리 동적 배차 그룹 형성' },
+  DYNAMIC_DEFAULT_YN:     { label:'동적배차 기본값',            unit:'Y/N',  hint:'납품처 DYNAMIC_YN 미설정 시 기본 동작 (Y=동적가능)' },
+  DYNAMIC_MIN_GROUP_SIZE: { label:'동적 그룹 최소 납품처 수',  unit:'개',   hint:'1=단독 납품처도 동적배차 허용, 2=2개 이상이어야 그룹핑' },
+  DYNAMIC_AREA_FORCE_YN:  { label:'구역 동적 그룹 강제 편입',  unit:'Y/N',  hint:'Y=동일 AREA_CD 내 DYNAMIC_YN=Y 납품처는 반드시 동적 그룹 편입' },
 };
 
 /* ══════════════════════════════════════════════════════════════
