@@ -12484,6 +12484,9 @@ function psopRenderVehicleArea() {
       ? `<span style="font-size:10px;font-family:monospace;color:var(--primary);font-weight:600">${shpnr}</span>`
       : `<span style="font-size:10px;color:var(--text3)">임시#${idx + 1}</span>`;
 
+    // 납품처
+    const dptnm = v.dptnm || v.DPTNM || v.dptnky || v.DPTNKY || '-';
+
     // 적재가능(load_kg): vehicle push 시 load_kg 또는 vehInfo 캐시에서 보완
     const loadKg  = v.load_kg != null ? v.load_kg
                   : v.LOAD_KG != null ? v.LOAD_KG
@@ -12523,6 +12526,7 @@ function psopRenderVehicleArea() {
       <td style="padding:4px 4px">
         <span class="psd-car-badge ${ccls}" style="font-size:10px">🚛 ${cartype}</span>
       </td>
+      <td style="padding:4px 6px;font-size:10px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:120px" title="${dptnm}">${dptnm}</td>
       <td style="padding:4px 4px;text-align:center;font-size:10px;white-space:nowrap;color:var(--primary);font-weight:600">${psopFmtDate(v.rqshpd||v.RQSHPD)||'-'}</td>
       <td class="num" style="padding:4px 4px;font-size:10px;white-space:nowrap">${loadTxt}</td>
       <td class="num" style="padding:4px 4px;font-size:10px;white-space:nowrap">${usedTxt}</td>
@@ -12539,18 +12543,20 @@ function psopRenderVehicleArea() {
       <table class="psd-sap-tbl">
         <colgroup>
           <col style="width:26px">
+          <col style="width:68px">
           <col style="width:72px">
-          <col style="width:76px">
+          <col style="min-width:80px;max-width:120px">
+          <col style="width:68px">
           <col style="width:72px">
-          <col style="width:76px">
-          <col style="width:76px">
-          <col style="min-width:68px">
+          <col style="width:72px">
+          <col style="min-width:64px">
         </colgroup>
         <thead>
           <tr>
             <th><input type="checkbox" id="psop-veh-all-chk2" onclick="psopSelectAllVehicles(this.checked)" title="전체선택"></th>
             <th>가선적번호</th>
             <th>차량유형</th>
+            <th>납품처</th>
             <th style="white-space:nowrap">납품일</th>
             <th>적재가능</th>
             <th>현재적재량</th>
