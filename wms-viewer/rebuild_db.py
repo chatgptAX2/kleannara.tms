@@ -779,6 +779,7 @@ def main():
 
     # 제약조건 (없을 때만)
     if conn.execute("SELECT COUNT(*) FROM DS_DISPATCH_CONST").fetchone()[0] == 0:
+        # GLOBAL / CARGO / COST 고정 제약조건
         consts = [
             # (PROFILE_ID, CONST_TYPE, CONST_KEY, CONST_VALUE, CONST_OP, TARGET_ID, TARGET_NM, NOTE, SORT_SEQ)
             (1,'GLOBAL','MAX_VEHICLES_PER_GROUP','99', '<=','','','그룹당 최대 배차 차량 수',10),
@@ -786,13 +787,6 @@ def main():
             (1,'GLOBAL','ALLOW_MIXED_LOAD',       'N',  '=','','','우편번호 앞 3자리 동일 납품처 혼적 허용',25),
             (1,'GLOBAL','MIN_FILL_RATIO',          '0',  '>=','','','최소 적재율(%) — 0=제한없음',30),
             (1,'GLOBAL','MAX_FILL_RATIO',        '100', '<=','','','최대 적재율(%) — 초과배차 방지',40),
-            (1,'VEHICLE','ALLOW_CARTYPE','Y','=','1.4톤','1.4톤','차종 허용여부',100),
-            (1,'VEHICLE','ALLOW_CARTYPE','Y','=','3.5톤','3.5톤','차종 허용여부',101),
-            (1,'VEHICLE','ALLOW_CARTYPE','Y','=','5톤',  '5톤',  '차종 허용여부',102),
-            (1,'VEHICLE','ALLOW_CARTYPE','Y','=','5톤축','5톤축','차종 허용여부',103),
-            (1,'VEHICLE','ALLOW_CARTYPE','Y','=','11톤', '11톤', '차종 허용여부',104),
-            (1,'VEHICLE','ALLOW_CARTYPE','Y','=','15톤', '15톤', '차종 허용여부',105),
-            (1,'VEHICLE','ALLOW_CARTYPE','Y','=','18톤', '18톤', '차종 허용여부',106),
             (1,'CARGO','MAX_ROLL_STACK_TIER',    '2',   '<=','','','최대 롤 적재 단수',200),
             (1,'CARGO','MAX_BOARD_HEIGHT_M',     '2.4', '<=','','','판지 최대 적재 높이(m)',210),
             (1,'CARGO','ROLL_SINGLE_KG_FALLBACK','600', '=', '','','롤 단중 미등록 시 fallback(kg)',220),
@@ -809,7 +803,20 @@ def main():
             )
         conn.commit()
 
-    # 제약조건 세트 (없을 때만)
+        # VEHICLE 제약조건: DS_VEHICLE 기준으로 동적 생성 (전체 16개 차종)
+        veh_rows = conn.execute("SELECT CARCLASS_CD, CARTYPE, SORT_SEQ FROM DS_VEHICLE ORDER BY SORT_SEQ").fetchall()
+        for vr in veh_rows:
+            conn.execute(
+                "INSERT INTO DS_DISPATCH_CONST"
+                " (PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,"
+                "  TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (1, 'VEHICLE', 'ALLOW_CARTYPE', 'Y', '=',
+                 vr[1], vr[1], 'Y', '차종 허용여부', 100 + vr[2], today_str, today_str)
+            )
+        conn.commit()
+
+
     if conn.execute("SELECT COUNT(*) FROM DS_DISPATCH_CONST_SET").fetchone()[0] == 0:
         cur = conn.execute(
             "INSERT INTO DS_DISPATCH_CONST_SET (SET_NM,SET_DESC,ACTIVE_YN,CREDAT,LMODAT) VALUES (?,?,?,?,?)",
