@@ -1930,15 +1930,20 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 /* 납품문서 테이블 헤더 - 그린 계열(우측 납품문서 패널 연동) */
 .psd-doc-tbl thead th{
   position:sticky;top:0;z-index:2;
-  padding:8px 8px;
+  position:relative; /* col-rz 절대위치 기준점 */
+  padding:5px 20px 5px 6px; /* 우측 20px: col-rz 8px + 여백 */
   background:#bbf7d0;color:#14532d;
   font-size:10px;font-weight:800;
   border-bottom:2px solid #22c55e;
+  border-right:1px solid #86efac; /* 코맼경계 명시 */
   white-space:nowrap;text-align:center;letter-spacing:.3px;
+  overflow:hidden;text-overflow:ellipsis;
+  box-sizing:border-box;
 }
-.psd-doc-tbl thead th:first-child{text-align:center;width:28px}
-.psd-doc-tbl thead th .col-rz{position:absolute;right:-1px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:10;background:transparent}
-.psd-doc-tbl thead th .col-rz:hover,.psd-doc-tbl thead th .col-rz.rz-active{background:var(--primary);opacity:.7}
+.psd-doc-tbl thead th:first-child{text-align:center;width:28px;min-width:28px}
+.psd-doc-tbl thead th .col-rz{position:absolute;right:0;top:0;bottom:0;width:6px;cursor:col-resize;z-index:20;background:transparent;transition:background .15s}
+.psd-doc-tbl thead th:hover .col-rz{background:rgba(20,83,45,.25)}
+.psd-doc-tbl thead th .col-rz:hover,.psd-doc-tbl thead th .col-rz.rz-active{background:#16a34a!important;opacity:.9}
 /* 컬럼 순서 드래그 */
 .psd-doc-tbl thead th[draggable="true"]{cursor:grab}
 .psd-doc-tbl thead th[draggable="true"]:active{cursor:grabbing}
@@ -3828,7 +3833,13 @@ const _sapDocColW  = {}; // SAP 납품문서 컬럼 너비 저장
       tbl.style.width    = total + 'px';
       tbl.style.minWidth = total + 'px';
     }
-  }
+    // ⑤ colgroup <col> 너비도 동기화 (psd-doc-tbl 등 colgroup 사용 테이블)
+    const colEl = document.querySelector(`${_tblSel} colgroup #${_tblSel.replace(/[^a-zA-Z0-9]/g,'')}-col-${_colId},
+      ${_tblSel} col[id*="${_colId}"]`);
+    if (colEl) colEl.style.width = newW + 'px';
+    // psop-doc-tbl 전용: col id 패턴 psop-col-{id}
+    const psopCol = document.getElementById(`psop-col-${_colId}`);
+    if (psopCol) psopCol.style.width = newW + 'px';
 
   function _onUp() {
     _dragging = false;
@@ -3860,8 +3871,8 @@ const _psopDocColDefs = [
   { id:'uomkey',  label:'단위',           w:44  },
   { id:'skutyp',  label:'유형',           w:52  },
   { id:'inch',    label:'인치',           w:60  },
-  { id:'unitwt',  label:'원지<br>중량',   w:62  },
-  { id:'rollcnt', label:'원지<br>개수',   w:56  },
+  { id:'unitwt',  label:'원지중량',       w:62  },
+  { id:'rollcnt', label:'원지개수',       w:56  },
   { id:'cbm',     label:'CBM',            w:68  },
   { id:'shpmty',  label:'출하유형',       w:72  },
   { id:'disp',    label:'배차',           w:62  },
@@ -12176,19 +12187,22 @@ function psopRenderDocTable(filterText) {
       const def      = colMap[id];
       const w        = _psopDocColW[id] || def?.w || 80;
       const isDrag   = !def?.fixed;
-      const rzHandle = `<span class="col-rz" onmousedown="tableResizerDown(event,'${id}','.psd-doc-tbl')"></span>`;
+      /* col-rz: position:absolute right:-1px 으로 th 우측 끝에 고정 */
+      const rzHandle = `<span class="col-rz" onmousedown="tableResizerDown(event,'${id}','.psd-doc-tbl');event.stopPropagation();"></span>`;
       if (id === 'chk') {
-        return `<th style="width:${w}px;text-align:center"><input type="checkbox" id="psop-chk-all" onchange="psopToggleAll(this.checked)"></th>`;
+        return `<th style="width:${w}px;min-width:${w}px;text-align:center;position:sticky;top:0;z-index:2;box-sizing:border-box;"><input type="checkbox" id="psop-chk-all" onchange="psopToggleAll(this.checked)"></th>`;
       }
-      return `<th data-rzid="${id}" data-colid="${id}" style="width:${w}px"
+      const labelTxt = (def?.label||id).replace(/<br>/gi,' ');
+      return `<th data-rzid="${id}" data-colid="${id}"
+        style="width:${w}px;min-width:${w}px;position:sticky;top:0;z-index:2;box-sizing:border-box;"
         ${isDrag ? `draggable="true"
           ondragstart="psopColDragStart(event,'${id}')"
           ondragover="psopColDragOver(event,'${id}')"
           ondragleave="psopColDragLeave(event)"
           ondrop="psopColDrop(event,'${id}')"
           ondragend="psopColDragEnd(event)"
-          title="${def?.label?.replace(/<br>/g,' ')||id} — 드래그로 컬럼 순서 변경"` : ''}
-        >${def?.label||id}${isDrag ? rzHandle : ''}</th>`;
+          title="${labelTxt} — 드래그: 컬럼 순서 변경 | 우측 끝 드래그: 너비 조정"` : ''}
+        >${labelTxt}${isDrag ? rzHandle : ''}</th>`;
     }).join('')}</tr>`;
   }
 
