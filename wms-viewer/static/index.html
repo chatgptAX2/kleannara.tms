@@ -1568,32 +1568,41 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
   flex-shrink:0;
   background:linear-gradient(135deg,#e8f4fd 0%,#dbeafe 60%,#e0f2fe 100%);
   border-bottom:2px solid #93c5fd;
-  padding:11px 18px;
-  display:flex;flex-direction:column;gap:8px;
-  box-shadow:0 3px 12px rgba(14,165,233,.12),0 1px 4px rgba(14,165,233,.08);
+  padding:6px 14px;
+  display:flex;flex-direction:column;gap:4px;
+  box-shadow:0 2px 8px rgba(14,165,233,.1),0 1px 3px rgba(14,165,233,.07);
 }
 .psd-search-title{
-  font-size:13px;font-weight:800;color:var(--text);
+  font-size:12px;font-weight:800;color:var(--text);
   display:flex;align-items:center;gap:6px;
-  padding-bottom:6px;border-bottom:1px solid var(--border);
+  padding-bottom:4px;border-bottom:1px solid var(--border);
   letter-spacing:.2px;
 }
-.psd-search-row{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}
-.psd-fg{display:flex;flex-direction:column;gap:3px}
+/* ─ 검색조건 한 줄 인라인 배치 ─ */
+.psd-search-row{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;overflow-x:auto}
+.psd-search-row::-webkit-scrollbar{height:3px}
+.psd-search-row::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+/* 라벨+인풋 가로 배치 */
+.psd-fg{display:flex;flex-direction:row;align-items:center;gap:5px;flex-shrink:0}
 .psd-fg label{
-  font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.5px;
-  text-transform:uppercase;
+  font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.3px;
+  white-space:nowrap;flex-shrink:0;
 }
 .psd-fg input,.psd-fg select{
-  padding:6px 10px;border:1px solid var(--border);border-radius:7px;
-  background:var(--surface2);color:var(--text);font-size:12px;min-width:110px;
+  padding:4px 8px;border:1px solid var(--border);border-radius:6px;
+  background:var(--surface2);color:var(--text);font-size:11.5px;
+  height:28px;box-sizing:border-box;
   transition:border-color .15s,box-shadow .15s;
 }
 .psd-fg input:focus,.psd-fg select:focus{
   outline:none;border-color:var(--primary);
-  box-shadow:0 0 0 3px rgba(14,165,233,.12);
+  box-shadow:0 0 0 2px rgba(14,165,233,.12);
   background:#fff;
 }
+/* ── psd-sep-v: 수직 구분선 ── */
+.psd-sep-v{width:1px;height:22px;background:var(--border);flex-shrink:0;align-self:center}
+/* ── psop-cond-title: 검색조건 인라인 타이틀 ── */
+.psop-cond-title{font-size:11.5px;font-weight:800;color:var(--text);white-space:nowrap;flex-shrink:0;letter-spacing:.2px}
 /* 출하유형 멀티체크 드롭다운 */
 /* 출하유형 멀티체크 드롭다운 */
 .psd-shpmty-wrap{position:relative;display:inline-block}
@@ -1613,7 +1622,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psd-shpmty-panel .shpmty-divider{height:1px;background:var(--border);margin:3px 8px}
 /* psop-shpmty (PS배차 최적화) — psd-shpmty와 동일 스타일 */
 .psop-shpmty-wrap{position:relative;display:inline-block}
-.psop-shpmty-btn{padding:0 10px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text);cursor:pointer;display:flex;align-items:center;gap:6px;height:30px;min-width:100px;font-size:12px;white-space:nowrap}
+.psop-shpmty-btn{padding:0 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;display:flex;align-items:center;gap:5px;height:28px;min-width:90px;font-size:11.5px;white-space:nowrap;box-sizing:border-box}
 .psop-shpmty-btn:hover{border-color:var(--primary)}
 .psop-shpmty-btn.open{border-color:var(--primary)}
 .psop-shpmty-btn .psop-shpmty-label-txt{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1634,13 +1643,14 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
   box-shadow:0 2px 8px rgba(14,165,233,.1);
 }
 .psd-btn{
-  padding:6px 14px;border-radius:8px;border:1px solid var(--border);
+  padding:0 11px;height:28px;border-radius:6px;border:1px solid var(--border);
   background:var(--surface2);color:var(--text2);
-  font-size:12px;font-weight:600;
+  font-size:11.5px;font-weight:600;
   cursor:pointer;
   transition:all .15s;
-  display:flex;align-items:center;gap:5px;white-space:nowrap;
-  box-shadow:0 1px 3px rgba(0,0,0,.06);
+  display:flex;align-items:center;gap:4px;white-space:nowrap;flex-shrink:0;
+  box-shadow:0 1px 2px rgba(0,0,0,.05);
+  box-sizing:border-box;
 }
 .psd-btn:hover{
   border-color:var(--primary);color:var(--primary);
@@ -11697,28 +11707,33 @@ async function renderPsDispatchOpt() {
 
   <!-- ══ 탭 2: 배차 (기존 화면) ══ -->
   <div class="psop-tab-panel active" id="psop-panel-dispatch">
-    <!-- ① 검색조건 -->
+    <!-- ① 검색조건 (한 줄 통합) -->
     <div class="psd-searchbar">
-      <div class="psd-search-title">■ 검색조건
-        ${_psopDataRangeHint ? `<span style="margin-left:auto;font-size:11px;font-weight:500;color:#d97706;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:2px 8px;">⚠ ${_psopDataRangeHint}</span>` : ''}
-      </div>
       <div class="psd-search-row">
+        <!-- ■ 타이틀 -->
+        <span class="psop-cond-title">■ 검색조건</span>
+        <div class="psd-sep-v"></div>
+        <!-- 납품일 FROM -->
         <div class="psd-fg">
           <label>납품일(FROM)</label>
-          <input type="date" id="psop-date-from" value="${defFrom}">
+          <input type="date" id="psop-date-from" value="${defFrom}" style="min-width:126px">
         </div>
+        <!-- 납품일 TO -->
         <div class="psd-fg">
-          <label>납품일(TO)</label>
-          <input type="date" id="psop-date-to" value="${defTo}">
+          <label>~TO</label>
+          <input type="date" id="psop-date-to" value="${defTo}" style="min-width:126px">
         </div>
+        <!-- 납품처코드/명 -->
         <div class="psd-fg">
           <label>납품처코드/명</label>
-          <input type="text" id="psop-dptnky" placeholder="납품처 검색...">
+          <input type="text" id="psop-dptnky" placeholder="납품처 검색..." style="min-width:130px">
         </div>
+        <!-- 납품문서 -->
         <div class="psd-fg">
           <label>납품문서</label>
-          <input type="text" id="psop-shpoky" placeholder="납품문서번호...">
+          <input type="text" id="psop-shpoky" placeholder="납품문서번호..." style="min-width:120px">
         </div>
+        <!-- 출하유형 -->
         <div class="psd-fg">
           <label>출하유형</label>
           <div class="psop-shpmty-wrap" id="psop-shpmty-wrap">
@@ -11741,25 +11756,30 @@ async function renderPsDispatchOpt() {
             </div>
           </div>
         </div>
+        <!-- 배차상태 -->
         <div class="psd-fg">
           <label>배차상태</label>
-          <select id="psop-disp-stat">
+          <select id="psop-disp-stat" style="min-width:76px">
             <option value="all">전체</option>
             <option value="undispatched" selected>미배차</option>
             <option value="dispatched">배차완료</option>
           </select>
         </div>
+        <!-- 조회 버튼 -->
         <button class="psd-btn primary" onclick="psopSearch()">🔍 조회</button>
-        <div class="psd-sep" style="height:24px"></div>
-        <div style="margin-left:auto;display:flex;align-items:center;gap:4px">
-          <span style="font-size:10px;color:var(--text3);white-space:nowrap">화면비율</span>
-          <div class="psd-ratio-group">
-            <button class="psd-ratio-btn" id="psop-ratio-82" onclick="psopSetRatio(80)" title="납품문서 80% : 선적배차 20%">8:2</button>
-            <button class="psd-ratio-btn" id="psop-ratio-55" onclick="psopSetRatio(50)" title="납품문서 50% : 선적배차 50%">5:5</button>
-            <button class="psd-ratio-btn" id="psop-ratio-28" onclick="psopSetRatio(20)" title="납품문서 20% : 선적배차 80%">2:8</button>
-          </div>
+        <!-- 데이터 범위 경고 -->
+        ${_psopDataRangeHint ? `<span style="font-size:10px;font-weight:500;color:#d97706;background:#fef3c7;border:1px solid #fde68a;border-radius:5px;padding:2px 7px;white-space:nowrap">⚠ ${_psopDataRangeHint}</span>` : ''}
+        <div class="psd-sep-v"></div>
+        <!-- 화면비율 -->
+        <span style="font-size:10px;color:var(--text3);white-space:nowrap">화면비율</span>
+        <div class="psd-ratio-group">
+          <button class="psd-ratio-btn" id="psop-ratio-82" onclick="psopSetRatio(80)" title="납품문서 80% : 선적배차 20%">8:2</button>
+          <button class="psd-ratio-btn" id="psop-ratio-55" onclick="psopSetRatio(50)" title="납품문서 50% : 선적배차 50%">5:5</button>
+          <button class="psd-ratio-btn" id="psop-ratio-28" onclick="psopSetRatio(20)" title="납품문서 20% : 선적배차 80%">2:8</button>
         </div>
-        <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+        <div class="psd-sep-v"></div>
+        <!-- 액션 버튼 그룹 -->
+        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
           <div style="font-size:11px;color:var(--text3)" id="psop-status-text"></div>
           <button class="psd-btn success" id="psop-btn-auto" onclick="psopAutoDispatch()" disabled>⚡ 자동배차</button>
           <button class="psd-btn" id="psop-btn-manual" onclick="psopManualDispatch()" disabled>✋ 수기배차</button>
