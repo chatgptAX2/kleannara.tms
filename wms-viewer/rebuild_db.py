@@ -420,39 +420,56 @@ CREATE TABLE IF NOT EXISTS DOC_FILE (
   DEL_YN TEXT DEFAULT 'N'
 );
 CREATE TABLE IF NOT EXISTS DS_DISPATCH_PROFILE (
-  PROFILE_ID TEXT PRIMARY KEY,
-  PROFILE_NM TEXT NOT NULL,
-  PROFILE_DESC TEXT DEFAULT '',
-  IS_DEFAULT TEXT DEFAULT 'N',
-  CREDAT TEXT DEFAULT '',
-  CREUSR TEXT DEFAULT 'SYSTEM'
+  PROFILE_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+  PROFILE_NM TEXT    NOT NULL,
+  OBJECTIVE  TEXT    DEFAULT '',
+  ACTIVE_YN  TEXT    DEFAULT 'Y',
+  NOTE       TEXT    DEFAULT '',
+  CREDAT     TEXT    DEFAULT '',
+  LMODAT     TEXT    DEFAULT '',
+  SET_ID     INTEGER DEFAULT NULL
 );
 CREATE TABLE IF NOT EXISTS DS_DISPATCH_CONST (
-  PROFILE_ID TEXT NOT NULL,
-  CONST_KEY TEXT NOT NULL,
-  CONST_VAL TEXT DEFAULT '',
-  CONST_DESC TEXT DEFAULT '',
-  PRIMARY KEY (PROFILE_ID, CONST_KEY)
+  CONST_ID    INTEGER PRIMARY KEY AUTOINCREMENT,
+  PROFILE_ID  INTEGER NOT NULL,
+  CONST_TYPE  TEXT    DEFAULT '',
+  CONST_KEY   TEXT    NOT NULL,
+  CONST_VALUE TEXT    DEFAULT '',
+  CONST_OP    TEXT    DEFAULT '=',
+  TARGET_ID   TEXT    DEFAULT '',
+  TARGET_NM   TEXT    DEFAULT '',
+  ACTIVE_YN   TEXT    DEFAULT 'Y',
+  NOTE        TEXT    DEFAULT '',
+  SORT_SEQ    INTEGER DEFAULT 0,
+  CREDAT      TEXT    DEFAULT '',
+  LMODAT      TEXT    DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS DS_DISPATCH_OBJECTIVE (
-  PROFILE_ID TEXT NOT NULL,
-  OBJ_KEY TEXT NOT NULL,
-  OBJ_VAL TEXT DEFAULT '',
-  OBJ_WEIGHT REAL DEFAULT 1.0,
-  PRIMARY KEY (PROFILE_ID, OBJ_KEY)
+  OBJ_ID    INTEGER PRIMARY KEY AUTOINCREMENT,
+  OBJ_CODE  TEXT    NOT NULL UNIQUE,
+  OBJ_NM    TEXT    NOT NULL,
+  OBJ_ICON  TEXT    DEFAULT '🎯',
+  OBJ_ALGO  TEXT    DEFAULT '',
+  OBJ_DESC  TEXT    DEFAULT '',
+  SORT_SEQ  INTEGER DEFAULT 0,
+  ACTIVE_YN TEXT    DEFAULT 'Y',
+  CREDAT    TEXT    DEFAULT '',
+  LMODAT    TEXT    DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS DS_DISPATCH_CONST_SET (
-  SET_ID TEXT PRIMARY KEY,
-  SET_NM TEXT NOT NULL,
-  SET_DESC TEXT DEFAULT '',
-  CREDAT TEXT DEFAULT '',
-  CREUSR TEXT DEFAULT 'SYSTEM'
+  SET_ID    INTEGER PRIMARY KEY AUTOINCREMENT,
+  SET_NM    TEXT    NOT NULL,
+  SET_DESC  TEXT    DEFAULT '',
+  ACTIVE_YN TEXT    DEFAULT 'Y',
+  CREDAT    TEXT    DEFAULT '',
+  LMODAT    TEXT    DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS DS_DISPATCH_CONST_SET_ITEM (
-  SET_ID TEXT NOT NULL,
-  ITEM_KEY TEXT NOT NULL,
-  ITEM_VAL TEXT DEFAULT '',
-  PRIMARY KEY (SET_ID, ITEM_KEY)
+  ITEM_ID    INTEGER PRIMARY KEY AUTOINCREMENT,
+  SET_ID     INTEGER NOT NULL,
+  CONST_ID   INTEGER NOT NULL,
+  ACTIVE_YN  TEXT    DEFAULT 'Y',
+  PARAM_VALUE TEXT   DEFAULT NULL
 );
 CREATE TABLE IF NOT EXISTS DS_INCH12 (
   CARTYPE   TEXT,
@@ -725,7 +742,98 @@ def main():
     conn.commit()
     print(f"  ✅ DS_INCH12: {len(inch12_data)}건, DS_INCH3: {len(inch3_data)}건")
 
-    # ③ xlsx 데이터 로드
+    # ③ DS_DISPATCH_OBJECTIVE / PROFILE / CONST / CONST_SET 기본 데이터
+    print("\n③ 배차 프로파일 / 목적식 / 제약조건 기본 데이터 삽입...")
+
+    # 목적식 (없을 때만)
+    if conn.execute("SELECT COUNT(*) FROM DS_DISPATCH_OBJECTIVE").fetchone()[0] == 0:
+        objs = [
+            ('MIN_VEHICLES', '차량 최소화',  '🚛', 'FFD BinPacking', '가능한 적은 차량으로 최대 적재 (FFD 알고리즘)', 10),
+            ('MAX_FILL',     '적재율 최대화', '📊', 'BFD BinPacking', '각 차량을 가장 꽉 채우는 방식 (BFD 알고리즘)', 20),
+            ('MIN_COST',     '운송비 최소화', '💰', 'ROUTE_COST',    'ROUTE_COST 기반 최저비용 차종 선택',           30),
+        ]
+        for code, nm, icon, algo, desc, seq in objs:
+            conn.execute(
+                "INSERT INTO DS_DISPATCH_OBJECTIVE"
+                " (OBJ_CODE,OBJ_NM,OBJ_ICON,OBJ_ALGO,OBJ_DESC,SORT_SEQ,ACTIVE_YN,CREDAT,LMODAT)"
+                " VALUES (?,?,?,?,?,?,'Y',?,?)",
+                (code, nm, icon, algo, desc, seq, today_str, today_str)
+            )
+        conn.commit()
+
+    # 프로파일 (없을 때만)
+    if conn.execute("SELECT COUNT(*) FROM DS_DISPATCH_PROFILE").fetchone()[0] == 0:
+        profiles = [
+            (1, '차량최소화 기본', 'MIN_VEHICLES', 'Y', '차량 수를 최소화합니다 (FFD BinPacking 기본)'),
+            (2, '적재율최대화',   'MAX_FILL',     'N', '각 차량의 적재율을 최대화합니다'),
+            (3, '운송비최소화',   'MIN_COST',     'N', 'ROUTE_COST 기준 총 운송비를 최소화합니다'),
+        ]
+        for pid, nm, obj, active, note in profiles:
+            conn.execute(
+                "INSERT INTO DS_DISPATCH_PROFILE"
+                " (PROFILE_ID,PROFILE_NM,OBJECTIVE,ACTIVE_YN,NOTE,CREDAT,LMODAT)"
+                " VALUES (?,?,?,?,?,?,?)",
+                (pid, nm, obj, active, note, today_str, today_str)
+            )
+        conn.commit()
+
+    # 제약조건 (없을 때만)
+    if conn.execute("SELECT COUNT(*) FROM DS_DISPATCH_CONST").fetchone()[0] == 0:
+        consts = [
+            # (PROFILE_ID, CONST_TYPE, CONST_KEY, CONST_VALUE, CONST_OP, TARGET_ID, TARGET_NM, NOTE, SORT_SEQ)
+            (1,'GLOBAL','MAX_VEHICLES_PER_GROUP','99', '<=','','','그룹당 최대 배차 차량 수',10),
+            (1,'GLOBAL','ALLOW_SPLIT_ITEM',      'Y',  '=','','','단일 아이템 납품분할 허용',20),
+            (1,'GLOBAL','ALLOW_MIXED_LOAD',       'N',  '=','','','우편번호 앞 3자리 동일 납품처 혼적 허용',25),
+            (1,'GLOBAL','MIN_FILL_RATIO',          '0',  '>=','','','최소 적재율(%) — 0=제한없음',30),
+            (1,'GLOBAL','MAX_FILL_RATIO',        '100', '<=','','','최대 적재율(%) — 초과배차 방지',40),
+            (1,'VEHICLE','ALLOW_CARTYPE','Y','=','1.4톤','1.4톤','차종 허용여부',100),
+            (1,'VEHICLE','ALLOW_CARTYPE','Y','=','3.5톤','3.5톤','차종 허용여부',101),
+            (1,'VEHICLE','ALLOW_CARTYPE','Y','=','5톤',  '5톤',  '차종 허용여부',102),
+            (1,'VEHICLE','ALLOW_CARTYPE','Y','=','5톤축','5톤축','차종 허용여부',103),
+            (1,'VEHICLE','ALLOW_CARTYPE','Y','=','11톤', '11톤', '차종 허용여부',104),
+            (1,'VEHICLE','ALLOW_CARTYPE','Y','=','15톤', '15톤', '차종 허용여부',105),
+            (1,'VEHICLE','ALLOW_CARTYPE','Y','=','18톤', '18톤', '차종 허용여부',106),
+            (1,'CARGO','MAX_ROLL_STACK_TIER',    '2',   '<=','','','최대 롤 적재 단수',200),
+            (1,'CARGO','MAX_BOARD_HEIGHT_M',     '2.4', '<=','','','판지 최대 적재 높이(m)',210),
+            (1,'CARGO','ROLL_SINGLE_KG_FALLBACK','600', '=', '','','롤 단중 미등록 시 fallback(kg)',220),
+            (1,'COST', 'COST_REF_DATE',          'TODAY','=','','','운송비 기준일 (TODAY or YYYYMMDD)',300),
+            (1,'COST', 'COST_PENALTY_OVER',      '1.5', '=', '','','초과적재 비용 패널티 배수',310),
+        ]
+        for row in consts:
+            conn.execute(
+                "INSERT INTO DS_DISPATCH_CONST"
+                " (PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,"
+                "  TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT)"
+                " VALUES (?,?,?,?,?,?,?,'Y',?,?,?,?)",
+                (row[0],row[1],row[2],row[3],row[4],row[5],row[6],row[7],row[8],today_str,today_str)
+            )
+        conn.commit()
+
+    # 제약조건 세트 (없을 때만)
+    if conn.execute("SELECT COUNT(*) FROM DS_DISPATCH_CONST_SET").fetchone()[0] == 0:
+        cur = conn.execute(
+            "INSERT INTO DS_DISPATCH_CONST_SET (SET_NM,SET_DESC,ACTIVE_YN,CREDAT,LMODAT) VALUES (?,?,?,?,?)",
+            ('기본 제약조건 세트', '기본 배차 제약조건 모음 (글로벌/차량/화물/비용)', 'Y', today_str, today_str)
+        )
+        set_id = cur.lastrowid
+        all_cids = conn.execute("SELECT CONST_ID FROM DS_DISPATCH_CONST ORDER BY CONST_ID").fetchall()
+        for c in all_cids:
+            conn.execute(
+                "INSERT INTO DS_DISPATCH_CONST_SET_ITEM (SET_ID,CONST_ID,ACTIVE_YN,PARAM_VALUE)"
+                " VALUES (?,?,?,?)",
+                (set_id, c[0], 'Y', None)
+            )
+        # 활성 프로파일에 세트 연결
+        conn.execute(
+            "UPDATE DS_DISPATCH_PROFILE SET SET_ID=? WHERE ACTIVE_YN='Y'",
+            (set_id,)
+        )
+        conn.commit()
+        print(f"  ✅ 기본 제약조건 세트 생성 (SET_ID={set_id}, {len(all_cids)}개 항목)")
+    else:
+        print("  (기존 프로파일/제약조건 데이터 유지)")
+
+    # ④ xlsx 데이터 로드
     xlsx_tables = [
         ('CMCDM',  'CMCDM_데이터.xlsx',  load_cmcdm),
         ('CMCDV',  'CMCDV_데이터.xlsx',  load_cmcdv),
