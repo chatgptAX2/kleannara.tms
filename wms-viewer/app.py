@@ -7942,6 +7942,62 @@ def api_dcon_auto():
                         'max_ton_label': pi.get('max_ton_label',''),
                     })
 
+            # ── 기타 품목(BOX 등) 배차 ───────────────────────────────────
+            # other_items: SKUKEY가 원지/판지 형식이 아닌 BOX, 낱개 등
+            # GRSWGT(중량) 또는 QTSHPO(수량)을 KG로 간주해 차량 선정
+            if other_items:
+                # KG 계산: GRSWGT > 0 → GRSWGT 사용, 아니면 QTSHPO
+                def _other_kg(it):
+                    gw = float(it.get('KG_WEIGHT') or it.get('GRSWGT') or 0)
+                    return gw if gw > 0 else float(it.get('QTSHPO') or 0)
+
+                total_other_kg = sum(_other_kg(it) for it in other_items)
+
+                # ALLOW_MIXED_LOAD 여부와 무관하게 납품처 단위 처리
+                # 목적식에 따른 차량 선정
+                veh_car_o = _select_car(total_other_kg, valid_cars, dptnky)
+                cap_o     = veh_info.get(veh_car_o, {}).get('load_kg', 0)
+                fill_o    = (total_other_kg / cap_o * 100) if cap_o > 0 else 0
+                cost_o    = route_cost_map.get(dptnky, {}).get(veh_car_o, 0)
+
+                notes_o   = [
+                    f"[{objective}] {veh_car_o} 선정 "
+                    f"(기타품목 {len(other_items)}건 / "
+                    f"적재{total_other_kg:.0f}kg / 한도{cap_o:.0f}kg / 적재율{fill_o:.1f}%"
+                    + (f" / 운송비{cost_o:,.0f}원" if cost_o > 0 else "") + ")"
+                ]
+                if is_dynamic_blocked:
+                    notes_o.append(f"[동적배차불가] DYNAMIC_YN=N → 고정노선 전용 오더")
+
+                pi_o = ptnr_info.get(dptnky, {})
+                all_vehicles.append({
+                    'dptnky':        dptnky,  'dptnm':   dptnm,
+                    'rqshpd':        rqshpd,  'cartype': veh_car_o,
+                    'total_kg':      round(total_other_kg, 2),
+                    'load_cap':      cap_o,
+                    'spare_kg':      round(cap_o - total_other_kg, 2),
+                    'fill_ratio':    round(fill_o, 1),
+                    'items':         other_items,
+                    'item_cnt':      len(other_items),
+                    'material_type': 'OTHER',
+                    'roll_count':    0,
+                    'total_cbm':     0.0,
+                    'cbm_cap':       0.0,
+                    'cbm_fill':      0.0,
+                    'route_cost':    cost_o,
+                    'objective':     objective,
+                    'profile_id':    pid,
+                    'profile_nm':    prof['PROFILE_NM'],
+                    'notes':         notes_o,
+                    'is_mixed':      is_mixed,
+                    'is_mixed_load': False,
+                    'mixed_dptnm':   '',
+                    'forklift_yn':   pi_o.get('forklift_yn', ''),
+                    'dynamic_yn':    pi_o.get('dynamic_yn', ''),
+                    'deadline_time': pi_o.get('deadline_time', ''),
+                    'max_ton_label': pi_o.get('max_ton_label', ''),
+                })
+
         # ── 응답 필드 정규화 (JS _dconRenderResult 호환) ────────────────
         for v in all_vehicles:
             v['used_kg']    = v.get('total_kg', 0)

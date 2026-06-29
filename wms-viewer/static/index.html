@@ -1965,6 +1965,9 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psd-doc-tbl tbody tr.dispatched{background:rgba(16,185,129,.05)}
 .psd-doc-tbl tbody tr.dispatched td{color:var(--text3)}
 .psd-doc-tbl tbody tr.selected-row{background:rgba(37,99,235,.08)}
+.psd-doc-tbl tbody tr.psop-row-linked{background:rgba(99,102,241,.13)!important;border-left:3px solid #6366f1}
+.psd-doc-tbl tbody tr.psop-row-linked td:first-child{border-left:3px solid #6366f1}
+.psd-doc-tbl tbody tr.psop-row-linked td{color:var(--text)}
 .psd-doc-tbl tbody td{padding:5px 8px;white-space:nowrap;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;font-size:11px;font-weight:400}
 .psd-doc-tbl tbody td:first-child{text-align:center}
 .psd-doc-tbl tbody td.col-nm{text-align:left}
@@ -12270,6 +12273,8 @@ function psopRenderDocTable(filterText) {
   }).join('');
 
   psopUpdateSelCnt();
+  // 테이블 재렌더 후 차량 선택 하이라이트 재적용
+  psopRefreshVehicleSelection();
 }
 
 /* ── 필터 ─────────────────────────────────────────── */
@@ -13399,6 +13404,29 @@ function psopRefreshVehicleSelection() {
     }
   });
   psopUpdateToolbar();
+
+  // ── 납품문서 하이라이트: 선택된 차량의 items 행을 강조 ──────────────
+  // 이전 하이라이트 전체 제거
+  document.querySelectorAll('#psop-doc-tbody tr.psop-row-linked')
+    .forEach(tr => tr.classList.remove('psop-row-linked'));
+
+  if (psopState.selectedVehicles.size > 0) {
+    // 선택된 모든 차량 items의 SHPOKY+SHPOIT 키 집합 수집
+    const linkedKeys = new Set();
+    for (const pid of psopState.selectedVehicles) {
+      const veh = psopState.vehicles.find(v => v._pendingId === pid);
+      (veh?.items || []).forEach(it => {
+        if (it.SHPOKY && it.SHPOIT !== undefined) {
+          linkedKeys.add(`${it.SHPOKY}_${it.SHPOIT}`);
+        }
+      });
+    }
+    // 매칭되는 납품문서 행 하이라이트
+    linkedKeys.forEach(k => {
+      const tr = document.getElementById(`psop-row-${k}`);
+      if (tr) tr.classList.add('psop-row-linked');
+    });
+  }
 }
 
 /* ═══════════════════════════════════════════════════
