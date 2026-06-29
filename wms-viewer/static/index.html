@@ -154,27 +154,22 @@ body{background:var(--bg);color:var(--text);font-family:'Pretendard Variable','P
 
 /* ── TOPBAR (GNB) ── */
 .topbar{
-  padding:7px 16px;border-bottom:1px solid var(--gnb-border);
+  padding:3px 16px 3px;border-bottom:1px solid var(--gnb-border);
   display:flex;align-items:center;gap:10px;
   background:var(--gnb-bg);flex-shrink:0;
   flex-direction:column;align-items:stretch;
 }
-.topbar-row1{display:flex;align-items:center;gap:10px}
+.topbar-row1{display:flex;align-items:center;gap:8px;padding:1px 0}
 .topbar h2{
-  font-size:14px;font-weight:700;flex:1;white-space:nowrap;
+  font-size:13px;font-weight:700;flex:1;white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;color:#f5f7e8;
 }
 .topbar .badge{
   background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);
-  padding:3px 10px;border-radius:20px;font-size:11px;color:#c8cde0;white-space:nowrap;
+  padding:2px 8px;border-radius:20px;font-size:10.5px;color:#c8cde0;white-space:nowrap;
 }
 /* ── BREADCRUMB ── */
-.breadcrumb{display:flex;align-items:center;gap:4px;font-size:11px;color:#c8cc9a;padding:2px 0 3px}
-.breadcrumb-sep{color:rgba(255,255,255,.25);font-size:10px}
-.breadcrumb-item{color:#c8cc9a;cursor:pointer;padding:1px 5px;border-radius:4px;transition:.12s}
-.breadcrumb-item:hover{color:#f5f7e8;background:rgba(255,255,255,.1)}
-.breadcrumb-item.active{color:#38bdf8;font-weight:600;cursor:default}
-.breadcrumb-item.active:hover{background:none}
+.breadcrumb{display:none!important}
 /* ── SORT ── */
 .sort-th{cursor:n-resize;user-select:none}
 .sort-th:hover .th-cell{color:var(--primary)}
@@ -2336,13 +2331,13 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
   display:flex;align-items:stretch;gap:0;
   background:var(--gnb-bg);border-bottom:2px solid var(--gnb-border);
   flex-shrink:0;overflow-x:auto;overflow-y:hidden;
-  scrollbar-width:none;min-height:38px;
+  scrollbar-width:none;min-height:32px;
 }
 #tab-bar::-webkit-scrollbar{display:none}
 .tab-item{
-  display:flex;align-items:center;gap:6px;
-  padding:0 14px;min-width:120px;max-width:200px;
-  cursor:pointer;font-size:11.5px;color:var(--gnb-tab-text);
+  display:flex;align-items:center;gap:5px;
+  padding:0 12px;min-width:110px;max-width:200px;
+  cursor:pointer;font-size:11px;color:var(--gnb-tab-text);
   border-right:1px solid var(--gnb-border);
   position:relative;flex-shrink:0;
   transition:background .12s,color .12s;
@@ -2357,8 +2352,8 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
   height:2px;background:#d4e157;
   box-shadow:0 0 8px rgba(212,225,87,.5);
 }
-.tab-icon{font-size:13px;flex-shrink:0}
-.tab-label{flex:1;overflow:hidden;text-overflow:ellipsis;font-size:11.5px}
+.tab-icon{font-size:12px;flex-shrink:0}
+.tab-label{flex:1;overflow:hidden;text-overflow:ellipsis;font-size:11px}
 .tab-close{
   flex-shrink:0;width:16px;height:16px;
   border-radius:4px;border:none;background:none;
@@ -2701,7 +2696,7 @@ thead th:hover .th-drag-handle{opacity:.8}
       <option value="200">200행</option>
     </select>
     </div><!-- /topbar-row1 -->
-    <nav class="breadcrumb" id="breadcrumb" style="display:none"></nav>
+    <nav class="breadcrumb" id="breadcrumb" style="display:none!important"></nav>
   </div>
 
   <!-- 컬럼 표시 토글 툴바 (테이블뷰에서만 표시) -->
@@ -2902,15 +2897,9 @@ const PAGE_META = {
 };
 
 function updateBreadcrumb(crumbs) {
+  // 브레드크럼 비활성화 (항상 숨김)
   const nav = document.getElementById('breadcrumb');
-  if (!nav) return;
-  if (!crumbs || crumbs.length === 0) { nav.style.display = 'none'; return; }
-  nav.style.display = 'flex';
-  nav.innerHTML = crumbs.map((c, i) => {
-    const isLast = i === crumbs.length - 1;
-    const sep = i > 0 ? `<span class="breadcrumb-sep">›</span>` : '';
-    return `${sep}<span class="breadcrumb-item${isLast ? ' active' : ''}">${c}</span>`;
-  }).join('');
+  if (nav) nav.style.display = 'none';
 }
 
 /* ═══════════════════════════════════════════════════════════
