@@ -844,15 +844,15 @@ def main():
             (1,'MIX_DUAL_VERIFY','MIX_WEIGHT_CHECK_YN','Y','=','','','혼적 총중량 검증 (원지+판지 ≤ 차량 최대 적재 중량)',2000),
             (1,'MIX_DUAL_VERIFY','MIX_HEIGHT_CHECK_YN','Y','=','','','혼적 높이 검증 (파렛트고+원지다단높이+판지높이 ≤ 차량 최대 높이)',2010),
             (1,'MIX_DUAL_VERIFY','MIX_3D_CHECK_YN',    'Y','=','','','혼적 Dead Space 포함 3D 블록 종합 검증',2020),
-            # ── 동적 제약 (DYNAMIC) ── 납품처별 DYNAMIC_YN + 동일 구역(AREA_CD) 그룹핑 규칙
-            # 각 납품처의 동일 구(AREA_CD) 끼리 동적여부를 설정하는 제약조건
-            (1,'DYNAMIC','DYNAMIC_GROUP_BY',      'AREA_CD','=', '','',
+            # ── 동적 구역 제약 (DYNAMIC_ZONE) ── 각 납품처의 동일 구(AREA_CD)끼리 동적여부 설정
+            # 납품처별 개별 DYNAMIC_YN(⚡동적탭) + 구역 단위 그룹핑 전역 규칙(🗂️동적구역탭)
+            (1,'DYNAMIC_ZONE','DYNAMIC_GROUP_BY',      'AREA_CD','=', '','',
              '동적 그룹핑 기준 컬럼 — 동일 AREA_CD(권역) 납품처끼리 동적 배차 그룹 형성',2100),
-            (1,'DYNAMIC','DYNAMIC_DEFAULT_YN',    'Y',      '=', '','',
+            (1,'DYNAMIC_ZONE','DYNAMIC_DEFAULT_YN',    'Y',      '=', '','',
              '납품처 DYNAMIC_YN 미설정 시 기본값 (Y=동적배차 가능, N=불가)',2110),
-            (1,'DYNAMIC','DYNAMIC_MIN_GROUP_SIZE','1',      '>=','','',
+            (1,'DYNAMIC_ZONE','DYNAMIC_MIN_GROUP_SIZE','1',      '>=','','',
              '동적 그룹 최소 납품처 수 — 1=단독 납품처도 동적배차 허용',2120),
-            (1,'DYNAMIC','DYNAMIC_AREA_FORCE_YN', 'Y',      '=', '','',
+            (1,'DYNAMIC_ZONE','DYNAMIC_AREA_FORCE_YN', 'Y',      '=', '','',
              '동일 구역(AREA_CD) 내 DYNAMIC_YN=Y 납품처는 반드시 동적 그룹 편입 강제',2130),
         ]
         for row in consts:

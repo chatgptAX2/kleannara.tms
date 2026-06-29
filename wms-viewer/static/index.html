@@ -947,6 +947,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .dcon-grp-card-hdr.g-entry-ton{background:#44140022;border-bottom:2px solid #ea580c}
 .dcon-grp-card-hdr.g-forklift{background:#1c1917;border-bottom:2px solid #78716c}
 .dcon-grp-card-hdr.g-dynamic{background:#05202222;border-bottom:2px solid #06b6d4}
+.dcon-grp-card-hdr.g-dynamic-zone{background:#05202244;border-bottom:2px solid #0891b2}
 /* 원지(Paper Roll) 탭 계열 — 갈색/주황 */
 .dcon-grp-card-hdr.g-roll-unit{background:#7c2d1222;border-bottom:2px solid #b45309}
 .dcon-grp-card-hdr.g-roll-stack{background:#7c2d1222;border-bottom:2px solid #92400e}
@@ -18492,7 +18493,8 @@ const DCON_GRP_META = {
   PARTNER:   { icon:'🏢', label:'납품처별 제약',          cls:'g-partner',    desc:'납품처 배차 방식 커스터마이징' },
   ENTRY_TON: { icon:'🚧', label:'납품처 진입 허용 톤수 제한', cls:'g-entry-ton', desc:'납품처별 최대 진입 차량 톤수 설정 — 초과 차량은 자동배차 후보에서 제외' },
   FORKLIFT:  { icon:'🏗', label:'지게차 여부 제약',          cls:'g-forklift',  desc:'Y=지게차 사용 → 파렛트 높이 미적용 / N=지게차 없음 → 파렛트 높이 적용' },
-  DYNAMIC:   { icon:'⚡', label:'동적 제약',                cls:'g-dynamic',   desc:'Y=동적배차 가능 / N=동적배차 불가 / 미설정=동적배차 가능(기본)' },
+  DYNAMIC:     { icon:'⚡', label:'동적 제약',                cls:'g-dynamic',      desc:'Y=동적배차 가능 / N=동적배차 불가 / 미설정=동적배차 가능(기본)' },
+  DYNAMIC_ZONE: { icon:'🗂️', label:'동적 구역 제약',            cls:'g-dynamic-zone', desc:'동일 AREA_CD(권역/구) 기준 동적 그룹핑 전역 규칙 — 구역 단위 동적배차 제어 파라미터' },
   /* ── 원지(Paper Roll) 4개 탭 ── */
   ROLL_UNIT:      { icon:'📜', label:'원지① 단위 배차',      cls:'g-roll-unit',    desc:'원지는 정수 롤 단위 배차, 개체 내 분할 절대 불가 (엑셀§2-1)' },
   ROLL_STACK:     { icon:'📐', label:'원지② 다단 적재·높이', cls:'g-roll-stack',   desc:'최대 3단 Hard Cap, 파레트 15cm 차감, Z축 높이 제약 (엑셀§2-2)' },
@@ -18594,7 +18596,7 @@ const DCON_PARAM_META = {
   MIX_HEIGHT_CHECK_YN:  { label:'혼적 높이 검증 활성',       unit:'Y/N',  hint:'파레트고+원지다단+판지총고 ≤ 차량높이' },
   MIX_3D_DEAD_SPACE_YN: { label:'혼적 3D Dead Space 검증',  unit:'Y/N',  hint:'Y=Dead Space 포함 3D 블록 검증' },
   MIX_CBM_CHECK_YN:     { label:'혼적 CBM 검증 활성',        unit:'Y/N',  hint:'Y=원지+판지 합산 CBM 초과 검증' },
-  /* ── 동적 배차 파라미터 ── */
+  /* ── 동적 구역(DYNAMIC_ZONE) 파라미터 ── */
   DYNAMIC_GROUP_BY:       { label:'동적 그룹핑 기준',          unit:'컬럼', hint:'AREA_CD=동일 권역(구) 납품처끼리 동적 배차 그룹 형성' },
   DYNAMIC_DEFAULT_YN:     { label:'동적배차 기본값',            unit:'Y/N',  hint:'납품처 DYNAMIC_YN 미설정 시 기본 동작 (Y=동적가능)' },
   DYNAMIC_MIN_GROUP_SIZE: { label:'동적 그룹 최소 납품처 수',  unit:'개',   hint:'1=단독 납품처도 동적배차 허용, 2=2개 이상이어야 그룹핑' },
@@ -18717,7 +18719,7 @@ function _dconSpRenderTabs() {
   /* CARTYPE은 항상 탭에 표시 (DS_VEHICLE 기반이므로 별도 카운트) */
   const tabOrder = [
     'GLOBAL','VEHICLE','CARTYPE','CARGO','PARTNER',
-    'ENTRY_TON','FORKLIFT','DYNAMIC',
+    'ENTRY_TON','FORKLIFT','DYNAMIC','DYNAMIC_ZONE',
     'ROLL_UNIT','ROLL_STACK','ROLL_INCH_MIX','ROLL_3D_VERIFY',
     'BOARD_CBM_WEIGHT','BOARD_BULK_SPLIT','BOARD_FLEX_SPLIT','BOARD_3D_VERIFY',
     'MIX_Z_AXIS','MIX_Y_LIFO','MIX_DUAL_VERIFY',
@@ -18938,6 +18940,8 @@ function _dconSpRender() {
     body.innerHTML = _dconSpRenderForklift(ft);
   } else if (tab === 'DYNAMIC') {
     body.innerHTML = _dconSpRenderDynamic(ft);
+  } else if (tab === 'DYNAMIC_ZONE') {
+    body.innerHTML = _dconSpRenderTable(rows, ft, tab);
   } else if (tab === 'REGION') {
     body.innerHTML = _dconSpRenderRegion(ft);
   } else if (!DCON.selSetId) {
@@ -20104,7 +20108,7 @@ function _dconSpVehicleToggle(targetId, checked) {
 function _dconSpAddRow() {
   const tab = DCON._spActiveTab;
   /* CARTYPE, ENTRY_TON, FORKLIFT, DYNAMIC, REGION 탭은 별도 편집 방식 — 행 추가 불필요 */
-  if (tab === 'CARTYPE' || tab === 'ENTRY_TON' || tab === 'FORKLIFT' || tab === 'DYNAMIC' || tab === 'REGION') {
+  if (tab === 'CARTYPE' || tab === 'ENTRY_TON' || tab === 'FORKLIFT' || tab === 'DYNAMIC' || tab === 'DYNAMIC_ZONE' || tab === 'REGION') {
     showToast('이 탭은 목록에서 직접 편집하세요', 'info');
     return;
   }
@@ -20153,7 +20157,7 @@ function _dconSpFilterChange() {
 ══════════════════════════════════════════════════════════════ */
 async function _dconSpSave() {
   const tab = DCON._spActiveTab;
-  const isBzptnTab = (tab === 'ENTRY_TON' || tab === 'FORKLIFT' || tab === 'DYNAMIC' || tab === 'REGION');
+  const isBzptnTab = (tab === 'ENTRY_TON' || tab === 'FORKLIFT' || tab === 'DYNAMIC' || tab === 'DYNAMIC_ZONE' || tab === 'REGION');
   /* 세트 미선택 상태: BZPTN 탭(납품처 마스터)은 세트 없이 저장 가능, 나머지는 경고 */
   if (!DCON.selSetId && !isBzptnTab) return showToast('세트를 선택하세요', 'warn');
 
