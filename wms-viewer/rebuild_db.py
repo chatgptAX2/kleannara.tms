@@ -779,19 +779,71 @@ def main():
 
     # 제약조건 (없을 때만)
     if conn.execute("SELECT COUNT(*) FROM DS_DISPATCH_CONST").fetchone()[0] == 0:
-        # GLOBAL / CARGO / COST 고정 제약조건
+        # GLOBAL / CARGO / COST / ROLL / BOARD / MIX 고정 제약조건
+        # 엑셀 「TMS 배차최적화 제약조건_20260611.xlsx」 §1~§4 기반
         consts = [
             # (PROFILE_ID, CONST_TYPE, CONST_KEY, CONST_VALUE, CONST_OP, TARGET_ID, TARGET_NM, NOTE, SORT_SEQ)
+            # ── 전역 제약 (GLOBAL) ──
             (1,'GLOBAL','MAX_VEHICLES_PER_GROUP','99', '<=','','','그룹당 최대 배차 차량 수',10),
             (1,'GLOBAL','ALLOW_SPLIT_ITEM',      'Y',  '=','','','단일 아이템 납품분할 허용',20),
-            (1,'GLOBAL','ALLOW_MIXED_LOAD',       'N',  '=','','','우편번호 앞 3자리 동일 납품처 혼적 허용',25),
-            (1,'GLOBAL','MIN_FILL_RATIO',          '0',  '>=','','','최소 적재율(%) — 0=제한없음',30),
-            (1,'GLOBAL','MAX_FILL_RATIO',        '100', '<=','','','최대 적재율(%) — 초과배차 방지',40),
-            (1,'CARGO','MAX_ROLL_STACK_TIER',    '2',   '<=','','','최대 롤 적재 단수',200),
-            (1,'CARGO','MAX_BOARD_HEIGHT_M',     '2.4', '<=','','','판지 최대 적재 높이(m)',210),
-            (1,'CARGO','ROLL_SINGLE_KG_FALLBACK','600', '=', '','','롤 단중 미등록 시 fallback(kg)',220),
-            (1,'COST', 'COST_REF_DATE',          'TODAY','=','','','운송비 기준일 (TODAY or YYYYMMDD)',300),
-            (1,'COST', 'COST_PENALTY_OVER',      '1.5', '=', '','','초과적재 비용 패널티 배수',310),
+            (1,'GLOBAL','ALLOW_MIXED_LOAD',      'N',  '=','','','우편번호 앞 3자리 동일 납품처 혼적 허용',25),
+            (1,'GLOBAL','MIN_FILL_RATIO',        '0',  '>=','','','최소 적재율(%) — 0=제한없음',30),
+            (1,'GLOBAL','MAX_FILL_RATIO',        '100','<=','','','최대 적재율(%) — 초과배차 방지',40),
+            # ── 화물·적재 제약 (CARGO) ──
+            (1,'CARGO','MAX_ROLL_STACK_TIER',    '2',  '<=','','','최대 롤 적재 단수',200),
+            (1,'CARGO','MAX_BOARD_HEIGHT_M',     '2.4','<=','','','판지 최대 적재 높이(m)',210),
+            (1,'CARGO','ROLL_SINGLE_KG_FALLBACK','600','=', '','','롤 단중 미등록 시 fallback(kg)',220),
+            # ── 비용 제약 (COST) ──
+            (1,'COST','COST_REF_DATE',           'TODAY','=','','','운송비 기준일 (TODAY or YYYYMMDD)',300),
+            (1,'COST','COST_PENALTY_OVER',       '1.5', '=','','','초과적재 비용 패널티 배수',310),
+            # ── 원지① 단위 배차 (ROLL_UNIT) ── 엑셀§2-1
+            (1,'ROLL_UNIT','ROLL_INTEGER_ONLY',  'Y',  '=','','','원지 정수 롤 단위 강제 (분할 절대 불가)',1000),
+            (1,'ROLL_UNIT','ROLL_SPLIT_ALLOWED', 'N',  '=','','','원지 분할 배차 금지 (엑셀§2-1)',1010),
+            (1,'ROLL_UNIT','ROLL_MIN_QTY',       '1',  '>=','','','원지 최소 배차 수량 (1롤)',1020),
+            # ── 원지② 다단 적재·높이 (ROLL_STACK) ── 엑셀§2-2
+            (1,'ROLL_STACK','ROLL_MAX_TIER',         '3',   '<=','','','롤 최대 적재 단수 Hard Cap (3단)',1100),
+            (1,'ROLL_STACK','ROLL_PALLET_DEDUCT_M',  '0.15','=', '','','파레트 높이 차감값 (m) — 0.15m 기본',1110),
+            (1,'ROLL_STACK','ROLL_PALLET_APPLY_YN',  'Y',   '=', '','','파레트 차감 적용 여부 (납품처 FORKLIFT_YN=N 시 적용)',1120),
+            (1,'ROLL_STACK','ROLL_HEIGHT_MARGIN_M',  '0',   '=', '','','적재 높이 안전 여유 마진 (m)',1130),
+            # ── 원지③ 인치·평량 혼합 (ROLL_INCH_MIX) ── 엑셀§2-3
+            (1,'ROLL_INCH_MIX','ROLL_INCH_MIX_ALLOW', 'Y',            '=','','','인치/평량 혼합 오더 허용 (엑셀§2-3)',1200),
+            (1,'ROLL_INCH_MIX','ROLL_2D_PACK_ENGINE', 'Y',            '=','','','혼합 규격 시 2D 바닥 패킹 연산 적용',1210),
+            (1,'ROLL_INCH_MIX','ROLL_SAME_INCH_FORCE','N',            '=','','','동일 인치 강제 여부 (N=혼재허용)',1220),
+            (1,'ROLL_INCH_MIX','ROLL_REF_12INCH_LT300','2,3,4,6,8,8,8',  '=','','','12인치/평량300미만 차종별 1단 기준수(1.4t~18t)',1230),
+            (1,'ROLL_INCH_MIX','ROLL_REF_12INCH_GE300','2,3,4,5,7,7,7',  '=','','','12인치/평량300이상 차종별 1단 기준수(1.4t~18t)',1240),
+            (1,'ROLL_INCH_MIX','ROLL_REF_3INCH_LT300', '3,5,10,12,14,14,15','=','','','3인치/평량300미만 차종별 1단 기준수(1.4t~18t)',1250),
+            (1,'ROLL_INCH_MIX','ROLL_REF_3INCH_GE300', '3,5,10,12,14,14,15','=','','','3인치/평량300이상 차종별 1단 기준수(1.4t~18t)',1260),
+            # ── 원지④ 3D 물리 검증 (ROLL_3D_VERIFY) ── 엑셀§2-4
+            (1,'ROLL_3D_VERIFY','ROLL_3D_CHECK_YN',       'Y',    '=', '','','원지 3D 블록 검증 활성 (Dead Space 포함)',1300),
+            (1,'ROLL_3D_VERIFY','ROLL_3D_DEAD_SPACE_PCT', '0',    '<=','','','Dead Space 허용 비율 (%) — 0=허용안함',1310),
+            (1,'ROLL_3D_VERIFY','ROLL_OVERSIZE_ACTION',   'SPLIT','=', '','','치수 초과 시 처리 방식 (SPLIT=분할/REJECT=제외)',1320),
+            # ── 판지① CBM·중량 이중 검증 (BOARD_CBM_WEIGHT) ── 엑셀§3-1
+            (1,'BOARD_CBM_WEIGHT','BOARD_CBM_CHECK_YN',  'Y',  '=', '','','판지 CBM 자동계산+Double-Threshold 검증 활성 (엑셀§3-1)',1400),
+            (1,'BOARD_CBM_WEIGHT','BOARD_MAX_CBM_RATIO', '100','<=','','','가용 적재함 CBM 상한 (%)',1410),
+            (1,'BOARD_CBM_WEIGHT','BOARD_MAX_TON_RATIO', '100','<=','','','중량 상한 (%) — Double-Threshold 중량 기준',1420),
+            (1,'BOARD_CBM_WEIGHT','BOARD_DUAL_THRESHOLD','Y',  '=', '','','중량+CBM 동시 초과 이중 임계치 검증 활성',1430),
+            # ── 판지② 벌크·속포장 제약 (BOARD_BULK_SPLIT) ── 엑셀§3-2
+            (1,'BOARD_BULK_SPLIT','BOARD_BULK_INTEGER_ONLY', 'Y',    '=','','','벌크 1PLT 단위 강제 (개체 내 분할 불가)',1500),
+            (1,'BOARD_BULK_SPLIT','BOARD_INNER_SPLIT_ALLOW', 'Y',    '=','','','속포장 속 단위 분할 허용',1510),
+            (1,'BOARD_BULK_SPLIT','BOARD_INNER_STACK_ALLOW', 'Y',    '=','','','분할된 속을 판지 위 추가 적재 허용',1520),
+            (1,'BOARD_BULK_SPLIT','BOARD_INNER_OVERFLOW_ACT','SPLIT','=','','','속포장 초과 시 처리 (SPLIT=다음 차량 배정)',1530),
+            # ── 판지③ 유연 분할 선적 (BOARD_FLEX_SPLIT) ── 엑셀§3-3
+            (1,'BOARD_FLEX_SPLIT','BOARD_FLEX_SPLIT_YN', 'Y', '=','','','유연 분할 선적 활성 — 차량 한계 시 초과분만 후속 차량 (엑셀§3-3)',1600),
+            (1,'BOARD_FLEX_SPLIT','BOARD_SPLIT_UNIT',    'EA','=','','','분할 단위 (EA=낱개속, PLT=파레트)',1610),
+            (1,'BOARD_FLEX_SPLIT','BOARD_SPLIT_OVERFLOW','Y', '=','','','초과분(속단위) 후속 차량 정확 배정 활성',1620),
+            # ── 판지④ 3D 물리 검증 (BOARD_3D_VERIFY) ── 엑셀§3-4
+            (1,'BOARD_3D_VERIFY','BOARD_3D_CHECK_YN',       'Y',  '=', '','','판지 3D 블록 검증 활성 (Dead Space 포함)',1700),
+            (1,'BOARD_3D_VERIFY','BOARD_3D_DEAD_SPACE_PCT', '0',  '<=','','','판지 Dead Space 허용 비율 (%)',1710),
+            (1,'BOARD_3D_VERIFY','BOARD_HEIGHT_MAX_M',      '2.4','<=','','','판지 스택 최대 높이 (m, 기본 2.4m)',1720),
+            # ── 혼적① Z축 수직 적재 순서 (MIX_Z_AXIS) ── 엑셀§4-1
+            (1,'MIX_Z_AXIS','MIX_ROLL_BOTTOM_FORCE','Y','=','','','원지 하단·판지 상단 강제 고정 (물리적 압착 파손 방지 핵심)',1800),
+            # ── 혼적② Y축 LIFO 배치 (MIX_Y_LIFO) ── 엑셀§4-2
+            (1,'MIX_Y_LIFO','MIX_LIFO_ENABLE',  'Y','=','','','복수 납품처 LIFO 배치 활성 (나중하차→안쪽, 먼저하차→문쪽)',1900),
+            (1,'MIX_Y_LIFO','MIX_ZONE_SPLIT_YN','Y','=','','','원지·판지 배송처 상이 시 전후 Zone 분할 적재 자동 전환',1910),
+            # ── 혼적③ 이중 복합 검증 (MIX_DUAL_VERIFY) ── 엑셀§4-3
+            (1,'MIX_DUAL_VERIFY','MIX_WEIGHT_CHECK_YN','Y','=','','','혼적 총중량 검증 (원지+판지 ≤ 차량 최대 적재 중량)',2000),
+            (1,'MIX_DUAL_VERIFY','MIX_HEIGHT_CHECK_YN','Y','=','','','혼적 높이 검증 (파렛트고+원지다단높이+판지높이 ≤ 차량 최대 높이)',2010),
+            (1,'MIX_DUAL_VERIFY','MIX_3D_CHECK_YN',    'Y','=','','','혼적 Dead Space 포함 3D 블록 종합 검증',2020),
         ]
         for row in consts:
             conn.execute(
