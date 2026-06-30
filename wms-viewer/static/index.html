@@ -2282,8 +2282,8 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 }
 .psop-tab-panel.active{display:flex}
 /* ══ 배차확정(SAP전송) 탭 — psd- CSS 재사용 ══ */
-/* psd-panel-body: 패널 스크롤 영역 */
-.psd-panel-body{flex:1;overflow:auto;min-height:0}
+/* SAP 탭 패널 본문: 가로·세로 스크롤 모두 허용 (테이블이 컨테이너보다 넓을 수 있음) */
+#psop-panel-sap .psd-panel-body{overflow:auto}
 /* psd-empty-state: 빈 상태 메시지 */
 .psd-empty-state{
   display:flex;align-items:center;justify-content:center;padding:32px;
@@ -10863,8 +10863,12 @@ async function _sapRenderLeft() {
   };
   const tfootRow = `<tr>${order.map(id => tfootMap[id] || '<td>-</td>').join('')}</tr>`;
 
+  // 컨테이너 너비 측정 → 컬럼 합계보다 크면 100% 채움, 작으면 최소폭 유지(가로스크롤)
+  const wrapW = wrap.getBoundingClientRect().width || 0;
+  const tblW  = wrapW > totalW ? '100%' : `${totalW}px`;
+
   wrap.innerHTML = `
-    <table class="sap-left-tbl" style="width:${totalW}px;min-width:${totalW}px">
+    <table class="sap-left-tbl" style="width:${tblW};min-width:${totalW}px">
       <colgroup>${cgHtml}</colgroup>
       <thead>${theadHtml}</thead>
       <tbody>${tbodyRows}</tbody>
@@ -11390,8 +11394,12 @@ async function _sapLoadDocs(stknum) {
     };
     const docTfootRow = `<tr>${order.map(id => docTfootMap[id] || '<td>-</td>').join('')}</tr>`;
 
+    // 컨테이너 너비 측정 → 컬럼 합계보다 크면 100% 채움, 작으면 최소폭 유지(가로스크롤)
+    const wrapW2 = wrap.getBoundingClientRect().width || 0;
+    const tblW2  = wrapW2 > totalW ? '100%' : `${totalW}px`;
+
     wrap.innerHTML = `
-      <table class="sap-doc-tbl" style="width:${totalW}px;min-width:${totalW}px">
+      <table class="sap-doc-tbl" style="width:${tblW2};min-width:${totalW}px">
         <colgroup>${cgHtml}</colgroup>
         <thead>${theadHtml}</thead>
         <tbody>${tbodyRows}</tbody>
