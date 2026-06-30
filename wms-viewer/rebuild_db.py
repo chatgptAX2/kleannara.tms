@@ -231,14 +231,27 @@ CREATE TABLE IF NOT EXISTS SHPDI (
   PRIMARY KEY (SHPOKY, SHPOIT)
 );
 CREATE TABLE IF NOT EXISTS WAHMA (
-  WAREKY TEXT PRIMARY KEY, NAME01 TEXT DEFAULT ' ', NAME02 TEXT DEFAULT ' ',
+  WAREKY TEXT NOT NULL,
+  COMPKY TEXT DEFAULT ' ', TSPKEY TEXT DEFAULT ' ',
+  DELMAK TEXT DEFAULT ' ', CHKSHA TEXT DEFAULT ' ',
+  NAME01 TEXT DEFAULT ' ', NAME02 TEXT DEFAULT ' ', NAME03 TEXT DEFAULT ' ',
   ADDR01 TEXT DEFAULT ' ', ADDR02 TEXT DEFAULT ' ', ADDR03 TEXT DEFAULT ' ',
-  CITY01 TEXT DEFAULT ' ', REGN01 TEXT DEFAULT ' ', POSTCD TEXT DEFAULT ' ',
-  NATNKY TEXT DEFAULT ' ', TELN01 TEXT DEFAULT ' ',
-  DELMAK TEXT DEFAULT ' ',
-  CREDAT TEXT DEFAULT ' ', CRETIM TEXT DEFAULT ' ', CREUSR TEXT DEFAULT ' ',
-  LMODAT TEXT DEFAULT ' ', LMOTIM TEXT DEFAULT ' ', LMOUSR TEXT DEFAULT ' ',
-  INDBZL TEXT DEFAULT ' ', INDARC TEXT DEFAULT ' ', UPDCHK INTEGER DEFAULT 0
+  ADDR04 TEXT DEFAULT ' ', ADDR05 TEXT DEFAULT ' ',
+  CITY01 TEXT DEFAULT ' ', REGN01 TEXT DEFAULT ' ',
+  POSTCD TEXT DEFAULT ' ', NATNKY TEXT DEFAULT ' ',
+  TELN01 TEXT DEFAULT ' ', TELN02 TEXT DEFAULT ' ', TELN03 TEXT DEFAULT ' ',
+  FAXTL1 TEXT DEFAULT ' ', FAXTL2 TEXT DEFAULT ' ',
+  TAXCD1 TEXT DEFAULT ' ', TAXCD2 TEXT DEFAULT ' ', VATREG TEXT DEFAULT ' ',
+  POBOX1 TEXT DEFAULT ' ', POBPC1 TEXT DEFAULT ' ',
+  WADN01 TEXT DEFAULT ' ', WADT01 TEXT DEFAULT ' ',
+  WADT02 TEXT DEFAULT ' ', WADM01 TEXT DEFAULT ' ',
+  EXCOMK TEXT DEFAULT ' ', INDOVA TEXT DEFAULT ' ', PLOCOV TEXT DEFAULT ' ',
+  INDUAC TEXT DEFAULT ' ', DSORKY TEXT DEFAULT ' ', DRECLO TEXT DEFAULT ' ',
+  CREDAT TEXT DEFAULT '00000000', CRETIM TEXT DEFAULT '000000', CREUSR TEXT DEFAULT ' ',
+  LMODAT TEXT DEFAULT '00000000', LMOTIM TEXT DEFAULT '000000', LMOUSR TEXT DEFAULT ' ',
+  INDBZL TEXT DEFAULT ' ', INDARC TEXT DEFAULT ' ', UPDCHK INTEGER DEFAULT 0,
+  WHTT01 TEXT DEFAULT ' ', WHTT02 TEXT DEFAULT ' ',
+  PRIMARY KEY (WAREKY)
 );
 CREATE TABLE IF NOT EXISTS BZPTN_DETAIL (
   PTNRKY TEXT NOT NULL, PTNRTY TEXT NOT NULL, OWNRKY TEXT NOT NULL DEFAULT ' ',
@@ -832,6 +845,73 @@ def _seed_missing_codes(conn):
     for vl, d1, d2, a3, a4 in _region_rows:
         _v('TMS_REGION', vl, d1, d2, 'Y', '', a3, a4)
 
+    conn.commit()
+
+    # ════════════════════════════════════════════════════════════
+    # 5. WAHMA (물류센터) — 원본 명세서 기준 9건
+    # ════════════════════════════════════════════════════════════
+    _wahma_rows = [
+        # (WAREKY, COMPKY, NAME01, ADDR01, POSTCD, NATNKY,
+        #  TELN01, FAXTL1, WADN01, LMODAT, LMOTIM, LMOUSR)
+        ('1100','KN','청주공장창고',
+         '충청북도 청주시 흥덕구 강내면 태성1길 64','28174','KR',
+         '043-230-7228','','','20220610','134210','JKLEE'),
+        ('1500','KN','음성공장창고',
+         '충청북도 음성군 생극면 생극산단길 77','27618','KR',
+         '043-750-7240','','','20220610','134210','JKLEE'),
+        ('4000','KN','파주물류센터',
+         '경북 칠곡군 지천면 연화리 317','39867','KR',
+         '054-800-7026','054-800-7027','','20220610','134210','SLEE'),
+        ('4100','KN','용인물류센터',
+         '경기도 용인시 처인구 백암면 가좌리 354-2','17174','KR',
+         '031-338-9330','031-338-9331','김민수','20250611','174029','yjjung'),
+        ('4200','KN','경남물류센터',
+         '경남 양산시 상북면 양산대로 1248 (동영양산창고 內)','50565','KR',
+         '055-785-5067','055-785-5068','','20250325','083504','klon01'),
+        ('4300','KN','전라물류센터',
+         '광주시 광산구 하남산단천변우로 14','62243','KR',
+         '062-710-2018','062-710-2019','','20250611','173951','yjjung'),
+        ('4400','KN','경북물류센터',
+         '경북 칠곡군 지천면 연화리 317','39867','KR',
+         '054-800-7026','054-800-7027','','20220610','134210','JKLEE'),
+        ('4800','KN','제주물류센터',
+         '제주특별자치도 제주시 조천읍 신와로 62','63338','KR',
+         '064-','064-783-0004','','20230614','135016','his9582'),
+        ('6000','KN','임가공거점',
+         '충청북도 청주시 흥덕구 강내면 태성1길 64','28174','KR',
+         '043-230-7228','','','20220610','134210','kyh'),
+    ]
+    for (wareky, compky, name01, addr01, postcd, natnky,
+         teln01, faxtl1, wadn01, lmodat, lmotim, lmousr) in _wahma_rows:
+        conn.execute("""
+INSERT OR REPLACE INTO WAHMA (
+  WAREKY, COMPKY, TSPKEY, DELMAK, CHKSHA,
+  NAME01, NAME02, NAME03,
+  ADDR01, ADDR02, ADDR03, ADDR04, ADDR05,
+  CITY01, REGN01, POSTCD, NATNKY,
+  TELN01, TELN02, TELN03,
+  FAXTL1, FAXTL2, TAXCD1, TAXCD2, VATREG,
+  POBOX1, POBPC1, WADN01, WADT01, WADT02, WADM01,
+  EXCOMK, INDOVA, PLOCOV, INDUAC, DSORKY, DRECLO,
+  CREDAT, CRETIM, CREUSR, LMODAT, LMOTIM, LMOUSR,
+  INDBZL, INDARC, UPDCHK, WHTT01, WHTT02
+) VALUES (
+  ?,?,?,?,?, ?,?,?, ?,?,?,?,?, ?,?,?,?,
+  ?,?,?, ?,?,?,?,?, ?,?,?,?,?,?,
+  ?,?,?,?,?,?, ?,?,?,?,?,?,
+  ?,?,?,?,?
+)""", (
+            wareky, compky, ' ', ' ', ' ',
+            name01, ' ', ' ',
+            addr01, ' ', ' ', ' ', 'KN',
+            ' ', ' ', postcd, natnky,
+            teln01, ' ', ' ',
+            faxtl1, ' ', ' ', ' ', ' ',
+            ' ', ' ', wadn01, ' ', ' ', ' ',
+            ' ', ' ', 'SHPLOC', ' ', ' ', ' ',
+            '00000000', '000000', ' ', lmodat, lmotim, lmousr,
+            ' ', ' ', 0, ' ', ' ',
+        ))
     conn.commit()
 
 
