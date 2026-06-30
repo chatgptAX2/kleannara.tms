@@ -5932,7 +5932,7 @@ async function renderVehicle() {
   c.innerHTML = `<div class="loading"><div class="spinner"></div>공통코드 로딩 중...</div>`;
 
   // 공통코드 병렬 로드 (CMCDV 기반)
-  const codeKeys = ['SKUG05','TMS_CARKIND','TMS_CARCLASS10','TMS_CARRIER','TMS_FLOORTYPE','LOTA02','TMS_REGION','TMS_CARART','TMS_INBOUNDTIME'];
+  const codeKeys = ['SKUG05','TMS_CARKIND','TMS_CARCLASS10','TMS_CARCLASS20','TMS_CARRIER','TMS_FLOORTYPE','LOTA02','TMS_REGION','TMS_CARART','TMS_INBOUNDTIME'];
   const results  = await Promise.all(codeKeys.map(k => fetch(`/api/codes/${k}`).then(r=>r.json())));
   codeKeys.forEach((k,i) => vhcState.codes[k] = results[i]);
 
@@ -5958,8 +5958,8 @@ function buildVehicleUI() {
     `<option value="${o.label}">${o.label}</option>`).join('');
   const kindOpts     = vhcState.codes['TMS_CARKIND'].map(o=>
     `<option value="${o.label}">${o.label}</option>`).join('');
-  const classOpts    = vhcState.codes['TMS_CARCLASS10'].map(o=>
-    `<option value="${o.label}">${o.label}</option>`).join('');
+  // 차형(톤수) 옵션: 초기 전체(제품군 미선택)는 CARCLASS10 기준, arg1=Y 필터
+  const classOpts    = _vhcBuildClassOpts('');
   const fo           = vhcState.filterOpts;
   // 배송구역 옵션: value=CMCDVL 앞2자리(KEY), 표시=CDESC2(권역명), 중복제거
   const regionOpts   = (()=>{
@@ -6089,8 +6089,7 @@ function buildVehicleForm() {
     `<option value="${o.label}">${o.label}</option>`).join('');
   const kindOpts     = vhcState.codes['TMS_CARKIND'].map(o=>
     `<option value="${o.label}">${o.label}</option>`).join('');
-  const classOpts    = vhcState.codes['TMS_CARCLASS10'].map(o=>
-    `<option value="${o.label}">${o.label}</option>`).join('');
+  const classOpts    = _vhcBuildClassOpts('');  // 초기 폼: 제품군 미선택 상태 → 로드 후 갱신
   const floorOpts    = vhcState.codes['TMS_FLOORTYPE'].map(o=>
     `<option value="${o.label}">${o.label}</option>`).join('');
   const fo           = vhcState.filterOpts;
@@ -6327,6 +6326,29 @@ function _vhcCalcCbm(v) {
 function _vhcProdGroupToCmcdky(prodGroup) {
   const map = { '10': 'TMS_CARCLASS10', '20': 'TMS_CARCLASS20' };
   return map[String(prodGroup || '').trim()] || 'TMS_CARCLASS10';
+}
+
+/* 제품군에 맞는 차형(톤수) <option> HTML 문자열 반환
+   - prodGroup: '10' → TMS_CARCLASS10, '20' → TMS_CARCLASS20, '' → TMS_CARCLASS10(기본)
+   - USARG1(arg1) === 'Y' 인 항목만 포함
+   - curVal: 현재 선택값(복원용, 없으면 '') */
+function _vhcBuildClassOpts(prodGroup, curVal) {
+  const cmcdky  = _vhcProdGroupToCmcdky(prodGroup);
+  const codes   = vhcState.codes[cmcdky] || [];
+  const filtered = codes.filter(o => (o.arg1 || '').toUpperCase() === 'Y');
+  return filtered.map(o => {
+    const sel = (curVal && o.label === curVal) ? ' selected' : '';
+    return `<option value="${o.label}"${sel}>${o.label}</option>`;
+  }).join('');
+}
+
+/* 차형 드롭다운 DOM 갱신 — 제품군 변경 시 호출
+   id: 대상 select 요소 ID, prodGroup: 새 제품군 값, curVal: 유지할 선택값 */
+function _vhcRefreshClassSelect(id, prodGroup, curVal) {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  const prefix  = (id === 'vf-VEHICLE_CLASS') ? '<option value="">선택</option>' : '<option value="">전체</option>';
+  sel.innerHTML = prefix + _vhcBuildClassOpts(prodGroup, curVal);
 }
 
 /* 현재 폼의 제품군 값 읽기 */
@@ -6716,6 +6738,8 @@ function _vhcOnProdGroupChange(prodGroup) {
     const label  = prodGroup === '20' ? 'HL (제품군 20)' : prodGroup === '10' ? 'PS (제품군 10)' : '';
     specEl.innerHTML = `<div class="vhc-spec-empty">← 차량유형 선택 버튼을 클릭하세요${label ? ` [${label} · ${cmcdky}]` : ''}</div>`;
   }
+  // 제품군에 맞는 차형(톤수) 드롭다운 갱신 — 기존 선택값 초기화
+  _vhcRefreshClassSelect('vf-VEHICLE_CLASS', prodGroup, '');
 }
 
 /* ─── 차량관리 그리드 높이 조절 ─── */
@@ -6804,6 +6828,13 @@ function vhcToggleGridHide() {
 /* ─── 검색 ─── */
 let vhcSearchTimer = null;
 function vhcSearchChange() {
+  // 검색 제품군이 바뀌면 차형 드롭다운을 해당 제품군 코드로 갱신
+  const pgSel = document.getElementById('vs-product_group');
+  if (pgSel && pgSel._lastVal !== pgSel.value) {
+    const cur = document.getElementById('vs-vehicle_class')?.value || '';
+    _vhcRefreshClassSelect('vs-vehicle_class', pgSel.value, cur);
+    pgSel._lastVal = pgSel.value;
+  }
   clearTimeout(vhcSearchTimer);
   vhcSearchTimer = setTimeout(() => searchVehicle(), 350);
 }
@@ -6813,6 +6844,10 @@ function vhcClearSearch() {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const vno = document.getElementById('vs-vehicle_no'); if (vno) vno.value = '';
+  // 제품군 초기화이므로 차형 드롭다운도 TMS_CARCLASS10 기본으로 복원
+  const pgSel = document.getElementById('vs-product_group');
+  if (pgSel) pgSel._lastVal = '';
+  _vhcRefreshClassSelect('vs-vehicle_class', '', '');
   vhcState.page = 1;
   searchVehicle();
 }
@@ -7023,9 +7058,13 @@ function fillVehicleForm(row) {
   }
 
   ['SHIP_POINT','PRODUCT_GROUP','DELIVERY_ZONE','CARRIER','VEHICLE_TYPE',
-   'VEHICLE_KIND','VEHICLE_CLASS','FLOOR_TYPE','VEHICLE_YEAR',
+   'VEHICLE_KIND','FLOOR_TYPE','VEHICLE_YEAR',
    'PALLET_QTY','DRIVER_NAME','CONTACT_NO',
    'DELIVERY_CUSTOMER_1','DELIVERY_CUSTOMER_2'].forEach(f => setVal(`vf-${f}`, row[f]));
+
+  // 제품군에 맞는 차형(톤수) 드롭다운 갱신 후 저장된 값 복원
+  const prodGrp = String(row.PRODUCT_GROUP || '').trim();
+  _vhcRefreshClassSelect('vf-VEHICLE_CLASS', prodGrp, String(row.VEHICLE_CLASS || '').trim());
 
   // 차량유형(DS_VEHICLE CARTYPE) 표시 복원
   // VEHICLE_CLASS 값으로 선택된 차량유형 표시 (저장된 CARTYPE 없으면 빈 상태)
@@ -7062,10 +7101,12 @@ function vhcNewForm() {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   ['vf-SHIP_POINT','vf-PRODUCT_GROUP','vf-DELIVERY_ZONE','vf-CARRIER',
-   'vf-VEHICLE_TYPE','vf-VEHICLE_KIND','vf-VEHICLE_CLASS',
+   'vf-VEHICLE_TYPE','vf-VEHICLE_KIND',
    'vf-FLOOR_TYPE','vf-DLV_TIME_FROM','vf-DLV_TIME_TO'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
+  // 제품군 초기화이므로 차형(톤수) 드롭다운도 TMS_CARCLASS10 기본으로 복원
+  _vhcRefreshClassSelect('vf-VEHICLE_CLASS', '', '');
   // 차량유형 표시 초기화
   const hidEl = document.getElementById('vf-selected-cartype');
   if (hidEl) hidEl.value = '';
