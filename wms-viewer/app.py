@@ -4399,9 +4399,12 @@ def api_ps_confirm_list_compat():
     """
     from flask import request as _req
     if _req.method == 'GET':
+        # date_from/date_to 또는 from_date/to_date 모두 지원
+        df = (_req.args.get('date_from','') or _req.args.get('from_date','') or '').replace('-','')
+        dt = (_req.args.get('date_to','')   or _req.args.get('to_date','')   or '').replace('-','')
         body = {
-            'rqshpd_from': (_req.args.get('from_date','') or '').replace('-',''),
-            'rqshpd_to':   (_req.args.get('to_date','')   or '').replace('-',''),
+            'rqshpd_from': df,
+            'rqshpd_to':   dt,
             'stknum':      _req.args.get('stknum','') or '',
             'dptnky':      _req.args.get('dptnky','') or '',
         }
@@ -4455,12 +4458,9 @@ def api_ps_sap_list():
         raw_rows = conn.execute(f"""
             SELECT
                 SI.STDLNR                                        AS STDLNR,
-                MAX(CASE
-                    WHEN TRIM(COALESCE(SI.STKNUM,''))='' THEN NULL
-                    WHEN SI.STKNUM LIKE 'PS-%'           THEN NULL
-                    WHEN SI.STKNUM LIKE '%T' AND LENGTH(TRIM(SI.STKNUM))=10 THEN NULL
-                    ELSE SI.STKNUM
-                END)                                             AS SAP_STKNUM,
+                -- SAP 선적번호: PS 자동배차 번호(xxxT 형식)가 아닌 SAP 실제 선적번호
+                -- SHPDI에 STKNUM 컬럼 없음 → SVBELN(SAP 납품문서) 기준으로 대체
+                MAX(NULLIF(TRIM(COALESCE(SI.SVBELN,'')), ''))    AS SAP_STKNUM,
                 COUNT(DISTINCT SI.SVBELN)                        AS SVBELN_CNT,
                 COUNT(DISTINCT SI.SHPOKY)                        AS SHPOKY_CNT,
                 COUNT(*)                                         AS ITEM_CNT,
