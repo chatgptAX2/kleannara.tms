@@ -2312,11 +2312,11 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psd-sap-tbl tbody td.num{text-align:right}
 .psd-sap-tbl tbody td.center{text-align:center}
 /* SAP 선적목록 / SAP 납품문서 — 컬럼 드래그+리사이즈 전용 스타일 */
-.sap-left-tbl,.sap-doc-tbl{table-layout:fixed;border-collapse:collapse;font-size:11px}
+.sap-left-tbl,.sap-doc-tbl{table-layout:fixed;border-collapse:collapse;font-size:12px;color:var(--text)}
 .sap-left-tbl thead th,.sap-doc-tbl thead th{
   position:sticky;top:0;z-index:2;
-  background:var(--th-bg);color:var(--text3);font-weight:700;font-size:10px;
-  padding:6px 7px 6px 8px;border-bottom:1px solid var(--border);white-space:nowrap;
+  background:var(--th-bg);color:var(--text2);font-weight:700;font-size:11px;
+  padding:7px 8px 7px 8px;border-bottom:2px solid var(--border);white-space:nowrap;
   text-align:center;overflow:hidden;text-overflow:ellipsis;
   position:relative; /* col-rz 기준 */
 }
@@ -2342,12 +2342,25 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .sap-left-tbl tbody tr:hover{background:var(--tr-hover)}
 .sap-left-tbl tbody tr.selected{background:rgba(66,165,245,.18)!important}
 .sap-left-tbl tbody td,.sap-doc-tbl tbody td{
-  padding:5px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;
+  padding:6px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  vertical-align:middle;font-size:12px;color:var(--text);
 }
-.sap-left-tbl tbody td.num,.sap-doc-tbl tbody td.num{text-align:right}
+.sap-left-tbl tbody td.num,.sap-doc-tbl tbody td.num{text-align:right;font-variant-numeric:tabular-nums}
 .sap-left-tbl tbody td.center,.sap-doc-tbl tbody td.center{text-align:center}
 .sap-doc-tbl tbody tr{border-bottom:1px solid var(--tr-border);transition:.1s}
 .sap-doc-tbl tbody tr:hover{background:var(--tr-hover)}
+/* 합계 행 */
+.sap-left-tbl tfoot tr,.sap-doc-tbl tfoot tr{
+  background:var(--th-bg);border-top:2px solid var(--border);
+}
+.sap-left-tbl tfoot td,.sap-doc-tbl tfoot td{
+  padding:6px 8px;font-size:12px;font-weight:700;color:var(--text);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;
+}
+.sap-left-tbl tfoot td.num,.sap-doc-tbl tfoot td.num{
+  text-align:right;font-variant-numeric:tabular-nums;color:var(--primary);
+}
+.sap-left-tbl tfoot td.center,.sap-doc-tbl tfoot td.center{text-align:center}
 /* ── MULTI-SELECT DROPDOWN ── */
 .ms-wrap{position:relative}
 .ms-trigger{background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:5px 9px;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:130px;white-space:nowrap;user-select:none;transition:.15s;width:100%}
@@ -10721,6 +10734,10 @@ async function psopLoadSapList() {
     _sapRenderRightPrompt();
     document.getElementById('sap-stat-total').textContent = _sapState.rows.length;
     document.getElementById('sap-stat-sel').textContent   = 0;
+    // 총 KG 합계 업데이트
+    const totalKgSum = _sapState.rows.reduce((s, r) => s + (Number(r.TOTAL_KG) || 0), 0);
+    const kgEl = document.getElementById('sap-stat-totalkg');
+    if (kgEl) kgEl.textContent = totalKgSum.toLocaleString(undefined, {maximumFractionDigits:1});
     /* SAP 탭 배지 갱신 */
     if (typeof psopUpdateTabBadges === 'function') psopUpdateTabBadges();
   } catch(e) {
@@ -10796,24 +10813,24 @@ async function _sapRenderLeft() {
     const dptnky    = r.DPTNKY  || '';
     const dptnkynm  = r.DPTNKYNM || dptnky;
     const carnoCell = hasCarno
-      ? `<span style="font-size:10px;font-family:monospace;cursor:pointer;text-decoration:underline;color:var(--primary)"
+      ? `<span style="font-family:monospace;cursor:pointer;text-decoration:underline;color:var(--primary)"
            onclick="event.stopPropagation();_sapOpenVehiclePick('${r.STDLNR}','${carclassCd}','${r.VEHINO||''}')" title="클릭하여 차량 변경">${r.CARNO}</span>`
-      : `<button class="psd-btn" style="padding:2px 6px;font-size:10px;white-space:nowrap"
+      : `<button class="psd-btn" style="padding:2px 6px;font-size:11px;white-space:nowrap"
            onclick="event.stopPropagation();_sapOpenVehiclePick('${r.STDLNR}','${carclassCd}','${r.VEHINO||''}')">🚛 차량선택</button>`;
     const dptnCell = dptnky.startsWith('(')
-      ? `<span style="font-size:9px;color:var(--text3);font-style:italic">${dptnky}</span>`
-      : `<span style="font-size:10px" title="${dptnky}">${dptnkynm || dptnky}</span>`;
+      ? `<span style="font-size:11px;color:var(--text2);font-style:italic">${dptnky}</span>`
+      : `<span title="${dptnky}">${dptnkynm || dptnky}</span>`;
 
     const cellMap = {
       chk:      `<td class="center"><input type="checkbox" ${chk} onclick="event.stopPropagation();_sapToggleCheck('${r.STDLNR}',this.checked)"></td>`,
-      stdlnr:   `<td style="font-family:monospace;font-size:10px;white-space:nowrap" title="${r.STDLNR}">${r.STDLNR}</td>`,
-      sapstknum:`<td style="font-family:monospace;font-size:10px;white-space:nowrap;color:#90caf9" title="${sapStk}">${sapStk}</td>`,
-      rqshpd:   `<td class="center" style="white-space:nowrap;font-size:10px">${rqTxt}</td>`,
+      stdlnr:   `<td style="font-family:monospace;white-space:nowrap" title="${r.STDLNR}">${r.STDLNR}</td>`,
+      sapstknum:`<td style="font-family:monospace;white-space:nowrap" title="${sapStk}">${sapStk}</td>`,
+      rqshpd:   `<td class="center" style="white-space:nowrap">${rqTxt}</td>`,
       dptnky:   `<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dptnCell}</td>`,
       cartype:  `<td class="center"><span class="psd-car-badge" title="${carclassCd}">${carDisp}</span></td>`,
       carno:    `<td class="center">${carnoCell}</td>`,
-      driver:   `<td style="font-size:10px;white-space:nowrap">${driver}</td>`,
-      drivercel:`<td style="font-size:10px;white-space:nowrap">${drvcel}</td>`,
+      driver:   `<td style="white-space:nowrap">${driver}</td>`,
+      drivercel:`<td style="white-space:nowrap">${drvcel}</td>`,
       totalkg:  `<td class="num" style="white-space:nowrap">${kg}</td>`,
       svbeln:   `<td class="center"><span class="psd-car-badge" style="background:#37474f;color:#b0bec5">${r.SVBELN_CNT}건</span></td>`,
       loadview: `<td class="center"><button class="psd-img-btn" title="적재 3D 시각화"
@@ -10826,11 +10843,32 @@ async function _sapRenderLeft() {
   // 전체 너비 계산
   const totalW = order.reduce((s, id) => s + (colW[id] || 60), 0);
 
+  // ── 합계 행(tfoot) 생성 ──
+  const sumKg      = rows.reduce((s, r) => s + (Number(r.TOTAL_KG) || 0), 0);
+  const sumItems   = rows.reduce((s, r) => s + (Number(r.ITEM_CNT) || 0), 0);
+  const sumSvbeln  = rows.reduce((s, r) => s + (Number(r.SVBELN_CNT) || 0), 0);
+  const tfootMap = {
+    chk:      `<td class="center">-</td>`,
+    stdlnr:   `<td style="font-weight:700">합계</td>`,
+    sapstknum:`<td>-</td>`,
+    rqshpd:   `<td>-</td>`,
+    dptnky:   `<td style="font-weight:700">${rows.length}건</td>`,
+    cartype:  `<td>-</td>`,
+    carno:    `<td>-</td>`,
+    driver:   `<td>-</td>`,
+    drivercel:`<td>-</td>`,
+    totalkg:  `<td class="num">${sumKg.toLocaleString(undefined,{maximumFractionDigits:1})} kg</td>`,
+    svbeln:   `<td class="center" style="font-weight:700">${sumSvbeln}건</td>`,
+    loadview: `<td>-</td>`,
+  };
+  const tfootRow = `<tr>${order.map(id => tfootMap[id] || '<td>-</td>').join('')}</tr>`;
+
   wrap.innerHTML = `
     <table class="sap-left-tbl" style="width:${totalW}px;min-width:${totalW}px">
       <colgroup>${cgHtml}</colgroup>
       <thead>${theadHtml}</thead>
       <tbody>${tbodyRows}</tbody>
+      <tfoot>${tfootRow}</tfoot>
     </table>`;
 }
 
@@ -11314,18 +11352,18 @@ async function _sapLoadDocs(stknum) {
 
     // ── tbody: cellMap으로 컬럼 순서 적용 ──
     const tbodyRows = _sapState.docRows.map(r => {
-      const kg = r.LINE_KG !== null ? Number(r.LINE_KG).toLocaleString() : '-';
+      const kg = r.LINE_KG !== null ? Number(r.LINE_KG).toLocaleString(undefined,{maximumFractionDigits:1}) : '-';
       const rq = _sapFmtDate(r.RQSHPD);
       const cellMap = {
-        svbeln:  `<td style="font-family:monospace;font-size:10px">${r.SVBELN || '-'}</td>`,
-        shpoky:  `<td style="font-size:10px">${r.SHPOKY || '-'}</td>`,
-        shpoit:  `<td class="center" style="font-size:10px">${r.SHPOIT || '-'}</td>`,
-        rqshpd:  `<td class="center">${rq}</td>`,
-        dptnkynm:`<td style="font-size:10px;overflow:hidden;text-overflow:ellipsis" title="${r.DPTNKYNM||''}">${r.DPTNKYNM || r.DPTNKY || '-'}</td>`,
-        skukey:  `<td style="font-family:monospace;font-size:10px">${r.SKUKEY || '-'}</td>`,
-        desc01:  `<td style="font-size:10px;overflow:hidden;text-overflow:ellipsis" title="${r.DESC01||''}">${r.DESC01 || '-'}</td>`,
+        svbeln:  `<td style="font-family:monospace;white-space:nowrap">${r.SVBELN || '-'}</td>`,
+        shpoky:  `<td style="white-space:nowrap">${r.SHPOKY || '-'}</td>`,
+        shpoit:  `<td class="center" style="white-space:nowrap">${r.SHPOIT || '-'}</td>`,
+        rqshpd:  `<td class="center" style="white-space:nowrap">${rq}</td>`,
+        dptnkynm:`<td style="overflow:hidden;text-overflow:ellipsis" title="${r.DPTNKYNM||''}">${r.DPTNKYNM || r.DPTNKY || '-'}</td>`,
+        skukey:  `<td style="font-family:monospace;white-space:nowrap">${r.SKUKEY || '-'}</td>`,
+        desc01:  `<td style="overflow:hidden;text-overflow:ellipsis" title="${r.DESC01||''}">${r.DESC01 || '-'}</td>`,
         qtshpo:  `<td class="num">${Number(r.QTSHPO||0).toLocaleString()}</td>`,
-        uomkey:  `<td class="center" style="font-size:10px">${r.UOMKEY || '-'}</td>`,
+        uomkey:  `<td class="center" style="white-space:nowrap">${r.UOMKEY || '-'}</td>`,
         linekg:  `<td class="num">${kg}</td>`,
       };
       const tds = order.map(id => cellMap[id] || '<td>-</td>').join('');
@@ -11335,11 +11373,29 @@ async function _sapLoadDocs(stknum) {
     // 전체 너비 계산
     const totalW = order.reduce((s, id) => s + (colW[id] || 60), 0);
 
+    // ── 합계 행(tfoot) 생성 ──
+    const sumQty = _sapState.docRows.reduce((s, r) => s + (Number(r.QTSHPO) || 0), 0);
+    const sumKg2 = _sapState.docRows.reduce((s, r) => s + (r.LINE_KG !== null ? Number(r.LINE_KG) || 0 : 0), 0);
+    const docTfootMap = {
+      svbeln:  `<td style="font-weight:700">합계</td>`,
+      shpoky:  `<td style="font-weight:700">${_sapState.docRows.length}건</td>`,
+      shpoit:  `<td>-</td>`,
+      rqshpd:  `<td>-</td>`,
+      dptnkynm:`<td>-</td>`,
+      skukey:  `<td>-</td>`,
+      desc01:  `<td>-</td>`,
+      qtshpo:  `<td class="num">${sumQty.toLocaleString()}</td>`,
+      uomkey:  `<td>-</td>`,
+      linekg:  `<td class="num">${sumKg2.toLocaleString(undefined,{maximumFractionDigits:1})} kg</td>`,
+    };
+    const docTfootRow = `<tr>${order.map(id => docTfootMap[id] || '<td>-</td>').join('')}</tr>`;
+
     wrap.innerHTML = `
       <table class="sap-doc-tbl" style="width:${totalW}px;min-width:${totalW}px">
         <colgroup>${cgHtml}</colgroup>
         <thead>${theadHtml}</thead>
         <tbody>${tbodyRows}</tbody>
+        <tfoot>${docTfootRow}</tfoot>
       </table>`;
   } catch(e) {
     wrap.innerHTML = `<div class="psd-empty-state" style="color:#ef5350">오류: ${e.message}</div>`;
@@ -12131,8 +12187,11 @@ async function renderPsDispatchOpt() {
         <div class="psd-sep"></div>
         <button class="psd-btn danger" id="sap-btn-delete" onclick="psopSapDelete()" disabled>🗑 배차삭제</button>
         <button class="psd-btn success" id="sap-btn-transmit" onclick="psopSapTransmit()" disabled>📡 SAP 전송</button>
-        <div style="margin-left:auto;display:flex;align-items:center;gap:10px;font-size:11px;color:var(--text2)">
+        <div style="margin-left:auto;display:flex;align-items:center;gap:12px;font-size:11px;color:var(--text2)">
           <span>선적: <b id="sap-stat-total" style="color:var(--primary)">0</b>건</span>
+          <span style="color:var(--border)">|</span>
+          <span>총 중량: <b id="sap-stat-totalkg" style="color:var(--primary)">0</b> kg</span>
+          <span style="color:var(--border)">|</span>
           <span>선택: <b id="sap-stat-sel" style="color:var(--primary)">0</b></span>
         </div>
       </div>
