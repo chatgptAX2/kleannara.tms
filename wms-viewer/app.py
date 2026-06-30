@@ -1331,9 +1331,10 @@ def api_carclass():
     - merged: TMS_CARCLASS10 기준 LEFT JOIN → 모든 톤수 + 제원정보 통합
     """
     conn = get_conn()
-    # TMS_CARCLASS10 공통코드 전체 조회 (PS 제품군; USARG6=길이, USARG7=너비, USARG8=높이)
+    # TMS_CARCLASS10 공통코드 전체 조회 (PS 제품군; USARG1=사용유무)
+    # CMCDV 테이블은 USARG5까지만 존재 — 차량 치수는 DS_VEHICLE에서 조회
     cc_rows = conn.execute("""
-        SELECT CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5, USARG6, USARG7, USARG8
+        SELECT CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5
         FROM CMCDV
         WHERE CMCDKY = 'TMS_CARCLASS10'
         ORDER BY CMCDVL
@@ -1356,10 +1357,6 @@ def api_carclass():
         cc = dict(r)
         cdesc1 = (cc.get('CDESC1') or '').strip()
         vhc = vhc_map.get(cc['CMCDVL'])  # CMCDVL(=CARCLASS_CD PK)로 DS_VEHICLE 매핑
-        # USARG6/7/8 → 공통코드 기준 치수 (DS_VEHICLE 미등록 시 fallback)
-        cc_len = (cc.get('USARG6') or '').strip() or None
-        cc_wid = (cc.get('USARG7') or '').strip() or None
-        cc_hgt = (cc.get('USARG8') or '').strip() or None
         merged.append({
             # 공통코드 필드
             'CMCDVL': cc['CMCDVL'],
@@ -1369,15 +1366,15 @@ def api_carclass():
             'USARG3': cc['USARG3'],
             'USARG4': cc['USARG4'],
             'USARG5': cc['USARG5'],
-            'USARG6': cc.get('USARG6',''),  # 길이(M)
-            'USARG7': cc.get('USARG7',''),  # 너비(M)
-            'USARG8': cc.get('USARG8',''),  # 높이(M)
-            # DS_VEHICLE 필드 (없으면 공통코드 치수로 fallback)
+            'USARG6': str(vhc['LENGTH_M']) if vhc and vhc['LENGTH_M'] else '',  # 길이(M) — DS_VEHICLE에서
+            'USARG7': str(vhc['WIDTH_M'])  if vhc and vhc['WIDTH_M']  else '',  # 너비(M) — DS_VEHICLE에서
+            'USARG8': str(vhc['HEIGHT_M']) if vhc and vhc['HEIGHT_M'] else '',  # 높이(M) — DS_VEHICLE에서
+            # DS_VEHICLE 필드
             'CARCLASS_CD': vhc['CARCLASS_CD'] if vhc else None,
             'CARTYPE':  vhc['CARTYPE']  if vhc else None,
-            'LENGTH_M': vhc['LENGTH_M'] if vhc else cc_len,
-            'WIDTH_M':  vhc['WIDTH_M']  if vhc else cc_wid,
-            'HEIGHT_M': vhc['HEIGHT_M'] if vhc else cc_hgt,
+            'LENGTH_M': vhc['LENGTH_M'] if vhc else None,
+            'WIDTH_M':  vhc['WIDTH_M']  if vhc else None,
+            'HEIGHT_M': vhc['HEIGHT_M'] if vhc else None,
             'LOAD_TON': vhc['LOAD_TON'] if vhc else None,
             'SORT_SEQ': vhc['SORT_SEQ'] if vhc else None,
             'UPDDAT':   vhc['UPDDAT']   if vhc else None,
@@ -1409,27 +1406,30 @@ def api_carclass_by_product():
 
     conn = get_conn()
     try:
-        # CMCDM 헤더 라벨 조회
+        # CMCDM 헤더 라벨 조회 (CMCDM은 USARL5까지만 존재)
         m_row = conn.execute(
-            """SELECT USARL1, USARL2, USARL3, USARL4, USARL5, USARL6, USARL7, USARL8
+            """SELECT USARL1, USARL2, USARL3, USARL4, USARL5
                FROM CMCDM WHERE CMCDKY=?""", (cmcdky,)
         ).fetchone()
         header = []
         if m_row:
-            lbl_keys = ['USARL1','USARL2','USARL3','USARL4','USARL5','USARL6','USARL7','USARL8']
-            arg_keys = ['USARG1','USARG2','USARG3','USARG4','USARG5','USARG6','USARG7','USARG8']
+            lbl_keys = ['USARL1','USARL2','USARL3','USARL4','USARL5']
+            arg_keys = ['USARG1','USARG2','USARG3','USARG4','USARG5']
             for lk, ak in zip(lbl_keys, arg_keys):
                 lbl = (m_row[lk] or '').strip()
                 if lbl:
                     header.append({'col': ak, 'label': lbl})
 
-        # CMCDV 상세 전체 조회
+        # CMCDV 상세 전체 조회 (USARG5까지만 존재; 치수는 DS_VEHICLE에서 병합)
         v_rows = conn.execute(
             """SELECT CMCDVL, CDESC1,
-                      USARG1, USARG2, USARG3, USARG4, USARG5,
-                      USARG6, USARG7, USARG8
+                      USARG1, USARG2, USARG3, USARG4, USARG5
                FROM CMCDV WHERE CMCDKY=? ORDER BY CMCDVL""", (cmcdky,)
         ).fetchall()
+        # DS_VEHICLE 치수 맵 (CARCLASS_CD → {LENGTH_M, WIDTH_M, HEIGHT_M, LOAD_TON})
+        vhc_map2 = {r['CARCLASS_CD']: dict(r) for r in conn.execute(
+            "SELECT CARCLASS_CD, LENGTH_M, WIDTH_M, HEIGHT_M, LOAD_TON FROM DS_VEHICLE"
+        ).fetchall()}
         rows = []
         for r in v_rows:
             d = dict(r)
@@ -1437,6 +1437,11 @@ def api_carclass_by_product():
             for k in d:
                 if isinstance(d[k], str):
                     d[k] = d[k].strip()
+            # USARG6/7/8 가상 필드: DS_VEHICLE에서 치수 보완
+            vhc = vhc_map2.get(d['CMCDVL'])
+            d['USARG6'] = str(vhc['LENGTH_M']) if vhc and vhc['LENGTH_M'] else ''
+            d['USARG7'] = str(vhc['WIDTH_M'])  if vhc and vhc['WIDTH_M']  else ''
+            d['USARG8'] = str(vhc['HEIGHT_M']) if vhc and vhc['HEIGHT_M'] else ''
             rows.append(d)
 
         return jsonify({"ok": True, "cmcdky": cmcdky, "header": header, "rows": rows})
@@ -1493,18 +1498,16 @@ def api_carclass_save():
     try:
         if table == 'carclass':
             # CMCDV TMS_CARCLASS10 행 업데이트
+            # CMCDV는 USARG5까지만 존재; USARG6/7/8(치수)은 DS_VEHICLE에 저장
             key = (body.get('CMCDVL') or '').strip()
             if not key:
                 return jsonify({"error": "CMCDVL 필수"}), 400
             fields = {
                 'USARG1': body.get('USARG1'),  # 사용유무
-                'USARG2': body.get('USARG2'),  # 파렛트수
-                'USARG3': body.get('USARG3'),  # 적재중량(KG)
-                'USARG4': body.get('USARG4'),  # 장축여부
-                'USARG5': body.get('USARG5'),  # 고정차량 대수(PS)
-                'USARG6': body.get('USARG6'),  # 길이(M)
-                'USARG7': body.get('USARG7'),  # 너비(M)
-                'USARG8': body.get('USARG8'),  # 높이(M)
+                'USARG2': body.get('USARG2'),
+                'USARG3': body.get('USARG3'),
+                'USARG4': body.get('USARG4'),
+                'USARG5': body.get('USARG5'),
                 'CDESC1': body.get('CDESC1'),  # 차량톤수명
             }
             sets = []
