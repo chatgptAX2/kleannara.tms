@@ -2070,7 +2070,7 @@ def api_shipment_filter_opts():
 
 @app.route('/api/dispatch/strategy', methods=['GET'])
 def api_dispatch_strategy_get():
-    """배차전략 기준표 3종 조회"""
+    """배차전략 기준표 3종 조회 (PS=TMS_CARCLASS10 / HL=TMS_CARCLASS20 분리)"""
     conn = get_conn()
     inch12 = conn.execute(
         "SELECT CARTYPE,GRM_COND,MAX_COUNT,SORT_SEQ FROM DS_INCH12 ORDER BY SORT_SEQ,GRM_COND"
@@ -2084,15 +2084,31 @@ def api_dispatch_strategy_get():
                   PALLET_CNT,LONG_AXIS_YN
            FROM DS_VEHICLE ORDER BY SORT_SEQ"""
     ).fetchall()
-    carclass_opts = conn.execute(
-        "SELECT CMCDVL, CDESC1 FROM CMCDV WHERE CMCDKY='TMS_CARCLASS10' ORDER BY CMCDVL"
+
+    # TMS_CARCLASS10 (PS 탭) — CMCDVL(코드), CDESC1(라벨), USARG1(사용여부)
+    carclass10 = conn.execute(
+        "SELECT CMCDVL, CDESC1, COALESCE(USARG1,'Y') AS USARG1 FROM CMCDV WHERE CMCDKY='TMS_CARCLASS10' ORDER BY CMCDVL"
     ).fetchall()
+    # TMS_CARCLASS20 (HL 탭) — 동일 구조
+    carclass20 = conn.execute(
+        "SELECT CMCDVL, CDESC1, COALESCE(USARG1,'Y') AS USARG1 FROM CMCDV WHERE CMCDKY='TMS_CARCLASS20' ORDER BY CMCDVL"
+    ).fetchall()
+
     conn.close()
+
+    def _vrow(r):
+        d = dict(r)
+        return d
+
     return jsonify({
-        "inch12":           [dict(r) for r in inch12],
-        "inch3":            [dict(r) for r in inch3],
-        "vehicle":          [dict(r) for r in vehicle],
-        "carclass_options": [{"code": r[0], "label": r[1]} for r in carclass_opts],
+        "inch12":            [dict(r) for r in inch12],
+        "inch3":             [dict(r) for r in inch3],
+        "vehicle":           [_vrow(r) for r in vehicle],
+        # 하위 호환: 기존 carclass_options (TMS_CARCLASS10)
+        "carclass_options":  [{"code": r[0], "label": r[1], "use_yn": r[2]} for r in carclass10],
+        # PS / HL 탭별 공통코드
+        "carclass_ps":       [{"code": r[0], "label": r[1], "use_yn": r[2]} for r in carclass10],
+        "carclass_hl":       [{"code": r[0], "label": r[1], "use_yn": r[2]} for r in carclass20],
     })
 
 
@@ -2143,6 +2159,46 @@ def api_dispatch_strategy_save():
                      (r.get('LONG_AXIS_YN') or 'N'),
                     )
                 )
+
+            # ── CMCDV.USARG1 동기화 ──────────────────────────────────────────────
+            # 저장된 각 row의 tab('PS'/'HL'), carclass_cd, use_yn 기준으로
+            # TMS_CARCLASS10(PS) / TMS_CARCLASS20(HL) 공통코드 USARG1을 갱신한다.
+            # tab 값이 없으면 CARCLASS_CD가 등록된 CMCDKY 모두 업데이트.
+            for r in rows:
+                cc     = (r.get('CARCLASS_CD') or '').strip()
+                use_yn = (r.get('USE_YN') or 'Y').upper()
+                tab    = (r.get('tab') or '').upper()   # 'PS' or 'HL' or ''
+                if not cc:
+                    continue
+                if tab == 'PS':
+                    # PS탭 USE_YN → TMS_CARCLASS10
+                    conn.execute(
+                        "UPDATE CMCDV SET USARG1=? WHERE CMCDKY='TMS_CARCLASS10' AND CMCDVL=?",
+                        (use_yn, cc)
+                    )
+                    # USE_YN_HL이 있으면 TMS_CARCLASS20도 별도 반영
+                    use_yn_hl = (r.get('USE_YN_HL') or '').upper()
+                    if use_yn_hl:
+                        conn.execute(
+                            "UPDATE CMCDV SET USARG1=? WHERE CMCDKY='TMS_CARCLASS20' AND CMCDVL=?",
+                            (use_yn_hl, cc)
+                        )
+                elif tab == 'HL':
+                    conn.execute(
+                        "UPDATE CMCDV SET USARG1=? WHERE CMCDKY='TMS_CARCLASS20' AND CMCDVL=?",
+                        (use_yn, cc)
+                    )
+                else:
+                    # tab 미전달 시 해당 코드가 속한 모든 테이블 업데이트
+                    existing = conn.execute(
+                        "SELECT DISTINCT CMCDKY FROM CMCDV WHERE CMCDVL=? AND CMCDKY IN ('TMS_CARCLASS10','TMS_CARCLASS20')",
+                        (cc,)
+                    ).fetchall()
+                    for erow in existing:
+                        conn.execute(
+                            "UPDATE CMCDV SET USARG1=? WHERE CMCDKY=? AND CMCDVL=?",
+                            (use_yn, erow[0], cc)
+                        )
         else:
             return jsonify({"error": "unknown table"}), 400
         conn.commit()
@@ -2498,9 +2554,13 @@ def _ps_parse_vehicle_width(width_str):
         return 2.4
 
 def _ps_get_vehicle_info(conn):
-    """DS_VEHICLE 전체 데이터 → {CARTYPE: {height_m, width_m, length_m, load_kg, pallet_height_m, effective_height_m, carclass_cd}} dict"""
+    """DS_VEHICLE 전체 데이터 → {CARTYPE: {height_m, width_m, length_m, load_kg, pallet_height_m, effective_height_m, carclass_cd}} dict
+    TMS_CARCLASS10 USARG1='Y' 인 차량만 포함 — PS배차 자동배차에 적용"""
     rows = conn.execute(
-        "SELECT CARTYPE, LENGTH_M, WIDTH_M, HEIGHT_M, LOAD_TON, PALLET_HEIGHT_M, CARCLASS_CD FROM DS_VEHICLE"
+        """SELECT v.CARTYPE, v.LENGTH_M, v.WIDTH_M, v.HEIGHT_M, v.LOAD_TON, v.PALLET_HEIGHT_M, v.CARCLASS_CD
+           FROM DS_VEHICLE v
+           LEFT JOIN CMCDV c ON c.CMCDKY='TMS_CARCLASS10' AND c.CMCDVL=v.CARCLASS_CD
+           WHERE COALESCE(c.USARG1,'Y') = 'Y'"""
     ).fetchall()
     result = {}
     for r in rows:
@@ -2519,9 +2579,14 @@ def _ps_get_vehicle_info(conn):
     return result
 
 def _ps_car_order(conn):
-    """DS_VEHICLE 차량 순서 (SORT_SEQ 역순 = 18톤→1.4톤)"""
+    """DS_VEHICLE 차량 순서 (SORT_SEQ 역순 = 18톤→1.4톤)
+    TMS_CARCLASS10 USARG1='Y'(사용) 인 차량만 포함 — PS배차 자동배차에 적용"""
     rows = conn.execute(
-        "SELECT CARTYPE, LOAD_TON, SORT_SEQ FROM DS_VEHICLE ORDER BY SORT_SEQ DESC"
+        """SELECT v.CARTYPE, v.LOAD_TON, v.SORT_SEQ
+           FROM DS_VEHICLE v
+           LEFT JOIN CMCDV c ON c.CMCDKY='TMS_CARCLASS10' AND c.CMCDVL=v.CARCLASS_CD
+           WHERE COALESCE(c.USARG1,'Y') = 'Y'
+           ORDER BY v.SORT_SEQ DESC"""
     ).fetchall()
     return [dict(r) for r in rows]
 
@@ -6224,15 +6289,23 @@ def api_set_vehicle_types():
     """DS_VEHICLE 전체 목록 반환 (CARTYPE 탭에서 참조)
     Returns: { ok, vehicles: [{CARCLASS_CD, CARTYPE, LENGTH_M, WIDTH_M, HEIGHT_M,
                                LOAD_TON, PALLET_HEIGHT_M, SORT_SEQ,
-                               PALLET_CNT, LONG_AXIS_YN, DEFAULT_VEH_CNT}] }
+                               PALLET_CNT, LONG_AXIS_YN, DEFAULT_VEH_CNT,
+                               USE_YN_PS, USE_YN_HL}] }
+    USE_YN_PS: TMS_CARCLASS10.USARG1 (PS탭 사용여부)
+    USE_YN_HL: TMS_CARCLASS20.USARG1 (HL탭 사용여부)
     """
     conn = get_conn()
     try:
         rows = conn.execute(
-            """SELECT CARCLASS_CD, CARTYPE, LENGTH_M, WIDTH_M, HEIGHT_M,
-                      LOAD_TON, PALLET_HEIGHT_M, SORT_SEQ,
-                      PALLET_CNT, LONG_AXIS_YN, DEFAULT_VEH_CNT
-               FROM DS_VEHICLE ORDER BY SORT_SEQ"""
+            """SELECT v.CARCLASS_CD, v.CARTYPE, v.LENGTH_M, v.WIDTH_M, v.HEIGHT_M,
+                      v.LOAD_TON, v.PALLET_HEIGHT_M, v.SORT_SEQ,
+                      v.PALLET_CNT, v.LONG_AXIS_YN, v.DEFAULT_VEH_CNT,
+                      COALESCE(c10.USARG1,'Y') AS USE_YN_PS,
+                      COALESCE(c20.USARG1,'Y') AS USE_YN_HL
+               FROM DS_VEHICLE v
+               LEFT JOIN CMCDV c10 ON c10.CMCDKY='TMS_CARCLASS10' AND c10.CMCDVL=v.CARCLASS_CD
+               LEFT JOIN CMCDV c20 ON c20.CMCDKY='TMS_CARCLASS20' AND c20.CMCDVL=v.CARCLASS_CD
+               ORDER BY v.SORT_SEQ"""
         ).fetchall()
         return jsonify({"ok": True, "vehicles": [dict(r) for r in rows]})
     except Exception as e:

@@ -7581,18 +7581,51 @@ async function renderDispatchStrategy() {
 
 /* ── DS 전역 상태 ── */
 const _dsState = {
-  vehicle:         [],   // DS_VEHICLE rows [{CARTYPE,LENGTH_M,...,_id,_new?}]
+  vehicle:         [],   // DS_VEHICLE rows 전체 [{CARTYPE,LENGTH_M,...,_id,_new?,USE_YN,tab}]
+  vehiclePS:       [],   // TMS_CARCLASS10 기반 PS 탭 rows
+  vehicleHL:       [],   // TMS_CARCLASS20 기반 HL 탭 rows
+  activeTab:       'PS', // 'PS' | 'HL'
   _vSeq:           0,    // 신규 vehicle 행 임시 ID
-  carclassOptions: [],   // TMS_CARCLASS10 코드 목록 [{code,label}] (PS 제품군)
+  carclassOptions: [],   // TMS_CARCLASS10 (하위호환)
+  carclassPS:      [],   // PS 탭 공통코드 [{code,label,use_yn}]
+  carclassHL:      [],   // HL 탭 공통코드 [{code,label,use_yn}]
 };
 
 function _dsRender(data) {
   const body = document.getElementById('ds-body');
   if (!body) return;
 
-  _dsState.vehicle         = data.vehicle.map((r,i) => ({ ...r, _id: `ev_${i}` }));
-  _dsState._vSeq           = 0;
-  _dsState.carclassOptions = data.carclass_options || [];
+  // 공통코드
+  _dsState.carclassOptions = data.carclass_options || data.carclass_ps || [];
+  _dsState.carclassPS      = data.carclass_ps  || data.carclass_options || [];
+  _dsState.carclassHL      = data.carclass_hl  || [];
+
+  // DS_VEHICLE rows에 USE_YN 주입:
+  // CARCLASS_CD로 공통코드 USARG1 조회 → USE_YN 결정
+  const psMap = {};
+  const hlMap = {};
+  _dsState.carclassPS.forEach(o => { psMap[o.code] = o.use_yn || 'Y'; });
+  _dsState.carclassHL.forEach(o => { hlMap[o.code] = o.use_yn || 'Y'; });
+
+  const allVehicle = data.vehicle.map((r, i) => ({
+    ...r,
+    _id:    `ev_${i}`,
+    USE_YN: psMap[r.CARCLASS_CD] || hlMap[r.CARCLASS_CD] || 'Y',
+    tab:    'PS',  // 기본 PS, HL에도 같은 데이터 공유
+  }));
+
+  _dsState.vehicle   = allVehicle;
+  _dsState.vehiclePS = allVehicle.map(r => ({
+    ...r,
+    USE_YN: psMap[r.CARCLASS_CD] ?? r.USE_YN ?? 'Y',
+    tab: 'PS',
+  }));
+  _dsState.vehicleHL = allVehicle.map(r => ({
+    ...r,
+    USE_YN: hlMap[r.CARCLASS_CD] ?? r.USE_YN ?? 'Y',
+    tab: 'HL',
+  }));
+  _dsState._vSeq = 0;
 
   body.innerHTML = `
     ${_dsBuildVehicleTableHTML()}
@@ -7602,11 +7635,24 @@ function _dsRender(data) {
 }
 
 /* ══════════════════════════════════════════════════════
-   차량 제원 테이블 (DS_VEHICLE)
+   차량 제원 테이블 (DS_VEHICLE) — PS / HL 탭 분리
 ══════════════════════════════════════════════════════ */
 function _dsBuildVehicleTableHTML() {
-  const rows = _dsState.vehicle;
+  const activeTab = _dsState.activeTab || 'PS';
+  const rows      = activeTab === 'PS' ? _dsState.vehiclePS : _dsState.vehicleHL;
   const tbodyRows = rows.map(r => _dsVehicleRowHTML(r)).join('');
+
+  const tabBtn = (id, label, icon) => {
+    const active = activeTab === id;
+    return `<button class="ds-tab-btn${active ? ' ds-tab-active' : ''}"
+      onclick="dsVehicleTabSwitch('${id}')"
+      style="${active
+        ? 'background:var(--primary);color:#fff;border-color:var(--primary)'
+        : 'background:#fff;color:var(--text);border:1.5px solid #cbd5e1'};
+      padding:6px 20px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;
+      transition:all .15s;letter-spacing:.3px"
+    >${icon} ${label}</button>`;
+  };
 
   return `<div class="ds-section ds-vehicle-section" id="ds-vhc-section">
     <div class="ds-section-hdr">
@@ -7616,12 +7662,25 @@ function _dsBuildVehicleTableHTML() {
         <button class="ds-save-section-btn" onclick="dsSaveVehicle()" title="차량제원 저장">💾 저장</button>
       </div>
     </div>
-    <div class="ds-vhc-desc">차량 치수·상차량으로 자동배차 차량을 결정합니다 &nbsp;|&nbsp; 평량: <b>LT300</b> = 300gsm 미만 &nbsp;·&nbsp; <b>GE300</b> = 300gsm 이상</div>
+
+    <!-- PS / HL 탭 버튼 -->
+    <div style="display:flex;gap:8px;padding:10px 16px 0">
+      ${tabBtn('PS', 'PS 제품군', '🔵')}
+      ${tabBtn('HL', 'HL 제품군', '🟢')}
+      <span style="font-size:11px;color:var(--text3);align-self:center;margin-left:4px">
+        ${activeTab === 'PS'
+          ? 'TMS_CARCLASS10 기반 · PS배차(최적화) 자동배차에 적용'
+          : 'TMS_CARCLASS20 기반 · HL 배차에 적용'}
+      </span>
+    </div>
+
+    <div class="ds-vhc-desc">차량 치수·상차량으로 자동배차 차량을 결정합니다 &nbsp;|&nbsp; 평량: <b>LT300</b> = 300gsm 미만 &nbsp;·&nbsp; <b>GE300</b> = 300gsm 이상 &nbsp;|&nbsp; <b>사용여부 Y</b> = 공통코드 사용인자1 자동 반영</div>
     <div style="padding:0 16px 16px;overflow-x:auto">
       <table class="ds-table ds-vhc-table-fixed" id="ds-vhc-table">
         <colgroup>
           <col style="width:90px">
           <col style="width:110px">
+          <col style="width:56px">
           <col style="width:70px"><col style="width:80px"><col style="width:70px">
           <col style="width:86px"><col style="width:72px"><col style="width:76px">
           <col style="width:auto"><col style="width:auto">
@@ -7634,6 +7693,7 @@ function _dsBuildVehicleTableHTML() {
           <tr>
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#fff8e1;color:#e65100;vertical-align:middle">차량코드</th>
             <th class="ds-cartype" rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--th-bg);vertical-align:middle">차량 톤수</th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:${activeTab==='PS'?'#e3f0ff;color:#1a56db':'#e8fce8;color:#1a7a1a'};vertical-align:middle;font-weight:800">사용<br>여부</th>
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--th-bg);vertical-align:middle">길이<br><small style="font-weight:400">(m)</small></th>
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--th-bg);vertical-align:middle">너비<br><small style="font-weight:400;color:var(--text3)">(m/범위)</small></th>
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--th-bg);vertical-align:middle">높이<br><small style="font-weight:400">(m)</small></th>
@@ -7661,21 +7721,25 @@ function _dsBuildVehicleTableHTML() {
 }
 
 function _dsVehicleRowHTML(r) {
-  const isNew  = !!r._new;
-  const ccls   = DS_CAR_COLOR[r.CARTYPE] || 'car-11t';
-  const palH   = r.PALLET_HEIGHT_M ?? '';
-  const carH   = parseFloat(r.HEIGHT_M  || 0);
-  const palHv  = parseFloat(palH || 0);
-  const effH   = palHv > 0 ? (carH - palHv).toFixed(2) : '';
-  const wStr   = String(r.WIDTH_M || '').trim();
-  const wNum   = wStr.includes('~') ? parseFloat(wStr.split('~')[0]) : (parseFloat(wStr) || 0);
-  const lenM   = parseFloat(r.LENGTH_M || 0);
-  const effHm  = Math.max(0, carH - palHv);
-  const cbmVal = (lenM > 0 && wNum > 0 && effHm > 0) ? (lenM * wNum * effHm).toFixed(2) : '-';
+  const isNew   = !!r._new;
+  const ccls    = DS_CAR_COLOR[r.CARTYPE] || 'car-11t';
+  const palH    = r.PALLET_HEIGHT_M ?? '';
+  const carH    = parseFloat(r.HEIGHT_M  || 0);
+  const palHv   = parseFloat(palH || 0);
+  const effH    = palHv > 0 ? (carH - palHv).toFixed(2) : '';
+  const wStr    = String(r.WIDTH_M || '').trim();
+  const wNum    = wStr.includes('~') ? parseFloat(wStr.split('~')[0]) : (parseFloat(wStr) || 0);
+  const lenM    = parseFloat(r.LENGTH_M || 0);
+  const effHm   = Math.max(0, carH - palHv);
+  const cbmVal  = (lenM > 0 && wNum > 0 && effHm > 0) ? (lenM * wNum * effHm).toFixed(2) : '-';
   const cbmColor = cbmVal !== '-'
     ? (parseFloat(cbmVal) >= 40 ? 'var(--error)' : parseFloat(cbmVal) >= 20 ? 'var(--warning)' : 'var(--primary)')
     : 'var(--text3)';
-  const rowCls = isNew ? 'ds-new-row' : '';
+  const rowCls  = isNew ? 'ds-new-row' : '';
+  const useYn   = (r.USE_YN || 'Y').toUpperCase();
+  const useYnBg = useYn === 'Y'
+    ? 'background:linear-gradient(135deg,#e6f9f0,#d1fae5);color:#065f46;border-color:#6ee7b7'
+    : 'background:linear-gradient(135deg,#fff1f2,#ffe4e6);color:#9f1239;border-color:#fda4af';
 
   return `<tr class="${rowCls}" id="ds-vrow-${r._id}">
     <td style="padding:3px 6px;text-align:center">
@@ -7693,6 +7757,15 @@ function _dsVehicleRowHTML(r) {
         : `<span style="display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;letter-spacing:.2px" class="${ccls}">🚛 ${r.CARTYPE}</span>
            <input type="hidden" id="ds-vct-${r._id}" value="${r.CARTYPE}">`
       }
+    </td>
+    <!-- 사용여부 컬럼 — 공통코드 USARG1 연동 -->
+    <td style="padding:3px 4px;text-align:center">
+      <select class="ds-input" id="ds-vuyn-${r._id}"
+        onchange="dsOnUseYnChange('${r._id}',this.value)"
+        style="width:100%;box-sizing:border-box;font-size:12px;font-weight:700;padding:3px 2px;${useYnBg}">
+        <option value="Y" ${useYn==='Y'?'selected':''}>Y</option>
+        <option value="N" ${useYn==='N'?'selected':''}>N</option>
+      </select>
     </td>
     <td class="ds-vhc-dim-cell"><input class="ds-input ds-vhc-num" type="number" step="0.1" min="0"
       id="ds-vlen-${r._id}" value="${r.LENGTH_M ?? ''}" placeholder="0.0"></td>
@@ -7747,6 +7820,64 @@ function _dsBindVehicleEvents() {
   });
 }
 
+/* ── 탭 전환 ── */
+function dsVehicleTabSwitch(tab) {
+  // 현재 탭 입력값을 state에 먼저 반영
+  _dsSyncCurrentTabRows();
+  _dsState.activeTab = tab;
+  // 섹션만 재렌더 (시뮬 패널은 유지)
+  const section = document.getElementById('ds-vhc-section');
+  if (section) {
+    section.outerHTML = _dsBuildVehicleTableHTML();
+    _dsBindVehicleEvents();
+  }
+}
+
+/* 현재 탭 tbody 값을 vehiclePS/vehicleHL state에 동기화 */
+function _dsSyncCurrentTabRows() {
+  const tab  = _dsState.activeTab;
+  const arr  = tab === 'PS' ? _dsState.vehiclePS : _dsState.vehicleHL;
+  arr.forEach(r => {
+    const ctEl  = document.getElementById(`ds-vct-${r._id}`);
+    const ccdEl = document.getElementById(`ds-vccd-${r._id}`);
+    const uynEl = document.getElementById(`ds-vuyn-${r._id}`);
+    if (ctEl)  r.CARTYPE     = ctEl.value || r.CARTYPE;
+    if (ccdEl) r.CARCLASS_CD = ccdEl.value || r.CARCLASS_CD;
+    if (uynEl) r.USE_YN      = uynEl.value || 'Y';
+    // 치수값
+    const _v = id => document.getElementById(id)?.value;
+    r.LENGTH_M        = parseFloat(_v(`ds-vlen-${r._id}`))  ?? r.LENGTH_M;
+    r.WIDTH_M         = _v(`ds-vwid-${r._id}`)              ?? r.WIDTH_M;
+    r.HEIGHT_M        = parseFloat(_v(`ds-vhgt-${r._id}`))  ?? r.HEIGHT_M;
+    r.PALLET_HEIGHT_M = parseFloat(_v(`ds-vpal-${r._id}`))  ?? r.PALLET_HEIGHT_M;
+    r.LOAD_TON        = parseFloat(_v(`ds-vton-${r._id}`))  ?? r.LOAD_TON;
+    r.INCH12_LT300    = _v(`ds-vi12lt-${r._id}`) !== '' ? parseInt(_v(`ds-vi12lt-${r._id}`)) : r.INCH12_LT300;
+    r.INCH12_GE300    = _v(`ds-vi12ge-${r._id}`) !== '' ? parseInt(_v(`ds-vi12ge-${r._id}`)) : r.INCH12_GE300;
+    r.INCH3_LT300     = _v(`ds-vi3lt-${r._id}`)  !== '' ? parseInt(_v(`ds-vi3lt-${r._id}`))  : r.INCH3_LT300;
+    r.INCH3_GE300     = _v(`ds-vi3ge-${r._id}`)  !== '' ? parseInt(_v(`ds-vi3ge-${r._id}`))  : r.INCH3_GE300;
+    r.PALLET_CNT      = _v(`ds-vplc-${r._id}`)   !== '' ? parseInt(_v(`ds-vplc-${r._id}`))   : r.PALLET_CNT;
+    r.LONG_AXIS_YN    = _v(`ds-vlay-${r._id}`)              ?? r.LONG_AXIS_YN;
+    r.DEFAULT_VEH_CNT = _v(`ds-vdvc-${r._id}`) !== '' ? parseInt(_v(`ds-vdvc-${r._id}`))  : r.DEFAULT_VEH_CNT;
+  });
+}
+
+/* 사용여부 변경 시 select 스타일 즉시 반영 + state 업데이트 */
+function dsOnUseYnChange(id, val) {
+  const el = document.getElementById(`ds-vuyn-${id}`);
+  if (!el) return;
+  const tab = _dsState.activeTab;
+  const arr = tab === 'PS' ? _dsState.vehiclePS : _dsState.vehicleHL;
+  const row = arr.find(r => r._id === id);
+  if (row) row.USE_YN = val;
+  // 스타일 갱신
+  if (val === 'Y') {
+    el.style.cssText += ';background:linear-gradient(135deg,#e6f9f0,#d1fae5);color:#065f46;border-color:#6ee7b7;font-weight:700';
+  } else {
+    el.style.cssText += ';background:linear-gradient(135deg,#fff1f2,#ffe4e6);color:#9f1239;border-color:#fda4af;font-weight:700';
+  }
+  _dsMark();
+}
+
 function dsRefreshVehicleCbm(id) {
   const lenM  = parseFloat(document.getElementById(`ds-vlen-${id}`)?.value) || 0;
   const wRaw  = (document.getElementById(`ds-vwid-${id}`)?.value || '').trim();
@@ -7769,7 +7900,17 @@ function dsRefreshVehicleCbm(id) {
 
 function dsAddVehicleRow() {
   const id  = `nv_${++_dsState._vSeq}`;
-  const row = { _id: id, _new: true, CARTYPE: '', LENGTH_M: '', WIDTH_M: '', HEIGHT_M: '', PALLET_HEIGHT_M: '', LOAD_TON: '', INCH12_LT300: '', INCH12_GE300: '', INCH3_LT300: '', INCH3_GE300: '', CARCLASS_CD: '', DEFAULT_VEH_CNT: '', PALLET_CNT: '', LONG_AXIS_YN: 'N' };
+  const tab = _dsState.activeTab;
+  const row = {
+    _id: id, _new: true,
+    CARTYPE: '', LENGTH_M: '', WIDTH_M: '', HEIGHT_M: '',
+    PALLET_HEIGHT_M: '', LOAD_TON: '', INCH12_LT300: '', INCH12_GE300: '',
+    INCH3_LT300: '', INCH3_GE300: '', CARCLASS_CD: '', DEFAULT_VEH_CNT: '',
+    PALLET_CNT: '', LONG_AXIS_YN: 'N', USE_YN: 'Y', tab,
+  };
+  // 현재 활성 탭에만 추가
+  if (tab === 'PS') _dsState.vehiclePS.push(row);
+  else              _dsState.vehicleHL.push(row);
   _dsState.vehicle.push(row);
   const tbody = document.getElementById('ds-vhc-tbody');
   if (tbody) {
@@ -7780,38 +7921,92 @@ function dsAddVehicleRow() {
 }
 
 function dsDeleteVehicleRow(id) {
-  const idx = _dsState.vehicle.findIndex(r => r._id === id);
-  if (idx >= 0) _dsState.vehicle.splice(idx, 1);
+  const tab = _dsState.activeTab;
+  const arr = tab === 'PS' ? _dsState.vehiclePS : _dsState.vehicleHL;
+  const idx = arr.findIndex(r => r._id === id);
+  if (idx >= 0) arr.splice(idx, 1);
+  // vehicle 전체에서도 제거
+  const vi = _dsState.vehicle.findIndex(r => r._id === id);
+  if (vi >= 0) _dsState.vehicle.splice(vi, 1);
   const tr = document.getElementById(`ds-vrow-${id}`);
   if (tr) tr.remove();
   _dsMark();
 }
 
 function _dsCollectVehicleRows() {
+  // 현재 탭 입력값 먼저 state 동기화
+  _dsSyncCurrentTabRows();
+
+  // PS와 HL을 합쳐서 저장 (백엔드는 tab 필드로 구분해 CMCDV 업데이트)
+  // CARCLASS_CD 중복 제거: PS/HL 모두 같은 DS_VEHICLE row를 공유하므로
+  // 실제 저장은 DS_VEHICLE에 CARCLASS_CD 기준 단일 row (중복 없음)
+  // USE_YN은 PS 탭 값을 TMS_CARCLASS10, HL 탭 값을 TMS_CARCLASS20에 각각 반영
+
   const result = [];
   let seq = 1;
-  _dsState.vehicle.forEach(r => {
-    const ct  = (document.getElementById(`ds-vct-${r._id}`)?.value || r.CARTYPE || '').trim();
+
+  // PS 탭 rows → tab:'PS'
+  _dsState.vehiclePS.forEach(r => {
+    const ct = (document.getElementById(`ds-vct-${r._id}`)?.value || r.CARTYPE || '').trim();
     if (!ct) return;
     const _int = (id) => { const v = document.getElementById(id)?.value; return (v !== '' && v != null) ? parseInt(v) : null; };
     result.push({
       CARTYPE:         ct,
-      LENGTH_M:        parseFloat(document.getElementById(`ds-vlen-${r._id}`)?.value) || 0,
-      WIDTH_M:         (document.getElementById(`ds-vwid-${r._id}`)?.value || '').trim(),
-      HEIGHT_M:        parseFloat(document.getElementById(`ds-vhgt-${r._id}`)?.value) || 0,
-      PALLET_HEIGHT_M: parseFloat(document.getElementById(`ds-vpal-${r._id}`)?.value) || 0,
-      LOAD_TON:        parseFloat(document.getElementById(`ds-vton-${r._id}`)?.value) || 0,
-      INCH12_LT300:    _int(`ds-vi12lt-${r._id}`),
-      INCH12_GE300:    _int(`ds-vi12ge-${r._id}`),
-      INCH3_LT300:     _int(`ds-vi3lt-${r._id}`),
-      INCH3_GE300:     _int(`ds-vi3ge-${r._id}`),
-      CARCLASS_CD:     (document.getElementById(`ds-vccd-${r._id}`)?.value || null) || null,
-      DEFAULT_VEH_CNT: _int(`ds-vdvc-${r._id}`),
-      PALLET_CNT:      _int(`ds-vplc-${r._id}`),
-      LONG_AXIS_YN:    document.getElementById(`ds-vlay-${r._id}`)?.value || 'N',
+      LENGTH_M:        parseFloat(document.getElementById(`ds-vlen-${r._id}`)?.value) || r.LENGTH_M || 0,
+      WIDTH_M:         (document.getElementById(`ds-vwid-${r._id}`)?.value || r.WIDTH_M || '').trim(),
+      HEIGHT_M:        parseFloat(document.getElementById(`ds-vhgt-${r._id}`)?.value) || r.HEIGHT_M || 0,
+      PALLET_HEIGHT_M: parseFloat(document.getElementById(`ds-vpal-${r._id}`)?.value) || r.PALLET_HEIGHT_M || 0,
+      LOAD_TON:        parseFloat(document.getElementById(`ds-vton-${r._id}`)?.value) || r.LOAD_TON || 0,
+      INCH12_LT300:    _int(`ds-vi12lt-${r._id}`) ?? (r.INCH12_LT300 !== '' ? r.INCH12_LT300 : null),
+      INCH12_GE300:    _int(`ds-vi12ge-${r._id}`) ?? (r.INCH12_GE300 !== '' ? r.INCH12_GE300 : null),
+      INCH3_LT300:     _int(`ds-vi3lt-${r._id}`)  ?? (r.INCH3_LT300  !== '' ? r.INCH3_LT300  : null),
+      INCH3_GE300:     _int(`ds-vi3ge-${r._id}`)  ?? (r.INCH3_GE300  !== '' ? r.INCH3_GE300  : null),
+      CARCLASS_CD:     (document.getElementById(`ds-vccd-${r._id}`)?.value || r.CARCLASS_CD || null) || null,
+      DEFAULT_VEH_CNT: _int(`ds-vdvc-${r._id}`) ?? (r.DEFAULT_VEH_CNT !== '' ? r.DEFAULT_VEH_CNT : null),
+      PALLET_CNT:      _int(`ds-vplc-${r._id}`)  ?? (r.PALLET_CNT !== '' ? r.PALLET_CNT : null),
+      LONG_AXIS_YN:    document.getElementById(`ds-vlay-${r._id}`)?.value || r.LONG_AXIS_YN || 'N',
+      USE_YN:          (document.getElementById(`ds-vuyn-${r._id}`)?.value || r.USE_YN || 'Y').toUpperCase(),
+      tab:             'PS',
       SORT_SEQ:        seq++,
     });
   });
+
+  // HL 탭 rows → tab:'HL' (USE_YN만 별도로 CMCDV 업데이트용으로 포함)
+  // DS_VEHICLE은 PS/HL 공유이므로 CARCLASS_CD 중복 시 USE_YN만 덮어쓰기
+  _dsState.vehicleHL.forEach(r => {
+    const ct = (r.CARTYPE || '').trim();
+    if (!ct) return;
+    // DS_VEHICLE에 이미 있는 row는 PS에서 저장됨 — HL은 USE_YN/CMCDV 업데이트만 별도 항목 추가
+    const existing = result.find(x => x.CARCLASS_CD === r.CARCLASS_CD || x.CARTYPE === ct);
+    const useYn = (document.getElementById(`ds-vuyn-${r._id}`)?.value || r.USE_YN || 'Y').toUpperCase();
+    if (existing) {
+      // 이미 있으면 HL USE_YN을 별도 필드로 보존
+      existing.USE_YN_HL = useYn;
+    } else {
+      // PS에 없는 HL 전용 차량 (드문 케이스)
+      const _int = (id) => { const v = document.getElementById(id)?.value; return (v !== '' && v != null) ? parseInt(v) : null; };
+      result.push({
+        CARTYPE:         ct,
+        LENGTH_M:        r.LENGTH_M || 0,
+        WIDTH_M:         (r.WIDTH_M || '').trim(),
+        HEIGHT_M:        r.HEIGHT_M || 0,
+        PALLET_HEIGHT_M: r.PALLET_HEIGHT_M || 0,
+        LOAD_TON:        r.LOAD_TON || 0,
+        INCH12_LT300:    r.INCH12_LT300 !== '' ? r.INCH12_LT300 : null,
+        INCH12_GE300:    r.INCH12_GE300 !== '' ? r.INCH12_GE300 : null,
+        INCH3_LT300:     r.INCH3_LT300  !== '' ? r.INCH3_LT300  : null,
+        INCH3_GE300:     r.INCH3_GE300  !== '' ? r.INCH3_GE300  : null,
+        CARCLASS_CD:     (r.CARCLASS_CD || null),
+        DEFAULT_VEH_CNT: r.DEFAULT_VEH_CNT !== '' ? r.DEFAULT_VEH_CNT : null,
+        PALLET_CNT:      r.PALLET_CNT !== '' ? r.PALLET_CNT : null,
+        LONG_AXIS_YN:    r.LONG_AXIS_YN || 'N',
+        USE_YN:          useYn,
+        tab:             'HL',
+        SORT_SEQ:        seq++,
+      });
+    }
+  });
+
   return result;
 }
 
@@ -7824,10 +8019,14 @@ async function dsSaveVehicle(silent = false) {
   });
   const d = await res.json();
   if (!d.ok) throw new Error(d.error || 'failed');
-  if (!silent) showToast('✅ 차량 제원 저장 완료');
+  if (!silent) showToast('✅ 차량 제원 저장 완료 (공통코드 사용여부 자동 반영)');
+  _dsState.vehiclePS.forEach(r => { delete r._new; });
+  _dsState.vehicleHL.forEach(r => { delete r._new; });
   _dsState.vehicle.forEach(r => { delete r._new; });
   document.querySelectorAll('#ds-vhc-tbody .ds-new-row').forEach(tr => tr.classList.remove('ds-new-row'));
   _dsClearMark();
+  // DCON 차량유형 캐시 무효화 → 다음 조회 시 재로드
+  if (typeof DCON !== 'undefined') { DCON._vehicles = null; }
 }
 
 /* ── 변경 감지 표시 ── */
@@ -19426,6 +19625,7 @@ function _dconSpRenderCartype(ft) {
   <p class="dcon-ct-desc">
     🚌 <b>행 = 항목</b>, <b>열 = 차량유형</b> — 항목 왼쪽 체크박스로 해당 항목 전체 ON/OFF.
     개별 셀 값 수정 시 세트 전용 임계치로 오버라이드됩니다.
+    &nbsp;|&nbsp; <span style="color:#1a56db">🔵PS사용</span>=TMS_CARCLASS10 Y &nbsp; <span style="color:#1a7a1a">🟢HL사용</span>=TMS_CARCLASS20 Y &nbsp; <span style="color:#9f1239">⛔미사용</span>=N
   </p>
   <div class="dcon-ct-scroll">
   <table class="dcon-ct-matrix">
@@ -19434,7 +19634,16 @@ function _dconSpRenderCartype(ft) {
       <th class="ctcol-field-hdr" rowspan="2" style="min-width:90px;position:sticky;left:0;z-index:4;background:#e8f4fd">항목</th>
       <th class="ctcol-field-hdr" rowspan="2" style="width:38px;position:sticky;left:90px;z-index:4;background:#e8f4fd" title="항목 전체 ON/OFF">적용</th>`;
   vlist.forEach(v => {
-    html += `<th class="ctcol-car-hdr" title="${_esc(v.CARCLASS_CD)}">${_esc(v.CARTYPE||v.CARCLASS_CD)}</th>`;
+    const usePs = (v.USE_YN_PS || 'Y') === 'Y';
+    const useHl = (v.USE_YN_HL || 'Y') === 'Y';
+    const badge = usePs && useHl
+      ? '<span style="font-size:9px;background:#e3f0ff;color:#1a56db;border-radius:3px;padding:1px 3px;margin:1px">PS</span><span style="font-size:9px;background:#e8fce8;color:#1a7a1a;border-radius:3px;padding:1px 3px;margin:1px">HL</span>'
+      : usePs
+        ? '<span style="font-size:9px;background:#e3f0ff;color:#1a56db;border-radius:3px;padding:1px 3px;margin:1px">PS</span>'
+        : useHl
+          ? '<span style="font-size:9px;background:#e8fce8;color:#1a7a1a;border-radius:3px;padding:1px 3px;margin:1px">HL</span>'
+          : '<span style="font-size:9px;background:#ffe4e6;color:#9f1239;border-radius:3px;padding:1px 3px;margin:1px">⛔</span>';
+    html += `<th class="ctcol-car-hdr" title="${_esc(v.CARCLASS_CD)}">${_esc(v.CARTYPE||v.CARCLASS_CD)}<br>${badge}</th>`;
   });
   html += `</tr>
     <tr>`;
