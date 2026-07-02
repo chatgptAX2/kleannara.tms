@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>배차 검증 리포트 — 260509033T</title>
+<style>
+  :root {
+    --pass:   #16a34a; --pass-bg:   #f0fdf4; --pass-bd:   #bbf7d0;
+    --warn:   #d97706; --warn-bg:   #fffbeb; --warn-bd:   #fde68a;
+    --issue:  #dc2626; --issue-bg:  #fef2f2; --issue-bd:  #fecaca;
+    --na:     #6b7280; --na-bg:     #f9fafb; --na-bd:     #e5e7eb;
+    --info:   #0369a1; --info-bg:   #f0f9ff; --info-bd:   #bae6fd;
+    --purple: #7c3aed; --purple-bg: #faf5ff; --purple-bd: #e9d5ff;
+    --font: 'Malgun Gothic','Apple SD Gothic Neo',sans-serif;
+    --radius: 8px;
+    --shadow: 0 1px 3px rgba(0,0,0,.12);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font); font-size: 13px; background: #f1f5f9; color: #1e293b; line-height: 1.6; }
+  
+  /* ─── 레이아웃 ─── */
+  .page { max-width: 1200px; margin: 0 auto; padding: 24px 16px 60px; }
+  
+  /* ─── 헤더 ─── */
+  .rpt-header { background: linear-gradient(135deg,#1e40af 0%,#3b82f6 100%); color:#fff; border-radius:12px; padding:28px 32px; margin-bottom:24px; box-shadow:0 4px 16px rgba(30,64,175,.3); }
+  .rpt-header h1 { font-size:22px; font-weight:700; margin-bottom:6px; }
+  .rpt-header .sub { font-size:13px; opacity:.85; }
+  .rpt-header .meta-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-top:18px; }
+  .rpt-header .meta-item { background:rgba(255,255,255,.15); border-radius:8px; padding:10px 14px; }
+  .rpt-header .meta-item .label { font-size:11px; opacity:.75; text-transform:uppercase; letter-spacing:.05em; }
+  .rpt-header .meta-item .value { font-size:16px; font-weight:700; margin-top:2px; }
+  .rpt-header .meta-item .value.big { font-size:20px; }
+  .rpt-header .meta-item .value.warn-val { color:#fde047; }
+  
+  /* ─── 섹션 ─── */
+  .section { background:#fff; border-radius:12px; box-shadow:var(--shadow); margin-bottom:20px; overflow:hidden; }
+  .section-head { padding:16px 20px; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; gap:10px; }
+  .section-head .icon { width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; }
+  .section-head h2 { font-size:15px; font-weight:700; }
+  .section-head .badge { margin-left:auto; font-size:11px; padding:3px 10px; border-radius:20px; font-weight:600; }
+  .section-body { padding:16px 20px; }
+  
+  /* ─── 색상 테마 ─── */
+  .theme-blue  .section-head { background:var(--info-bg); } .theme-blue  .icon { background:#dbeafe; }
+  .theme-green .section-head { background:var(--pass-bg); } .theme-green .icon { background:#dcfce7; }
+  .theme-amber .section-head { background:var(--warn-bg); } .theme-amber .icon { background:#fef9c3; }
+  .theme-red   .section-head { background:var(--issue-bg);} .theme-red   .icon { background:#fee2e2; }
+  .theme-purple.section-head { background:var(--purple-bg);}.theme-purple.icon { background:#ede9fe; }
+  .theme-gray  .section-head { background:#f8fafc; }        .theme-gray  .icon { background:#f1f5f9; }
+  
+  /* ─── 뱃지 ─── */
+  .badge-pass  { background:var(--pass-bg);   color:var(--pass);   border:1px solid var(--pass-bd); }
+  .badge-warn  { background:var(--warn-bg);   color:var(--warn);   border:1px solid var(--warn-bd); }
+  .badge-issue { background:var(--issue-bg);  color:var(--issue);  border:1px solid var(--issue-bd);}
+  .badge-na    { background:var(--na-bg);     color:var(--na);     border:1px solid var(--na-bd);   }
+  .badge-info  { background:var(--info-bg);   color:var(--info);   border:1px solid var(--info-bd); }
+  
+  /* ─── 표 ─── */
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  thead th { background:#f1f5f9; padding:8px 10px; text-align:left; font-weight:600; color:#475569; border-bottom:2px solid #e2e8f0; white-space:nowrap; }
+  tbody td { padding:8px 10px; border-bottom:1px solid #f1f5f9; vertical-align:top; }
+  tbody tr:hover td { background:#fafbfc; }
+  .num { text-align:right; font-variant-numeric:tabular-nums; }
+  .mono { font-family:'Consolas','Courier New',monospace; font-size:11.5px; }
+  
+  /* ─── 상태 표시 ─── */
+  .s-pass  { color:var(--pass);  font-weight:700; }
+  .s-warn  { color:var(--warn);  font-weight:700; }
+  .s-issue { color:var(--issue); font-weight:700; }
+  .s-na    { color:var(--na);    font-weight:500; }
+  
+  /* ─── 인포 그리드 ─── */
+  .info-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+  .info-card { border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; }
+  .info-card .k { font-size:11px; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+  .info-card .v { font-size:16px; font-weight:700; margin-top:4px; color:#1e293b; }
+  .info-card .note { font-size:11px; color:#94a3b8; margin-top:2px; }
+  .info-card.hl-warn  { border-color:var(--warn-bd);   background:var(--warn-bg); }
+  .info-card.hl-warn  .v { color:var(--warn); }
+  .info-card.hl-issue { border-color:var(--issue-bd);  background:var(--issue-bg); }
+  .info-card.hl-issue .v { color:var(--issue); }
+  .info-card.hl-pass  { border-color:var(--pass-bd);   background:var(--pass-bg); }
+  .info-card.hl-pass  .v { color:var(--pass); }
+  
+  /* ─── 알고리즘 플로우 ─── */
+  .flow { display:flex; align-items:stretch; gap:0; flex-wrap:wrap; margin:10px 0; }
+  .flow-step { background:#f8fafc; border:1px solid #e2e8f0; border-radius:0; padding:10px 14px; font-size:12px; flex:1; min-width:140px; position:relative; }
+  .flow-step:first-child { border-radius:8px 0 0 8px; }
+  .flow-step:last-child  { border-radius:0 8px 8px 0; }
+  .flow-step + .flow-step::before { content:'→'; position:absolute; left:-12px; top:50%; transform:translateY(-50%); font-size:16px; color:#94a3b8; background:#fff; z-index:1; padding:2px; }
+  .flow-step .fs-label { font-size:10px; color:#94a3b8; font-weight:600; text-transform:uppercase; }
+  .flow-step .fs-val   { font-weight:700; color:#1e40af; margin-top:2px; }
+  .flow-step .fs-sub   { font-size:11px; color:#64748b; margin-top:2px; }
+  .flow-step.hl        { background:var(--warn-bg); border-color:var(--warn-bd); }
+  .flow-step.hl .fs-val{ color:var(--warn); }
+  .flow-step.ok        { background:var(--pass-bg); border-color:var(--pass-bd); }
+  .flow-step.ok .fs-val{ color:var(--pass); }
+  
+  /* ─── 이슈 박스 ─── */
+  .issue-box { border-radius:8px; padding:12px 16px; margin:8px 0; }
+  .issue-box.warn  { background:var(--warn-bg);   border-left:4px solid var(--warn);  }
+  .issue-box.issue { background:var(--issue-bg);  border-left:4px solid var(--issue); }
+  .issue-box.pass  { background:var(--pass-bg);   border-left:4px solid var(--pass);  }
+  .issue-box.info  { background:var(--info-bg);   border-left:4px solid var(--info);  }
+  .issue-box.purple{ background:var(--purple-bg); border-left:4px solid var(--purple);}
+  .issue-box h4    { font-size:13px; font-weight:700; margin-bottom:4px; }
+  .issue-box p     { font-size:12px; color:#475569; line-height:1.7; }
+  .issue-box code  { font-family:monospace; background:rgba(0,0,0,.07); padding:1px 5px; border-radius:3px; font-size:11.5px; }
+  
+  /* ─── 섬머리 바 ─── */
+  .summary-bar { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+  .sum-card { border-radius:10px; padding:16px; text-align:center; }
+  .sum-card .cnt { font-size:32px; font-weight:800; }
+  .sum-card .lbl { font-size:11px; font-weight:600; text-transform:uppercase; margin-top:4px; opacity:.8; }
+  .sum-card.c-pass  { background:linear-gradient(135deg,#f0fdf4,#dcfce7); color:var(--pass);  border:1px solid var(--pass-bd); }
+  .sum-card.c-warn  { background:linear-gradient(135deg,#fffbeb,#fef9c3); color:var(--warn);  border:1px solid var(--warn-bd); }
+  .sum-card.c-issue { background:linear-gradient(135deg,#fef2f2,#fee2e2); color:var(--issue); border:1px solid var(--issue-bd);}
+  .sum-card.c-na    { background:linear-gradient(135deg,#f9fafb,#f1f5f9); color:var(--na);    border:1px solid var(--na-bd);  }
+  
+  /* ─── 판정 박스 ─── */
+  .verdict { border-radius:12px; padding:24px; margin-top:8px; text-align:center; }
+  .verdict.ok   { background:linear-gradient(135deg,#f0fdf4,#dcfce7); border:2px solid var(--pass-bd); }
+  .verdict.warn { background:linear-gradient(135deg,#fffbeb,#fef9c3); border:2px solid var(--warn-bd); }
+  .verdict .v-icon { font-size:40px; }
+  .verdict .v-title { font-size:20px; font-weight:800; margin:8px 0 6px; }
+  .verdict .v-sub   { font-size:13px; color:#475569; max-width:600px; margin:0 auto; line-height:1.7; }
+  
+  /* ─── 진행 바 ─── */
+  .prog-bar { background:#e2e8f0; border-radius:20px; height:8px; overflow:hidden; margin:6px 0; }
+  .prog-bar .fill { height:100%; border-radius:20px; transition:width .3s; }
+  .fill-pass  { background:var(--pass); }
+  .fill-warn  { background:var(--warn); }
+  .fill-issue { background:var(--issue);}
+  
+  /* ─── 제약 그룹 테이블 ─── */
+  .const-table thead th { font-size:11.5px; }
+  .const-table .ctype-row td { background:#f8fafc; font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:.06em; padding:5px 10px; }
+  
+  /* ─── 반응형 ─── */
+  @media(max-width:640px) {
+    .summary-bar { grid-template-columns:repeat(2,1fr); }
+    .flow { flex-direction:column; }
+    .flow-step { border-radius:8px !important; }
+    .flow-step + .flow-step::before { content:'↓'; left:50%; top:-12px; transform:translateX(-50%); }
+  }
+  
+  /* ─── 프린트 ─── */
+  @media print {
+    body { background:#fff; font-size:11px; }
+    .page { padding:8px; }
+    .section { break-inside:avoid; box-shadow:none; border:1px solid #e2e8f0; }
+  }
+  
+  .tag { display:inline-block; font-size:10px; padding:2px 7px; border-radius:4px; font-weight:600; margin:0 2px; }
+  .tag-f { background:#dbeafe; color:#1e40af; }
+  .tag-r { background:#fce7f3; color:#be185d; }
+  .tag-w { background:#dcfce7; color:#15803d; }
+  .divider { height:1px; background:#f1f5f9; margin:12px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- ══════════════════ HEADER ══════════════════ -->
+<div class="rpt-header">
+  <h1>📋 가선적 배차 검증 리포트</h1>
+  <div class="sub">DS_DISPATCH_PROFILE (MIN_VEHICLES · FFD BinPacking) 기반 · 제약조건 67건 전체 대조</div>
+  <div class="meta-grid">
+    <div class="meta-item">
+      <div class="label">배차번호</div>
+      <div class="value mono">260509033T</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">납품처</div>
+      <div class="value">(주)흥아지업</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">납품일</div>
+      <div class="value mono">2026-05-09</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">배정 차종</div>
+      <div class="value">10톤</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">총 중량</div>
+      <div class="value">945.83 kg</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">적재율</div>
+      <div class="value warn-val">9.5%</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">STATUS</div>
+      <div class="value">DRAFT</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">검증일</div>
+      <div class="value mono">2026-07-02</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 1. 수주 품목 요약 ══════════════════ -->
+<div class="section">
+  <div class="section-head theme-blue">
+    <div class="icon">📦</div>
+    <h2>1. 수주 품목 요약 (PS_DISPATCH_D — 6건)</h2>
+    <span class="badge badge-info">SKUKEY 파싱 치수 역산</span>
+  </div>
+  <div class="section-body">
+    <table>
+      <thead>
+        <tr>
+          <th>SEQ</th>
+          <th>SKUKEY</th>
+          <th>품종</th>
+          <th>평량 GSM</th>
+          <th>가로×세로 mm</th>
+          <th>코어인치</th>
+          <th>UOMKEY</th>
+          <th>수량 (R)</th>
+          <th class="num">총중량 kg</th>
+          <th class="num">단중 kg/속</th>
+          <th>포장</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td><td class="mono">F3I11350-07250545A</td><td>Ivory</td><td>350</td>
+          <td>725 × 545</td><td>3인치</td>
+          <td><span class="tag tag-r">R</span></td>
+          <td>5.0</td><td class="num">345.75</td><td class="num">69.15</td>
+          <td><span class="tag tag-f">Ream</span></td>
+        </tr>
+        <tr>
+          <td>2</td><td class="mono">F3I11400-07950670A</td><td>Ivory</td><td>400</td>
+          <td>795 × 670</td><td>3인치</td>
+          <td><span class="tag tag-r">R</span></td>
+          <td>1.6</td><td class="num">170.45</td><td class="num">106.53</td>
+          <td><span class="tag tag-f">Ream</span></td>
+        </tr>
+        <tr>
+          <td>3</td><td class="mono">F3I11350-04700640A</td><td>Ivory</td><td>350</td>
+          <td>470 × 640</td><td>3인치</td>
+          <td><span class="tag tag-r">R</span></td>
+          <td>3.0</td><td class="num">157.92</td><td class="num">52.64</td>
+          <td><span class="tag tag-f">Ream</span></td>
+        </tr>
+        <tr>
+          <td>4</td><td class="mono">F3I11350-07300995A</td><td>Ivory</td><td>350</td>
+          <td>730 × 995</td><td>3인치</td>
+          <td><span class="tag tag-r">R</span></td>
+          <td>1.0</td><td class="num">127.11</td><td class="num">127.11</td>
+          <td><span class="tag tag-f">Ream</span></td>
+        </tr>
+        <tr>
+          <td>5</td><td class="mono">F3I11400-07001050A</td><td>Ivory</td><td>400</td>
+          <td>700 × 1050</td><td>3인치</td>
+          <td><span class="tag tag-r">R</span></td>
+          <td>0.8</td><td class="num">117.60</td><td class="num">147.00</td>
+          <td><span class="tag tag-f">Ream</span></td>
+        </tr>
+        <tr>
+          <td>6</td><td class="mono">F3S11400-07500450A</td><td>Manila/SC</td><td>400</td>
+          <td>750 × 450</td><td>3인치</td>
+          <td><span class="tag tag-r">R</span></td>
+          <td>0.4</td><td class="num">27.00</td><td class="num">67.50</td>
+          <td><span class="tag tag-f">Ream</span></td>
+        </tr>
+        <tr style="background:#f8fafc;font-weight:700;">
+          <td colspan="7" style="text-align:right;color:#64748b;">합계</td>
+          <td>11.8속</td>
+          <td class="num" style="color:#1e40af;">945.83</td>
+          <td></td><td></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="divider"></div>
+    <div class="info-grid" style="margin-top:8px;">
+      <div class="info-card">
+        <div class="k">품목 유형</div>
+        <div class="v">판지(Board) ×6</div>
+        <div class="note">SKUKEY[0]='F' 모두 평판지</div>
+      </div>
+      <div class="info-card">
+        <div class="k">코어인치</div>
+        <div class="v">3인치 ×6</div>
+        <div class="note">SKUKEY[1]='3' 전품목 동일</div>
+      </div>
+      <div class="info-card">
+        <div class="k">평량 범위</div>
+        <div class="v">350~400 GSM</div>
+        <div class="note">모두 GE300 기준 적용</div>
+      </div>
+      <div class="info-card hl-warn">
+        <div class="k">UOMKEY</div>
+        <div class="v">'R' (Ream) ×6</div>
+        <div class="note">⚠️ 알고리즘이 롤(Roll)로 오분류</div>
+      </div>
+      <div class="info-card">
+        <div class="k">비정수 수량</div>
+        <div class="v">1.6R / 0.8R / 0.4R</div>
+        <div class="note">ROLL_INTEGER_ONLY=Y 잠재 위반</div>
+      </div>
+      <div class="info-card hl-pass">
+        <div class="k">SKUMA DB</div>
+        <div class="v">미등록 (6건)</div>
+        <div class="note">SKUKEY 파싱으로 치수 역산</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 2. 목적식 및 차량 선정 경로 ══════════════════ -->
+<div class="section">
+  <div class="section-head theme-purple">
+    <div class="icon">🎯</div>
+    <h2>2. 목적식(MIN_VEHICLES) 및 차량 선정 경로</h2>
+    <span class="badge badge-pass">FFD BinPacking</span>
+  </div>
+  <div class="section-body">
+    <div class="info-grid" style="margin-bottom:16px;">
+      <div class="info-card">
+        <div class="k">PROFILE_ID</div>
+        <div class="v">1</div>
+        <div class="note">차량최소화 기본 (ACTIVE_YN=Y)</div>
+      </div>
+      <div class="info-card">
+        <div class="k">목적식</div>
+        <div class="v">MIN_VEHICLES</div>
+        <div class="note">차량 수 최소화 + FFD BinPacking</div>
+      </div>
+      <div class="info-card">
+        <div class="k">흥아지업 전체 배차</div>
+        <div class="v">2대</div>
+        <div class="note">12건 5,801.5kg → 18톤 + 10톤</div>
+      </div>
+      <div class="info-card hl-warn">
+        <div class="k">260509033T 위치</div>
+        <div class="v">2번째 차량</div>
+        <div class="note">경량 6건 945.8kg → 10톤 배정</div>
+      </div>
+    </div>
+
+    <div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:8px;">▶ 차량 선정 알고리즘 경로</div>
+    <div class="flow">
+      <div class="flow-step hl">
+        <div class="fs-label">① 롤 판별</div>
+        <div class="fs-val">_is_roll_it() = True</div>
+        <div class="fs-sub">UOMKEY='R' → 롤로 분류<br>⚠️ Ream인데 오분류</div>
+      </div>
+      <div class="flow-step">
+        <div class="fs-label">② 인치 분석</div>
+        <div class="fs-val">GE300 × 6속</div>
+        <div class="fs-sub">GSM 350~400 ≥ 300<br>12인치 기준 적용</div>
+      </div>
+      <div class="flow-step">
+        <div class="fs-label">③ 롤수 체크</div>
+        <div class="fs-val">6롤 / MAX=6</div>
+        <div class="fs-sub">INCH12_GE300=6 (10톤)<br>정확히 MAX에 맞음</div>
+      </div>
+      <div class="flow-step">
+        <div class="fs-label">④ _best_fit_car()</div>
+        <div class="fs-val">효율최적 선정</div>
+        <div class="fs-sub">945.8kg 필요<br>롤수 제약 우선 적용</div>
+      </div>
+      <div class="flow-step ok">
+        <div class="fs-label">⑤ 최종 선정</div>
+        <div class="fs-val">10톤 확정</div>
+        <div class="fs-sub">INCH12_GE300=6 차종<br>첨부율 9.5%</div>
+      </div>
+    </div>
+    
+    <div class="divider"></div>
+    
+    <div class="issue-box warn" style="margin-top:8px;">
+      <h4>⚠️ UOMKEY='R' 오분류 — 핵심 원인</h4>
+      <p>
+        <code>_is_roll_it()</code> 함수는 <code>UOMKEY=='R'</code>이면 무조건 롤(Roll)로 판별합니다.<br>
+        그러나 이 6건의 UOMKEY='R'은 <strong>Ream(속) 단위</strong>의 판지 포장을 의미합니다. 
+        SKUKEY 접두어 <code>F</code>(=평판지)임에도 롤 배차 경로로 진입하여 
+        <strong>INCH12_GE300=6 (롤수 MAX_COUNT)</strong> 기준으로 10톤이 선정되었습니다.
+      </p>
+    </div>
+
+    <div class="issue-box info" style="margin-top:8px;">
+      <h4>ℹ️ 왜 1.4톤이 아닌 10톤인가?</h4>
+      <p>
+        중량 기준만 보면 945.83kg은 1.4톤(1,500kg, 첨부율 63%)에 적재 가능합니다.<br>
+        그러나 <strong>롤 배차 경로</strong>에서 INCH12_GE300 롤수 = <strong>정확히 6속</strong>이고, 
+        10톤의 MAX_COUNT도 6이므로 알고리즘은 <em>"10톤에 딱 맞는다"</em>고 판단합니다.<br>
+        <code>_best_fit_car()</code>는 롤수 제약을 만족하는 차종 중 첨부율 최고를 선택하므로, 
+        6롤을 수용 가능한 가장 작은 차종인 10톤(INCH12_GE300=6)이 선택됩니다.
+      </p>
+    </div>
+
+    <!-- 차량 규모 비교표 -->
+    <div style="margin-top:12px;">
+      <div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:8px;">▶ 차종별 INCH12_GE300 비교 — 6롤 수용 최소 차종 = 10톤</div>
+      <table style="max-width:700px;">
+        <thead>
+          <tr><th>차종</th><th>적재(kg)</th><th>INCH12_GE300</th><th>6롤 수용</th><th>945.83kg 적재율</th><th>선정여부</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1.4톤</td><td class="num">1,500</td><td class="num">2</td><td class="s-issue">❌ 불가(2<6)</td><td class="num">63.1%</td><td>-</td></tr>
+          <tr><td>2톤</td><td class="num">2,000</td><td class="num">3</td><td class="s-issue">❌ 불가(3<6)</td><td class="num">47.3%</td><td>-</td></tr>
+          <tr><td>5톤</td><td class="num">5,000</td><td class="num">4</td><td class="s-issue">❌ 불가(4<6)</td><td class="num">18.9%</td><td>-</td></tr>
+          <tr><td>8톤</td><td class="num">8,000</td><td class="num">5</td><td class="s-issue">❌ 불가(5<6)</td><td class="num">11.8%</td><td>-</td></tr>
+          <tr style="background:#f0fdf4;font-weight:700;">
+            <td>10톤</td><td class="num">10,000</td><td class="num">6</td>
+            <td class="s-pass">✅ 가능(6=6)</td><td class="num s-warn">9.5%</td>
+            <td class="s-pass">✅ 선정</td>
+          </tr>
+          <tr><td>11톤</td><td class="num">11,000</td><td class="num">7</td><td class="s-pass">✅ 가능(7≥6)</td><td class="num">8.6%</td><td>-</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 3. 10톤 차량 스펙 ══════════════════ -->
+<div class="section">
+  <div class="section-head theme-gray">
+    <div class="icon">🚛</div>
+    <h2>3. DS_VEHICLE — 10톤 스펙 (CARCLASS_CD=Z100)</h2>
+  </div>
+  <div class="section-body">
+    <div class="info-grid">
+      <div class="info-card"><div class="k">적재 용량</div><div class="v">10,000 kg</div></div>
+      <div class="info-card"><div class="k">적재함 크기</div><div class="v">9.5×2.4×2.4 m</div></div>
+      <div class="info-card"><div class="k">팔레트 높이 차감</div><div class="v">0.15 m</div><div class="note">유효높이 = 2.25 m</div></div>
+      <div class="info-card"><div class="k">적재함 CBM</div><div class="v">54.72 m³</div></div>
+      <div class="info-card hl-pass"><div class="k">INCH12_GE300 (MAX)</div><div class="v">6 롤</div><div class="note">★ 이 값이 10톤 선정 결정</div></div>
+      <div class="info-card"><div class="k">INCH12_LT300 (MAX)</div><div class="v">8 롤</div></div>
+      <div class="info-card"><div class="k">INCH3_GE300 (MAX)</div><div class="v">14 롤</div></div>
+      <div class="info-card"><div class="k">팔레트 수</div><div class="v">16 매</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 4. 제약조건 전체 검증표 ══════════════════ -->
+<div class="section">
+  <div class="section-head theme-green">
+    <div class="icon">✅</div>
+    <h2>4. 제약조건 전체 대조 검증 (PROFILE_ID=1, 67건)</h2>
+    <span class="badge badge-pass">47 PASS / 4 주의 / 1 N/A</span>
+  </div>
+  <div class="section-body">
+
+    <!-- 요약 바 -->
+    <div class="summary-bar" style="margin-bottom:16px;">
+      <div class="sum-card c-pass"><div class="cnt">47</div><div class="lbl">✅ PASS</div></div>
+      <div class="sum-card c-warn"><div class="cnt">4</div><div class="lbl">⚠️ 주의</div></div>
+      <div class="sum-card c-issue"><div class="cnt">0</div><div class="lbl">❌ 위반</div></div>
+      <div class="sum-card c-na"><div class="cnt">1</div><div class="lbl">— N/A</div></div>
+    </div>
+
+    <table class="const-table">
+      <thead>
+        <tr>
+          <th>구분</th><th>ID</th><th>제약키</th><th>연산</th><th>설정값</th>
+          <th>실측값</th><th>결과</th><th>검증 근거</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- GLOBAL -->
+        <tr class="ctype-row"><td colspan="8">GLOBAL — 5건</td></tr>
+        <tr><td>GLOBAL</td><td>1</td><td class="mono">MAX_VEHICLES_PER_GROUP</td><td>≤</td><td>99</td><td>2대</td><td class="s-pass">✅ PASS</td><td>흥아지업 전체 2대 (≤99)</td></tr>
+        <tr><td>GLOBAL</td><td>2</td><td class="mono">ALLOW_SPLIT_ITEM</td><td>=</td><td>Y</td><td>IS_SPLIT=0</td><td class="s-pass">✅ PASS</td><td>6건 모두 비분할</td></tr>
+        <tr><td>GLOBAL</td><td>3</td><td class="mono">ALLOW_MIXED_LOAD</td><td>=</td><td>N</td><td>단일납품처</td><td class="s-pass">✅ PASS</td><td>혼적 없음</td></tr>
+        <tr><td>GLOBAL</td><td>4</td><td class="mono">MIN_FILL_RATIO</td><td>≥</td><td>0%</td><td>9.5%</td><td class="s-pass">✅ PASS</td><td>하한 없음(0%)</td></tr>
+        <tr><td>GLOBAL</td><td>5</td><td class="mono">MAX_FILL_RATIO</td><td>≤</td><td>100%</td><td>9.5%</td><td class="s-pass">✅ PASS</td><td>9.5% ≤ 100%</td></tr>
+
+        <!-- VEHICLE -->
+        <tr class="ctype-row"><td colspan="8">VEHICLE — 16건 (ID 18~33)</td></tr>
+        <tr><td>VEHICLE</td><td>27</td><td class="mono">ALLOW_CARTYPE (10톤)</td><td>=</td><td>Y</td><td>10톤</td><td class="s-pass">✅ PASS</td><td>USARG1='Y', ID=27 허용</td></tr>
+
+        <!-- CARGO -->
+        <tr class="ctype-row"><td colspan="8">CARGO — 3건</td></tr>
+        <tr><td>CARGO</td><td>13</td><td class="mono">MAX_ROLL_STACK_TIER</td><td>≤</td><td>2</td><td>N/A (판지)</td><td class="s-na">— N/A</td><td>판지 Ream → 롤 분류되었으나 실제 단수 쌓기 없음</td></tr>
+        <tr><td>CARGO</td><td>14</td><td class="mono">MAX_BOARD_HEIGHT_M</td><td>≤</td><td>2.4m</td><td>~0.2m 이내</td><td class="s-pass">✅ PASS</td><td>판지 적재 높이 ≪ 2.4m</td></tr>
+        <tr><td>CARGO</td><td>15</td><td class="mono">ROLL_SINGLE_KG_FALLBACK</td><td>=</td><td>600kg</td><td>69~147kg</td><td class="s-pass">✅ PASS</td><td>단중 모두 600kg 미만</td></tr>
+
+        <!-- ROLL_UNIT -->
+        <tr class="ctype-row"><td colspan="8">ROLL_UNIT — 3건</td></tr>
+        <tr><td>ROLL_UNIT</td><td>34</td><td class="mono">ROLL_INTEGER_ONLY</td><td>=</td><td>Y</td><td>1.6R / 0.8R / 0.4R</td><td class="s-warn">⚠️ 주의</td><td>비정수 수량 존재 → 롤 분류 시 정수 강제 위반 가능</td></tr>
+        <tr><td>ROLL_UNIT</td><td>35</td><td class="mono">ROLL_SPLIT_ALLOWED</td><td>=</td><td>N</td><td>IS_SPLIT=0</td><td class="s-pass">✅ PASS</td><td>분할 없음</td></tr>
+        <tr><td>ROLL_UNIT</td><td>36</td><td class="mono">ROLL_MIN_QTY</td><td>≥</td><td>1</td><td>최소 0.4R</td><td class="s-warn">⚠️ 주의</td><td>0.4R, 0.8R &lt; 1 → 롤 분류 시 위반 가능</td></tr>
+
+        <!-- ROLL_STACK -->
+        <tr class="ctype-row"><td colspan="8">ROLL_STACK — 4건</td></tr>
+        <tr><td>ROLL_STACK</td><td>37</td><td class="mono">ROLL_MAX_TIER</td><td>≤</td><td>3</td><td>1단</td><td class="s-pass">✅ PASS</td><td>판지 평적 — 단수 개념 없음</td></tr>
+        <tr><td>ROLL_STACK</td><td>38</td><td class="mono">ROLL_PALLET_DEDUCT_M</td><td>=</td><td>0.15m</td><td>0.15m 차감</td><td class="s-pass">✅ PASS</td><td>유효높이 = 2.25m</td></tr>
+        <tr><td>ROLL_STACK</td><td>39</td><td class="mono">ROLL_PALLET_APPLY_YN</td><td>=</td><td>Y</td><td>기본 Y</td><td class="s-pass">✅ PASS</td><td>BZPTN_DETAIL 없음 → 기본 Y 적용</td></tr>
+        <tr><td>ROLL_STACK</td><td>40</td><td class="mono">ROLL_HEIGHT_MARGIN_M</td><td>=</td><td>0m</td><td>0m</td><td class="s-pass">✅ PASS</td><td>마진 없음</td></tr>
+
+        <!-- ROLL_INCH_MIX -->
+        <tr class="ctype-row"><td colspan="8">ROLL_INCH_MIX — 7건</td></tr>
+        <tr><td>ROLL_INCH_MIX</td><td>41</td><td class="mono">ROLL_INCH_MIX_ALLOW</td><td>=</td><td>Y</td><td>전부 3인치</td><td class="s-pass">✅ PASS</td><td>단일 인치</td></tr>
+        <tr><td>ROLL_INCH_MIX</td><td>42</td><td class="mono">ROLL_2D_PACK_ENGINE</td><td>=</td><td>Y</td><td>단일인치</td><td class="s-pass">✅ PASS</td><td>혼합 없음</td></tr>
+        <tr><td>ROLL_INCH_MIX</td><td>43</td><td class="mono">ROLL_SAME_INCH_FORCE</td><td>=</td><td>N</td><td>혼재 허용</td><td class="s-pass">✅ PASS</td><td>N → 혼재허용 (전부 동일인치)</td></tr>
+        <tr><td>ROLL_INCH_MIX</td><td>44</td><td class="mono">ROLL_REF_12INCH_LT300</td><td>=</td><td>2,3,4,5,7,7,7</td><td>해당없음</td><td class="s-pass">✅ PASS</td><td>전품목 GSM≥300 → LT300 미적용</td></tr>
+        <tr><td>ROLL_INCH_MIX</td><td>45</td><td class="mono">ROLL_REF_12INCH_GE300</td><td>=</td><td>2,3,4,5,7,7,7</td><td>DS_VEH MAX=6</td><td class="s-pass">✅ PASS</td><td>10톤 INCH12_GE300=6, 실제 6속 ≤ 6</td></tr>
+        <tr><td>ROLL_INCH_MIX</td><td>46</td><td class="mono">ROLL_REF_3INCH_LT300</td><td>=</td><td>3,5,10,12,14,14,15</td><td>GSM≥300</td><td class="s-pass">✅ PASS</td><td>LT300 미적용</td></tr>
+        <tr><td>ROLL_INCH_MIX</td><td>47</td><td class="mono">ROLL_REF_3INCH_GE300</td><td>=</td><td>3,5,10,12,14,14,15</td><td>6속(3인치)</td><td class="s-warn">⚠️ 불일치</td><td>SKUKEY=3인치이나 알고리즘은 12인치 기준(6) 적용</td></tr>
+
+        <!-- ROLL_3D_VERIFY -->
+        <tr class="ctype-row"><td colspan="8">ROLL_3D_VERIFY — 3건</td></tr>
+        <tr><td>ROLL_3D_VFY</td><td>48</td><td class="mono">ROLL_3D_CHECK_YN</td><td>=</td><td>Y</td><td>CBM 0.47%</td><td class="s-pass">✅ PASS</td><td>3D 검증 여유충분</td></tr>
+        <tr><td>ROLL_3D_VFY</td><td>49</td><td class="mono">ROLL_3D_DEAD_SPACE_PCT</td><td>≤</td><td>0%</td><td>0.47%</td><td class="s-pass">✅ PASS</td><td>추정 0.259m³ / 54.72m³</td></tr>
+        <tr><td>ROLL_3D_VFY</td><td>50</td><td class="mono">ROLL_OVERSIZE_ACTION</td><td>=</td><td>SPLIT</td><td>초과없음</td><td class="s-pass">✅ PASS</td><td>치수 초과 없음</td></tr>
+
+        <!-- BOARD_CBM_WEIGHT -->
+        <tr class="ctype-row"><td colspan="8">BOARD_CBM_WEIGHT — 4건</td></tr>
+        <tr><td>BOARD_CBM</td><td>51</td><td class="mono">BOARD_CBM_CHECK_YN</td><td>=</td><td>Y</td><td>0.47%</td><td class="s-pass">✅ PASS</td><td>CBM ≤ 100%</td></tr>
+        <tr><td>BOARD_CBM</td><td>52</td><td class="mono">BOARD_MAX_CBM_RATIO</td><td>≤</td><td>100%</td><td>0.47%</td><td class="s-pass">✅ PASS</td><td>0.47% ≤ 100%</td></tr>
+        <tr><td>BOARD_CBM</td><td>53</td><td class="mono">BOARD_MAX_TON_RATIO</td><td>≤</td><td>100%</td><td>9.5%</td><td class="s-pass">✅ PASS</td><td>9.5% ≤ 100%</td></tr>
+        <tr><td>BOARD_CBM</td><td>54</td><td class="mono">BOARD_DUAL_THRESHOLD</td><td>=</td><td>Y</td><td>CBM+중량 OK</td><td class="s-pass">✅ PASS</td><td>이중임계치 양쪽 통과</td></tr>
+
+        <!-- BOARD_BULK_SPLIT -->
+        <tr class="ctype-row"><td colspan="8">BOARD_BULK_SPLIT — 4건</td></tr>
+        <tr><td>BOARD_BULK</td><td>55</td><td class="mono">BOARD_BULK_INTEGER_ONLY</td><td>=</td><td>Y</td><td>1.6/0.8/0.4R</td><td class="s-warn">⚠️ 잠재이슈</td><td>비정수 수량 → 벌크 정수 강제 위반 가능</td></tr>
+        <tr><td>BOARD_BULK</td><td>56</td><td class="mono">BOARD_INNER_SPLIT_ALLOW</td><td>=</td><td>Y</td><td>분할없음</td><td class="s-pass">✅ PASS</td><td>IS_SPLIT=0</td></tr>
+        <tr><td>BOARD_BULK</td><td>57</td><td class="mono">BOARD_INNER_STACK_ALLOW</td><td>=</td><td>Y</td><td>허용=Y</td><td class="s-pass">✅ PASS</td><td>추가 적재 허용</td></tr>
+        <tr><td>BOARD_BULK</td><td>58</td><td class="mono">BOARD_INNER_OVERFLOW_ACT</td><td>=</td><td>SPLIT</td><td>초과없음</td><td class="s-pass">✅ PASS</td><td>9.5% 적재, 초과 없음</td></tr>
+
+        <!-- BOARD_FLEX_SPLIT -->
+        <tr class="ctype-row"><td colspan="8">BOARD_FLEX_SPLIT — 3건</td></tr>
+        <tr><td>BOARD_FLEX</td><td>59</td><td class="mono">BOARD_FLEX_SPLIT_YN</td><td>=</td><td>Y</td><td>분할없음</td><td class="s-pass">✅ PASS</td><td>초과없어 분할불필요</td></tr>
+        <tr><td>BOARD_FLEX</td><td>60</td><td class="mono">BOARD_SPLIT_UNIT</td><td>=</td><td>EA</td><td>N/A</td><td class="s-pass">✅ PASS</td><td>분할없음</td></tr>
+        <tr><td>BOARD_FLEX</td><td>61</td><td class="mono">BOARD_SPLIT_OVERFLOW</td><td>=</td><td>Y</td><td>초과없음</td><td class="s-pass">✅ PASS</td><td>초과없음</td></tr>
+
+        <!-- BOARD_3D_VERIFY -->
+        <tr class="ctype-row"><td colspan="8">BOARD_3D_VERIFY — 3건</td></tr>
+        <tr><td>BOARD_3D</td><td>62</td><td class="mono">BOARD_3D_CHECK_YN</td><td>=</td><td>Y</td><td>0.47%</td><td class="s-pass">✅ PASS</td><td>높이/CBM 모두 통과</td></tr>
+        <tr><td>BOARD_3D</td><td>63</td><td class="mono">BOARD_3D_DEAD_SPACE_PCT</td><td>≤</td><td>0%</td><td>0.47%</td><td class="s-pass">✅ PASS</td><td>0.259m³ ≪ 54.72m³</td></tr>
+        <tr><td>BOARD_3D</td><td>64</td><td class="mono">BOARD_HEIGHT_MAX_M</td><td>≤</td><td>2.4m</td><td>~0.2m 이내</td><td class="s-pass">✅ PASS</td><td>판지 평적</td></tr>
+
+        <!-- MIX -->
+        <tr class="ctype-row"><td colspan="8">MIX (Z_AXIS/Y_LIFO/DUAL_VERIFY) — 6건</td></tr>
+        <tr><td>MIX_Z_AXIS</td><td>65</td><td class="mono">MIX_ROLL_BOTTOM_FORCE</td><td>=</td><td>Y</td><td>원지없음</td><td class="s-pass">✅ PASS</td><td>혼재 없음 — 적용대상 아님</td></tr>
+        <tr><td>MIX_Y_LIFO</td><td>66</td><td class="mono">MIX_LIFO_ENABLE</td><td>=</td><td>Y</td><td>단일납품처</td><td class="s-pass">✅ PASS</td><td>LIFO 불필요</td></tr>
+        <tr><td>MIX_Y_LIFO</td><td>67</td><td class="mono">MIX_ZONE_SPLIT_YN</td><td>=</td><td>Y</td><td>판지만</td><td class="s-pass">✅ PASS</td><td>Zone 분할 불필요</td></tr>
+        <tr><td>MIX_DUAL</td><td>68</td><td class="mono">MIX_WEIGHT_CHECK_YN</td><td>=</td><td>Y</td><td>945.8kg</td><td class="s-pass">✅ PASS</td><td>945.8kg ≤ 10,000kg</td></tr>
+        <tr><td>MIX_DUAL</td><td>69</td><td class="mono">MIX_HEIGHT_CHECK_YN</td><td>=</td><td>Y</td><td>높이OK</td><td class="s-pass">✅ PASS</td><td>원지 없음</td></tr>
+        <tr><td>MIX_DUAL</td><td>70</td><td class="mono">MIX_3D_CHECK_YN</td><td>=</td><td>Y</td><td>0.5%</td><td class="s-pass">✅ PASS</td><td>단일품목군</td></tr>
+
+        <!-- DYNAMIC_ZONE -->
+        <tr class="ctype-row"><td colspan="8">DYNAMIC_ZONE — 4건</td></tr>
+        <tr><td>DYNAMIC</td><td>71</td><td class="mono">DYNAMIC_GROUP_BY</td><td>=</td><td>AREA_CD</td><td>단일납품처</td><td class="s-pass">✅ PASS</td><td>동적그룹 미해당</td></tr>
+        <tr><td>DYNAMIC</td><td>72</td><td class="mono">DYNAMIC_DEFAULT_YN</td><td>=</td><td>Y</td><td>기본=Y</td><td class="s-pass">✅ PASS</td><td>BZPTN_DETAIL 없음 → 기본Y</td></tr>
+        <tr><td>DYNAMIC</td><td>73</td><td class="mono">DYNAMIC_MIN_GROUP_SIZE</td><td>≥</td><td>1</td><td>1납품처</td><td class="s-pass">✅ PASS</td><td>1 ≥ 1</td></tr>
+        <tr><td>DYNAMIC</td><td>74</td><td class="mono">DYNAMIC_AREA_FORCE_YN</td><td>=</td><td>Y</td><td>단일구역</td><td class="s-pass">✅ PASS</td><td>단독이므로 통과</td></tr>
+
+        <!-- COST -->
+        <tr class="ctype-row"><td colspan="8">COST — 2건</td></tr>
+        <tr><td>COST</td><td>16</td><td class="mono">COST_REF_DATE</td><td>=</td><td>TODAY</td><td>20260702</td><td class="s-pass">✅ PASS</td><td>당일 운임 기준</td></tr>
+        <tr><td>COST</td><td>17</td><td class="mono">COST_PENALTY_OVER</td><td>=</td><td>1.5배</td><td>초과없음</td><td class="s-pass">✅ PASS</td><td>9.5% — 초과 없음, 패널티 미발생</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════ 5. 주의사항 상세 ══════════════════ -->
+<div class="section">
+  <div class="section-head theme-amber">
+    <div class="icon">⚠️</div>
+    <h2>5. 주의사항 상세 분석 (4건)</h2>
+    <span class="badge badge-warn">제약 위반 아님 — 알고리즘 설계 이슈</span>
+  </div>
+  <div class="section-body">
+
+    <div class="issue-box warn">
+      <h4>⚠️ Issue #1 — UOMKEY='R' 롤 오분류 (핵심)</h4>
+      <p>
+        <strong>관련 제약:</strong> ROLL_UNIT(34,36), ROLL_INCH_MIX(47)<br><br>
+        <code>_is_roll_it(it)</code> 함수 내 <code>if uom == 'R': return True</code> 조건으로 인해<br>
+        이 6건의 <strong>판지 Ream(속) 포장품</strong>이 모두 <strong>원지 롤(Roll)</strong>로 분류됩니다.<br><br>
+        결과: INCH12/INCH3 롤수 체크, ROLL_INTEGER_ONLY, ROLL_MIN_QTY 등 
+        <strong>원지 전용 제약</strong>이 판지에 적용됩니다.<br><br>
+        <strong>수정 권고:</strong> <code>_is_roll_it()</code>에 SKUKEY[0]=='H' 추가 조건 적용
+        <br><code>→ if uom == 'R' and skukey[0] == 'H': return True</code>
+      </p>
+    </div>
+
+    <div class="issue-box warn">
+      <h4>⚠️ Issue #2 — ROLL_INTEGER_ONLY 위반 가능성 (ID=34)</h4>
+      <p>
+        ROLL_INTEGER_ONLY=Y는 <strong>원지 롤의 정수 단위 강제</strong> 제약입니다.<br>
+        SEQ2(1.6R), SEQ5(0.8R), SEQ6(0.4R)은 비정수 수량이나,<br>
+        이 품목들은 <strong>판지 Ream 포장</strong>이므로 해당 제약 대상이 아닙니다.<br>
+        UOMKEY='R' 오분류로 인해 잘못 적용될 수 있는 이슈입니다.
+      </p>
+    </div>
+
+    <div class="issue-box warn">
+      <h4>⚠️ Issue #3 — ROLL_MIN_QTY 위반 가능성 (ID=36)</h4>
+      <p>
+        ROLL_MIN_QTY≥1은 <strong>원지 최소 1롤 배차 보장</strong> 제약입니다.<br>
+        0.4R(SEQ6), 0.8R(SEQ5)는 1미만이나, 이 역시 <strong>판지 Ream 수량</strong>이므로<br>
+        원지 기준이 적용되어서는 안 됩니다.
+      </p>
+    </div>
+
+    <div class="issue-box warn">
+      <h4>⚠️ Issue #4 — ROLL_REF_3INCH_GE300 인치 기준 불일치 (ID=47)</h4>
+      <p>
+        SKUKEY[1]='3' → 3인치 코어인데, 알고리즘 API 노트는 
+        <strong>"[12인치 롤수체크] GE300 6롤 / MAX_COUNT=6"</strong>으로 
+        <strong>12인치 기준(INCH12_GE300)</strong>을 적용했습니다.<br><br>
+        3인치 기준 ROLL_REF_3INCH_GE300=3,5,10,12,14,14,15에서 10톤 MAX는 
+        <strong>14롤</strong>이므로, 3인치 기준으로는 10톤에 14속까지 가능합니다.<br>
+        현 알고리즘이 인치 판별 없이 INCH12_GE300을 기본값으로 사용하는지 확인이 필요합니다.
+      </p>
+    </div>
+
+    <div class="issue-box info">
+      <h4>ℹ️ BOARD_BULK_INTEGER_ONLY 잠재 이슈 (ID=55)</h4>
+      <p>
+        BOARD_BULK_INTEGER_ONLY=Y는 <strong>판지 벌크 1PLT 단위 강제</strong> 제약입니다.<br>
+        1.6R, 0.8R, 0.4R의 비정수 수량은 이 제약과 충돌할 수 있으나,<br>
+        BOARD_INNER_SPLIT_ALLOW=Y에 의해 속 단위 분할이 허용되므로 
+        실질적 위반은 아닙니다.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 6. 9.5% 저적재율 분석 ══════════════════ -->
+<div class="section">
+  <div class="section-head theme-red">
+    <div class="icon">📊</div>
+    <h2>6. 적재율 9.5% 저효율 원인 분석</h2>
+    <span class="badge badge-issue">945.83kg / 10,000kg</span>
+  </div>
+  <div class="section-body">
+    <div class="info-grid" style="margin-bottom:16px;">
+      <div class="info-card hl-issue">
+        <div class="k">실제 적재율</div>
+        <div class="v">9.5%</div>
+        <div class="note">945.83 / 10,000kg</div>
+      </div>
+      <div class="info-card hl-pass">
+        <div class="k">중량 기준 적정 차종</div>
+        <div class="v">1.4톤</div>
+        <div class="note">적재율 63.1% (이상적)</div>
+      </div>
+      <div class="info-card hl-warn">
+        <div class="k">롤수 제약 최소 차종</div>
+        <div class="v">10톤</div>
+        <div class="note">INCH12_GE300=6 → 6속 수용</div>
+      </div>
+      <div class="info-card">
+        <div class="k">적재율 차이</div>
+        <div class="v">63.1% → 9.5%</div>
+        <div class="note">▼ 53.6%p 손실</div>
+      </div>
+    </div>
+
+    <!-- 적재율 게이지 -->
+    <div style="margin-bottom:16px;">
+      <div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:8px;">▶ 차종별 적재율 시뮬레이션</div>
+      <table style="max-width:700px;">
+        <thead><tr><th>차종</th><th>적재(kg)</th><th>적재율</th><th>비율 시각화</th><th>롤수 수용</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>1.4톤</td><td class="num">1,500</td><td class="num s-pass">63.1%</td>
+            <td><div class="prog-bar"><div class="fill fill-pass" style="width:63.1%"></div></div></td>
+            <td class="s-issue">❌ 2롤 (부족)</td>
+          </tr>
+          <tr>
+            <td>8톤</td><td class="num">8,000</td><td class="num s-warn">11.8%</td>
+            <td><div class="prog-bar"><div class="fill fill-warn" style="width:11.8%"></div></div></td>
+            <td class="s-issue">❌ 5롤 (부족)</td>
+          </tr>
+          <tr style="background:#fef2f2;">
+            <td><strong>10톤 (선정)</strong></td><td class="num">10,000</td><td class="num s-issue"><strong>9.5%</strong></td>
+            <td><div class="prog-bar"><div class="fill fill-issue" style="width:9.5%"></div></div></td>
+            <td class="s-pass">✅ 6롤 (딱 맞음)</td>
+          </tr>
+          <tr>
+            <td>11톤</td><td class="num">11,000</td><td class="num">8.6%</td>
+            <td><div class="prog-bar"><div class="fill fill-issue" style="width:8.6%"></div></div></td>
+            <td class="s-pass">✅ 7롤 이상</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="issue-box issue">
+      <h4>❗ 저적재율의 근본 원인 — UOMKEY='R' 오분류</h4>
+      <p>
+        <strong>판지 Ream 6속 (945.83kg)</strong>은 중량 기준으로 <strong>1.4톤 차량(63.1%)</strong>에 충분히 탑재 가능합니다.<br><br>
+        그러나 <code>_is_roll_it()</code>의 UOMKEY='R' 오분류로 인해 
+        <strong>원지 롤 배차 경로</strong>가 적용되고, 
+        롤수 기준(INCH12_GE300=6)으로 <strong>10톤이 최소 적합 차종</strong>으로 선정됩니다.<br><br>
+        결과: <strong>945.83kg을 10,000kg 차량에 적재 → 9.5% 이용률</strong>이라는 
+        비효율적 배차가 발생했습니다.
+      </p>
+    </div>
+
+    <div class="issue-box pass">
+      <h4>✅ 단, 제약조건 위반은 없음</h4>
+      <p>
+        MIN_FILL_RATIO = 0% (하한 없음)이므로 9.5% 적재율은 <strong>제약 위반이 아닙니다</strong>.<br>
+        또한 MAX_FILL_RATIO = 100%이하이므로 상한도 통과합니다.<br>
+        알고리즘이 의도한 대로 동작하였으나, 
+        <strong>UOMKEY='R' 분류 로직 자체의 설계 결함</strong>으로 인해 
+        비효율적 결과가 발생한 것입니다.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 7. 최종 판정 ══════════════════ -->
+<div class="section">
+  <div class="section-head theme-green">
+    <div class="icon">🏁</div>
+    <h2>7. 최종 배차 적절성 판정</h2>
+  </div>
+  <div class="section-body">
+    <div class="verdict warn">
+      <div class="v-icon">⚠️</div>
+      <div class="v-title" style="color:#d97706;">조건부 적절 — 알고리즘 동작 정합, 단 효율 이슈 존재</div>
+      <div class="v-sub">
+        제약조건 67건 전체 대조 결과 <strong>Hard 위반 0건</strong>으로 확인되었습니다.<br>
+        배차번호 260509033T는 PROFILE_ID=1(MIN_VEHICLES) 기준 내에서 정상 처리되었으나,<br>
+        <strong>UOMKEY='R' 오분류</strong>로 인해 9.5%의 극저 적재율이 발생하였습니다.<br>
+        물류 효율화를 위해 <code>_is_roll_it()</code> 함수 수정이 권고됩니다.
+      </div>
+    </div>
+
+    <div style="margin-top:16px;" class="info-grid">
+      <div class="info-card hl-pass">
+        <div class="k">Hard 제약 위반</div>
+        <div class="v">0건</div>
+        <div class="note">67건 모두 통과 또는 N/A</div>
+      </div>
+      <div class="info-card">
+        <div class="k">알고리즘 정합성</div>
+        <div class="v">✅ 정상</div>
+        <div class="note">MIN_VEHICLES + FFD BinPacking 정상 작동</div>
+      </div>
+      <div class="info-card hl-warn">
+        <div class="k">물류 효율</div>
+        <div class="v">⚠️ 9.5%</div>
+        <div class="note">이상적: 63.1% (1.4톤 기준)</div>
+      </div>
+      <div class="info-card">
+        <div class="k">수정 우선순위</div>
+        <div class="v">🔴 High</div>
+        <div class="note">_is_roll_it() SKUKEY[0] 조건 추가</div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;">
+      <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px;">▶ 알고리즘 수정 권고사항</div>
+
+      <div class="issue-box purple">
+        <h4>🔧 권고 #1 — _is_roll_it() 함수 수정 (최우선)</h4>
+        <p>
+          현재: <code>if uom == 'R': return True</code><br>
+          수정: <code>if uom == 'R' and _ps_is_roll(skukey): return True</code><br>
+          또는: <code>if uom == 'R' and skukey and skukey[0] == 'H': return True</code><br><br>
+          효과: 판지 Ream이 롤 경로에서 분리 → 중량 기반 차종 선정 → 
+          1.4톤 또는 2톤 선정 → <strong>적재율 60%+ 달성</strong>
+        </p>
+      </div>
+
+      <div class="issue-box info">
+        <h4>🔧 권고 #2 — MIN_FILL_RATIO 설정값 검토</h4>
+        <p>
+          현재 MIN_FILL_RATIO=0% (제한없음)이므로 9.5% 적재도 허용됩니다.<br>
+          판지 전용 최소 적재율(예: 20~30%)을 설정하면 
+          극저 적재율 배차 자동 차단이 가능합니다.
+        </p>
+      </div>
+
+      <div class="issue-box info">
+        <h4>🔧 권고 #3 — SKUMA 마스터 등록</h4>
+        <p>
+          6개 품목 모두 SKUMA 테이블에 미등록 상태입니다.<br>
+          SKUKEY 파싱에 의존하는 현재 방식보다 SKUMA 등록으로 
+          CBM/치수 계산의 정확도를 높이는 것을 권고합니다.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 8. 재현 이력 ══════════════════ -->
+<div class="section">
+  <div class="section-head theme-gray">
+    <div class="icon">🔄</div>
+    <h2>8. 배차 재현 이력 및 DB 일치 확인</h2>
+  </div>
+  <div class="section-body">
+    <div class="issue-box pass">
+      <h4>✅ 자동배차 API 재현 완전 일치</h4>
+      <p>
+        POST /api/ps-dispatch/auto (흥아지업/20260509 전체 12건 5,801.5kg 입력)<br>
+        → <strong>2대 분할 배차</strong> 결과:<br>
+        &nbsp;&nbsp;차량1: 6건 4,855.7kg → 18톤 (28.6%)<br>
+        &nbsp;&nbsp;<strong>차량2: 6건 945.8kg → 10톤 (9.5%) ← 260509033T 일치</strong><br><br>
+        API 노트:
+        <code>[12인치 롤수체크] GE300 6롤 / MAX_COUNT=6 (OK)</code>
+        <code>[효율최적-중량기준] 10톤 선정 (적재필요 945.8kg / 차량적재 10000kg / 첨부율 9.5%)</code>
+      </p>
+    </div>
+
+    <div class="divider"></div>
+
+    <table style="max-width:600px;margin-top:4px;">
+      <thead><tr><th>검증 항목</th><th>PS_DISPATCH_H/D 저장값</th><th>API 재현값</th><th>일치</th></tr></thead>
+      <tbody>
+        <tr><td>차종</td><td>10톤</td><td>10톤</td><td class="s-pass">✅</td></tr>
+        <tr><td>총중량</td><td>945.83 kg</td><td>945.83 kg</td><td class="s-pass">✅</td></tr>
+        <tr><td>품목수</td><td>6건</td><td>6건</td><td class="s-pass">✅</td></tr>
+        <tr><td>SHPOKY 목록</td><td>191/062/059/060/063/066</td><td>동일</td><td class="s-pass">✅</td></tr>
+        <tr><td>적재율</td><td>9.5%</td><td>9.5%</td><td class="s-pass">✅</td></tr>
+        <tr><td>IS_SPLIT</td><td>모두 0</td><td>분할없음</td><td class="s-pass">✅</td></tr>
+        <tr><td>재배차 여부</td><td>260509017T → 취소 후 재배차</td><td>-</td><td class="s-pass">✅</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════ FOOTER ══════════════════ -->
+<div style="text-align:center;color:#94a3b8;font-size:11px;margin-top:24px;padding:16px;">
+  배차 검증 리포트 | 260509033T | DS_DISPATCH_PROFILE PROFILE_ID=1 (MIN_VEHICLES) | 제약조건 67건 전체 검증<br>
+  생성일시: 2026-07-02 | WMS Flask v5050 | SQLite wms.db
+</div>
+
+</div><!-- .page -->
+</body>
+</html>

@@ -3273,11 +3273,18 @@ def api_ps_dispatch_auto():
         for (dptnky, dptnm, rqshpd), grp_items in sorted(groups.items()):
 
             # ── 아이템 분류: 원지(롤) vs 판지(평판) vs 기타
-            # UOMKEY='R'이면 롤지로 우선 판별 (SKUKEY[13:17]=='0000' 조건 보완)
+            # [FIX] UOMKEY='R' 단독 조건 제거 — Ream(속) 포장 판지도 UOMKEY='R'을 사용하므로
+            #   반드시 SKUKEY[0]=='H'(원지 접두어) 또는 SKUKEY[13:17]=='0000'(롤길이) 조건을
+            #   함께 확인해야 합니다. SKUKEY[0]=='F'(판지) 이면서 UOMKEY='R'인 경우는
+            #   판지 Ream 포장으로 판단합니다.
             def _is_roll_it(it):
+                sk  = (it.get('SKUKEY') or '').strip()
                 uom = (it.get('UOMKEY') or '').strip()
-                if uom == 'R': return True
-                return _ps_is_roll(it.get('SKUKEY', ''))
+                # SKUKEY 기반 원지 판별이 최우선 (길이파트=='0000' → 롤)
+                if _ps_is_roll(sk): return True
+                # UOMKEY='R' + SKUKEY[0]=='H'(원지 접두어)인 경우만 롤로 인정
+                if uom == 'R' and len(sk) > 0 and sk[0] == 'H': return True
+                return False
             def _is_board_it(it):
                 if _is_roll_it(it): return False
                 return _ps_is_board(it.get('SKUKEY', ''))
@@ -7905,22 +7912,39 @@ def api_dcon_auto():
             return 999
 
         # ── 목적식별 차량 선정 함수 ──────────────────────────────────
-        ROLL_SINGLE_KG = _cfloat('ROLL_SINGLE_KG_FALLBACK', 600.0)
-        MIN_FILL  = _cfloat('MIN_FILL_RATIO', 0.0) / 100.0
-        MAX_FILL  = _cfloat('MAX_FILL_RATIO', 100.0) / 100.0
-        penalty   = _cfloat('COST_PENALTY_OVER', 1.5)
+        ROLL_SINGLE_KG  = _cfloat('ROLL_SINGLE_KG_FALLBACK', 600.0)
+        MIN_FILL        = _cfloat('MIN_FILL_RATIO',  0.0) / 100.0
+        MAX_FILL        = _cfloat('MAX_FILL_RATIO', 100.0) / 100.0
+        penalty         = _cfloat('COST_PENALTY_OVER', 1.5)
+        # 판지 전용 최소 적재율 (BOARD_MIN_FILL_RATIO): 설정 없으면 MIN_FILL 상속
+        _board_min_raw  = _cfloat('BOARD_MIN_FILL_RATIO', -1.0)
+        BOARD_MIN_FILL  = (_board_min_raw / 100.0) if _board_min_raw >= 0 else MIN_FILL
 
-        def _select_car_min_vehicles(need_kg, valid_cars):
-            """MIN_VEHICLES: 첨부율 최대 (기존 best_fit_car)"""
+        def _select_car_min_vehicles(need_kg, valid_cars, material_type=''):
+            """MIN_VEHICLES: 첨부율 최대 (best_fit_car).
+            material_type='BOARD'이면 BOARD_MIN_FILL_RATIO 하한을 준수합니다.
+            MIN_FILL(또는 BOARD_MIN_FILL) 조건을 만족하는 차량 중 적재율 최대 차량 선정.
+            조건 만족 차량 없으면 need_kg를 수용하는 가장 작은 차량으로 폴백합니다.
+            """
+            min_f = BOARD_MIN_FILL if material_type == 'BOARD' else MIN_FILL
             best, best_ratio = None, -1.0
+            fallback, fallback_ratio = None, -1.0   # min_fill 미달이지만 적재 가능한 후보
             for c in valid_cars:
                 cap = veh_info.get(c['CARTYPE'],{}).get('load_kg',0)
                 if cap <= 0: continue
                 if cap >= need_kg:
                     r = need_kg / cap
-                    if r > best_ratio: best_ratio, best = r, c['CARTYPE']
+                    # 하한 체크: min_fill > 0이면 적용
+                    if min_f > 0 and r < min_f:
+                        # 폴백 후보 (하한 미달, 하한 조건 없을 때 최선)
+                        if r > fallback_ratio:
+                            fallback_ratio, fallback = r, c['CARTYPE']
+                        continue
+                    if r > best_ratio:
+                        best_ratio, best = r, c['CARTYPE']
+            # min_fill 조건 충족 차량 없으면: 폴백 후보 → 가장 큰 차량 순으로 폴백
             if best is None:
-                best = valid_cars[0]['CARTYPE'] if valid_cars else '판별불가'
+                best = fallback if fallback else (valid_cars[0]['CARTYPE'] if valid_cars else '판별불가')
             return best
 
         def _select_car_max_fill(need_kg, valid_cars):
@@ -7939,7 +7963,7 @@ def api_dcon_auto():
                 best = _select_car_min_vehicles(need_kg, valid_cars)
             return best
 
-        def _select_car_min_cost(need_kg, valid_cars, dptnky):
+        def _select_car_min_cost(need_kg, valid_cars, dptnky, material_type=''):
             """MIN_COST: ROUTE_COST 기준 최저비용 + 패널티 보정"""
             costs = route_cost_map.get(dptnky, {})
             best_car, best_cost = None, float('inf')
@@ -7962,22 +7986,29 @@ def api_dcon_auto():
                 if actual_cost < best_cost:
                     best_cost, best_car = actual_cost, ct
             if best_car is None:
-                best_car = _select_car_min_vehicles(need_kg, valid_cars)
+                best_car = _select_car_min_vehicles(need_kg, valid_cars, material_type)
             return best_car
 
-        def _select_car(need_kg, valid_cars, dptnky=''):
+        def _select_car(need_kg, valid_cars, dptnky='', material_type=''):
+            """목적식 + 재질 유형에 따른 차량 선정.
+            material_type='BOARD'이면 BOARD_MIN_FILL_RATIO 하한이 적용됩니다.
+            """
             if objective == 'MAX_FILL':
                 return _select_car_max_fill(need_kg, valid_cars)
             elif objective == 'MIN_COST':
-                return _select_car_min_cost(need_kg, valid_cars, dptnky)
+                return _select_car_min_cost(need_kg, valid_cars, dptnky, material_type)
             else:  # MIN_VEHICLES (default)
-                return _select_car_min_vehicles(need_kg, valid_cars)
+                return _select_car_min_vehicles(need_kg, valid_cars, material_type)
 
         # ── 제약 파라미터 ────────────────────────────────────────────
-        ALLOW_SPLIT      = _cbool('ALLOW_SPLIT_ITEM', 'Y')
-        ALLOW_MIXED_LOAD = _cbool('ALLOW_MIXED_LOAD', 'N')
-        MAX_STACK        = int(_cfloat('MAX_ROLL_STACK_TIER', 2))
-        MAX_B_HGT        = _cfloat('MAX_BOARD_HEIGHT_M', 2.4)
+        ALLOW_SPLIT        = _cbool('ALLOW_SPLIT_ITEM', 'Y')
+        ALLOW_MIXED_LOAD   = _cbool('ALLOW_MIXED_LOAD', 'N')
+        MAX_STACK          = int(_cfloat('MAX_ROLL_STACK_TIER', 2))
+        MAX_B_HGT          = _cfloat('MAX_BOARD_HEIGHT_M', 2.4)
+        # 판지 벌크 정수 강제 여부: Y=정수 단위만 허용, N=소수점 허용
+        BOARD_BULK_INT_ONLY = _cbool('BOARD_BULK_INTEGER_ONLY', 'Y')
+        # 속포장 내부 분할 허용 여부: Y=허용, N=불가
+        BOARD_INNER_SPLIT   = _cbool('BOARD_INNER_SPLIT_ALLOW', 'Y')
 
         # ── 그룹핑 + 배차 ────────────────────────────────────────────
         # ALLOW_MIXED_LOAD='Y': 우편번호 앞 3자리가 같은 납품처끼리 혼적 그룹 구성
@@ -8077,13 +8108,39 @@ def api_dcon_auto():
             return _ps_calc_roll_diameter(ROLL_SINGLE_KG, gsm, wmm)
 
         def _board_kg_c(it):
-            if it.get('KG_WEIGHT') is not None: return float(it['KG_WEIGHT'])
+            """판지 아이템 총 중량(kg) 계산.
+            우선순위: KG_WEIGHT 필드 → SKUMA.GRSWGT×QTSHPO → SHPDI.GRSWGT×QTSHPO → QTSHPO 그대로
+            UOMKEY='R': Ream(속) 단위 수량 × 속당 중량
+            """
+            if it.get('KG_WEIGHT') is not None and float(it.get('KG_WEIGHT') or 0) > 0:
+                return float(it['KG_WEIGHT'])
             uom = (it.get('UOMKEY') or '').strip()
             qty = float(it.get('QTSHPO') or 0)
             if uom == 'R':
+                # 1순위: SKUMA.GRSWGT
                 gw = skuma_map.get(it.get('SKUKEY',''), {}).get('grswgt', 0)
-                return qty * gw if gw > 0 else qty
+                if gw > 0:
+                    return qty * gw
+                # 2순위: SHPDI.GRSWGT (아이템 컬럼)
+                item_gw = float(it.get('GRSWGT') or 0)
+                if item_gw > 0:
+                    return qty * item_gw
+                return qty
             return qty
+
+        def _board_qty_warn(it):
+            """BOARD_BULK_INTEGER_ONLY=Y 일 때 비정수 Ream 수량 경고 반환 (없으면 None)
+            판지 Ream(R) 수량이 정수가 아닌 경우 경고 문자열 반환.
+            BOARD_INNER_SPLIT_ALLOW=Y 이면 속 단위 분할이 허용되어 실질 위반 아님 — 정보 노트로만 출력.
+            """
+            if not BOARD_BULK_INT_ONLY:
+                return None
+            uom = (it.get('UOMKEY') or '').strip()
+            qty = float(it.get('QTSHPO') or 0)
+            if uom == 'R' and qty != int(qty):
+                action = '속단위분할허용(BOARD_INNER_SPLIT_ALLOW=Y)' if BOARD_INNER_SPLIT else '분할불가'
+                return (f"[BOARD_BULK_INTEGER_ONLY] {it.get('SKUKEY','')} "
+                        f"수량={qty}R (비정수) → {action}")
 
         def _board_h_c(it):
             return _calc_board_stack_height_m(it, skuma_map)
@@ -8151,12 +8208,16 @@ def api_dcon_auto():
             is_dynamic_blocked = (dyn_yn == 'N')       # True → 고정노선 전용 오더
 
             def _is_roll_item(it):
-                """롤지(원지) 여부: UOMKEY='R' OR SKUKEY 기준 판별 (두 조건 OR)
-                SKUKEY[13:17]=='0000' 조건은 일부 데이터에서 맞지 않으므로
-                UOMKEY='R'을 우선 판별 기준으로 사용"""
+                """롤지(원지) 여부: SKUKEY 기반 판별 우선, UOMKEY='R'은 SKUKEY[0]='H'와 함께 판단.
+                [FIX] UOMKEY='R' 단독 판별 제거 — 판지 Ream(속) 포장도 UOMKEY='R'을 사용하므로
+                SKUKEY[0]=='H'(원지 접두어) 또는 SKUKEY[13:17]=='0000'(롤 길이) 조건 필수."""
+                sk  = (it.get('SKUKEY') or '').strip()
                 uom = (it.get('UOMKEY') or '').strip()
-                if uom == 'R': return True
-                return _ps_is_roll(it.get('SKUKEY', ''))
+                # SKUKEY 기반 원지 판별 최우선
+                if _ps_is_roll(sk): return True
+                # UOMKEY='R' 이면서 SKUKEY 접두어가 'H'(원지)인 경우만 롤로 인정
+                if uom == 'R' and len(sk) > 0 and sk[0] == 'H': return True
+                return False
 
             def _is_board_item(it):
                 """판지(평판) 여부: _is_roll_item=False 이고 SKUKEY 기준 판지"""
@@ -8423,7 +8484,7 @@ def api_dcon_auto():
 
                 for vb_idx, vb in enumerate(veh_list_b):
                     veh_kg = vb['total_kg']
-                    veh_car = _select_car(veh_kg, valid_cars, dptnky)
+                    veh_car = _select_car(veh_kg, valid_cars, dptnky, material_type='BOARD')
                     cap = veh_info.get(veh_car,{}).get('load_kg',0)
                     fill = (veh_kg/cap*100) if cap>0 else 0
                     cost_val = route_cost_map.get(dptnky,{}).get(veh_car,0)
@@ -8442,6 +8503,11 @@ def api_dcon_auto():
                         + (f" / CBM{total_cbm:.2f}m³/{veh_cbm_cap:.1f}m³({cbm_fill:.0f}%)" if total_cbm > 0 else "")
                         + (f" / 운송비{cost_val:,.0f}원" if cost_val>0 else "") + ")"
                     ]
+                    # BOARD_BULK_INTEGER_ONLY: 비정수 Ream 수량 검증 노트
+                    for it_b in vb['items']:
+                        bqw = _board_qty_warn(it_b)
+                        if bqw:
+                            notes_b.append(bqw)
                     # 속포장 분할 노트 (엑셀 §1-3: 속단위 분할 선적)
                     if vb_idx > 0 and vb.get('split_reason'):
                         notes_b.append(f"[분할선적-판지] {vb['split_reason']}으로 인한 후속 차량 배차")
