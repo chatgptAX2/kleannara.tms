@@ -4523,9 +4523,8 @@ def api_ps_sap_list():
         raw_rows = conn.execute(f"""
             SELECT
                 SI.STDLNR                                        AS STDLNR,
-                -- SAP 선적번호: PS 자동배차 번호(xxxT 형식)가 아닌 SAP 실제 선적번호
-                -- SHPDI에 STKNUM 컬럼 없음 → SVBELN(SAP 납품문서) 기준으로 대체
-                MAX(NULLIF(TRIM(COALESCE(SI.SVBELN,'')), ''))    AS SAP_STKNUM,
+                -- SAP 선적번호: RFC 선적생성 후 PS_DISPATCH_H.STKNUM에 저장된 TKNUM
+                NULLIF(TRIM(COALESCE(PH.STKNUM, '')), '')        AS SAP_STKNUM,
                 COUNT(DISTINCT SI.SVBELN)                        AS SVBELN_CNT,
                 COUNT(DISTINCT SI.SHPOKY)                        AS SHPOKY_CNT,
                 COUNT(*)                                         AS ITEM_CNT,
@@ -5240,30 +5239,39 @@ def api_ps_sap_shipment_create():
             is_mock = rfc_result.get('mock', False)
 
             # ── 3. RFC 성공 시 WMS_IFC301 공통처리 호출 ──
+            # ※ MOCK 응답이더라도 ok_flag=True 이면 WMS 호출 시도 (tknum 필요)
             wms_result = None
-            if ok_flag and tknum:
-                wms_result = _call_wms_ifc301(
-                    stdlnr=stdlnr, tknum=tknum, gubun='C', env=env
-                )
-                # DB: PS_DISPATCH_H.STKNUM 업데이트 (선적번호 기록)
-                try:
-                    conn.execute(
-                        "UPDATE PS_DISPATCH_H SET STKNUM=?, UPDDAT=? WHERE DISPATCH_NO=?",
-                        (tknum, __import__('datetime').datetime.now().strftime('%Y%m%d'), stdlnr)
+            db_update_err = None
+            if ok_flag:
+                if tknum:
+                    wms_result = _call_wms_ifc301(
+                        stdlnr=stdlnr, tknum=tknum, gubun='C', env=env
                     )
-                    conn.commit()
-                except Exception:
-                    pass  # STKNUM 컬럼 없으면 무시
+                    # DB: PS_DISPATCH_H.STKNUM 업데이트 (SAP선적번호 기록)
+                    try:
+                        import datetime as _dt
+                        conn.execute(
+                            "UPDATE PS_DISPATCH_H SET STKNUM=?, UPDDAT=? WHERE DISPATCH_NO=?",
+                            (tknum, _dt.datetime.now().strftime('%Y%m%d'), stdlnr)
+                        )
+                        conn.commit()
+                    except Exception as db_ex:
+                        db_update_err = str(db_ex)
+                        app.logger.error(f"[shipment-create] DB STKNUM 업데이트 실패: {db_ex} / stdlnr={stdlnr} tknum={tknum}")
+                else:
+                    # RFC 성공이지만 TKNUM 없음 → 응답 메시지에 기록
+                    msg = f"{msg} [경고: SAP TKNUM 미반환]".strip()
 
             results.append({
-                "stdlnr":     stdlnr,
-                "ok":         ok_flag,
-                "tknum":      tknum,
-                "mock":       is_mock,
-                "message":    msg,
-                "svbeln_cnt": len(svbeln_list),
-                "wms_result": wms_result,
-                "env":        env,
+                "stdlnr":        stdlnr,
+                "ok":            ok_flag,
+                "tknum":         tknum,
+                "mock":          is_mock,
+                "message":       msg,
+                "svbeln_cnt":    len(svbeln_list),
+                "wms_result":    wms_result,
+                "db_update_err": db_update_err,
+                "env":           env,
             })
 
     except Exception as e:
@@ -5319,29 +5327,33 @@ def api_ps_sap_shipment_delete():
             is_mock = rfc_result.get('mock', False)
 
             # ── 2. RFC 성공 시 WMS_IFC301 공통처리 호출 ──
-            wms_result = None
+            wms_result   = None
+            db_update_err = None
             if ok_flag:
                 wms_result = _call_wms_ifc301(
                     stdlnr=stdlnr, tknum=tknum, gubun='D', env=env
                 )
                 # DB: PS_DISPATCH_H.STKNUM 초기화
                 try:
+                    import datetime as _dt
                     conn.execute(
                         "UPDATE PS_DISPATCH_H SET STKNUM=NULL, UPDDAT=? WHERE DISPATCH_NO=?",
-                        (__import__('datetime').datetime.now().strftime('%Y%m%d'), stdlnr)
+                        (_dt.datetime.now().strftime('%Y%m%d'), stdlnr)
                     )
                     conn.commit()
-                except Exception:
-                    pass
+                except Exception as db_ex:
+                    db_update_err = str(db_ex)
+                    app.logger.error(f"[shipment-delete] DB STKNUM 초기화 실패: {db_ex} / stdlnr={stdlnr} tknum={tknum}")
 
             results.append({
-                "stdlnr":     stdlnr,
-                "tknum":      tknum,
-                "ok":         ok_flag,
-                "mock":       is_mock,
-                "message":    msg,
-                "wms_result": wms_result,
-                "env":        env,
+                "stdlnr":        stdlnr,
+                "tknum":         tknum,
+                "ok":            ok_flag,
+                "mock":          is_mock,
+                "message":       msg,
+                "wms_result":    wms_result,
+                "db_update_err": db_update_err,
+                "env":           env,
             })
 
     except Exception as e:
@@ -8587,4 +8599,20 @@ def api_dcon_auto():
 
 
 if __name__ == '__main__':
+    # ── 앱 기동 시 DB 스키마 마이그레이션 (컬럼 없으면 자동 추가) ──
+    _mig_conn = sqlite3.connect(DB_PATH)
+    try:
+        _existing = [r[1] for r in _mig_conn.execute('PRAGMA table_info(PS_DISPATCH_H)').fetchall()]
+        if 'STKNUM' not in _existing:
+            _mig_conn.execute('ALTER TABLE PS_DISPATCH_H ADD COLUMN STKNUM TEXT DEFAULT NULL')
+            app.logger.info('DB migration: PS_DISPATCH_H.STKNUM 컬럼 추가')
+        if 'UPDDAT' not in _existing:
+            _mig_conn.execute('ALTER TABLE PS_DISPATCH_H ADD COLUMN UPDDAT TEXT DEFAULT NULL')
+            app.logger.info('DB migration: PS_DISPATCH_H.UPDDAT 컬럼 추가')
+        _mig_conn.commit()
+    except Exception as _e:
+        app.logger.error(f'DB migration 실패: {_e}')
+    finally:
+        _mig_conn.close()
+
     app.run(host='0.0.0.0', port=5050, debug=False)
