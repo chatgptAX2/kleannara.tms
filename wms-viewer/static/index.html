@@ -14312,6 +14312,9 @@ function psopAddItemsToVehicleMem(pid, items) {
     if (row) row.DISPATCHED = true;
   });
   psopState.selectedDocs.clear();
+  // ★ 드래그 배차 후 배차상태 필터 '전체'로 전환 (납품문서 목록 빈 화면 방지)
+  const _dsd = document.getElementById('psop-disp-stat');
+  if (_dsd && _dsd.value === 'undispatched') _dsd.value = 'all';
   psopLoadVehicles();
   psopRenderDocTable();
   showToast(`✅ ${pid}에 ${items.length}건 추가됨`);
@@ -15071,6 +15074,12 @@ function psopSaveAutoResult(vehicles) {
     const newPid = `_pending_${psopState._pendingSeq - vehicles.length + 1}`;
     psopState.vehSelPid = newPid;
   }
+  // ★ 자동배차 완료 후: 배차상태 필터를 '전체'로 전환
+  //   이유: 모든 행이 DISPATCHED=true 되므로 '미배차' 필터 유지 시 납품문서 목록이 빈 화면으로 표시됨
+  const dispStatEl = document.getElementById('psop-disp-stat');
+  if (dispStatEl && dispStatEl.value === 'undispatched') {
+    dispStatEl.value = 'all';
+  }
   psopLoadVehicles();
   psopRenderDocTable();
   psopUpdateToolbar();
@@ -15166,6 +15175,9 @@ function psopExecuteManual(items) {
   });
   showToast(`✅ 수기배차 ${cartype} ${items.length}건 배차 목록에 추가됨 (배차저장 버튼으로 확정하세요)`);
   psopState.selectedDocs.clear();
+  // ★ 수기배차 완료 후: 배차상태 필터를 '전체'로 전환 (납품문서 목록 빈 화면 방지)
+  const _dse = document.getElementById('psop-disp-stat');
+  if (_dse && _dse.value === 'undispatched') _dse.value = 'all';
   psopLoadVehicles();
   psopRenderDocTable();
   psopUpdateToolbar();
