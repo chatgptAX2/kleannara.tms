@@ -4979,26 +4979,55 @@ def api_ps_sap_transmit():
 #    E_TKNUM  : 생성된 선적번호
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def _get_sap_rfc_url(env: str = 'dev') -> str:
-    """
-    환경(env)에 따라 SAP RFC 호출 주소 반환.
-    환경 분기:
-      - 'prod' : 운영환경 (향후 운영 URL로 교체)
-      - 그 외  : 로컬/개발환경
-    실제 SAP RFC는 HTTP-to-RFC 게이트웨이 URL을 사용.
-    """
-    if env == 'prod':
-        return 'https://sapms.kleannara.com/sap/bc/srt/rfc/sap/z_tms_shipment_crdl/100/z_tms_shipment_crdl/z_tms_shipment_crdl'
-    else:
-        return 'https://sapdev.kleannara.com/sap/bc/srt/rfc/sap/z_tms_shipment_crdl/100/z_tms_shipment_crdl/z_tms_shipment_crdl'
+# ══════════════════════════════════════════════════════════════
+#  SAP RFC 연결 설정
+#  - pyrfc(SAP NW RFC SDK 기반) 우선 사용
+#  - pyrfc 미설치 시 → mock fallback (개발/테스트용)
+#
+#  JCo 커넥션 파라미터:
+#    개발: ASHOST=10.2.14.210, SYSNUM=01, CLIENT=100
+#    운영: ASHOST=10.2.14.200, SYSNUM=01, CLIENT=100
+#    공통: USERID=WMS001, PASSWD=Klean22709290, LANG=KO
+# ══════════════════════════════════════════════════════════════
+
+# pyrfc import 시도 — 설치되지 않은 환경에서는 None으로 처리
+try:
+    import pyrfc as _pyrfc
+    _PYRFC_AVAILABLE = True
+except ImportError:
+    _pyrfc = None
+    _PYRFC_AVAILABLE = False
+
+
+# ── SAP JCo 커넥션 파라미터 (환경별) ────────────────────────
+_SAP_CONN_PARAMS = {
+    'dev': {
+        'ashost': '10.2.14.210',
+        'sysnr':  '01',
+        'sysid':  'DPQ',
+        'client': '100',
+        'user':   'WMS001',
+        'passwd': 'Klean22709290',
+        'lang':   'KO',
+    },
+    'prod': {
+        'ashost': '10.2.14.200',
+        'sysnr':  '01',
+        'sysid':  'DPP',
+        'client': '100',
+        'user':   'WMS001',
+        'passwd': 'Klean22709290',
+        'lang':   'KO',
+    },
+}
 
 
 def _get_wms_ifc_url(env: str = 'dev') -> str:
     """
     WMS_IFC301 공통처리 API URL (선적생성/삭제 후 WMS 동기화 호출용).
     환경 분기:
-      - 'prod' : 운영환경
-      - 그 외  : 로컬/개발환경
+      - 'prod' : 운영환경  → wms.kleannara.com
+      - 그 외  : 개발환경  → wmsdev.kleannara.com
     """
     if env == 'prod':
         return 'https://wms.kleannara.com/common/tmsApi/json/WMS_IFC301.data'
@@ -5009,9 +5038,8 @@ def _get_wms_ifc_url(env: str = 'dev') -> str:
 def _detect_env() -> str:
     """
     실행 환경 자동 감지.
-    - FLASK_ENV 환경변수가 'production' 이면 'prod'
-    - 그 외(개발서버, 로컬) 는 'dev'
-    앱 설정이나 서버 호스트명으로도 분기 가능.
+    - FLASK_ENV 또는 APP_ENV 환경변수가 'production' → 'prod'
+    - 그 외(개발서버, 로컬) → 'dev'
     """
     import os
     flask_env = os.environ.get('FLASK_ENV', '').lower()
@@ -5038,8 +5066,9 @@ def _call_wms_ifc301(stdlnr: str, tknum: str, gubun: str, env: str) -> dict:
         "TKNUM":  tknum,
     }
     try:
-        resp = _req.post(wms_url, json=payload, timeout=15,
-                         verify=False)   # 개발환경 자체서명 인증서 허용
+        resp = _req.post(wms_url, json=payload,
+                         timeout=(5, 10),   # (connect timeout, read timeout)
+                         verify=False)      # 개발환경 자체서명 인증서 허용
         resp.raise_for_status()
         return {"ok": True, "status_code": resp.status_code, "body": resp.text[:500]}
     except Exception as ex:
@@ -5048,63 +5077,112 @@ def _call_wms_ifc301(stdlnr: str, tknum: str, gubun: str, env: str) -> dict:
 
 def _call_sap_rfc_shipment(gubun: str, svbeln_list: list, tknum: str, env: str) -> dict:
     """
-    Z_TMS_SHIPMENT_CRDL RFC HTTP 호출.
-    실제 SAP RFC 게이트웨이가 있으면 연결, 없으면 mock 결과 반환.
+    Z_TMS_SHIPMENT_CRDL RFC 직접 호출 (pyrfc 사용).
+
+    호출 흐름:
+      1) pyrfc 설치 확인
+      2) _SAP_CONN_PARAMS[env] 로 Connection 생성
+      3) call_function('Z_TMS_SHIPMENT_CRDL', ...) 실행
+      4) E_RETURN.TYPE == 'S' → 성공
+      5) 연결 실패 / pyrfc 미설치 → mock fallback
+
     params:
       gubun       : 'C' 선적생성 / 'D' 선적삭제
       svbeln_list : 선적생성 시 납품문서 목록 (T_VBELN)
       tknum       : 선적삭제 시 SAP 선적번호 (I_TKNUM)
       env         : 'dev' | 'prod'
     """
-    import requests as _req
-    rfc_url = _get_sap_rfc_url(env)
+    # ── pyrfc 미설치 → mock ──────────────────────────────────
+    if not _PYRFC_AVAILABLE:
+        return _sap_rfc_mock(gubun, tknum, reason='pyrfc_not_installed')
 
-    # JSON body — SAP HTTP RFC 게이트웨이 표준 포맷
-    body = {
-        "I_GUBUN": gubun,
-        "I_TKNUM": tknum or "",
-        "I_VBELN": "",
-        "T_VBELN": [{"VBELN": v} for v in svbeln_list],
-    }
+    conn_params = _SAP_CONN_PARAMS.get(env, _SAP_CONN_PARAMS['dev'])
 
     try:
-        resp = _req.post(
-            rfc_url, json=body,
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
-            timeout=30, verify=False
-        )
-        resp.raise_for_status()
-        rdata = resp.json()
+        # ── SAP 연결 ──────────────────────────────────────────
+        with _pyrfc.Connection(**conn_params) as conn:
+
+            # T_VBELN 테이블 파라미터 구성
+            t_vbeln = [{'VBELN': str(v).zfill(10)} for v in svbeln_list]
+
+            # RFC 호출
+            result = conn.call(
+                'Z_TMS_SHIPMENT_CRDL',
+                I_GUBUN = gubun,
+                I_TKNUM = tknum or '',
+                I_VBELN = '',
+                T_VBELN = t_vbeln,
+            )
+
+        # ── 결과 파싱 ─────────────────────────────────────────
+        e_return  = result.get('E_RETURN') or {}
+        e_tknum   = (result.get('E_TKNUM') or '').strip()
+        ret_type  = (e_return.get('TYPE') or '').strip()
+        ret_msg   = (e_return.get('MESSAGE') or '').strip()
+
+        # MESSAGE_V1~V4 조합
+        for vi in ('MESSAGE_V1', 'MESSAGE_V2', 'MESSAGE_V3', 'MESSAGE_V4'):
+            v = (e_return.get(vi) or '').strip()
+            if v:
+                ret_msg = f"{ret_msg} {v}".strip()
+
+        ok_flag = (ret_type == 'S')
+
         return {
-            "ok":      rdata.get("E_RETURN", {}).get("TYPE", "E") == "S",
-            "E_RETURN": rdata.get("E_RETURN", {}),
-            "E_TKNUM":  rdata.get("E_TKNUM", ""),
-            "raw":      rdata,
+            "ok":       ok_flag,
+            "E_RETURN": e_return,
+            "E_TKNUM":  e_tknum,
+            "mock":     False,
         }
-    except _req.exceptions.ConnectionError:
-        # SAP RFC 게이트웨이 미연결 → mock 반환 (개발/테스트용)
-        if gubun == 'C':
-            mock_tknum = f"T{tknum or '9999999999'}"
-            return {
-                "ok": True,
-                "E_RETURN": {"TYPE": "S", "CODE": "488",
-                             "MESSAGE": f"[MOCK] 선적문서가 생성되었습니다.[{mock_tknum}]"},
-                "E_TKNUM": mock_tknum,
-                "mock": True,
-            }
-        else:
-            return {
-                "ok": True,
-                "E_RETURN": {"TYPE": "S", "CODE": "000",
-                             "MESSAGE": f"[MOCK] 선적문서가 성공적으로 삭제되었습니다."},
-                "E_TKNUM": "",
-                "mock": True,
-            }
+
     except Exception as ex:
+        # ── 연결 실패 또는 RFC 오류 ──────────────────────────
+        err_str = str(ex)
+        # RFC 자체 오류(ABAP exception 등)는 mock 없이 에러 반환
+        # 네트워크/연결 오류는 mock fallback
+        is_conn_err = any(k in err_str.lower() for k in
+                          ('connection', 'timeout', 'unreachable', 'refused',
+                           'network', 'logon', 'communicationerror'))
+        if is_conn_err:
+            return _sap_rfc_mock(gubun, tknum, reason=f'conn_error: {err_str[:120]}')
         return {
-            "ok": False,
-            "E_RETURN": {"TYPE": "E", "MESSAGE": str(ex)},
+            "ok":       False,
+            "E_RETURN": {"TYPE": "E", "CODE": "", "MESSAGE": err_str[:300]},
+            "E_TKNUM":  "",
+            "mock":     False,
+        }
+
+
+def _sap_rfc_mock(gubun: str, tknum: str, reason: str = '') -> dict:
+    """
+    SAP RFC 연결 불가 시 개발/테스트용 mock 응답 반환.
+    reason 문자열을 메시지에 포함하여 원인 파악 용이.
+    """
+    import time, random
+    if gubun == 'C':
+        # 선적생성 mock: 현재 시각 기반 더미 TKNUM
+        ts        = int(time.time() * 1000) % 10_000_000
+        mock_tknum = f"9{ts:07d}"
+        return {
+            "ok":   True,
+            "E_RETURN": {
+                "TYPE":    "S",
+                "CODE":    "488",
+                "MESSAGE": f"[MOCK] 선적문서 생성됨 [{mock_tknum}]  ({reason})",
+            },
+            "E_TKNUM": mock_tknum,
+            "mock":    True,
+        }
+    else:
+        return {
+            "ok":   True,
+            "E_RETURN": {
+                "TYPE":    "S",
+                "CODE":    "000",
+                "MESSAGE": f"[MOCK] 선적문서 삭제 처리됨  ({reason})",
+            },
             "E_TKNUM": "",
+            "mock":    True,
         }
 
 
