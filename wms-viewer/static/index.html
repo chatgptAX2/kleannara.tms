@@ -2168,6 +2168,38 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psop-vt-save-btn:disabled{opacity:.4;cursor:not-allowed}
 /* 배지 */
 .psop-vt-badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap}
+/* 적용유무 토글 스위치 */
+.psop-vt-use-toggle{
+  position:relative;display:inline-flex;align-items:center;
+  cursor:pointer;user-select:none;gap:6px;
+}
+.psop-vt-use-toggle input[type=checkbox]{
+  width:0;height:0;opacity:0;position:absolute;
+}
+.psop-vt-use-slider{
+  position:relative;width:40px;height:22px;
+  background:#cbd5e1;border-radius:11px;
+  transition:background .2s;flex-shrink:0;
+}
+.psop-vt-use-slider::after{
+  content:'';position:absolute;top:3px;left:3px;
+  width:16px;height:16px;background:#fff;
+  border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.25);
+  transition:transform .2s;
+}
+.psop-vt-use-toggle input:checked + .psop-vt-use-slider{background:#10b981}
+.psop-vt-use-toggle input:checked + .psop-vt-use-slider::after{transform:translateX(18px)}
+.psop-vt-use-toggle input:disabled + .psop-vt-use-slider{opacity:.5;cursor:not-allowed}
+.psop-vt-use-label{
+  font-size:11px;font-weight:700;white-space:nowrap;
+  min-width:28px;
+}
+.psop-vt-use-label.on{color:#059669}
+.psop-vt-use-label.off{color:#94a3b8}
+/* 비활성 행 흐림 처리 */
+.psop-vt-tbl tbody tr.row-inactive td:not(.td-use){
+  opacity:.45;
+}
 /* 전체저장 버튼 */
 .psop-vt-save-all-btn{
   padding:7px 18px;border-radius:9px;font-size:12px;font-weight:700;
@@ -12007,15 +12039,20 @@ const _psopVehTab = {
 async function psopLoadVehTab() {
   const tbody = document.getElementById('psop-vt-tbody');
   if (!tbody) return;
-  tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--text3)">⏳ 불러오는 중...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:28px;color:var(--text3)">⏳ 불러오는 중...</td></tr>`;
   _psopVehTab.dirty.clear();
   try {
     const res  = await fetch('/api/dispatch/strategy');
     const data = await res.json();
-    _psopVehTab.rows = (data.vehicle || []).slice().sort((a,b) => (a.SORT_SEQ||0)-(b.SORT_SEQ||0));
+    // carclass_ps(CMCDV TMS_CARCLASS10)의 use_yn을 CARCLASS_CD 기준으로 vehicle에 병합
+    const useMap = {};
+    (data.carclass_ps || data.carclass_options || []).forEach(c => { useMap[c.code] = c.use_yn; });
+    _psopVehTab.rows = (data.vehicle || []).slice()
+      .sort((a,b) => (a.SORT_SEQ||0)-(b.SORT_SEQ||0))
+      .map(r => ({ ...r, USE_YN: useMap[r.CARCLASS_CD] ?? 'Y' }));
     psopRenderVehTab();
   } catch(e) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:28px;color:#dc2626">⚠ 데이터 조회 실패: ${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:28px;color:#dc2626">⚠ 데이터 조회 실패: ${e.message}</td></tr>`;
   }
 }
 
@@ -12024,14 +12061,24 @@ function psopRenderVehTab() {
   const tbody = document.getElementById('psop-vt-tbody');
   if (!tbody) return;
   if (!_psopVehTab.rows.length) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text3)">등록된 차량이 없습니다.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text3)">등록된 차량이 없습니다.</td></tr>`;
     return;
   }
   const DS_CAR_COLOR_LOCAL = window.PSOP_CAR_COLOR || window.DS_CAR_COLOR || {};
   tbody.innerHTML = _psopVehTab.rows.map(r => {
-    const ccls = DS_CAR_COLOR_LOCAL[r.CARTYPE] || 'car-11t';
-    const cntVal = (r.DEFAULT_VEH_CNT != null && r.DEFAULT_VEH_CNT !== '') ? r.DEFAULT_VEH_CNT : '';
-    return `<tr id="psop-vtr-${CSS.escape(r.CARTYPE)}">
+    const ccls    = DS_CAR_COLOR_LOCAL[r.CARTYPE] || 'car-11t';
+    const cntVal  = (r.DEFAULT_VEH_CNT != null && r.DEFAULT_VEH_CNT !== '') ? r.DEFAULT_VEH_CNT : '';
+    const isOn    = (r.USE_YN || 'Y') === 'Y';
+    const ct      = r.CARTYPE.replace(/'/g, "\\'");
+    return `<tr id="psop-vtr-${CSS.escape(r.CARTYPE)}" class="${isOn ? '' : 'row-inactive'}">
+      <td class="center td-use">
+        <label class="psop-vt-use-toggle" title="${isOn ? '배차 포함 — 클릭하면 제외' : '배차 제외 — 클릭하면 포함'}">
+          <input type="checkbox" ${isOn ? 'checked' : ''}
+            onchange="psopToggleUseYn('${ct}', this.checked)">
+          <span class="psop-vt-use-slider"></span>
+          <span class="psop-vt-use-label ${isOn ? 'on' : 'off'}">${isOn ? 'ON' : 'OFF'}</span>
+        </label>
+      </td>
       <td class="center">
         <span style="font-family:monospace;font-size:11px;color:var(--text3)">${r.CARCLASS_CD || '-'}</span>
       </td>
@@ -12049,17 +12096,64 @@ function psopRenderVehTab() {
             data-carclass="${r.CARCLASS_CD||''}"
             value="${cntVal}"
             placeholder="-"
-            oninput="psopVehCntDirty('${r.CARTYPE.replace(/'/g,"\\'")}')"
-            onkeydown="if(event.key==='Enter')psopSaveVehCnt('${r.CARTYPE.replace(/'/g,"\\'")}')">
+            oninput="psopVehCntDirty('${ct}')"
+            onkeydown="if(event.key==='Enter')psopSaveVehCnt('${ct}')">
           <button class="psop-vt-save-btn"
             id="psop-vtb-${r.CARTYPE}"
-            onclick="psopSaveVehCnt('${r.CARTYPE.replace(/'/g,"\\'")}')">저장</button>
+            onclick="psopSaveVehCnt('${ct}')">저장</button>
         </div>
       </td>
     </tr>`;
   }).join('');
   /* 배지 갱신 */
   setTimeout(psopUpdateTabBadges, 0);
+}
+
+/* ── 적용유무 토글 → CMCDV.USARG1 즉시 저장 ── */
+async function psopToggleUseYn(cartype, checked) {
+  const useYn    = checked ? 'Y' : 'N';
+  const row      = _psopVehTab.rows.find(r => r.CARTYPE === cartype);
+  const statusEl = document.getElementById('psop-vt-status');
+  /* 라벨 즉시 갱신 (낙관적 UI) */
+  const tr = document.getElementById(`psop-vtr-${CSS.escape(cartype)}`);
+  if (tr) {
+    tr.classList.toggle('row-inactive', !checked);
+    const lbl = tr.querySelector('.psop-vt-use-label');
+    if (lbl) { lbl.textContent = checked ? 'ON' : 'OFF'; lbl.className = `psop-vt-use-label ${checked?'on':'off'}`; }
+    const tog = tr.querySelector('.psop-vt-use-toggle');
+    if (tog) tog.title = checked ? '배차 포함 — 클릭하면 제외' : '배차 제외 — 클릭하면 포함';
+  }
+  if (row) row.USE_YN = useYn;
+  try {
+    const res  = await fetch('/api/dispatch/strategy/save', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      /* table='vehicle' 전체 저장 → DS_VEHICLE + CMCDV.USARG1 + DS_INCH 동시 갱신 */
+      body: JSON.stringify({
+        table: 'vehicle',
+        rows:  _psopVehTab.rows.map(r => ({ ...r, tab: 'PS', USE_YN: r.USE_YN || 'Y' }))
+      }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '저장 실패');
+    if (statusEl) {
+      statusEl.textContent = `✅ ${cartype} 적용유무 ${useYn === 'Y' ? 'ON ✔' : 'OFF ✘'} 저장 완료`;
+      setTimeout(() => { if(statusEl) statusEl.textContent = ''; }, 2500);
+    }
+  } catch(e) {
+    /* 실패 시 UI 원복 */
+    const revOn = useYn !== 'Y';
+    if (row) row.USE_YN = revOn ? 'Y' : 'N';
+    if (tr) {
+      tr.classList.toggle('row-inactive', !revOn);
+      const chk = tr.querySelector('input[type=checkbox]');
+      if (chk) chk.checked = revOn;
+      const lbl = tr.querySelector('.psop-vt-use-label');
+      if (lbl) { lbl.textContent = revOn ? 'ON' : 'OFF'; lbl.className = `psop-vt-use-label ${revOn?'on':'off'}`; }
+    }
+    if (statusEl) statusEl.textContent = `⚠ 저장 실패: ${e.message}`;
+    showToast('저장 실패: ' + e.message);
+  }
 }
 
 /* ── 입력값 변경 감지 → dirty 표시 ── */
@@ -12108,34 +12202,39 @@ async function psopSaveAllVehCnt() {
   const statusEl = document.getElementById('psop-vt-status');
   if (btn) btn.disabled = true;
   if (statusEl) statusEl.textContent = '⏳ 저장 중...';
-  let ok = 0, fail = 0;
+  /* 화면의 최신 DEFAULT_VEH_CNT 값을 rows에 반영 후 전체 저장 */
   for (const r of _psopVehTab.rows) {
     const inp = document.getElementById(`psop-vtc-${r.CARTYPE}`);
     if (!inp) continue;
-    const val    = inp.value.trim();
-    const cntVal = (val !== '') ? parseInt(val) : null;
-    try {
-      const carclassCd = inp.dataset.carclass || '';
-      const res  = await fetch('/api/carclass/save', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ table: 'vehicle', CARTYPE: r.CARTYPE, CARCLASS_CD: carclassCd, DEFAULT_VEH_CNT: cntVal }),
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || '저장 실패');
-      r.DEFAULT_VEH_CNT = cntVal;
-      _psopVehTab.dirty.delete(r.CARTYPE);
-      inp.classList.remove('dirty'); inp.classList.add('saved');
-      setTimeout(() => inp.classList.remove('saved'), 1800);
-      ok++;
-    } catch(e) { fail++; }
+    const val = inp.value.trim();
+    r.DEFAULT_VEH_CNT = (val !== '') ? parseInt(val) : null;
   }
-  if (btn) btn.disabled = false;
-  if (statusEl) {
-    statusEl.textContent = fail === 0
-      ? `✅ 전체 ${ok}건 저장 완료`
-      : `⚠ ${ok}건 성공 / ${fail}건 실패`;
-    setTimeout(() => { if(statusEl) statusEl.textContent=''; }, 3000);
+  try {
+    const res = await fetch('/api/dispatch/strategy/save', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        table: 'vehicle',
+        rows:  _psopVehTab.rows.map(r => ({ ...r, tab: 'PS', USE_YN: r.USE_YN || 'Y' }))
+      }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '저장 실패');
+    /* 저장 성공 → dirty 클리어, saved 스타일 */
+    for (const r of _psopVehTab.rows) {
+      _psopVehTab.dirty.delete(r.CARTYPE);
+      const inp = document.getElementById(`psop-vtc-${r.CARTYPE}`);
+      if (inp) { inp.classList.remove('dirty'); inp.classList.add('saved'); setTimeout(() => inp.classList.remove('saved'), 1800); }
+    }
+    if (statusEl) {
+      statusEl.textContent = `✅ 전체 ${data.saved}건 저장 완료 (적용유무 포함)`;
+      setTimeout(() => { if(statusEl) statusEl.textContent=''; }, 3000);
+    }
+  } catch(e) {
+    if (statusEl) statusEl.textContent = `⚠ 저장 실패: ${e.message}`;
+    showToast('저장 실패: ' + e.message);
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -12207,6 +12306,7 @@ async function renderPsDispatchOpt() {
       <div class="psop-vt-tbl-wrap">
         <table class="psop-vt-tbl" id="psop-vt-tbl">
           <colgroup>
+            <col style="width:70px">   <!-- 적용유무(USE_YN) -->
             <col style="width:90px">   <!-- 코드키(CARCLASS_CD) -->
             <col style="width:110px">  <!-- 차량톤수명(CARTYPE) -->
             <col style="width:80px">   <!-- 길이(LENGTH_M) -->
@@ -12217,6 +12317,7 @@ async function renderPsDispatchOpt() {
           </colgroup>
           <thead>
             <tr>
+              <th title="자동배차 대상 포함 여부 (CMCDV TMS_CARCLASS10.USARG1)">적용유무</th>
               <th>코드키</th>
               <th>차량톤수명</th>
               <th>길이(m)</th>
@@ -12227,7 +12328,7 @@ async function renderPsDispatchOpt() {
             </tr>
           </thead>
           <tbody id="psop-vt-tbody">
-            <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text3)">로딩 중...</td></tr>
+            <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text3)">로딩 중...</td></tr>
           </tbody>
         </table>
       </div>
