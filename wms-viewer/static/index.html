@@ -2281,7 +2281,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
   display:none;flex:1;flex-direction:column;min-height:0;overflow:hidden;
 }
 .psop-tab-panel.active{display:flex}
-/* ══ 배차확정(SAP전송) 탭 — psd- CSS 재사용 ══ */
+/* ══ 배차확정(SAP선적) 탭 — psd- CSS 재사용 ══ */
 /* SAP 탭 패널 본문: 가로·세로 스크롤 모두 허용 (테이블이 컨테이너보다 넓을 수 있음) */
 #psop-panel-sap .psd-panel-body{overflow:auto}
 /* psd-empty-state: 빈 상태 메시지 */
@@ -10864,7 +10864,7 @@ function psopUpdateTabBadges() {
 }
 
 /* ══════════════════════════════════════════════════
-   배차확정(SAP전송) 탭
+   배차확정(SAP선적) 탭
 ══════════════════════════════════════════════════ */
 const _sapState = {
   rows:        [],       // 선적번호 목록 (왼쪽 그리드)
@@ -11108,8 +11108,15 @@ function _sapCheckAll(checked) {
 
 function _sapSyncButtons() {
   const hasSel = _sapState.checkedSet.size > 0;
+  // 배차삭제: 선택된 행이 있을 때 활성
   document.getElementById('sap-btn-delete')?.toggleAttribute('disabled', !hasSel);
-  document.getElementById('sap-btn-transmit')?.toggleAttribute('disabled', !hasSel);
+  // SAP 선적생성: 선택된 행이 있을 때 활성
+  document.getElementById('sap-btn-create')?.toggleAttribute('disabled', !hasSel);
+  // SAP 선적삭제: 선택된 행 중 SAP 선적번호(TKNUM)가 있는 행이 하나 이상일 때만 활성
+  const hasSelWithTknum = _sapState.rows.some(
+    r => _sapState.checkedSet.has(r.STDLNR) && r.SAP_STKNUM && r.SAP_STKNUM !== '-'
+  );
+  document.getElementById('sap-btn-sap-delete')?.toggleAttribute('disabled', !hasSelWithTknum);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -11669,24 +11676,160 @@ async function psopSapDelete() {
   }
 }
 
-async function psopSapTransmit() {
+/* ══════════════════════════════════════════════════
+   SAP 선적생성 — /api/ps-sap/shipment-create
+══════════════════════════════════════════════════ */
+async function psopSapShipmentCreate() {
   const stdlnrs = [..._sapState.checkedSet];
   if (!stdlnrs.length) return;
-  if (!confirm(`선택한 ${stdlnrs.length}건을 SAP로 전송하시겠습니까?`)) return;
+  if (!confirm(`선택한 ${stdlnrs.length}건의 가선적번호에 대해 SAP 선적을 생성하시겠습니까?`)) return;
+
+  // 버튼 비활성화 (중복 클릭 방지)
+  const btn = document.getElementById('sap-btn-create');
+  if (btn) btn.disabled = true;
 
   try {
-    const res = await fetch('/api/ps-sap/transmit', {
-      method:'POST', headers:{'Content-Type':'application/json'},
+    const res = await fetch('/api/ps-sap/shipment-create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ stknums: stdlnrs })
     });
     const data = await res.json();
-    if (!data.ok) throw new Error(data.error || '전송 실패');
-    showToast(`📡 ${data.message}`);
-    _sapState.checkedSet.clear();
-    await psopLoadSapList();
+
+    // 결과 모달 표시
+    _sapShowRfcResultModal('SAP 선적생성 결과', data.results || [], data.env || '');
+
+    if (data.ok) {
+      _sapState.checkedSet.clear();
+      await psopLoadSapList();
+    }
   } catch(e) {
-    showToast(`❌ SAP 전송 오류: ${e.message}`, 'error');
+    showToast(`❌ SAP 선적생성 오류: ${e.message}`, 'error');
+  } finally {
+    _sapSyncButtons();
   }
+}
+
+/* ══════════════════════════════════════════════════
+   SAP 선적삭제 — /api/ps-sap/shipment-delete
+══════════════════════════════════════════════════ */
+async function psopSapShipmentDelete() {
+  // 선택된 행 중 TKNUM(SAP선적번호)이 있는 것만 수집
+  const items = _sapState.rows
+    .filter(r => _sapState.checkedSet.has(r.STDLNR) && r.SAP_STKNUM && r.SAP_STKNUM !== '-')
+    .map(r => ({ stdlnr: r.STDLNR, tknum: r.SAP_STKNUM }));
+
+  if (!items.length) {
+    showToast('⚠️ SAP 선적번호(TKNUM)가 확정된 선적을 선택하세요.', 'warning');
+    return;
+  }
+
+  const tknumList = items.map(i => i.tknum).join(', ');
+  if (!confirm(`선택한 ${items.length}건의 SAP 선적을 삭제하시겠습니까?\n\n선적번호: ${tknumList}`)) return;
+
+  // 버튼 비활성화 (중복 클릭 방지)
+  const btn = document.getElementById('sap-btn-sap-delete');
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/ps-sap/shipment-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items })
+    });
+    const data = await res.json();
+
+    // 결과 모달 표시
+    _sapShowRfcResultModal('SAP 선적삭제 결과', data.results || [], data.env || '');
+
+    if (data.ok) {
+      _sapState.checkedSet.clear();
+      await psopLoadSapList();
+    }
+  } catch(e) {
+    showToast(`❌ SAP 선적삭제 오류: ${e.message}`, 'error');
+  } finally {
+    _sapSyncButtons();
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   SAP RFC 결과 모달 공통 함수
+══════════════════════════════════════════════════ */
+function _sapShowRfcResultModal(title, results, env) {
+  const okCount  = results.filter(r => r.ok).length;
+  const failCount = results.length - okCount;
+  const mockCount = results.filter(r => r.mock).length;
+
+  const envBadge = env
+    ? `<span style="font-size:10px;padding:2px 6px;border-radius:3px;font-weight:700;margin-left:8px;
+        background:${env==='prod'?'#c62828':'#1565c0'};color:#fff">${env.toUpperCase()}</span>`
+    : '';
+
+  const rows = results.map(r => {
+    const statusIcon  = r.ok ? '✅' : '❌';
+    const mockBadge   = r.mock ? '<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:#37474f;color:#90caf9;margin-left:4px">MOCK</span>' : '';
+    const tknumCell   = r.tknum ? `<span style="font-family:monospace;color:#80cbc4">${r.tknum}</span>` : '-';
+    const wmsIcon     = r.wms_result
+      ? (r.wms_result.ok ? '✅' : `⚠️ ${r.wms_result.error||'WMS오류'}`)
+      : '-';
+    const svbelnCnt   = r.svbeln_cnt != null ? `${r.svbeln_cnt}건` : '-';
+    return `<tr>
+      <td style="white-space:nowrap;font-family:monospace">${r.stdlnr||r.tknum||'-'}</td>
+      <td class="center">${statusIcon}${mockBadge}</td>
+      <td style="font-family:monospace;white-space:nowrap">${tknumCell}</td>
+      <td class="center">${svbelnCnt}</td>
+      <td class="center">${wmsIcon}</td>
+      <td style="font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+          title="${(r.message||'').replace(/"/g,'&quot;')}">${r.message||''}</td>
+    </tr>`;
+  }).join('');
+
+  const html = `
+    <div id="sap-rfc-modal-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;"
+         onclick="if(event.target===this)document.getElementById('sap-rfc-modal-overlay').remove()">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;width:min(780px,95vw);max-height:80vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.5)">
+        <!-- 헤더 -->
+        <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <span style="font-weight:700;font-size:14px">${title}</span>${envBadge}
+          <div style="margin-left:auto;display:flex;gap:8px;font-size:12px;color:var(--text2)">
+            <span>성공: <b style="color:#66bb6a">${okCount}건</b></span>
+            <span>실패: <b style="color:#ef5350">${failCount}건</b></span>
+            ${mockCount ? `<span style="color:#90caf9">MOCK: <b>${mockCount}건</b></span>` : ''}
+          </div>
+          <button onclick="document.getElementById('sap-rfc-modal-overlay').remove()"
+            style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px;line-height:1;padding:0 4px">✕</button>
+        </div>
+        <!-- 바디 -->
+        <div style="overflow:auto;flex:1;padding:12px">
+          ${mockCount ? `<div style="background:#1a237e;color:#90caf9;padding:6px 10px;border-radius:4px;font-size:11px;margin-bottom:8px">
+            ⚠️ MOCK 응답 포함 — SAP 서버 연결 실패 시 테스트용 더미 데이터가 반환됩니다.
+          </div>` : ''}
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead>
+              <tr style="background:var(--surface2);color:var(--text2)">
+                <th style="padding:5px 8px;text-align:left;white-space:nowrap">가선적번호/TKNUM</th>
+                <th style="padding:5px 8px;text-align:center;white-space:nowrap">결과</th>
+                <th style="padding:5px 8px;text-align:center;white-space:nowrap">SAP선적번호</th>
+                <th style="padding:5px 8px;text-align:center;white-space:nowrap">납품문서수</th>
+                <th style="padding:5px 8px;text-align:center;white-space:nowrap">WMS연동</th>
+                <th style="padding:5px 8px;text-align:left">메시지</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <!-- 푸터 -->
+        <div style="padding:10px 16px;border-top:1px solid var(--border);text-align:right;flex-shrink:0">
+          <button class="psd-btn" onclick="document.getElementById('sap-rfc-modal-overlay').remove()">닫기</button>
+        </div>
+      </div>
+    </div>`;
+
+  // 기존 모달 제거 후 삽입
+  const existing = document.getElementById('sap-rfc-modal-overlay');
+  if (existing) existing.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
 }
 
 /* ══════════════════════════════════════════════════
@@ -12043,7 +12186,7 @@ async function renderPsDispatchOpt() {
     </button>
     <button class="psop-tab-btn" id="psop-tab-btn-sap" onclick="psopSwitchTab('sap')">
       <span style="font-size:14px">✅</span>
-      <span>배차확정 (SAP전송)</span>
+      <span>배차확정 (SAP선적)</span>
       <span class="psop-tab-badge" id="psop-badge-sap">0</span>
     </button>
   </div>
@@ -12373,7 +12516,7 @@ async function renderPsDispatchOpt() {
     </div>
   </div>
 
-  <!-- ══ 탭 3: 배차확정(SAP전송) ══ -->
+  <!-- ══ 탭 3: 배차확정(SAP선적) ══ -->
   <div class="psop-tab-panel" id="psop-panel-sap">
     <div class="psd-root" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;">
       <!-- 툴바 -->
@@ -12393,7 +12536,9 @@ async function renderPsDispatchOpt() {
         <button class="psd-btn" onclick="psopLoadSapList()">🔍 조회</button>
         <div class="psd-sep"></div>
         <button class="psd-btn danger" id="sap-btn-delete" onclick="psopSapDelete()" disabled>🗑 배차삭제</button>
-        <button class="psd-btn success" id="sap-btn-transmit" onclick="psopSapTransmit()" disabled>📡 SAP 전송</button>
+        <button class="psd-btn success" id="sap-btn-create" onclick="psopSapShipmentCreate()" disabled>🚢 SAP 선적생성</button>
+        <button class="psd-btn" id="sap-btn-sap-delete" onclick="psopSapShipmentDelete()" disabled
+          style="background:#e65100;color:#fff;border-color:#e65100;">🗑️ SAP 선적삭제</button>
         <div style="margin-left:auto;display:flex;align-items:center;gap:12px;font-size:11px;color:var(--text2)">
           <span>선적: <b id="sap-stat-total" style="color:var(--primary)">0</b>건</span>
           <span style="color:var(--border)">|</span>

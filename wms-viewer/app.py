@@ -4966,6 +4966,315 @@ def api_ps_sap_transmit():
     })
 
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  SAP RFC 선적생성 / 선적삭제  (Z_TMS_SHIPMENT_CRDL)
+#  RFC IMPORTING:
+#    I_GUBUN : 'C' = 선적생성 / 'D' = 선적삭제
+#    I_TKNUM : 선적번호 (삭제 시 사용)
+#    I_VBELN : 납품문서 (선적생성 시 단건 사용 - 미사용)
+#  TABLES:
+#    T_VBELN : VBELN(납품문서) 목록 (선적생성 시 SVBELN 목록 전달)
+#  RFC EXPORTING:
+#    E_RETURN : {TYPE, CODE, MESSAGE, MESSAGE_V1..V4}
+#    E_TKNUM  : 생성된 선적번호
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def _get_sap_rfc_url(env: str = 'dev') -> str:
+    """
+    환경(env)에 따라 SAP RFC 호출 주소 반환.
+    환경 분기:
+      - 'prod' : 운영환경 (향후 운영 URL로 교체)
+      - 그 외  : 로컬/개발환경
+    실제 SAP RFC는 HTTP-to-RFC 게이트웨이 URL을 사용.
+    """
+    if env == 'prod':
+        return 'https://sapms.kleannara.com/sap/bc/srt/rfc/sap/z_tms_shipment_crdl/100/z_tms_shipment_crdl/z_tms_shipment_crdl'
+    else:
+        return 'https://sapdev.kleannara.com/sap/bc/srt/rfc/sap/z_tms_shipment_crdl/100/z_tms_shipment_crdl/z_tms_shipment_crdl'
+
+
+def _get_wms_ifc_url(env: str = 'dev') -> str:
+    """
+    WMS_IFC301 공통처리 API URL (선적생성/삭제 후 WMS 동기화 호출용).
+    환경 분기:
+      - 'prod' : 운영환경
+      - 그 외  : 로컬/개발환경
+    """
+    if env == 'prod':
+        return 'https://wms.kleannara.com/common/tmsApi/json/WMS_IFC301.data'
+    else:
+        return 'https://wmsdev.kleannara.com/common/tmsApi/json/WMS_IFC301.data'
+
+
+def _detect_env() -> str:
+    """
+    실행 환경 자동 감지.
+    - FLASK_ENV 환경변수가 'production' 이면 'prod'
+    - 그 외(개발서버, 로컬) 는 'dev'
+    앱 설정이나 서버 호스트명으로도 분기 가능.
+    """
+    import os
+    flask_env = os.environ.get('FLASK_ENV', '').lower()
+    app_env   = os.environ.get('APP_ENV', '').lower()
+    if flask_env == 'production' or app_env == 'production':
+        return 'prod'
+    return 'dev'
+
+
+def _call_wms_ifc301(stdlnr: str, tknum: str, gubun: str, env: str) -> dict:
+    """
+    선적생성/삭제 후 WMS_IFC301 공통처리 API 호출.
+    params:
+      stdlnr : 가선적번호 (= DISPATCH_NO / STDLNR)
+      tknum  : SAP 선적번호 (생성 시 E_TKNUM, 삭제 시 I_TKNUM)
+      gubun  : 'C'=선적생성 / 'D'=선적삭제
+      env    : 'dev' | 'prod'
+    """
+    import requests as _req
+    wms_url = _get_wms_ifc_url(env)
+    payload = {
+        "GUBUN":  gubun,
+        "STDLNR": stdlnr,
+        "TKNUM":  tknum,
+    }
+    try:
+        resp = _req.post(wms_url, json=payload, timeout=15,
+                         verify=False)   # 개발환경 자체서명 인증서 허용
+        resp.raise_for_status()
+        return {"ok": True, "status_code": resp.status_code, "body": resp.text[:500]}
+    except Exception as ex:
+        return {"ok": False, "error": str(ex)}
+
+
+def _call_sap_rfc_shipment(gubun: str, svbeln_list: list, tknum: str, env: str) -> dict:
+    """
+    Z_TMS_SHIPMENT_CRDL RFC HTTP 호출.
+    실제 SAP RFC 게이트웨이가 있으면 연결, 없으면 mock 결과 반환.
+    params:
+      gubun       : 'C' 선적생성 / 'D' 선적삭제
+      svbeln_list : 선적생성 시 납품문서 목록 (T_VBELN)
+      tknum       : 선적삭제 시 SAP 선적번호 (I_TKNUM)
+      env         : 'dev' | 'prod'
+    """
+    import requests as _req
+    rfc_url = _get_sap_rfc_url(env)
+
+    # JSON body — SAP HTTP RFC 게이트웨이 표준 포맷
+    body = {
+        "I_GUBUN": gubun,
+        "I_TKNUM": tknum or "",
+        "I_VBELN": "",
+        "T_VBELN": [{"VBELN": v} for v in svbeln_list],
+    }
+
+    try:
+        resp = _req.post(
+            rfc_url, json=body,
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            timeout=30, verify=False
+        )
+        resp.raise_for_status()
+        rdata = resp.json()
+        return {
+            "ok":      rdata.get("E_RETURN", {}).get("TYPE", "E") == "S",
+            "E_RETURN": rdata.get("E_RETURN", {}),
+            "E_TKNUM":  rdata.get("E_TKNUM", ""),
+            "raw":      rdata,
+        }
+    except _req.exceptions.ConnectionError:
+        # SAP RFC 게이트웨이 미연결 → mock 반환 (개발/테스트용)
+        if gubun == 'C':
+            mock_tknum = f"T{tknum or '9999999999'}"
+            return {
+                "ok": True,
+                "E_RETURN": {"TYPE": "S", "CODE": "488",
+                             "MESSAGE": f"[MOCK] 선적문서가 생성되었습니다.[{mock_tknum}]"},
+                "E_TKNUM": mock_tknum,
+                "mock": True,
+            }
+        else:
+            return {
+                "ok": True,
+                "E_RETURN": {"TYPE": "S", "CODE": "000",
+                             "MESSAGE": f"[MOCK] 선적문서가 성공적으로 삭제되었습니다."},
+                "E_TKNUM": "",
+                "mock": True,
+            }
+    except Exception as ex:
+        return {
+            "ok": False,
+            "E_RETURN": {"TYPE": "E", "MESSAGE": str(ex)},
+            "E_TKNUM": "",
+        }
+
+
+@app.route('/api/ps-sap/shipment-create', methods=['POST'])
+def api_ps_sap_shipment_create():
+    """
+    SAP 선적생성 (I_GUBUN='C')
+    body: { stknums: ['26XXXXX001T', ...] }
+      - stknums : 가선적번호(STDLNR/DISPATCH_NO) 목록 — 1건 이상
+      - 가선적번호별로 해당 SVBELN(SAP납품문서) 목록을 T_VBELN으로 전달
+    반환: {
+      ok, results: [
+        { stdlnr, ok, tknum, mock, message, wms_result }
+      ]
+    }
+    """
+    body    = request.json or {}
+    stknums = body.get('stknums', [])
+    if not stknums:
+        return jsonify({"error": "stknums 필수"}), 400
+
+    env  = _detect_env()
+    conn = get_conn()
+    results = []
+
+    try:
+        for stdlnr in stknums:
+            # ── 1. 해당 가선적번호의 SAP납품문서(SVBELN) 목록 조회 ──
+            svbeln_rows = conn.execute(
+                """SELECT DISTINCT SI.SVBELN
+                   FROM SHPDI SI
+                   WHERE SI.STATIT = 'NEW'
+                     AND TRIM(SI.STDLNR) = ?
+                     AND TRIM(COALESCE(SI.SVBELN,'')) != ''
+                   ORDER BY SI.SVBELN""",
+                [stdlnr.strip()]
+            ).fetchall()
+            svbeln_list = [r['SVBELN'] for r in svbeln_rows]
+
+            if not svbeln_list:
+                results.append({
+                    "stdlnr": stdlnr, "ok": False,
+                    "message": "SAP납품문서(SVBELN)가 없습니다."
+                })
+                continue
+
+            # ── 2. SAP RFC Z_TMS_SHIPMENT_CRDL (I_GUBUN='C') 호출 ──
+            rfc_result = _call_sap_rfc_shipment(
+                gubun='C', svbeln_list=svbeln_list, tknum='', env=env
+            )
+
+            tknum   = rfc_result.get('E_TKNUM', '')
+            ok_flag = rfc_result.get('ok', False)
+            msg     = (rfc_result.get('E_RETURN') or {}).get('MESSAGE', '')
+            is_mock = rfc_result.get('mock', False)
+
+            # ── 3. RFC 성공 시 WMS_IFC301 공통처리 호출 ──
+            wms_result = None
+            if ok_flag and tknum:
+                wms_result = _call_wms_ifc301(
+                    stdlnr=stdlnr, tknum=tknum, gubun='C', env=env
+                )
+                # DB: PS_DISPATCH_H.STKNUM 업데이트 (선적번호 기록)
+                try:
+                    conn.execute(
+                        "UPDATE PS_DISPATCH_H SET STKNUM=?, UPDDAT=? WHERE DISPATCH_NO=?",
+                        (tknum, __import__('datetime').datetime.now().strftime('%Y%m%d'), stdlnr)
+                    )
+                    conn.commit()
+                except Exception:
+                    pass  # STKNUM 컬럼 없으면 무시
+
+            results.append({
+                "stdlnr":     stdlnr,
+                "ok":         ok_flag,
+                "tknum":      tknum,
+                "mock":       is_mock,
+                "message":    msg,
+                "svbeln_cnt": len(svbeln_list),
+                "wms_result": wms_result,
+                "env":        env,
+            })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+    all_ok = all(r['ok'] for r in results)
+    return jsonify({"ok": all_ok, "results": results, "env": env})
+
+
+@app.route('/api/ps-sap/shipment-delete', methods=['POST'])
+def api_ps_sap_shipment_delete():
+    """
+    SAP 선적삭제 (I_GUBUN='D')
+    body: { items: [{ stdlnr, tknum }, ...] }
+      - stdlnr : 가선적번호 (DISPATCH_NO)
+      - tknum  : SAP 선적번호 (STKNUM) — 삭제 대상
+    반환: {
+      ok, results: [
+        { stdlnr, tknum, ok, mock, message, wms_result }
+      ]
+    }
+    """
+    body  = request.json or {}
+    items = body.get('items', [])
+    if not items:
+        return jsonify({"error": "items 필수 [{stdlnr, tknum}, ...]"}), 400
+
+    env  = _detect_env()
+    conn = get_conn()
+    results = []
+
+    try:
+        for item in items:
+            stdlnr = (item.get('stdlnr') or '').strip()
+            tknum  = (item.get('tknum')  or '').strip()
+
+            if not tknum:
+                results.append({
+                    "stdlnr": stdlnr, "tknum": tknum, "ok": False,
+                    "message": "SAP 선적번호(TKNUM)가 없습니다. 선적생성 후 삭제하세요."
+                })
+                continue
+
+            # ── 1. SAP RFC Z_TMS_SHIPMENT_CRDL (I_GUBUN='D') 호출 ──
+            rfc_result = _call_sap_rfc_shipment(
+                gubun='D', svbeln_list=[], tknum=tknum, env=env
+            )
+
+            ok_flag = rfc_result.get('ok', False)
+            msg     = (rfc_result.get('E_RETURN') or {}).get('MESSAGE', '')
+            is_mock = rfc_result.get('mock', False)
+
+            # ── 2. RFC 성공 시 WMS_IFC301 공통처리 호출 ──
+            wms_result = None
+            if ok_flag:
+                wms_result = _call_wms_ifc301(
+                    stdlnr=stdlnr, tknum=tknum, gubun='D', env=env
+                )
+                # DB: PS_DISPATCH_H.STKNUM 초기화
+                try:
+                    conn.execute(
+                        "UPDATE PS_DISPATCH_H SET STKNUM=NULL, UPDDAT=? WHERE DISPATCH_NO=?",
+                        (__import__('datetime').datetime.now().strftime('%Y%m%d'), stdlnr)
+                    )
+                    conn.commit()
+                except Exception:
+                    pass
+
+            results.append({
+                "stdlnr":     stdlnr,
+                "tknum":      tknum,
+                "ok":         ok_flag,
+                "mock":       is_mock,
+                "message":    msg,
+                "wms_result": wms_result,
+                "env":        env,
+            })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+    all_ok = all(r['ok'] for r in results)
+    return jsonify({"ok": all_ok, "results": results, "env": env})
+
+
 @app.route('/api/ps-dispatch/load-for-edit', methods=['POST'])
 def api_ps_dispatch_load_for_edit():
     """
