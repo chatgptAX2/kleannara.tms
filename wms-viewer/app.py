@@ -2199,6 +2199,35 @@ def api_dispatch_strategy_save():
                             "UPDATE CMCDV SET USARG1=? WHERE CMCDKY=? AND CMCDVL=?",
                             (use_yn, erow[0], cc)
                         )
+
+            # ── DS_INCH12 / DS_INCH3 동기화 ─────────────────────────────────────
+            # DS_VEHICLE의 INCH12_LT300/GE300, INCH3_LT300/GE300 값을
+            # 배차 엔진이 실제로 읽는 DS_INCH12/DS_INCH3 테이블에 반영한다.
+            # vehicle 저장 시 항상 재구성하여 두 테이블 간 불일치를 방지한다.
+            conn.execute("DELETE FROM DS_INCH12")
+            conn.execute("DELETE FROM DS_INCH3")
+            for i, r in enumerate(rows):
+                ct = (r.get('CARTYPE') or '').strip()
+                if not ct:
+                    continue
+                sort_seq = int(r.get('SORT_SEQ', i))
+                # 12인치 적재수량 → DS_INCH12
+                for grm_cond, col_key in (('LT300', 'INCH12_LT300'), ('GE300', 'INCH12_GE300')):
+                    val = r.get(col_key)
+                    if val not in (None, ''):
+                        conn.execute(
+                            "INSERT INTO DS_INCH12 (CARTYPE,GRM_COND,MAX_COUNT,SORT_SEQ,UPDDAT) VALUES (?,?,?,?,?)",
+                            (ct, grm_cond, int(val), sort_seq, today)
+                        )
+                # 3인치 적재수량 → DS_INCH3
+                for grm_cond, col_key in (('LT300', 'INCH3_LT300'), ('GE300', 'INCH3_GE300')):
+                    val = r.get(col_key)
+                    if val not in (None, ''):
+                        conn.execute(
+                            "INSERT INTO DS_INCH3 (CARTYPE,GRM_COND,MAX_COUNT,SORT_SEQ,UPDDAT) VALUES (?,?,?,?,?)",
+                            (ct, grm_cond, int(val), sort_seq, today)
+                        )
+
         else:
             return jsonify({"error": "unknown table"}), 400
         conn.commit()
