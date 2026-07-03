@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: kleannara-tms
+
+  datasource:
+    url: jdbc:mariadb://localhost:3306/tms_db?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Seoul
+    username: tms_user
+    password: tms_pass
+    driver-class-name: org.mariadb.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: none        # 테이블은 SQL 스크립트로 직접 생성
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MariaDBDialect
+        physical_naming_strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+        format_sql: true
+    show-sql: false
+
+  security:
+    filter:
+      order: 10
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+# JWT 설정
+jwt:
+  secret: kleannara-tms-jwt-secret-key-256bit-long-change-in-production
+  expiration-ms: 86400000    # 24시간 (ms)
+
+logging:
+  level:
+    com.company: INFO
+    org.hibernate.SQL: WARN

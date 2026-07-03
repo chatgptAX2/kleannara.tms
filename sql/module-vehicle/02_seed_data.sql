@@ -1,0 +1,6 @@
+-- ds_vehicle 초기 데이터 (기존 운영 데이터를 마이그레이션하여 INSERT)
+-- 예시 (실제 데이터로 교체 필요):
+-- INSERT INTO ds_vehicle (CARCLASS_CD, CARTYPE, LENGTH_M, WIDTH_M, HEIGHT_M, LOAD_TON, SORT_SEQ) VALUES
+-- ('Z010', '1톤',  3.1, '1.6',  1.9,  1.0, 10),
+-- ('Z014', '5톤',  5.8, '2.0',  2.3,  5.0, 20),
+-- ('Z018', '18톤', 9.5, '2.4',  2.7, 18.0, 30);

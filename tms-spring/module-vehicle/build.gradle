@@ -1,0 +1,14 @@
+// module-vehicle: 차량유형 관리 모듈 (carclass, ds-vehicle, dispatch-strategy, VHCMA)
+dependencies {
+    compileOnly project(':core')
+
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+}
+
+// spring-boot 플러그인 미적용 서브모듈: plain jar만 생성
+jar {
+    enabled = true
+}
