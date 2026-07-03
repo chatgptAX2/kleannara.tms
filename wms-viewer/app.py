@@ -2881,13 +2881,23 @@ def api_ps_dispatch_search():
 
 def _calc_board_stack_height_m(item, skuma_map):
     """
-    판지 적재 높이(m) 계산 — 모듈 레벨 공유 함수
-    단위면적당 두께: t(mm) = GRSWGT_g / (gsm/1e6 × w_mm × l_mm)
-    총 적재 높이 = t × 묶음 수 (KG_WEIGHT 또는 QTSHPO×GRSWGT 기반)
+    판지 1속(ream/묶음) 단위 적재 높이(m) 계산 — 모듈 레벨 공유 함수
+
+    ■ 계산 원리:
+      - 1속(ream) = GRSWGT(kg)의 묶음
+      - 1장 두께(mm) = GSM / 1,000,000 / PAPER_DENSITY(0.0012 g/mm³)
+      - 1속 장수 = GRSWGT_g / (gsm/1e6 × W_mm × L_mm)
+      - 1속 높이(m) = 장수 × 장두께(mm) / 1000
+
+    ■ 주의: 아이템의 QTSHPO(속 수량)와 무관하게 항상 '1속의 높이'만 반환.
+      실제 배차 시 판지는 여러 속을 차량 바닥에 나란히 배치하므로
+      전체 수량을 수직 합산하면 수 미터로 과산정됨.
+      STEP-1 그룹분할 및 STEP-2 치수검사에서 '1속 높이'를 사용해
+      적재 가능 여부만 판단한다.
     """
     sk     = item.get('SKUKEY', '')
     sm     = skuma_map.get(sk, {})
-    grswgt = sm.get('grswgt', 0)   # kg/건
+    grswgt = sm.get('grswgt', 0)   # kg/속
     w_mm   = sm.get('w_mm', 0)
     l_mm   = sm.get('l_mm', 0)
 
@@ -2903,26 +2913,17 @@ def _calc_board_stack_height_m(item, skuma_map):
     if not gsm or gsm <= 0:
         return 0.0
 
-    if item.get('KG_WEIGHT') is not None:
-        qty_kg = float(item['KG_WEIGHT'])
-    else:
-        uom    = (item.get('UOMKEY') or '').strip()
-        qtshpo = float(item.get('QTSHPO') or 0)
-        qty_kg = qtshpo * grswgt if (uom == 'R' and grswgt > 0) else qtshpo
-    bundles = qty_kg / grswgt if grswgt > 0 else 0.0
-
     PAPER_DENSITY_G_PER_MM3 = 0.0012
-    t_sheet_mm = (gsm / 1_000_000.0) / PAPER_DENSITY_G_PER_MM3
+    t_sheet_mm  = (gsm / 1_000_000.0) / PAPER_DENSITY_G_PER_MM3  # 1장 두께(mm)
 
-    grswgt_g           = grswgt * 1000.0
-    area_mm2           = float(w_mm) * float(l_mm)
-    gsm_per_mm2        = gsm / 1_000_000.0
+    grswgt_g    = grswgt * 1000.0                     # 1속 무게(g)
+    area_mm2    = float(w_mm) * float(l_mm)           # 1장 면적(mm²)
+    gsm_per_mm2 = gsm / 1_000_000.0                   # 단위면적당 무게(g/mm²)
     if gsm_per_mm2 * area_mm2 <= 0:
         return 0.0
-    sheets_per_bundle  = grswgt_g / (gsm_per_mm2 * area_mm2)
-    bundle_height_mm   = sheets_per_bundle * t_sheet_mm
-    total_height_mm    = bundle_height_mm * bundles
-    return total_height_mm / 1000.0  # m
+    sheets_per_bundle = grswgt_g / (gsm_per_mm2 * area_mm2)  # 1속 장수
+    bundle_height_mm  = sheets_per_bundle * t_sheet_mm        # 1속 높이(mm)
+    return bundle_height_mm / 1000.0  # 1속 높이(m) — 수량 합산 없음
 
 
 def _ps_get_item_cbm(item, skuma_map):
@@ -3113,7 +3114,12 @@ def api_ps_dispatch_auto():
         def _check_board_dims_ok(items_list, cartype, skuma_map):
             """
             판지 치수 검사 (차량 길이/너비/높이 모두 확인)
-            Returns: (ok:bool, max_w_mm, max_l_mm, total_height_m)
+            Returns: (ok:bool, max_w_mm, max_l_mm, max_bundle_height_m)
+
+            ■ 높이 검사 방식:
+              판지는 여러 속을 차량 바닥에 나란히 배치하므로 전체 수량 합산이 아닌
+              '아이템 중 최대 1속(ream) 높이'가 차량 높이를 초과하는지만 검사.
+              (_calc_board_stack_height_m 이 1속 높이를 반환하므로 max 사용)
             """
             ci = veh_info.get(cartype, {})
             # 파렛트 높이를 차감한 실제 가용 높이로 검사
@@ -3122,7 +3128,7 @@ def api_ps_dispatch_auto():
             car_l = ci.get('length_m', 99.0) * 1000.0  # mm
 
             max_w, max_l = 0, 0
-            total_h = 0.0
+            max_bundle_h = 0.0      # 아이템 중 최대 1속 높이
             for it in items_list:
                 sk = it.get('SKUKEY', '')
                 sm = skuma_map.get(sk, {})
@@ -3133,12 +3139,13 @@ def api_ps_dispatch_auto():
                     w, l = (w2 or 0), (l2 or 0)
                 max_w = max(max_w, w)
                 max_l = max(max_l, l)
-                total_h += _calc_board_stack_height_m(it, skuma_map)
+                bundle_h = _calc_board_stack_height_m(it, skuma_map)  # 1속 높이
+                max_bundle_h = max(max_bundle_h, bundle_h)
 
             width_ok  = (max_w == 0 or max_w <= car_w)
             length_ok = (max_l == 0 or max_l <= car_l)
-            height_ok = (total_h == 0.0 or total_h <= car_h)
-            return (width_ok and length_ok and height_ok), max_w, max_l, total_h
+            height_ok = (max_bundle_h == 0.0 or max_bundle_h <= car_h)
+            return (width_ok and length_ok and height_ok), max_w, max_l, max_bundle_h
 
         # ──────────────────────────────────────────────────────────────────
         # CBM 관련 헬퍼 함수: _ps_get_item_cbm 은 모듈 레벨 함수로 이동됨
@@ -4035,26 +4042,35 @@ def api_ps_dispatch_auto():
                         return qty * grswgt if grswgt > 0 else qty
                     return qty   # KG or other
 
-                # 최대 차량 적재 중량·높이 단위로 아이템 묶기 (그룹 분할)
-                # 분할 조건: 중량 초과 OR 누적 적재 높이 초과
-                veh_list_b  = []      # [{items, total_kg}]
+                # ─────────────────────────────────────────────────────────────
+                # 최대 차량 적재 중량 단위로 아이템 묶기 (그룹 분할)
+                # 분할 조건: 중량 초과
+                #
+                # ■ 높이 검사 제거 이유:
+                #   판지는 여러 속(ream)을 차량 바닥에 나란히 배치하는 방식으로
+                #   적재하므로, QTSHPO(속 수량) × 1속높이를 수직 합산하면
+                #   실제와 동떨어진 수 미터의 높이가 산출되어 소형차 분산 배차 발생.
+                #   → STEP-1 에서는 중량 기준으로만 그룹 분할.
+                #   → 1속 높이가 차량 높이 자체를 초과하는지(단독 Over-Tall) 여부는
+                #     STEP-2 _check_board_dims_ok 에서 처리.
+                # ─────────────────────────────────────────────────────────────
+                veh_list_b  = []      # [{items, total_kg, total_h}]
                 cur_items_b = []
                 cur_kg_b    = 0.0
                 cur_h_b     = 0.0
                 for it in board_items:
                     qty_kg  = _board_kg(it)   # R→KG 변환 적용
-                    item_h  = _calc_board_stack_height_m(it, skuma_map)  # 아이템 적재 높이(m)
-                    # 현재 그룹에 추가 시 최대 차량 중량 또는 높이 초과 → 새 그룹 시작
+                    item_h  = _calc_board_stack_height_m(it, skuma_map)  # 1속 높이(m)
+                    # 중량 초과 시에만 새 그룹 시작 (높이 누적 합산 제거)
                     kg_over = cur_items_b and (cur_kg_b + qty_kg > big_cap_kg)
-                    h_over  = cur_items_b and item_h > 0 and (cur_h_b + item_h > big_cap_h)
-                    if kg_over or h_over:
+                    if kg_over:
                         veh_list_b.append({'items': cur_items_b, 'total_kg': cur_kg_b, 'total_h': cur_h_b})
                         cur_items_b = []
                         cur_kg_b    = 0.0
                         cur_h_b     = 0.0
                     cur_items_b.append(it)
                     cur_kg_b += qty_kg
-                    cur_h_b  += item_h
+                    cur_h_b   = max(cur_h_b, item_h)  # 그룹 내 최대 1속 높이 추적
                 if cur_items_b:
                     veh_list_b.append({'items': cur_items_b, 'total_kg': cur_kg_b, 'total_h': cur_h_b})
 
@@ -8502,22 +8518,25 @@ def api_dcon_auto():
                 veh_list_b, cur_b, cur_kg_b, cur_h_b, cur_cbm_b = [], [], 0.0, 0.0, 0.0
                 for it in board_items:
                     qty_kg  = _board_kg_c(it)
-                    item_h  = _board_h_c(it)
+                    item_h  = _board_h_c(it)   # 1속 높이(m)
                     item_cbm = _ps_get_item_cbm(it, skuma_map)
                     capped_h = min(item_h, MAX_B_HGT)
-                    # Double-Threshold: 중량 OR 높이 OR CBM 초과 시 새 차량
+                    # Double-Threshold: 중량 OR CBM 초과 시 새 차량
+                    # ※ 높이(ho) 검사 제거: 판지는 여러 속을 바닥에 나란히 배치하므로
+                    #   수량×1속높이 합산은 실제보다 훨씬 큰 값이 됨.
+                    #   1속 높이가 차량 높이 자체보다 큰 경우는 STEP-2 치수검사에서 처리.
                     ko = cur_b and (cur_kg_b + qty_kg > big_cap)
-                    ho = cur_b and capped_h > 0 and (cur_h_b + capped_h > big_h)
                     co = cur_b and item_cbm > 0 and big_cbm > 0 and (cur_cbm_b + item_cbm > big_cbm)
-                    if ko or ho or co:
+                    if ko or co:
                         veh_list_b.append({
                             'items': cur_b, 'total_kg': cur_kg_b,
                             'total_h': cur_h_b, 'total_cbm': cur_cbm_b,
-                            'split_reason': ('중량초과' if ko else '높이초과' if ho else 'CBM초과'),
+                            'split_reason': ('중량초과' if ko else 'CBM초과'),
                         })
                         cur_b, cur_kg_b, cur_h_b, cur_cbm_b = [], 0.0, 0.0, 0.0
                     cur_b.append(it); cur_kg_b += qty_kg
-                    cur_h_b += capped_h; cur_cbm_b += item_cbm
+                    cur_h_b = max(cur_h_b, capped_h)  # 그룹 내 최대 1속 높이 추적
+                    cur_cbm_b += item_cbm
                 if cur_b:
                     veh_list_b.append({
                         'items': cur_b, 'total_kg': cur_kg_b,
