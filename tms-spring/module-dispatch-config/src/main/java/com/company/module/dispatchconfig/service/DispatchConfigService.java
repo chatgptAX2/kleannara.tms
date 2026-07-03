@@ -1,15 +1,13 @@
 package com.company.module.dispatchconfig.service;
 
-import com.company.module.dispatchconfig.entity.DispatchObjective;
-import com.company.module.dispatchconfig.entity.DispatchProfile;
-import com.company.module.dispatchconfig.repository.DispatchObjectiveRepository;
+import com.company.core.common.exception.BusinessException;
+import com.company.core.common.exception.EntityNotFoundException;
+import com.company.core.common.exception.ErrorCode;
+import com.company.module.dispatchconfig.entity.*;
+import com.company.module.dispatchconfig.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Service
@@ -17,111 +15,132 @@ import java.util.*;
 @Transactional(readOnly = true)
 public class DispatchConfigService {
 
-    private final DispatchObjectiveRepository objectiveRepo;
+    private final DispatchObjectiveRepository objectiveRepository;
+    private final DispatchProfileRepository profileRepository;
+    private final DispatchConstraintRepository constraintRepository;
+    private final DispatchConstSetRepository constSetRepository;
 
-    @PersistenceContext
-    private EntityManager em;
-
-    // ── 목적식 목록 (Flask api_obj_list) ──
-    public List<DispatchObjective> getObjectiveList() {
-        return objectiveRepo.findAllByOrderBySortSeqAscObjIdAsc();
+    // ── Objective ────────────────────────────────────────────────
+    public List<DispatchObjective> getObjectiveList(String ownrky) {
+        return objectiveRepository.findAllByOwnrkyOrderBySortSeqAsc(ownrky);
     }
 
-    // ── 활성 목적식 (Flask api_obj_active) ──
-    public Optional<DispatchObjective> getActiveObjective() {
-        return objectiveRepo.findByActiveYn("Y");
-    }
-
-    // ── 목적식 저장 (Flask api_obj_save) ──
     @Transactional
-    public void saveObjective(Map<String, Object> data) {
-        String today  = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-        Object objIdObj = data.get("OBJ_ID");
-        String code = str(data.get("OBJ_CODE")).toUpperCase();
-        String nm   = str(data.get("OBJ_NM"));
-        if (code.isEmpty() || nm.isEmpty()) throw new IllegalArgumentException("OBJ_CODE, OBJ_NM 필수");
-
-        if (objIdObj != null) {
-            Long objId = Long.parseLong(objIdObj.toString());
-            DispatchObjective obj = objectiveRepo.findById(objId)
-                .orElseThrow(() -> new com.company.core.common.exception.EntityNotFoundException(
-                    com.company.core.common.exception.ErrorCode.C404));
-            obj.update(code, nm, str(data.get("OBJ_ICON")), str(data.get("OBJ_ALGO")),
-                       str(data.get("OBJ_DESC")), toInt(data.get("SORT_SEQ")), str(data.get("ACTIVE_YN")));
-        } else {
-            DispatchObjective obj = DispatchObjective.builder()
-                .objCode(code).objNm(nm)
-                .objIcon(str(data.get("OBJ_ICON")))
-                .objAlgo(str(data.get("OBJ_ALGO")))
-                .objDesc(str(data.get("OBJ_DESC")))
-                .sortSeq(toInt(data.get("SORT_SEQ")))
-                .activeYn(str(data.get("ACTIVE_YN")))
-                .credat(today).lmodat(today)
-                .build();
-            objectiveRepo.save(obj);
+    public DispatchObjective saveObjective(String ownrky, Long objectiveId, String name,
+                                           String description, Integer sortSeq) {
+        if (objectiveId != null) {
+            DispatchObjective obj = objectiveRepository.findByObjectiveIdAndOwnrky(objectiveId, ownrky)
+                    .orElseThrow(() -> new EntityNotFoundException(ErrorCode.OBJECTIVE_NOT_FOUND));
+            obj.update(name, description, sortSeq);
+            return obj;
         }
+        return objectiveRepository.save(DispatchObjective.builder()
+                .ownrky(ownrky).name(name).description(description).sortSeq(sortSeq).build());
     }
 
-    // ── 목적식 삭제 (Flask api_obj_delete) ──
     @Transactional
-    public void deleteObjective(Long objId) {
-        objectiveRepo.deleteById(objId);
-    }
-
-    // ── 목적식 활성화 (Flask api_obj_activate) – 단일 활성 보장 ──
-    @Transactional
-    public void activateObjective(Long objId) {
-        objectiveRepo.deactivateAll();
-        DispatchObjective obj = objectiveRepo.findById(objId)
-            .orElseThrow(() -> new com.company.core.common.exception.EntityNotFoundException(
-                com.company.core.common.exception.ErrorCode.C404));
+    public void activateObjective(String ownrky, Long objectiveId) {
+        DispatchObjective obj = objectiveRepository.findByObjectiveIdAndOwnrky(objectiveId, ownrky)
+                .orElseThrow(() -> new EntityNotFoundException(ErrorCode.OBJECTIVE_NOT_FOUND));
+        objectiveRepository.deactivateAll(ownrky);
         obj.activate();
     }
 
-    // ── 배차제약 프로파일 목록 (Flask api_dcon_profiles) ──
-    public List<Object[]> getProfileList() {
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery(
-            "SELECT * FROM ds_dispatch_profile ORDER BY PROFILE_ID"
-        ).getResultList();
-        return rows;
+    @Transactional
+    public void deleteObjective(String ownrky, Long objectiveId) {
+        DispatchObjective obj = objectiveRepository.findByObjectiveIdAndOwnrky(objectiveId, ownrky)
+                .orElseThrow(() -> new EntityNotFoundException(ErrorCode.OBJECTIVE_NOT_FOUND));
+        obj.deactivate();
     }
 
-    // ── 배차제약 목록 (Flask api_dcon_list) ──
-    public List<Object[]> getConstraintList(Long profileId) {
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery(
-            "SELECT * FROM ds_dispatch_constraint WHERE PROFILE_ID = ? ORDER BY CONST_ID"
-        ).setParameter(1, profileId).getResultList();
-        return rows;
+    // ── Profile ──────────────────────────────────────────────────
+    public List<DispatchProfile> getProfileList(String ownrky) {
+        return profileRepository.findAllByOwnrkyOrderBySortSeqAsc(ownrky);
     }
 
-    // ── dispatch-const-set 목록 (Flask api_set_list) ──
-    public List<Object[]> getConstSetList() {
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery(
-            "SELECT * FROM ds_dispatch_const_set ORDER BY SET_ID"
-        ).getResultList();
-        return rows;
+    public DispatchProfile getProfile(String ownrky, Long profileId) {
+        return profileRepository.findByProfileIdAndOwnrky(profileId, ownrky)
+                .orElseThrow(() -> new EntityNotFoundException(ErrorCode.PROFILE_NOT_FOUND));
     }
 
-    // ── dispatch-const-set 전체 (Flask api_set_full) ──
-    public Map<String, Object> getConstSetFull(Integer setId) {
-        @SuppressWarnings("unchecked")
-        List<Object[]> items = em.createNativeQuery(
-            "SELECT * FROM ds_dispatch_const_set_item WHERE SET_ID = ? ORDER BY ITEM_ID"
-        ).setParameter(1, setId).getResultList();
-        @SuppressWarnings("unchecked")
-        List<Object[]> cartypes = em.createNativeQuery(
-            "SELECT * FROM ds_dispatch_const_cartype WHERE SET_ID = ? ORDER BY CARTYPE"
-        ).setParameter(1, setId).getResultList();
-        @SuppressWarnings("unchecked")
-        List<Object[]> regions = em.createNativeQuery(
-            "SELECT * FROM ds_dispatch_const_region WHERE SET_ID = ? ORDER BY REGION_CD"
-        ).setParameter(1, setId).getResultList();
-        return Map.of("items", items, "cartypes", cartypes, "regions", regions);
+    @Transactional
+    public DispatchProfile saveProfile(String ownrky, Long profileId, String profileName,
+                                       String description, Integer sortSeq) {
+        if (profileId != null) {
+            DispatchProfile p = profileRepository.findByProfileIdAndOwnrky(profileId, ownrky)
+                    .orElseThrow(() -> new EntityNotFoundException(ErrorCode.PROFILE_NOT_FOUND));
+            p.update(profileName, description, sortSeq);
+            return p;
+        }
+        int seq = sortSeq != null ? sortSeq : profileRepository.nextSortSeq(ownrky);
+        return profileRepository.save(DispatchProfile.builder()
+                .ownrky(ownrky).profileName(profileName).description(description).sortSeq(seq).build());
     }
 
-    private String str(Object o) { return o == null ? "" : o.toString().strip(); }
-    private int toInt(Object o)  { try { return Integer.parseInt(o.toString()); } catch (Exception e) { return 0; } }
+    @Transactional
+    public void deleteProfile(String ownrky, Long profileId) {
+        DispatchProfile p = profileRepository.findByProfileIdAndOwnrky(profileId, ownrky)
+                .orElseThrow(() -> new EntityNotFoundException(ErrorCode.PROFILE_NOT_FOUND));
+        p.delete();
+    }
+
+    // ── Constraint ───────────────────────────────────────────────
+    public List<DispatchConstraint> getConstraintList(Long profileId) {
+        return constraintRepository.findAllByProfileIdAndIsActiveOrderBySortSeqAsc(profileId, 1);
+    }
+
+    @Transactional
+    public DispatchConstraint saveConstraint(String ownrky, Long constraintId, Long profileId,
+                                             String constraintType, String constraintKey,
+                                             String constraintVal, Integer sortSeq) {
+        if (constraintId != null) {
+            DispatchConstraint c = constraintRepository.findByConstraintIdAndOwnrky(constraintId, ownrky)
+                    .orElseThrow(() -> new EntityNotFoundException(ErrorCode.ENTITY_NOT_FOUND));
+            c.update(constraintVal, 1);
+            return c;
+        }
+        return constraintRepository.save(DispatchConstraint.builder()
+                .profileId(profileId).ownrky(ownrky).constraintType(constraintType)
+                .constraintKey(constraintKey).constraintVal(constraintVal)
+                .sortSeq(sortSeq != null ? sortSeq : 0).build());
+    }
+
+    @Transactional
+    public void deleteConstraint(String ownrky, Long constraintId) {
+        DispatchConstraint c = constraintRepository.findByConstraintIdAndOwnrky(constraintId, ownrky)
+                .orElseThrow(() -> new EntityNotFoundException(ErrorCode.ENTITY_NOT_FOUND));
+        c.delete();
+    }
+
+    // ── ConstSet ─────────────────────────────────────────────────
+    public List<DispatchConstSet> getConstSetList(Long profileId) {
+        return constSetRepository.findAllByProfileIdAndIsActiveOrderByConstTypeAsc(profileId, 1);
+    }
+
+    public List<DispatchConstSet> getConstSetByType(Long profileId, String constType) {
+        return constSetRepository.findAllByProfileIdAndConstTypeAndIsActive(profileId, constType, 1);
+    }
+
+    @Transactional
+    public DispatchConstSet saveConstSet(String ownrky, Long constId, Long profileId,
+                                         String constType, String cartype, String region,
+                                         String constVal, Integer isDynamic, String forkliftYn, Double entryTon) {
+        if (constId != null) {
+            DispatchConstSet cs = constSetRepository.findByConstIdAndOwnrky(constId, ownrky)
+                    .orElseThrow(() -> new EntityNotFoundException(ErrorCode.ENTITY_NOT_FOUND));
+            cs.update(constVal, cartype, region, isDynamic, forkliftYn, entryTon);
+            return cs;
+        }
+        return constSetRepository.save(DispatchConstSet.builder()
+                .profileId(profileId).ownrky(ownrky).constType(constType).cartype(cartype)
+                .region(region).constVal(constVal).isDynamic(isDynamic != null ? isDynamic : 0)
+                .forkliftYn(forkliftYn).entryTon(entryTon).build());
+    }
+
+    @Transactional
+    public void deleteConstSet(String ownrky, Long constId) {
+        DispatchConstSet cs = constSetRepository.findByConstIdAndOwnrky(constId, ownrky)
+                .orElseThrow(() -> new EntityNotFoundException(ErrorCode.ENTITY_NOT_FOUND));
+        cs.delete();
+    }
 }
