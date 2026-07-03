@@ -15672,10 +15672,10 @@ async function renderShipSchedule() {
   const skug05Opts = opts.skug05.map(o =>
     `<option value="${o.value}">${o.label}</option>`).join('');
 
-  /* lota02 멀티 체크박스 (전체선택 앞에 추가) */
+  /* lota02 멀티 체크박스 */
   const lota02Checks = opts.lota02.map(v =>
     `<label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer;white-space:nowrap;">
-       <input type="checkbox" class="ss-lota02" value="${v}" checked> ${v}
+       <input type="checkbox" class="ss-lota02" value="${v}" checked>${v}
      </label>`).join('');
 
   /* shpmty 체크박스 — 명칭 변경 + 전체선택 */
@@ -15859,9 +15859,9 @@ async function renderShipSchedule() {
             ${shpmtyChecks}
           </div>
         </div>
-        <!-- 로트구분(LOTA02) -->
+        <!-- 플랜트(LOTA02) -->
         <div>
-          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">로트구분 (LOTA02)</label>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">플랜트 (LOTA02)</label>
           <div id="ss-lota02-wrap" style="display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;row-gap:4px;">
             <label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer;
                           padding:2px 8px;border-radius:10px;border:1px solid var(--primary);color:var(--primary);font-weight:600;white-space:nowrap;">

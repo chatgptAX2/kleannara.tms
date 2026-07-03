@@ -2037,7 +2037,7 @@ def api_shipment_filter_opts():
         "SELECT CMCDVL AS value, CDESC1 AS label FROM CMCDV WHERE CMCDKY='SKUG05' ORDER BY CMCDVL"
     ).fetchall()
     lota02_list = conn.execute(
-        "SELECT DISTINCT LOTA02 FROM SHPDI WHERE LOTA02 IS NOT NULL AND LOTA02!='' ORDER BY LOTA02"
+        "SELECT DISTINCT LOTA02 FROM SHPDI WHERE LOTA02 IS NOT NULL AND TRIM(LOTA02)!='' ORDER BY LOTA02"
     ).fetchall()
     # 실제 조회 가능한 최신 날짜 = SHPDI와 조인 가능한 SHPDH 기준
     # (SHPDH만으로 MAX를 구하면 SHPDI에 없는 날짜가 포함될 수 있음)
