@@ -12957,6 +12957,17 @@ function psopRenderDocTable(filterText) {
   psopRefreshVehicleSelection();
   /* 배치 탭 배지 갱신 */
   if (typeof psopUpdateTabBadges === 'function') psopUpdateTabBadges();
+
+  /* ── 전체선택 체크박스 상태 동기화 ──────────────────
+     psopRenderDocTable()은 thead를 매번 새로 생성(innerHTML 교체)하므로
+     렌더 직후 psop-chk-all의 checked/indeterminate 상태를 명시적으로 복원해야 함 */
+  const _allChkEl = document.getElementById('psop-chk-all');
+  if (_allChkEl) {
+    const _total  = rows.length;
+    const _selCnt = rows.filter(r => psopState.selectedDocs.has(`${r.SHPOKY}|${r.SHPOIT}`)).length;
+    _allChkEl.checked       = _total > 0 && _selCnt === _total;
+    _allChkEl.indeterminate = _selCnt > 0 && _selCnt < _total;
+  }
 }
 
 /* ── 필터 ─────────────────────────────────────────── */
@@ -13034,6 +13045,8 @@ function psopChkDoc(key, checked) {
   else         psopState.selectedDocs.delete(key);
   psopUpdateSelCnt();
   psopUpdateToolbar();
+  /* 전체선택 체크박스 상태 동기화 (개별 체크 변경 시) */
+  _psopSyncAllChk();
 }
 function psopToggleDocSel(key, ev) {
   if (ev.target.tagName==='INPUT') return;
@@ -13045,7 +13058,45 @@ function psopToggleDocSel(key, ev) {
   if (chk) chk.checked = psopState.selectedDocs.has(key);
   psopUpdateSelCnt();
   psopUpdateToolbar();
+  /* 전체선택 체크박스 상태 동기화 */
+  _psopSyncAllChk();
 }
+/* ── 전체선택 체크박스 상태 동기화 헬퍼 ──────────────
+   현재 필터 기준의 표시 rows 중 몇 개가 선택됐는지로
+   psop-chk-all 의 checked / indeterminate 를 결정.
+   psopRenderDocTable() 을 재호출하지 않고 DOM만 직접 갱신. */
+function _psopSyncAllChk() {
+  const el = document.getElementById('psop-chk-all');
+  if (!el) return;
+  const fText  = document.getElementById('psop-doc-filter')?.value.toLowerCase() || '';
+  const fInch  = document.getElementById('psop-doc-inch-filter')?.value || '';
+  const fStatSearch = document.getElementById('psop-disp-stat')?.value || 'all';
+  const fStatInline = document.getElementById('psop-doc-stat-filter')?.value || '';
+  let fStat = fStatInline;
+  if (!fStat) {
+    if (fStatSearch === 'dispatched')        fStat = 'Y';
+    else if (fStatSearch === 'undispatched') fStat = 'N';
+    else fStat = '';
+  }
+  const visRows = psopState.searchRows.filter(r => {
+    if (fText && !((r.SVBELN||'').toLowerCase().includes(fText) ||
+                   (r.DPTNKY||'').toLowerCase().includes(fText) ||
+                   (r.DPTNM||'').toLowerCase().includes(fText) ||
+                   (r.SHPOKY||'').toLowerCase().includes(fText) ||
+                   (r.SKUKEY||'').toLowerCase().includes(fText) ||
+                   (r.DESC01||'').toLowerCase().includes(fText))) return false;
+    if (fInch && r.INCH !== fInch) return false;
+    if (fStat==='N' && r.DISPATCHED)  return false;
+    if (fStat==='Y' && !r.DISPATCHED) return false;
+    if (fStat==='S' && !r.IS_SAVED)   return false;
+    return true;
+  });
+  const total  = visRows.length;
+  const selCnt = visRows.filter(r => psopState.selectedDocs.has(`${r.SHPOKY}|${r.SHPOIT}`)).length;
+  el.checked       = total > 0 && selCnt === total;
+  el.indeterminate = selCnt > 0 && selCnt < total;
+}
+
 function psopToggleAll(checked) {
   const fText = document.getElementById('psop-doc-filter')?.value.toLowerCase() || '';
   const fInch = document.getElementById('psop-doc-inch-filter')?.value || '';
