@@ -2741,20 +2741,32 @@ def api_ps_dispatch_search():
         """
         rows = conn.execute(sql, params).fetchall()
         result = []
-        # 배차완료 판단: SHPDI.STDLNR에 가선적번호(PS-...)가 채번된 경우
-        dispatched_keys = set()
+        # 배차 상태 판단:
+        #   DISPATCHED=True  → SHPDI.STDLNR 채번됨(배차 생성 완료)
+        #   IS_SAVED=True    → PS_DISPATCH_H STATUS='DRAFT' 저장까지 완료(배차저장)
+        #   STDLNR           → 해당 가선적번호 값
+        disp_info = {}   # key → {'stdlnr': str, 'is_saved': bool}
         drows = conn.execute(
-            """SELECT SHPOKY||'|'||SHPOIT AS k
-               FROM SHPDI
-               WHERE STATIT='NEW'
-                 AND TRIM(STDLNR) != ''"""
+            """SELECT i.SHPOKY||'|'||i.SHPOIT AS k,
+                      TRIM(COALESCE(i.STDLNR,''))   AS STDLNR,
+                      COALESCE(h.STATUS,'')          AS STATUS
+               FROM SHPDI i
+               LEFT JOIN PS_DISPATCH_H h ON h.DISPATCH_NO = TRIM(i.STDLNR)
+               WHERE i.STATIT='NEW'
+                 AND TRIM(i.STDLNR) != ''"""
         ).fetchall()
         for dr in drows:
-            dispatched_keys.add(dr['k'])
+            disp_info[dr['k']] = {
+                'stdlnr':   dr['STDLNR'],
+                'is_saved': dr['STATUS'] in ('DRAFT', 'CONFIRMED'),
+            }
 
         for r in rows:
             key = f"{r['SHPOKY']}|{r['SHPOIT']}"
-            is_disp = key in dispatched_keys
+            info    = disp_info.get(key, {})
+            is_disp = bool(info)            # STDLNR 채번 여부
+            is_saved = info.get('is_saved', False)  # PS_DISPATCH_H 저장 여부
+            stdlnr   = info.get('stdlnr', '')       # 가선적번호
             if disp_stat == 'dispatched' and not is_disp: continue
             if disp_stat == 'undispatched' and is_disp:  continue
             inch  = _ps_get_inch(r['SKUKEY'])
@@ -2856,6 +2868,8 @@ def api_ps_dispatch_search():
                 'INCH':      '' if sku_type == 'board' else inch,
                 'GRM_COND':  grm,
                 'DISPATCHED': is_disp,
+                'IS_SAVED':  is_saved,    # 배차저장 완료 여부 (PS_DISPATCH_H 존재)
+                'STDLNR':    stdlnr,      # 가선적번호 (배차저장 시 채번)
                 'LOTA03':    r['LOTA03'],  # 포장타입
             })
         return jsonify({"ok": True, "total": len(result), "rows": result})

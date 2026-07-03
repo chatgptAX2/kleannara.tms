@@ -1932,7 +1932,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psd-doc-tbl-wrap::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
 .psd-doc-tbl-wrap::-webkit-scrollbar-thumb:hover{background:var(--primary)}
 .psd-doc-tbl-wrap::-webkit-scrollbar-corner{background:transparent}
-.psd-doc-tbl{table-layout:fixed;width:1382px;min-width:1382px;border-collapse:collapse;font-size:11px;font-weight:400}
+.psd-doc-tbl{table-layout:fixed;width:1640px;min-width:1640px;border-collapse:collapse;font-size:11px;font-weight:400}
 /* 납품문서 테이블 헤더 - 그린 계열(우측 납품문서 패널 연동) */
 .psd-doc-tbl thead th{
   position:sticky;top:0;z-index:2;
@@ -1973,7 +1973,9 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psd-doc-tbl tbody td:first-child{text-align:center}
 .psd-doc-tbl tbody td.col-nm{text-align:left}
 .psd-disp-badge{padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700;background:var(--pastel-green-bg);color:var(--pastel-green-fg);border:1px solid #10b981}
+.psd-saved-badge{padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700;background:#eff6ff;color:#1d4ed8;border:1px solid #3b82f6}
 .psd-undisp-badge{padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700;background:var(--pastel-gray-bg);color:var(--pastel-gray-fg);border:1px solid var(--border)}
+.psd-stdlnr-cell{font-family:monospace;font-size:10px;color:#1d4ed8;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
 /* 수동배차 드롭 안내 */
 .psd-drop-hint{padding:20px;text-align:center;color:var(--text3);font-size:12px;border:2px dashed var(--border);border-radius:8px;margin:12px}
 .psd-drop-active .psd-drop-hint{border-color:#10b981;color:#10b981;background:rgba(16,185,129,.04)}
@@ -3951,7 +3953,7 @@ const _sapDocColW  = {}; // SAP 납품문서 컬럼 너비 저장
 /* ═══════════════════════════════════════════════════════════
    PS배차(최적화) 납품문서 목록 — 컬럼 정의 + 순서 드래그
 ═══════════════════════════════════════════════════════════ */
-const PSOP_DOC_COL_LS_KEY = 'psop_doc_col_order_v1';
+const PSOP_DOC_COL_LS_KEY = 'psop_doc_col_order_v2';
 
 /* 컬럼 정의: id / label(HTML) / w(기본너비px) / fixed(드래그 불가) */
 const _psopDocColDefs = [
@@ -3972,6 +3974,8 @@ const _psopDocColDefs = [
   { id:'cbm',     label:'CBM',            w:68  },
   { id:'shpmty',  label:'출하유형',       w:72  },
   { id:'disp',    label:'배차',           w:62  },
+  { id:'saved',   label:'배차저장',       w:68  },
+  { id:'stdlnr',  label:'가선적번호',     w:120 },
 ];
 
 /* 현재 활성 컬럼 순서(id 배열) — lazy init */
@@ -8668,6 +8672,7 @@ async function renderPsDispatch() {
             <option value="">전체 상태</option>
             <option value="N">미배차</option>
             <option value="Y">배차완료</option>
+            <option value="S">배차저장</option>
           </select>
           <button class="psd-btn" style="padding:4px 10px;font-size:11px" onclick="psdSelectAllDocs()">전체선택</button>
           <button class="psd-btn" style="padding:4px 10px;font-size:11px" onclick="psdClearDocSel()">선택해제</button>
@@ -8695,13 +8700,15 @@ async function renderPsDispatch() {
               <col style="width:76px">      <!-- 납품일 -->
               <col style="width:64px">      <!-- 출하유형 -->
               <col style="width:56px">      <!-- 배차 -->
+              <col style="width:68px">      <!-- 배차저장 -->
+              <col style="width:128px">     <!-- 가선적번호 -->
             </colgroup>
             <thead>
               <tr>
                 <th><input type="checkbox" id="psd-chk-all" onchange="psdToggleAll(this.checked)"></th>
                 <th>납품문서</th><th>IT</th><th>납품처코드</th><th>납품처명</th>
                 <th>품목코드</th><th>품목명</th><th>납품수량</th><th>단위</th>
-                <th>유형</th><th>인치</th><th>원지<br>중량</th><th>원지<br>개수</th><th>CBM</th><th>납품일</th><th>출하유형</th><th>배차</th>
+                <th>유형</th><th>인치</th><th>원지<br>중량</th><th>원지<br>개수</th><th>CBM</th><th>납품일</th><th>출하유형</th><th>배차</th><th>배차저장</th><th>가선적번호</th>
               </tr>
             </thead>
             <tbody id="psd-doc-tbody">
@@ -8713,6 +8720,7 @@ async function renderPsDispatch() {
           <span class="stat-item">전체: <span class="stat-val" id="psd-stat-total">0</span></span>
           <span class="stat-item">미배차: <span class="stat-val" id="psd-stat-undp">0</span></span>
           <span class="stat-item">배차완료: <span class="stat-val" id="psd-stat-dp">0</span></span>
+          <span class="stat-item" title="배차저장 완료(가선적번호 부여) 건수">배차저장: <span class="stat-val" style="color:#1d4ed8" id="psd-stat-saved">0</span></span>
           <span class="stat-item">선택: <span class="stat-val" id="psd-stat-sel">0</span></span>
         </div>
       </div>
@@ -8786,19 +8794,25 @@ function psdRenderDocTable(filterText) {
     if (fInch && r.INCH !== fInch) return false;
     if (fStat==='N' && r.DISPATCHED) return false;
     if (fStat==='Y' && !r.DISPATCHED) return false;
+    if (fStat==='S' && !r.IS_SAVED) return false;
     return true;
   });
 
-  let undpCnt=0, dpCnt=0;
-  rows.forEach(r => r.DISPATCHED ? dpCnt++ : undpCnt++);
+  let undpCnt=0, dpCnt=0, savedCnt=0;
+  rows.forEach(r => {
+    if (r.IS_SAVED) savedCnt++;
+    if (r.DISPATCHED) dpCnt++; else undpCnt++;
+  });
 
   document.getElementById('psd-stat-total').textContent = rows.length.toLocaleString();
   document.getElementById('psd-stat-undp').textContent  = undpCnt.toLocaleString();
   document.getElementById('psd-stat-dp').textContent    = dpCnt.toLocaleString();
+  const psdSavedEl = document.getElementById('psd-stat-saved');
+  if (psdSavedEl) psdSavedEl.textContent = savedCnt.toLocaleString();
   document.getElementById('psd-right-info').textContent = `총 ${rows.length}건`;
 
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="16" class="psd-empty"><div class="psd-empty-icon" style="font-size:24px">📋</div><p>조회 결과가 없습니다</p></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="18" class="psd-empty"><div class="psd-empty-icon" style="font-size:24px">📋</div><p>조회 결과가 없습니다</p></td></tr>`;
     return;
   }
 
@@ -8807,9 +8821,17 @@ function psdRenderDocTable(filterText) {
     const sel  = psdState.selectedDocs.has(key);
     const inch = r.INCH || '';
     const inchBadge = inch ? `<span class="psd-car-item-inch ${inch==='12인치'?'inch-12':'inch-3'}">${inch}</span>` : '';
-    const dispBadge = r.DISPATCHED
+    const dispBadge = r.IS_SAVED
+      ? `<span class="psd-saved-badge">배차저장</span>`
+      : r.DISPATCHED
       ? `<span class="psd-disp-badge">배차</span>`
       : `<span class="psd-undisp-badge">미배차</span>`;
+    const savedBadge = r.IS_SAVED
+      ? `<span class="psd-saved-badge">배차저장</span>`
+      : `<span style="color:var(--text3);font-size:10px">-</span>`;
+    const stdlnrCell = (r.STDLNR && r.IS_SAVED)
+      ? `<span class="psd-stdlnr-cell" title="${r.STDLNR}">${r.STDLNR}</span>`
+      : `<span style="color:var(--text3);font-size:10px">-</span>`;
     // 분할문서 배지: SHPOKY에 '-S' 패턴이 있으면 분할문서
     const isSplitDoc = (r.SHPOKY||'').includes('-S') || r.IS_SPLIT;
     const splitBadge = isSplitDoc
@@ -8862,6 +8884,8 @@ function psdRenderDocTable(filterText) {
       <td style="text-align:center">${psdFmtDate(r.RQSHPD)}</td>
       <td style="text-align:center" title="${shpmtyNm}">${shpmtyNm}</td>
       <td style="text-align:center">${dispBadge}</td>
+      <td style="text-align:center">${savedBadge}</td>
+      <td style="text-align:left;padding-left:6px">${stdlnrCell}</td>
     </tr>`;
   }).join('');
 
@@ -12441,6 +12465,7 @@ async function renderPsDispatchOpt() {
               <option value="">전체 상태</option>
               <option value="N">미배차</option>
               <option value="Y">배차완료</option>
+              <option value="S">배차저장</option>
             </select>
             <button class="psd-btn" style="padding:4px 10px;font-size:11px" onclick="psopSelectAllDocs()">전체선택</button>
             <button class="psd-btn" style="padding:4px 10px;font-size:11px" onclick="psopClearDocSel()">선택해제</button>
@@ -12462,6 +12487,7 @@ async function renderPsDispatchOpt() {
             <span class="stat-item">전체: <span class="stat-val" id="psop-stat-total">0</span></span>
             <span class="stat-item">미배차: <span class="stat-val" id="psop-stat-undp">0</span></span>
             <span class="stat-item">배차완료: <span class="stat-val" id="psop-stat-dp">0</span></span>
+            <span class="stat-item" title="배차저장 완료(가선적번호 부여) 건수">배차저장: <span class="stat-val" style="color:#1d4ed8" id="psop-stat-saved">0</span></span>
             <span class="stat-item">선택: <span class="stat-val" id="psop-stat-sel">0</span></span>
             <span id="psop-stat-summary" style="display:none;margin-left:8px;padding:2px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;font-size:11px;color:var(--text2);"></span>
           </div>
@@ -12744,10 +12770,16 @@ async function psopSearch() {
     // 인메모리 vehicles의 items → DISPATCHED 강제 true 재설정
     // (서버는 SHPDI.STDLNR='' 인 미저장/pending 배차를 항상 DISPATCHED=false 로 반환하기 때문)
     // ★ localStorage에서 복원된 pending vehicles도 포함
+    // ★ IS_SAVED=true인 row는 서버 값 우선 — pending vehicle만 DISPATCHED=true 처리
     psopState.vehicles.forEach(v => {
+      const isPending = !v.STDLNR; // STDLNR 없으면 미저장(pending) 배차
       (v.items || []).forEach(it => {
         const row = psopState.searchRows.find(r => r.SHPOKY === it.SHPOKY && r.SHPOIT === it.SHPOIT);
-        if (row) row.DISPATCHED = true;
+        if (row && isPending && !row.IS_SAVED) {
+          row.DISPATCHED = true;
+          row.IS_SAVED   = false;
+          row.STDLNR     = row.STDLNR || '';
+        }
       });
     });
     // ★ 인메모리 보정 완료 후 배차상태 필터는 psopRenderDocTable()에서 클라이언트 처리
@@ -12791,15 +12823,21 @@ function psopRenderDocTable(filterText) {
     if (fInch && r.INCH !== fInch) return false;
     if (fStat==='N' && r.DISPATCHED) return false;
     if (fStat==='Y' && !r.DISPATCHED) return false;
+    if (fStat==='S' && !r.IS_SAVED) return false;
     return true;
   });
 
-  let undpCnt=0, dpCnt=0;
-  rows.forEach(r => r.DISPATCHED ? dpCnt++ : undpCnt++);
+  let undpCnt=0, dpCnt=0, savedCnt=0;
+  rows.forEach(r => {
+    if (r.IS_SAVED) savedCnt++;
+    if (r.DISPATCHED) dpCnt++; else undpCnt++;
+  });
 
   document.getElementById('psop-stat-total').textContent = rows.length.toLocaleString();
   document.getElementById('psop-stat-undp').textContent  = undpCnt.toLocaleString();
   document.getElementById('psop-stat-dp').textContent    = dpCnt.toLocaleString();
+  const savedEl = document.getElementById('psop-stat-saved');
+  if (savedEl) savedEl.textContent = savedCnt.toLocaleString();
   document.getElementById('psop-right-info').textContent = `총 ${rows.length}건`;
   // 필터 변경 시 합계 표시 초기화
   const summaryEl = document.getElementById('psop-stat-summary');
@@ -12859,9 +12897,17 @@ function psopRenderDocTable(filterText) {
     const sel  = psopState.selectedDocs.has(key);
     const inch = r.INCH || '';
     const inchBadge = inch ? `<span class="psd-car-item-inch ${inch==='12인치'?'inch-12':'inch-3'}">${inch}</span>` : '';
-    const dispBadge = r.DISPATCHED
+    const dispBadge = r.IS_SAVED
+      ? `<span class="psd-saved-badge">배차저장</span>`
+      : r.DISPATCHED
       ? `<span class="psd-disp-badge">배차</span>`
       : `<span class="psd-undisp-badge">미배차</span>`;
+    const savedBadge = r.IS_SAVED
+      ? `<span class="psd-saved-badge">배차저장</span>`
+      : `<span style="color:var(--text3);font-size:10px">-</span>`;
+    const stdlnrCell = (r.STDLNR && r.IS_SAVED)
+      ? `<span class="psd-stdlnr-cell" title="${r.STDLNR}">${r.STDLNR}</span>`
+      : `<span style="color:var(--text3);font-size:10px">-</span>`;
     const isSplitDoc = (r.SHPOKY||'').includes('-S') || r.IS_SPLIT;
     const splitBadge = isSplitDoc
       ? `<span style="font-size:9px;font-weight:700;color:#f59e0b;background:rgba(245,158,11,.15);border:1px solid #f59e0b;border-radius:3px;padding:1px 4px;vertical-align:middle;margin-left:3px">분할</span>`
@@ -12892,10 +12938,12 @@ function psopRenderDocTable(filterText) {
       cbm:     `<td style="text-align:right;color:${(r.SKU_TYPE==='roll'&&(r.ROLL_CBM||0)>0)||(r.SKU_TYPE==='board'&&(r.BOARD_CBM||0)>0)?'var(--primary)':'var(--text3)'}">${r.SKU_TYPE==='roll'&&(r.ROLL_CBM||0)>0?parseFloat(r.ROLL_CBM).toFixed(3):r.SKU_TYPE==='board'&&(r.BOARD_CBM||0)>0?parseFloat(r.BOARD_CBM).toFixed(3):'-'}</td>`,
       shpmty:  `<td style="text-align:center" title="${shpmtyNm}">${shpmtyNm}</td>`,
       disp:    `<td style="text-align:center">${dispBadge}</td>`,
+      saved:   `<td style="text-align:center">${savedBadge}</td>`,
+      stdlnr:  `<td style="text-align:left;padding-left:6px">${stdlnrCell}</td>`,
     };
 
     const tds = order.map(id => cellMap[id] || `<td></td>`).join('');
-    return `<tr class="${r.DISPATCHED?'dispatched':''} ${sel?'selected-row':''}"
+    return `<tr class="${r.IS_SAVED?'dispatched':r.DISPATCHED?'dispatched':''} ${sel?'selected-row':''}"
       id="psop-row-${key.replace(/\|/g,'_')}"
       draggable="true"
       ondragstart="psopDragStartDoc(event,'${r.SHPOKY}','${r.SHPOIT}')"
@@ -15460,23 +15508,50 @@ async function psopSaveDispatch() {
   const btn = document.getElementById('psop-btn-save');
   if (btn) btn.disabled = true;
   try {
+    // 저장 전에 vehicle-items 스냅샷 (저장 성공 후 searchRows 업데이트에 사용)
+    const vehs = psopState.vehicles.map(v => ({
+      cartype:     v.cartype,
+      carclass_cd: v.carclass_cd || '',
+      rqshpd:      v.rqshpd,
+      dptnky:      v.dptnky,
+      dptnm:       v.dptnm,
+      total_kg:    v.total_kg,
+      items:       (v.items || []).map(it => ({ SHPOKY: it.SHPOKY, SHPOIT: it.SHPOIT })),
+    }));
     const res = await fetch('/api/ps-dispatch/save', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        vehicles: psopState.vehicles.map(v => ({
-          cartype:     v.cartype,
-          carclass_cd: v.carclass_cd || '',
-          rqshpd:      v.rqshpd,
-          dptnky:      v.dptnky,
-          dptnm:       v.dptnm,
-          total_kg:    v.total_kg,
-          items:       v.items,
-        }))
-      })
+      body: JSON.stringify({ vehicles: psopState.vehicles.map(v => ({
+        cartype:     v.cartype,
+        carclass_cd: v.carclass_cd || '',
+        rqshpd:      v.rqshpd,
+        dptnky:      v.dptnky,
+        dptnm:       v.dptnm,
+        total_kg:    v.total_kg,
+        items:       v.items,
+      })) })
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error);
-    showToast(`✅ 배차저장 ${data.saved}건 완료 (${(data.dispatch_nos||[]).join(', ')})`);
+
+    // ── 저장 성공: searchRows에 IS_SAVED=true, STDLNR 즉시 반영 ──
+    // data.dispatch_nos 순서 = vehs 순서와 동일
+    const dispNos = data.dispatch_nos || [];
+    dispNos.forEach((dispNo, idx) => {
+      const veh = vehs[idx];
+      if (!veh) return;
+      veh.items.forEach(it => {
+        const row = psopState.searchRows.find(
+          r => r.SHPOKY === it.SHPOKY && r.SHPOIT === it.SHPOIT
+        );
+        if (row) {
+          row.DISPATCHED = true;
+          row.IS_SAVED   = true;
+          row.STDLNR     = dispNo;
+        }
+      });
+    });
+
+    showToast(`✅ 배차저장 ${data.saved}건 완료 (${dispNos.join(', ')})`);
     // 저장 후 인메모리 비우기
     psopState.vehicles = [];
     psopState.selectedVehicles.clear();
