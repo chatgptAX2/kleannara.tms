@@ -1898,12 +1898,9 @@ def api_shipment_schedule():
             SH.DOCUTY                                               AS DOCUTYNM,
             SH.WAREKY                                               AS WAREKY,
             SI.MEASKY                                               AS MEASKY,
-            CASE WHEN TRIM(SI.SKUG05)='10'
-                 THEN (SELECT QTYRCV FROM RECDI
-                       WHERE SKUKEY=SI.SKUKEY AND STATIT='FRV'
-                         AND LOTA01=SI.LOTA01 AND LOTA02=SI.LOTA02
-                       ORDER BY RECVKY DESC LIMIT 1)
-                 ELSE 0
+            CASE WHEN TRIM(SI.SKUG05)='10' AND M.GRSWGT IS NOT NULL AND M.GRSWGT > 0
+                 THEN M.GRSWGT
+                 ELSE NULL
             END                                                     AS PLTKG,
             (SELECT M.QTAUOM FROM MEASI M
              WHERE M.WAREKY=SH.WAREKY AND M.MEASKY=SI.MEASKY
@@ -2003,11 +2000,24 @@ def api_shipment_schedule():
         d['QTALOCBOX']  = box_conv(qtaloc)
         d['QTJCMPBOX']  = box_conv(qtjcmp)
         d['QTSHPDBOX']  = box_conv(qtshpd)
-        # PLT개수(원지/판지): QTSHPO ÷ PLTKG (올림), SKUG05='10'이고 PLTKG>0 인 경우만
-        pltkg = float(d.get('PLTKG') or 0)
-        if pltkg > 0 and skug05 == '10':
-            import math as _math
-            d['PLT_CNT'] = _math.ceil(qtshpo / pltkg)
+        # PLT개수(원지/판지): SKUMA.GRSWGT 기반 계산 (파렛트 적재 기준 1,200 kg)
+        # - 판지(F/S prefix): QTSHPO(속,R) × GRSWGT(kg/속) / 1200 → 올림
+        # - 원지(H prefix):   QTSHPO(kg)                   / 1200 → 올림
+        #   (원지 SKUMA.GRSWGT = 1.0 kg/장 → QTSHPO가 이미 kg 단위)
+        import math as _math
+        _PLT_CAP_KG = 1200.0
+        pltkg = float(d.get('PLTKG') or 0)   # GRSWGT(kg/속) or NULL
+        if skug05 == '10' and qtshpo and qtshpo > 0:
+            sk_prefix = (d.get('SKUKEY') or '')[:1].upper()
+            if sk_prefix == 'H':
+                # 원지: QTSHPO 자체가 kg
+                d['PLT_CNT'] = _math.ceil(qtshpo / _PLT_CAP_KG)
+            elif pltkg > 0:
+                # 판지/기타: QTSHPO(속) × GRSWGT(kg/속) / 파렛트용량
+                total_kg = qtshpo * pltkg
+                d['PLT_CNT'] = _math.ceil(total_kg / _PLT_CAP_KG)
+            else:
+                d['PLT_CNT'] = ''   # GRSWGT 미등록 → 계산 불가
         else:
             d['PLT_CNT'] = ''
         # SOK_PER_R: 1R당 SOK 수 (판지 높이 계산용) — None이면 빈문자열
