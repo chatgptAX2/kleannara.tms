@@ -3,15 +3,12 @@ spring:
     name: kleannara-tms
 
   # -------------------------------------------------------
-  # 활성 프로파일 기본값: prod
-  #   실행 시 오버라이드 가능
-  #   · java -jar app.jar --spring.profiles.active=prod
-  #   · 환경변수: SPRING_PROFILES_ACTIVE=prod
+  # 활성 프로파일: 외부 설정파일(/data/tms/config/application.yml)에서 지정
+  #   실행 시 --spring.config.location 옵션으로 외부 파일 로드
+  #   이 파일(application.yml)은 공통 기본값만 보유
   # -------------------------------------------------------
-  profiles:
-    active: prod
 
-  # DB 커넥션은 각 프로파일(dev/prod)에서 설정
+  # DB 커넥션은 외부 설정파일(/data/tms/config/application.yml)에서 설정
   jpa:
     hibernate:
       ddl-auto: none        # 테이블은 SQL 스크립트로 직접 생성
@@ -39,10 +36,10 @@ server:
   tomcat:
     max-swallow-size: -1   # 파일 업로드 크기 제한 해제
 
-# 서류 업로드 기본 경로
+# 서류 업로드 기본 경로 (외부 설정파일에서 오버라이드)
 doc:
   upload:
-    base-path: /home/user/webapp/uploads
+    base-path: /data/tms/uploads
 
 # SAP RFC/WMS 연동 URL (실제 운영 시 환경변수로 오버라이드)
 sap:

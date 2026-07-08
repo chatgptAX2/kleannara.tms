@@ -1,8 +1,15 @@
 # ======================================================
-# 운영(PROD) 환경 설정
-# DB    : MariaDB 10.11+  (utf8mb4)
-# Host  : localhost:3306
-# Schema: tms
+# [참고용 문서] 운영(PROD) 환경 설정 예시
+#
+# !! 이 파일은 실제 운영에서 사용하지 않습니다 !!
+# !! 실제 설정은 서버의 아래 경로에 위치합니다  !!
+#
+#   /data/tms/config/application.yml
+#
+# systemd ExecStart 에서 아래 옵션으로 외부 파일을 로드:
+#   --spring.config.location=file:/data/tms/config/application.yml
+#
+# DB    : MariaDB  Host: 10.2.14.247:3306  Schema: intergration
 # ======================================================
 spring:
   datasource:

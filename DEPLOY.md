@@ -37,7 +37,9 @@
 │       ├── wms.db
 │       └── migrate_to_mariadb.py
 ├── app/
-│   └── kleannara-tms.jar         ← 실행 JAR (빌드 후 복사)
+│   └── app.jar                   ← 실행 JAR (빌드 후 복사)
+├── config/
+│   └── application.yml           ← 운영 설정파일 (git 미관리 · 서버에서 직접 편집)
 ├── logs/
 │   ├── stdout.log
 │   └── stderr.log
@@ -47,6 +49,7 @@
 > **역할 분리 원칙**
 > - `source/` : git 관리 영역. `git pull` / 재빌드 시 이 디렉토리만 건드림
 > - `app/`    : 실행 JAR. 서비스 재시작 시 이 JAR만 교체
+> - `config/` : 운영 설정파일. git 미관리 — DB 패스워드·JWT 시크릿 등 민감정보 보관
 > - `logs/`, `uploads/` : 런타임 데이터. 배포와 무관하게 유지됨
 
 ---
@@ -94,6 +97,7 @@ java -version
 # 운영 디렉토리 일괄 생성
 sudo mkdir -p /data/tms/source
 sudo mkdir -p /data/tms/app
+sudo mkdir -p /data/tms/config
 sudo mkdir -p /data/tms/logs
 sudo mkdir -p /data/tms/uploads
 
@@ -171,17 +175,76 @@ grep "error:" /tmp/build.log | head -30
 
 ---
 
-## STEP 6 — JAR 배포 위치로 복사
+## STEP 6 — 운영 설정파일 작성 + JAR 배포
+
+### 6-1. 운영 설정파일 작성 (최초 1회 · git 미관리)
+
+```bash
+sudo vi /data/tms/config/application.yml
+```
+
+아래 내용 붙여넣고 **실제 값으로 수정**:
+
+```yaml
+spring:
+  profiles:
+    active: prod
+
+  datasource:
+    url: jdbc:mariadb://10.2.14.247:3306/intergration?characterEncoding=UTF-8&serverTimezone=Asia/Seoul&useSSL=false
+    username: 실제DB계정
+    password: 실제DB패스워드          # ← 반드시 변경
+    driver-class-name: org.mariadb.jdbc.Driver
+    hikari:
+      pool-name: HikariPool-PROD
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    show-sql: false
+
+doc:
+  upload:
+    base-path: /data/tms/uploads
+
+sap:
+  rfc:
+    mock: false                      # SAP 미연동 시 true
+    url: http://SAP서버IP:8000/sap/rfc
+    timeout-seconds: 30
+  wms:
+    url: http://WMS서버IP:9000/wms/ifc
+
+jwt:
+  secret: 운영용256비트이상시크릿키여기입력   # ← 반드시 변경
+  expiration-ms: 86400000
+
+logging:
+  level:
+    com.company: INFO
+    org.hibernate.SQL: WARN
+```
+
+```bash
+# 설정파일 소유권 설정
+sudo chown tmsuser:tmsuser /data/tms/config/application.yml
+sudo chmod 640 /data/tms/config/application.yml   # 소유자만 읽기/쓰기
+```
+
+### 6-2. JAR 배포 위치로 복사
 
 ```bash
 # source/빌드결과 → app/ 실행 위치로 복사
 sudo cp /data/tms/source/tms-spring/app/build/libs/app.jar \
-        /data/tms/app/kleannara-tms.jar
+        /data/tms/app/app.jar
 
-sudo chown tmsuser:tmsuser /data/tms/app/kleannara-tms.jar
+sudo chown tmsuser:tmsuser /data/tms/app/app.jar
 
 # 확인
-ls -lh /data/tms/app/kleannara-tms.jar
+ls -lh /data/tms/app/app.jar
 ```
 
 ---
@@ -192,7 +255,7 @@ ls -lh /data/tms/app/kleannara-tms.jar
 sudo vi /etc/systemd/system/kleannara-tms.service
 ```
 
-아래 내용 붙여넣기 (`DB_PASSWORD`, `JWT_SECRET` 실제 값으로 수정):
+아래 내용 붙여넣기:
 
 ```ini
 [Unit]
@@ -203,24 +266,12 @@ After=network.target
 Type=simple
 User=tmsuser
 Group=tmsuser
-WorkingDirectory=/data/tms
-
-# ── 운영 환경 변수 (실제 값으로 반드시 수정) ──────────────────
-Environment="SPRING_PROFILES_ACTIVE=prod"
-Environment="DB_USERNAME=tmsuser"
-Environment="DB_PASSWORD=실제DB패스워드여기입력"
-Environment="JWT_SECRET=운영용256비트이상시크릿키여기입력"
-Environment="SAP_RFC_MOCK=true"
-# SAP 실제 연동 시 아래 주석 해제 후 URL 입력
-# Environment="SAP_RFC_MOCK=false"
-# Environment="SAP_RFC_URL=http://SAP서버IP:8000/sap/rfc"
-# Environment="SAP_WMS_URL=http://WMS서버IP:9000/wms/ifc"
+WorkingDirectory=/data/tms/app
 
 ExecStart=/usr/bin/java \
   -Xmx1g -Xms512m \
-  -jar /data/tms/app/kleannara-tms.jar \
-  --spring.profiles.active=prod \
-  --doc.upload.base-path=/data/tms/uploads
+  -jar /data/tms/app/app.jar \
+  --spring.config.location=file:/data/tms/config/application.yml
 
 StandardOutput=append:/data/tms/logs/stdout.log
 StandardError=append:/data/tms/logs/stderr.log
@@ -231,6 +282,10 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 ```
+
+> **핵심**: `--spring.config.location=file:/data/tms/config/application.yml`
+> → DB 패스워드·JWT 시크릿 등 모든 운영 설정을 `/data/tms/config/application.yml` 한 파일에서 관리
+> → 환경변수 불필요, 설정 변경 시 해당 파일만 수정 후 서비스 재시작
 
 ```bash
 # 서비스 등록 및 시작
@@ -244,6 +299,7 @@ sudo systemctl status kleannara-tms
 # 기동 로그 실시간 확인
 tail -f /data/tms/logs/stdout.log
 # → "Started KleannaraTmsApplication in X.XXX seconds" 확인
+# → "Using config location: file:/data/tms/config/application.yml" 확인
 ```
 
 ---
@@ -319,7 +375,7 @@ cd /data/tms/source/tms-spring && ./gradlew clean bootJar -x test
 
 # 3. JAR 교체
 sudo cp /data/tms/source/tms-spring/app/build/libs/app.jar \
-        /data/tms/app/kleannara-tms.jar
+        /data/tms/app/app.jar
 
 # 4. 서비스 재시작
 sudo systemctl restart kleannara-tms
@@ -328,19 +384,24 @@ sudo systemctl restart kleannara-tms
 sleep 15 && curl http://localhost:18081/actuator/health
 ```
 
+> **설정 변경만 할 때** (코드 변경 없음)
+> ```bash
+> sudo vi /data/tms/config/application.yml   # 설정 수정
+> sudo systemctl restart kleannara-tms       # 재시작만
+> ```
+
 ---
 
-## 환경변수 정리
+## 설정파일 구조
 
-| 변수명 | 설명 | 기본값 |
-|--------|------|--------|
-| `SPRING_PROFILES_ACTIVE` | 활성 프로파일 | `prod` |
-| `DB_USERNAME` | DB 계정 | `tmsuser` |
-| `DB_PASSWORD` | DB 비밀번호 | **(필수 설정)** |
-| `JWT_SECRET` | JWT 시크릿 (256bit 이상) | **(필수 변경)** |
-| `SAP_RFC_MOCK` | SAP Mock 모드 | `true` |
-| `SAP_RFC_URL` | SAP RFC 연동 URL | `http://localhost:8000/sap/rfc` |
-| `SAP_WMS_URL` | WMS 인터페이스 URL | `http://localhost:9000/wms/ifc` |
+| 파일 | 위치 | 용도 |
+|------|------|------|
+| `application.yml` | JAR 내부 (git 관리) | 공통 기본값 (포트·JPA·멀티파트 등) |
+| `application.yml` | `/data/tms/config/` (git 미관리) | **운영 실제 설정** (DB·JWT·SAP 등) |
+| `application-prod.yml` | JAR 내부 (git 관리) | 참고용 문서 — 실제 운영에서 미사용 |
+
+> 외부 설정파일(`/data/tms/config/application.yml`)이 내부 설정보다 **우선 적용**됨
+> DB 패스워드·JWT 시크릿은 외부 파일에만 존재 → git에 절대 커밋되지 않음
 
 ---
 
