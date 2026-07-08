@@ -7,7 +7,13 @@ plugins {
 // 모든 서브프로젝트 공통 설정
 subprojects {
     apply plugin: 'java'
+    apply plugin: 'org.springframework.boot'       // bootJar 태스크 등록 (apply false 아님)
     apply plugin: 'io.spring.dependency-management'
+
+    // 서브모듈 기본값: plain jar만 생성, bootJar 비활성
+    // app/build.gradle 에서 bootJar { enabled = true } 로 오버라이드
+    bootJar { enabled = false }
+    jar     { enabled = true  }
 
     group   = 'com.company'
     version = '1.0.0'

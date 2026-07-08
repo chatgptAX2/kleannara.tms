@@ -10,8 +10,3 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
 }
 
-// spring-boot 플러그인 미적용 서브모듈: plain jar만 생성
-jar {
-    enabled = true
-}
-bootJar { enabled = false }
