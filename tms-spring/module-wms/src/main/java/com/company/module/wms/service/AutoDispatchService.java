@@ -329,8 +329,9 @@ public class AutoDispatchService {
             boolean placed = false;
             List<RollBin> searchBins = bins;
             if ("MAX_FILL".equals(objective)) {
+                final double cap = bigCap;  // lambda capture용 final 복사
                 searchBins = bins.stream()
-                    .sorted(Comparator.comparingDouble(b -> bigCap - b.totalKg))
+                    .sorted(Comparator.comparingDouble(b -> cap - b.totalKg))
                     .collect(Collectors.toList());
             }
 
