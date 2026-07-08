@@ -5,8 +5,11 @@ plugins {
 }
 
 // Spring Boot 실행 가능 jar (app 모듈만 bootJar 활성)
-bootJar { enabled = true }
-jar     { enabled = false }
+bootJar {
+    enabled  = true
+    archiveFileName = 'app.jar'   // 버전 무관하게 항상 app.jar로 고정
+}
+jar { enabled = false }
 
 dependencies {
     implementation project(':core')
