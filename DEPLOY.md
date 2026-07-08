@@ -218,10 +218,6 @@ sap:
   wms:
     url: http://WMS서버IP:9000/wms/ifc
 
-jwt:
-  secret: 운영용256비트이상시크릿키여기입력   # ← 반드시 변경
-  expiration-ms: 86400000
-
 logging:
   level:
     com.company: INFO

@@ -52,11 +52,6 @@ sap:
   wms:
     url: ${SAP_WMS_URL:http://localhost:9000/wms/ifc}
 
-# JWT 설정
-jwt:
-  secret: ${JWT_SECRET:kleannara-tms-jwt-secret-key-256bit-long-change-in-production}
-  expiration-ms: 86400000    # 24시간 (ms)
-
 logging:
   level:
     com.company: INFO
