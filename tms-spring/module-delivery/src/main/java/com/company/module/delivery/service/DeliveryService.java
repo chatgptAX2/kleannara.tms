@@ -83,7 +83,7 @@ public class DeliveryService {
             .setParameter(1, ptnrky).setParameter(2, ptnrty).setParameter(3, ownrky)
             .getResultList();
         if (bRows.isEmpty()) throw new com.company.core.common.exception.EntityNotFoundException(
-            com.company.core.common.exception.ErrorCode.D404);
+            com.company.core.common.exception.ErrorCode.DELIVERY_NOT_FOUND);
 
         Optional<BzptnDetail> detail = bzptnDetailRepo.findByPtnrkyAndPtnrtyAndOwnrky(ptnrky, ptnrty, ownrky);
         return Map.of(
@@ -198,7 +198,7 @@ public class DeliveryService {
         String nowtm = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
         BzptnDetail d = bzptnDetailRepo.findByPtnrkyAndPtnrtyAndOwnrky(ptnrky, ptnrty, ownrky)
             .orElseThrow(() -> new com.company.core.common.exception.EntityNotFoundException(
-                com.company.core.common.exception.ErrorCode.D404));
+                com.company.core.common.exception.ErrorCode.DELIVERY_NOT_FOUND));
         d.delete(nowdt, nowtm, "WEB");
     }
 

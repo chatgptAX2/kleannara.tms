@@ -314,7 +314,7 @@ public class VehicleService {
     public Vhcma getVhcmaDetail(String vehicleNo, String ownrky) {
         return vhcmaRepo.findByVehicleNoAndOwnrky(vehicleNo, ownrky == null ? "KN" : ownrky)
             .orElseThrow(() -> new com.company.core.common.exception.EntityNotFoundException(
-                com.company.core.common.exception.ErrorCode.V404));
+                com.company.core.common.exception.ErrorCode.VEHICLE_NOT_FOUND));
     }
 
     // ──────────────────────────────────────────────────────────────────────────
