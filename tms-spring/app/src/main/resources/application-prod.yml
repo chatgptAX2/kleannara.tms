@@ -1,16 +1,15 @@
 # ======================================================
 # 운영(PROD) 환경 설정
-# 호스트 : 10.2.14.193
-# 포트   : 1522
-# SID    : KNRAWMS
-# 계정   : KNRAWMS
+# DB    : MariaDB 10.11+  (utf8mb4)
+# Host  : localhost:3306
+# Schema: tms
 # ======================================================
 spring:
   datasource:
-    url: jdbc:oracle:thin:@10.2.14.193:1522:KNRAWMS
-    username: KNRAWMS
-    password: kleannara12#
-    driver-class-name: oracle.jdbc.OracleDriver
+    url: jdbc:mariadb://localhost:3306/tms?characterEncoding=UTF-8&serverTimezone=Asia/Seoul&useSSL=false&allowPublicKeyRetrieval=true
+    username: tmsuser
+    password: tmspassword          # 운영 서버에서 환경변수로 오버라이드: SPRING_DATASOURCE_PASSWORD
+    driver-class-name: org.mariadb.jdbc.Driver
     hikari:
       pool-name: HikariPool-PROD
       maximum-pool-size: 20
@@ -18,10 +17,13 @@ spring:
       connection-timeout: 30000      # 30초
       idle-timeout: 600000           # 10분
       max-lifetime: 1800000          # 30분
-      connection-test-query: SELECT 1 FROM DUAL
+      connection-test-query: SELECT 1
 
   jpa:
     show-sql: false                  # 운영환경에서 SQL 미출력
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MariaDBDialect
 
 logging:
   level:

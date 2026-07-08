@@ -1,14 +1,17 @@
 // module-dispatch: PS배차(최적화) 엔진 모듈
-// 현재 기능: 납품문서 조회/자동배차/수동배차/저장/확정/분할/삭제
+// 기능: 납품문서 조회 / 자동배차 / 수동배차 / 저장 / 확정 / 분할 / 삭제
 dependencies {
+    // core 공통 클래스 참조 (컴파일 전용: 순환 의존 방지)
     compileOnly project(':core')
 
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
-    runtimeOnly 'org.mariadb.jdbc:mariadb-java-client'
 }
 
-jar { enabled = true }
+// spring-boot 플러그인 미적용 서브모듈: plain jar만 생성
+jar {
+    enabled = true
+}
 bootJar { enabled = false }

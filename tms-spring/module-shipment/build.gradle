@@ -1,4 +1,4 @@
-// module-delivery: 납품처 관리 모듈 (BZPTN, BZPTN_DETAIL, SHPDH, route-cost)
+// module-shipment: 출고진행현황 모듈 (SHPDH, SHPDI 기반 출고 조회/필터/PLT개수 계산)
 dependencies {
     // core 공통 클래스 참조 (컴파일 전용: 순환 의존 방지)
     compileOnly project(':core')

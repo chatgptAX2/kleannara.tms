@@ -6,6 +6,7 @@ include 'module-dispatch'
 include 'module-vehicle'
 include 'module-delivery'
 include 'module-dispatch-config'
+include 'module-shipment'                        // ① 플러그인 추가 — 출고진행현황
 
 // ──────────────────────────────────────────────────────────────────
 // 플러그인 방식 추가 시 이 파일에 아래 한 줄만 추가하면 됩니다:

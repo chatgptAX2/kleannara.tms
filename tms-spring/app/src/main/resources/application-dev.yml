@@ -1,16 +1,15 @@
 # ======================================================
 # 개발(DEV) 환경 설정
-# 호스트 : 10.2.14.190
-# 포트   : 1522
-# SID    : KNMESWMS
-# 계정   : KNRAWMS
+# DB    : MariaDB 10.11+  (utf8mb4)
+# Host  : localhost:3306
+# Schema: tms_dev
 # ======================================================
 spring:
   datasource:
-    url: jdbc:oracle:thin:@10.2.14.190:1522:KNMESWMS
-    username: KNRAWMS
-    password: kleannara12#
-    driver-class-name: oracle.jdbc.OracleDriver
+    url: jdbc:mariadb://localhost:3306/tms_dev?characterEncoding=UTF-8&serverTimezone=Asia/Seoul&useSSL=false&allowPublicKeyRetrieval=true
+    username: tmsuser
+    password: tmspassword
+    driver-class-name: org.mariadb.jdbc.Driver
     hikari:
       pool-name: HikariPool-DEV
       maximum-pool-size: 10
@@ -18,10 +17,13 @@ spring:
       connection-timeout: 30000      # 30초
       idle-timeout: 600000           # 10분
       max-lifetime: 1800000          # 30분
-      connection-test-query: SELECT 1 FROM DUAL
+      connection-test-query: SELECT 1
 
   jpa:
     show-sql: true                   # 개발환경에서 SQL 출력
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MariaDBDialect
 
 logging:
   level:

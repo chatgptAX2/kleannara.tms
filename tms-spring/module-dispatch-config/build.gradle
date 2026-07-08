@@ -1,5 +1,6 @@
-// module-dispatch-config: 배차제약 설정 모듈 (objective, constraint, const-set)
+// module-dispatch-config: 배차제약 설정 모듈 (objective, constraint, const-set, profile)
 dependencies {
+    // core 공통 클래스 참조 (컴파일 전용: 순환 의존 방지)
     compileOnly project(':core')
 
     implementation 'org.springframework.boot:spring-boot-starter-web'
@@ -8,6 +9,8 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
 }
 
+// spring-boot 플러그인 미적용 서브모듈: plain jar만 생성
 jar {
     enabled = true
 }
+bootJar { enabled = false }

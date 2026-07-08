@@ -1,5 +1,6 @@
 // module-vehicle: 차량유형 관리 모듈 (carclass, ds-vehicle, dispatch-strategy, VHCMA)
 dependencies {
+    // core 공통 클래스 참조 (컴파일 전용: 순환 의존 방지)
     compileOnly project(':core')
 
     implementation 'org.springframework.boot:spring-boot-starter-web'
@@ -12,3 +13,4 @@ dependencies {
 jar {
     enabled = true
 }
+bootJar { enabled = false }
