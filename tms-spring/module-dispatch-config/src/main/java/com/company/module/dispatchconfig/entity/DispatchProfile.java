@@ -31,6 +31,9 @@ public class DispatchProfile {
     @Column(name = "SET_ID")
     private Integer setId;          // 연결된 const-set ID
 
+    @Column(name = "SORT_SEQ")
+    private Integer sortSeq;
+
     @Column(name = "CREDAT", length = 8)
     private String credat;
 
@@ -50,10 +53,13 @@ public class DispatchProfile {
         this.lmodat = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE);
     }
 
-    public void update(String profileNm, String profileDesc, String activeYn, Integer setId) {
-        this.profileNm   = profileNm;
-        this.profileDesc = profileDesc;
-        this.activeYn    = activeYn;
-        this.setId       = setId;
+    public void update(String profileNm, String profileDesc, Integer sortSeq) {
+        if (profileNm   != null) this.profileNm   = profileNm;
+        if (profileDesc != null) this.profileDesc = profileDesc;
+        if (sortSeq     != null) this.sortSeq     = sortSeq;
+    }
+
+    public void delete() {
+        this.activeYn = "N";
     }
 }

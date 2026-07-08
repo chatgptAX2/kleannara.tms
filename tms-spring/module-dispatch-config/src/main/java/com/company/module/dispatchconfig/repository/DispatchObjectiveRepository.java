@@ -10,7 +10,9 @@ import java.util.Optional;
 
 @Repository
 public interface DispatchObjectiveRepository extends JpaRepository<DispatchObjective, Long> {
+
     List<DispatchObjective> findAllByOrderBySortSeqAscObjIdAsc();
+
     Optional<DispatchObjective> findByActiveYn(String activeYn);
 
     @Modifying

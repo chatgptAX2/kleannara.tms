@@ -10,12 +10,12 @@ import java.util.Optional;
 
 public interface DispatchProfileRepository extends JpaRepository<DispatchProfile, Long> {
 
-    List<DispatchProfile> findAllByOwnrkyOrderBySortSeqAsc(String ownrky);
+    List<DispatchProfile> findAllByOrderBySortSeqAscProfileIdAsc();
 
-    Optional<DispatchProfile> findByProfileIdAndOwnrky(Long profileId, String ownrky);
+    Optional<DispatchProfile> findByProfileIdAndActiveYn(Long profileId, String activeYn);
 
-    @Query(value = "SELECT COALESCE(MAX(SORT_SEQ),0)+1 FROM ds_dispatch_profile WHERE OWNRKY=:ownrky", nativeQuery = true)
-    int nextSortSeq(@Param("ownrky") String ownrky);
+    @Query(value = "SELECT COALESCE(MAX(SORT_SEQ),0)+1 FROM ds_dispatch_profile", nativeQuery = true)
+    int nextSortSeq();
 
     @Modifying
     @Query(value = "UPDATE ds_dispatch_profile SET SORT_SEQ=:seq WHERE PROFILE_ID=:id", nativeQuery = true)

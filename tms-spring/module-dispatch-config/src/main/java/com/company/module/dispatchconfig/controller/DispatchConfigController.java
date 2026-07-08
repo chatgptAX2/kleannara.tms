@@ -9,7 +9,6 @@ import lombok.Setter;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping({"/dispatch-config-api", "/api"})
@@ -20,54 +19,57 @@ public class DispatchConfigController {
 
     // ── Objective ────────────────────────────────────────────────
     @GetMapping("/dispatch-objective")
-    public ResponseEntity<ApiResponse<List<DispatchObjective>>> getObjectives(
-            @RequestParam String ownrky) {
-        return ResponseEntity.ok(ApiResponse.success(service.getObjectiveList(ownrky)));
+    public ResponseEntity<ApiResponse<List<DispatchObjective>>> getObjectives() {
+        return ResponseEntity.ok(ApiResponse.success(service.getObjectiveList()));
+    }
+
+    @GetMapping("/dispatch-objective/active")
+    public ResponseEntity<ApiResponse<DispatchObjective>> getActiveObjective() {
+        return ResponseEntity.ok(ApiResponse.success(
+                service.getActiveObjective().orElse(null)));
     }
 
     @PostMapping("/dispatch-objective/save")
     public ResponseEntity<ApiResponse<DispatchObjective>> saveObjective(@RequestBody ObjectiveRequest req) {
         return ResponseEntity.ok(ApiResponse.success(
-                service.saveObjective(req.getOwnrky(), req.getObjectiveId(),
-                        req.getName(), req.getDescription(), req.getSortSeq())));
+                service.saveObjective(req.getObjId(), req.getObjCode(), req.getObjNm(),
+                        req.getObjIcon(), req.getObjAlgo(), req.getObjDesc(),
+                        req.getSortSeq(), req.getActiveYn())));
     }
 
     @PostMapping("/dispatch-objective/activate")
     public ResponseEntity<ApiResponse<Void>> activateObjective(@RequestBody ObjectiveRequest req) {
-        service.activateObjective(req.getOwnrky(), req.getObjectiveId());
+        service.activateObjective(req.getObjId());
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     @DeleteMapping("/dispatch-objective/{id}")
-    public ResponseEntity<ApiResponse<Void>> deleteObjective(@PathVariable Long id,
-                                                              @RequestParam String ownrky) {
-        service.deleteObjective(ownrky, id);
+    public ResponseEntity<ApiResponse<Void>> deleteObjective(@PathVariable Long id) {
+        service.deleteObjective(id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     // ── Profile ──────────────────────────────────────────────────
     @GetMapping("/dispatch-profile")
-    public ResponseEntity<ApiResponse<List<DispatchProfile>>> getProfiles(@RequestParam String ownrky) {
-        return ResponseEntity.ok(ApiResponse.success(service.getProfileList(ownrky)));
+    public ResponseEntity<ApiResponse<List<DispatchProfile>>> getProfiles() {
+        return ResponseEntity.ok(ApiResponse.success(service.getProfileList()));
     }
 
     @GetMapping("/dispatch-profile/{id}")
-    public ResponseEntity<ApiResponse<DispatchProfile>> getProfile(@PathVariable Long id,
-                                                                    @RequestParam String ownrky) {
-        return ResponseEntity.ok(ApiResponse.success(service.getProfile(ownrky, id)));
+    public ResponseEntity<ApiResponse<DispatchProfile>> getProfile(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(service.getProfile(id)));
     }
 
     @PostMapping("/dispatch-profile/save")
     public ResponseEntity<ApiResponse<DispatchProfile>> saveProfile(@RequestBody ProfileRequest req) {
         return ResponseEntity.ok(ApiResponse.success(
-                service.saveProfile(req.getOwnrky(), req.getProfileId(),
-                        req.getProfileName(), req.getDescription(), req.getSortSeq())));
+                service.saveProfile(req.getProfileId(), req.getProfileNm(),
+                        req.getProfileDesc(), req.getSortSeq())));
     }
 
     @DeleteMapping("/dispatch-profile/{id}")
-    public ResponseEntity<ApiResponse<Void>> deleteProfile(@PathVariable Long id,
-                                                            @RequestParam String ownrky) {
-        service.deleteProfile(ownrky, id);
+    public ResponseEntity<ApiResponse<Void>> deleteProfile(@PathVariable Long id) {
+        service.deleteProfile(id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
@@ -82,7 +84,8 @@ public class DispatchConfigController {
     public ResponseEntity<ApiResponse<DispatchConstraint>> saveConstraint(@RequestBody ConstraintRequest req) {
         return ResponseEntity.ok(ApiResponse.success(
                 service.saveConstraint(req.getOwnrky(), req.getConstraintId(), req.getProfileId(),
-                        req.getConstraintType(), req.getConstraintKey(), req.getConstraintVal(), req.getSortSeq())));
+                        req.getConstraintType(), req.getConstraintKey(),
+                        req.getConstraintVal(), req.getSortSeq())));
     }
 
     @DeleteMapping("/dispatch-constraint/{id}")
@@ -122,44 +125,46 @@ public class DispatchConfigController {
     // ── Inner Request DTOs ────────────────────────────────────────
     @Getter @Setter
     static class ObjectiveRequest {
-        private Long objectiveId;
-        private String ownrky;
-        private String name;
-        private String description;
+        private Long    objId;
+        private String  objCode;
+        private String  objNm;
+        private String  objIcon;
+        private String  objAlgo;
+        private String  objDesc;
         private Integer sortSeq;
+        private String  activeYn;
     }
 
     @Getter @Setter
     static class ProfileRequest {
-        private Long profileId;
-        private String ownrky;
-        private String profileName;
-        private String description;
+        private Long    profileId;
+        private String  profileNm;
+        private String  profileDesc;
         private Integer sortSeq;
     }
 
     @Getter @Setter
     static class ConstraintRequest {
-        private Long constraintId;
-        private Long profileId;
-        private String ownrky;
-        private String constraintType;
-        private String constraintKey;
-        private String constraintVal;
+        private Long    constraintId;
+        private Long    profileId;
+        private String  ownrky;
+        private String  constraintType;
+        private String  constraintKey;
+        private String  constraintVal;
         private Integer sortSeq;
     }
 
     @Getter @Setter
     static class ConstSetRequest {
-        private Long constId;
-        private Long profileId;
-        private String ownrky;
-        private String constType;
-        private String cartype;
-        private String region;
-        private String constVal;
+        private Long    constId;
+        private Long    profileId;
+        private String  ownrky;
+        private String  constType;
+        private String  cartype;
+        private String  region;
+        private String  constVal;
         private Integer isDynamic;
-        private String forkliftYn;
-        private Double entryTon;
+        private String  forkliftYn;
+        private Double  entryTon;
     }
 }

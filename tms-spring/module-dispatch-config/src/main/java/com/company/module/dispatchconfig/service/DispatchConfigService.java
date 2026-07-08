@@ -1,6 +1,5 @@
 package com.company.module.dispatchconfig.service;
 
-import com.company.core.common.exception.BusinessException;
 import com.company.core.common.exception.EntityNotFoundException;
 import com.company.core.common.exception.ErrorCode;
 import com.company.module.dispatchconfig.entity.*;
@@ -16,70 +15,80 @@ import java.util.*;
 public class DispatchConfigService {
 
     private final DispatchObjectiveRepository objectiveRepository;
-    private final DispatchProfileRepository profileRepository;
+    private final DispatchProfileRepository   profileRepository;
     private final DispatchConstraintRepository constraintRepository;
-    private final DispatchConstSetRepository constSetRepository;
+    private final DispatchConstSetRepository  constSetRepository;
 
     // ── Objective ────────────────────────────────────────────────
-    public List<DispatchObjective> getObjectiveList(String ownrky) {
-        return objectiveRepository.findAllByOwnrkyOrderBySortSeqAsc(ownrky);
+    public List<DispatchObjective> getObjectiveList() {
+        return objectiveRepository.findAllByOrderBySortSeqAscObjIdAsc();
+    }
+
+    public Optional<DispatchObjective> getActiveObjective() {
+        return objectiveRepository.findByActiveYn("Y");
     }
 
     @Transactional
-    public DispatchObjective saveObjective(String ownrky, Long objectiveId, String name,
-                                           String description, Integer sortSeq) {
-        if (objectiveId != null) {
-            DispatchObjective obj = objectiveRepository.findByObjectiveIdAndOwnrky(objectiveId, ownrky)
+    public DispatchObjective saveObjective(Long objId, String objCode, String objNm,
+                                           String objIcon, String objAlgo,
+                                           String objDesc, Integer sortSeq, String activeYn) {
+        if (objId != null) {
+            DispatchObjective obj = objectiveRepository.findById(objId)
                     .orElseThrow(() -> new EntityNotFoundException(ErrorCode.OBJECTIVE_NOT_FOUND));
-            obj.update(name, description, sortSeq);
+            obj.update(objCode, objNm, objIcon, objAlgo, objDesc, sortSeq, activeYn);
             return obj;
         }
         return objectiveRepository.save(DispatchObjective.builder()
-                .ownrky(ownrky).name(name).description(description).sortSeq(sortSeq).build());
+                .objCode(objCode).objNm(objNm).objIcon(objIcon)
+                .objAlgo(objAlgo).objDesc(objDesc).sortSeq(sortSeq)
+                .activeYn(activeYn != null ? activeYn : "Y")
+                .build());
     }
 
     @Transactional
-    public void activateObjective(String ownrky, Long objectiveId) {
-        DispatchObjective obj = objectiveRepository.findByObjectiveIdAndOwnrky(objectiveId, ownrky)
+    public void activateObjective(Long objId) {
+        DispatchObjective obj = objectiveRepository.findById(objId)
                 .orElseThrow(() -> new EntityNotFoundException(ErrorCode.OBJECTIVE_NOT_FOUND));
-        objectiveRepository.deactivateAll(ownrky);
+        objectiveRepository.deactivateAll();
         obj.activate();
     }
 
     @Transactional
-    public void deleteObjective(String ownrky, Long objectiveId) {
-        DispatchObjective obj = objectiveRepository.findByObjectiveIdAndOwnrky(objectiveId, ownrky)
+    public void deleteObjective(Long objId) {
+        DispatchObjective obj = objectiveRepository.findById(objId)
                 .orElseThrow(() -> new EntityNotFoundException(ErrorCode.OBJECTIVE_NOT_FOUND));
         obj.deactivate();
     }
 
     // ── Profile ──────────────────────────────────────────────────
-    public List<DispatchProfile> getProfileList(String ownrky) {
-        return profileRepository.findAllByOwnrkyOrderBySortSeqAsc(ownrky);
+    public List<DispatchProfile> getProfileList() {
+        return profileRepository.findAllByOrderBySortSeqAscProfileIdAsc();
     }
 
-    public DispatchProfile getProfile(String ownrky, Long profileId) {
-        return profileRepository.findByProfileIdAndOwnrky(profileId, ownrky)
+    public DispatchProfile getProfile(Long profileId) {
+        return profileRepository.findById(profileId)
                 .orElseThrow(() -> new EntityNotFoundException(ErrorCode.PROFILE_NOT_FOUND));
     }
 
     @Transactional
-    public DispatchProfile saveProfile(String ownrky, Long profileId, String profileName,
-                                       String description, Integer sortSeq) {
+    public DispatchProfile saveProfile(Long profileId, String profileNm,
+                                       String profileDesc, Integer sortSeq) {
         if (profileId != null) {
-            DispatchProfile p = profileRepository.findByProfileIdAndOwnrky(profileId, ownrky)
+            DispatchProfile p = profileRepository.findById(profileId)
                     .orElseThrow(() -> new EntityNotFoundException(ErrorCode.PROFILE_NOT_FOUND));
-            p.update(profileName, description, sortSeq);
+            p.update(profileNm, profileDesc, sortSeq);
             return p;
         }
-        int seq = sortSeq != null ? sortSeq : profileRepository.nextSortSeq(ownrky);
+        int seq = sortSeq != null ? sortSeq : profileRepository.nextSortSeq();
         return profileRepository.save(DispatchProfile.builder()
-                .ownrky(ownrky).profileName(profileName).description(description).sortSeq(seq).build());
+                .profileNm(profileNm).profileDesc(profileDesc)
+                .sortSeq(seq).activeYn("Y")
+                .build());
     }
 
     @Transactional
-    public void deleteProfile(String ownrky, Long profileId) {
-        DispatchProfile p = profileRepository.findByProfileIdAndOwnrky(profileId, ownrky)
+    public void deleteProfile(Long profileId) {
+        DispatchProfile p = profileRepository.findById(profileId)
                 .orElseThrow(() -> new EntityNotFoundException(ErrorCode.PROFILE_NOT_FOUND));
         p.delete();
     }
@@ -124,7 +133,8 @@ public class DispatchConfigService {
     @Transactional
     public DispatchConstSet saveConstSet(String ownrky, Long constId, Long profileId,
                                          String constType, String cartype, String region,
-                                         String constVal, Integer isDynamic, String forkliftYn, Double entryTon) {
+                                         String constVal, Integer isDynamic,
+                                         String forkliftYn, Double entryTon) {
         if (constId != null) {
             DispatchConstSet cs = constSetRepository.findByConstIdAndOwnrky(constId, ownrky)
                     .orElseThrow(() -> new EntityNotFoundException(ErrorCode.ENTITY_NOT_FOUND));
