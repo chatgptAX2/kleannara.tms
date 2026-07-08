@@ -41,6 +41,7 @@ public class ShipmentRowResponse {
     private String lota02;          // 로트02(플랜트)
     private String lota02Nm;        // 플랜트명
     private String lota03;          // 로트03(인치)
+    private String tlota01;         // 목표 로트01
     private String tlota02;         // 목표 로트02
     private String tlota02Nm;       // 목표 플랜트명
     private String measky;          // 측정단위 키
