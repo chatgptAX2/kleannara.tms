@@ -302,14 +302,15 @@ public class DispatchConfigApiService {
                     }
                 }
                 if (matched != null) {
-                    String key = (String) matched.get("CMCDVL");
+                    final Map<String, Object> finalMatched = matched;  // lambda capture용 final 복사
+                    String key = (String) finalMatched.get("CMCDVL");
                     regionMap.computeIfAbsent(key, k -> {
                         Map<String, Object> m = new LinkedHashMap<>();
                         m.put("cmcdvl", k);
-                        m.put("region_nm", matched.get("CDESC1"));
-                        m.put("sido", matched.get("CDESC2"));
-                        m.put("postcd_from", matched.get("USARG3"));
-                        m.put("postcd_to", matched.get("USARG4"));
+                        m.put("region_nm", finalMatched.get("CDESC1"));
+                        m.put("sido", finalMatched.get("CDESC2"));
+                        m.put("postcd_from", finalMatched.get("USARG3"));
+                        m.put("postcd_to", finalMatched.get("USARG4"));
                         m.put("partners", new ArrayList<>());
                         return m;
                     });
