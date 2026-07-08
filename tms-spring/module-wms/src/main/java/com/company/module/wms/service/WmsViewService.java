@@ -1,0 +1,277 @@
+package com.company.module.wms.service;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import javax.sql.DataSource;
+import java.sql.*;
+import java.util.*;
+import java.util.regex.Pattern;
+
+/**
+ * WMS 뷰어 서비스 — JDBC 기반 동적 쿼리
+ * Flask SQLite 동적 테이블 조회를 MariaDB JDBC로 완전 재구현
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class WmsViewService {
+
+    private final JdbcTemplate jdbcTemplate;
+    private final DataSource   dataSource;
+
+    // ── 허용 테이블 목록 (Flask TABLE_META 기반) ────────────────────
+    // 인증된 사용자만 접근하므로 목록을 화이트리스트로 관리
+    private static final Set<String> ALLOWED_TABLES = new LinkedHashSet<>(Arrays.asList(
+        "CMCDM", "CMCDV", "WAHMA", "SKUMA", "BZPTN", "MEASI",
+        "SHPDH", "SHPDI", "IFWMS113",
+        "BZPTN_DETAIL", "VHCMA", "ROUTE_COST", "DS_VEHICLE",
+        "PS_DISPATCH_H", "PS_DISPATCH_D", "PS_DISPATCH_SPLIT",
+        "DS_INCH12", "DS_INCH3",
+        "DS_DISPATCH_OBJECTIVE", "DS_DISPATCH_CONST_SET", "DS_DISPATCH_CONST_SET_ITEM",
+        "DS_DISPATCH_PROFILE", "DS_DISPATCH_CONSTRAINT", "DS_DISPATCH_CONST",
+        "DOC_FOLDER", "DOC_FILE", "RECDI"
+    ));
+
+    // 읽기 전용 테이블 (INSERT/UPDATE/DELETE 불가)
+    private static final Set<String> READONLY_TABLES = new HashSet<>(Arrays.asList(
+        "SHPDH", "SHPDI", "IFWMS113"
+    ));
+
+    // SELECT 전용 SQL 패턴 체크
+    private static final Pattern SELECT_ONLY = Pattern.compile(
+        "^\\s*(SELECT|WITH)\\s+.*", Pattern.CASE_INSENSITIVE | Pattern.DOTALL
+    );
+
+    // ── 테이블 목록 ────────────────────────────────────────────────
+    public Map<String, Object> getTables() {
+        List<Map<String, Object>> tables = new ArrayList<>();
+        for (String tbl : ALLOWED_TABLES) {
+            try {
+                Long cnt = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM " + tbl, Long.class
+                );
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("name", tbl);
+                row.put("rows", cnt != null ? cnt : 0);
+                tables.add(row);
+            } catch (Exception e) {
+                // 테이블 미존재 시 목록에서 제외
+                log.debug("Table {} not found: {}", tbl, e.getMessage());
+            }
+        }
+        return Map.of("ok", true, "tables", tables);
+    }
+
+    // ── 테이블 스키마 (컬럼 목록) ─────────────────────────────────
+    public Map<String, Object> getSchema(String table) {
+        String tbl = validateTable(table);
+        List<Map<String, Object>> cols = new ArrayList<>();
+        try (Connection conn = dataSource.getConnection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+
+            // PK 컬럼 조회
+            Set<String> pkCols = new HashSet<>();
+            try (ResultSet pk = meta.getPrimaryKeys(null, null, tbl)) {
+                while (pk.next()) pkCols.add(pk.getString("COLUMN_NAME"));
+            }
+            // 컬럼 목록
+            try (ResultSet rs = meta.getColumns(null, null, tbl, null)) {
+                while (rs.next()) {
+                    Map<String, Object> col = new LinkedHashMap<>();
+                    String colNm = rs.getString("COLUMN_NAME");
+                    col.put("name", colNm);
+                    col.put("type", rs.getString("TYPE_NAME"));
+                    col.put("nullable", rs.getInt("NULLABLE") == DatabaseMetaData.columnNullable);
+                    col.put("pk", pkCols.contains(colNm));
+                    col.put("default", rs.getString("COLUMN_DEF"));
+                    col.put("size", rs.getInt("COLUMN_SIZE"));
+                    col.put("remark", rs.getString("REMARKS"));
+                    cols.add(col);
+                }
+            }
+        } catch (Exception e) {
+            return Map.of("ok", false, "error", e.getMessage());
+        }
+        return Map.of("ok", true, "table", tbl, "columns", cols);
+    }
+
+    // ── 테이블 데이터 조회 ─────────────────────────────────────────
+    public Map<String, Object> getData(String table, int page, int size,
+                                       String search, String sort, String order) {
+        String tbl = validateTable(table);
+        int offset = Math.max(0, (page - 1)) * size;
+        String safeOrder = "ASC".equalsIgnoreCase(order) ? "ASC" : "DESC";
+        String safeSort  = (sort != null && sort.matches("[A-Za-z0-9_]+")) ? sort : null;
+
+        try {
+            // 전체 건수
+            String cntSql = "SELECT COUNT(*) FROM " + tbl;
+            Long total = jdbcTemplate.queryForObject(cntSql, Long.class);
+
+            // 데이터 조회
+            StringBuilder sql = new StringBuilder("SELECT * FROM ").append(tbl);
+            if (safeSort != null) sql.append(" ORDER BY ").append(safeSort).append(" ").append(safeOrder);
+            sql.append(" LIMIT ? OFFSET ?");
+
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql.toString(), size, offset);
+
+            return Map.of(
+                "ok", true,
+                "table", tbl,
+                "total", total != null ? total : 0,
+                "page", page,
+                "size", size,
+                "rows", rows
+            );
+        } catch (Exception e) {
+            log.error("getData error: {}", e.getMessage());
+            return Map.of("ok", false, "error", e.getMessage());
+        }
+    }
+
+    // ── 단건 상세 조회 ─────────────────────────────────────────────
+    public Map<String, Object> getDetail(String table, Map<String, String> params) {
+        String tbl = validateTable(table);
+        // params에서 WHERE 조건 구성
+        List<String> conditions = new ArrayList<>();
+        List<Object> args = new ArrayList<>();
+        params.forEach((k, v) -> {
+            if (k.matches("[A-Za-z0-9_]+")) {
+                conditions.add(k + " = ?");
+                args.add(v);
+            }
+        });
+        if (conditions.isEmpty()) return Map.of("ok", false, "error", "조건 필수");
+
+        String sql = "SELECT * FROM " + tbl + " WHERE " + String.join(" AND ", conditions);
+        try {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, args.toArray());
+            return Map.of("ok", true, "row", rows.isEmpty() ? null : rows.get(0));
+        } catch (Exception e) {
+            return Map.of("ok", false, "error", e.getMessage());
+        }
+    }
+
+    // ── 임의 SQL 실행 (SELECT 전용) ────────────────────────────────
+    public Map<String, Object> executeSql(String sql) {
+        if (sql == null || sql.isBlank()) return Map.of("ok", false, "error", "SQL 필수");
+        if (!SELECT_ONLY.matcher(sql.trim()).matches()) {
+            return Map.of("ok", false, "error", "SELECT/WITH 문만 허용됩니다");
+        }
+        try {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql);
+            return Map.of("ok", true, "rows", rows, "count", rows.size());
+        } catch (Exception e) {
+            return Map.of("ok", false, "error", e.getMessage());
+        }
+    }
+
+    // ── 테이블 통계 ────────────────────────────────────────────────
+    public Map<String, Object> getStats() {
+        List<Map<String, Object>> stats = new ArrayList<>();
+        for (String tbl : ALLOWED_TABLES) {
+            try {
+                Long cnt = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + tbl, Long.class);
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("table", tbl);
+                row.put("rows", cnt != null ? cnt : 0);
+                stats.add(row);
+            } catch (Exception ignored) {}
+        }
+        return Map.of("ok", true, "stats", stats);
+    }
+
+    // ── Row INSERT ─────────────────────────────────────────────────
+    @Transactional
+    public Map<String, Object> insertRow(String table, Map<String, Object> body) {
+        String tbl = validateTable(table);
+        if (READONLY_TABLES.contains(tbl)) return Map.of("ok", false, "error", "읽기 전용 테이블");
+
+        body.remove("_csrf");
+        if (body.isEmpty()) return Map.of("ok", false, "error", "데이터 필수");
+
+        List<String> cols = new ArrayList<>();
+        List<Object> vals = new ArrayList<>();
+        body.forEach((k, v) -> {
+            if (k.matches("[A-Za-z0-9_]+")) { cols.add(k); vals.add(v); }
+        });
+
+        String sql = "INSERT INTO " + tbl + " (" + String.join(",", cols) + ") VALUES ("
+                + String.join(",", Collections.nCopies(cols.size(), "?")) + ")";
+        try {
+            jdbcTemplate.update(sql, vals.toArray());
+            return Map.of("ok", true);
+        } catch (Exception e) {
+            log.error("insertRow error: {}", e.getMessage());
+            return Map.of("ok", false, "error", e.getMessage());
+        }
+    }
+
+    // ── Row UPDATE ─────────────────────────────────────────────────
+    @Transactional
+    public Map<String, Object> updateRow(String table, Map<String, Object> body) {
+        String tbl = validateTable(table);
+        if (READONLY_TABLES.contains(tbl)) return Map.of("ok", false, "error", "읽기 전용 테이블");
+
+        // _pk_* 접두사로 PK 컬럼 구분
+        Map<String, Object> pkMap  = new LinkedHashMap<>();
+        Map<String, Object> setMap = new LinkedHashMap<>();
+        body.forEach((k, v) -> {
+            if (k.startsWith("_pk_")) pkMap.put(k.substring(4), v);
+            else if (k.matches("[A-Za-z0-9_]+")) setMap.put(k, v);
+        });
+        if (pkMap.isEmpty() || setMap.isEmpty())
+            return Map.of("ok", false, "error", "PK(_pk_*) 및 변경 데이터 필수");
+
+        List<String> setClauses = new ArrayList<>();
+        List<Object> args = new ArrayList<>();
+        setMap.forEach((k, v) -> { setClauses.add(k + "=?"); args.add(v); });
+        List<String> pkClauses = new ArrayList<>();
+        pkMap.forEach((k, v) -> { pkClauses.add(k + "=?"); args.add(v); });
+
+        String sql = "UPDATE " + tbl + " SET " + String.join(",", setClauses)
+                + " WHERE " + String.join(" AND ", pkClauses);
+        try {
+            int affected = jdbcTemplate.update(sql, args.toArray());
+            return Map.of("ok", true, "affected", affected);
+        } catch (Exception e) {
+            log.error("updateRow error: {}", e.getMessage());
+            return Map.of("ok", false, "error", e.getMessage());
+        }
+    }
+
+    // ── Row DELETE ─────────────────────────────────────────────────
+    @Transactional
+    public Map<String, Object> deleteRow(String table, Map<String, Object> body) {
+        String tbl = validateTable(table);
+        if (READONLY_TABLES.contains(tbl)) return Map.of("ok", false, "error", "읽기 전용 테이블");
+
+        List<String> conditions = new ArrayList<>();
+        List<Object> args = new ArrayList<>();
+        body.forEach((k, v) -> {
+            if (k.matches("[A-Za-z0-9_]+")) { conditions.add(k + "=?"); args.add(v); }
+        });
+        if (conditions.isEmpty()) return Map.of("ok", false, "error", "조건 필수");
+
+        String sql = "DELETE FROM " + tbl + " WHERE " + String.join(" AND ", conditions);
+        try {
+            int affected = jdbcTemplate.update(sql, args.toArray());
+            return Map.of("ok", true, "affected", affected);
+        } catch (Exception e) {
+            log.error("deleteRow error: {}", e.getMessage());
+            return Map.of("ok", false, "error", e.getMessage());
+        }
+    }
+
+    // ── 내부 유틸 ──────────────────────────────────────────────────
+    private String validateTable(String table) {
+        String upper = table.toUpperCase();
+        if (!ALLOWED_TABLES.contains(upper))
+            throw new IllegalArgumentException("허용되지 않는 테이블: " + table);
+        return upper;
+    }
+}

@@ -20,7 +20,7 @@ import java.util.Map;
  *   GET  /api/shipment/schedule/filter-opts → GET /shipment-api/schedule/filter-opts
  */
 @RestController
-@RequestMapping("/shipment-api")
+@RequestMapping({"/shipment-api", "/api"})
 @RequiredArgsConstructor
 public class ShipmentController {
 

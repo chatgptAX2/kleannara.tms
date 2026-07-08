@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/dispatch-config-api")
+@RequestMapping({"/dispatch-config-api", "/api"})
 @RequiredArgsConstructor
 public class DispatchConfigController {
 

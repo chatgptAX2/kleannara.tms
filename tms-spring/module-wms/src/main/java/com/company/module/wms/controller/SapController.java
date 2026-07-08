@@ -1,0 +1,114 @@
+package com.company.module.wms.controller;
+
+import com.company.module.wms.service.SapService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
+
+/**
+ * SAP 연동 Controller
+ * Flask: /api/ps-sap/* → /api/ps-sap/*
+ * /api/delivery/shppoint (납품처 출고예정)
+ */
+@RestController
+@RequestMapping("/api")
+@RequiredArgsConstructor
+public class SapController {
+
+    private final SapService sapService;
+
+    // ── 납품처 출고예정 포인트 조회 ────────────────────────────────
+    @GetMapping("/delivery/shppoint")
+    public ResponseEntity<Map<String, Object>> shppoint(
+            @RequestParam(required = false) String wareky,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo) {
+        return ResponseEntity.ok(sapService.shppoint(wareky, dateFrom, dateTo));
+    }
+
+    // ── SAP 선적 목록 ──────────────────────────────────────────────
+    @PostMapping("/ps-sap/list")
+    public ResponseEntity<Map<String, Object>> sapList(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(sapService.sapList(body));
+    }
+
+    // ── SAP 선적 아이템 ────────────────────────────────────────────
+    @PostMapping("/ps-sap/items")
+    public ResponseEntity<Map<String, Object>> sapItems(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(sapService.sapItems(body));
+    }
+
+    // ── SAP 서류 목록 ──────────────────────────────────────────────
+    @PostMapping("/ps-sap/docs")
+    public ResponseEntity<Map<String, Object>> sapDocs(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(sapService.sapDocs(body));
+    }
+
+    // ── SAP 차량 검색 ──────────────────────────────────────────────
+    @PostMapping("/ps-sap/vehicle-search")
+    public ResponseEntity<Map<String, Object>> vehicleSearch(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(sapService.vehicleSearch(body));
+    }
+
+    // ── SAP 차량 배정 ──────────────────────────────────────────────
+    @PostMapping("/ps-sap/assign-vehicle")
+    public ResponseEntity<Map<String, Object>> assignVehicle(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(sapService.assignVehicle(body));
+    }
+
+    // ── SAP 선적 생성 ──────────────────────────────────────────────
+    @PostMapping("/ps-sap/shipment-create")
+    public ResponseEntity<Map<String, Object>> shipmentCreate(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(sapService.shipmentCreate(body));
+    }
+
+    // ── SAP 선적 삭제 ──────────────────────────────────────────────
+    @PostMapping("/ps-sap/shipment-delete")
+    public ResponseEntity<Map<String, Object>> shipmentDelete(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(sapService.shipmentDelete(body));
+    }
+
+    // ── ps-dispatch 추가 API (기존 Spring Boot 모듈 미구현 부분) ──
+
+    @GetMapping("/ps-dispatch/search")
+    public ResponseEntity<Map<String, Object>> psSearch(
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo,
+            @RequestParam(required = false) String dptnky,
+            @RequestParam(required = false) String shpoky,
+            @RequestParam(required = false) String status) {
+        return ResponseEntity.ok(sapService.psSearch(dateFrom, dateTo, dptnky, shpoky, status));
+    }
+
+    @PostMapping("/ps-dispatch/auto")
+    public ResponseEntity<Map<String, Object>> psAuto(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(sapService.psAuto(body));
+    }
+
+    @PostMapping("/ps-dispatch/load-for-edit")
+    public ResponseEntity<Map<String, Object>> psLoadForEdit(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(sapService.psLoadForEdit(body));
+    }
+
+    @PostMapping("/ps-dispatch/delete")
+    public ResponseEntity<Map<String, Object>> psDelete(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(sapService.psDelete(body));
+    }
+
+    @PostMapping("/ps-dispatch/split")
+    public ResponseEntity<Map<String, Object>> psSplit(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(sapService.psSplit(body));
+    }
+
+    @PostMapping("/ps-dispatch/update-item")
+    public ResponseEntity<Map<String, Object>> psUpdateItem(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(sapService.psUpdateItem(body));
+    }
+
+    @PostMapping("/ps-dispatch/create-manual")
+    public ResponseEntity<Map<String, Object>> psCreateManual(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(sapService.psCreateManual(body));
+    }
+}

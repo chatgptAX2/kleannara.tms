@@ -32,7 +32,14 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/auth/**", "/", "/static/**", "/index.html").permitAll()
+                .requestMatchers(
+                    "/auth/**",
+                    "/",
+                    "/static/**",
+                    "/index.html",
+                    "/favicon.ico",
+                    "/actuator/health"
+                ).permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(

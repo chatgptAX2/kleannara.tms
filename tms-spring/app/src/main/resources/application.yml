@@ -3,13 +3,13 @@ spring:
     name: kleannara-tms
 
   # -------------------------------------------------------
-  # 활성 프로파일 기본값: dev
+  # 활성 프로파일 기본값: prod
   #   실행 시 오버라이드 가능
   #   · java -jar app.jar --spring.profiles.active=prod
   #   · 환경변수: SPRING_PROFILES_ACTIVE=prod
   # -------------------------------------------------------
   profiles:
-    active: dev
+    active: prod
 
   # DB 커넥션은 각 프로파일(dev/prod)에서 설정
   jpa:
@@ -26,14 +26,38 @@ spring:
     filter:
       order: 10
 
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 500MB
+      max-request-size: 500MB
+
 server:
-  port: 8080
+  port: 18081
   servlet:
     context-path: /
+  tomcat:
+    max-swallow-size: -1   # 파일 업로드 크기 제한 해제
+
+# 서류 업로드 기본 경로
+doc:
+  upload:
+    base-path: /home/user/webapp/uploads
+
+# SAP RFC/WMS 연동 URL (실제 운영 시 환경변수로 오버라이드)
+sap:
+  rfc:
+    url: ${SAP_RFC_URL:http://localhost:8000/sap/rfc}
+    # mock=true: SAP 연결 없이 더미 응답 반환 (개발/테스트 환경)
+    # 운영 배포 시 반드시 false 로 설정하거나 환경변수 SAP_RFC_MOCK=false 로 오버라이드
+    mock: ${SAP_RFC_MOCK:true}
+    timeout-seconds: ${SAP_RFC_TIMEOUT:30}
+  wms:
+    url: ${SAP_WMS_URL:http://localhost:9000/wms/ifc}
 
 # JWT 설정
 jwt:
-  secret: kleannara-tms-jwt-secret-key-256bit-long-change-in-production
+  secret: ${JWT_SECRET:kleannara-tms-jwt-secret-key-256bit-long-change-in-production}
   expiration-ms: 86400000    # 24시간 (ms)
 
 logging:

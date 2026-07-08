@@ -16,7 +16,7 @@ import java.util.List;
  * URL prefix: /dispatch-api/ps-dispatch
  */
 @RestController
-@RequestMapping("/dispatch-api/ps-dispatch")
+@RequestMapping({"/dispatch-api/ps-dispatch", "/api/ps-dispatch"})
 @RequiredArgsConstructor
 public class PsDispatchController {
 

@@ -6,9 +6,9 @@
 # ======================================================
 spring:
   datasource:
-    url: jdbc:mariadb://localhost:3306/tms?characterEncoding=UTF-8&serverTimezone=Asia/Seoul&useSSL=false&allowPublicKeyRetrieval=true
-    username: tmsuser
-    password: tmspassword          # 운영 서버에서 환경변수로 오버라이드: SPRING_DATASOURCE_PASSWORD
+    url: jdbc:mariadb://10.2.14.247:3306/intergration?characterEncoding=UTF-8&serverTimezone=Asia/Seoul&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:tmsuser}
+    password: ${DB_PASSWORD:tmspassword}          # 운영 서버에서 환경변수로 오버라이드: DB_PASSWORD
     driver-class-name: org.mariadb.jdbc.Driver
     hikari:
       pool-name: HikariPool-PROD

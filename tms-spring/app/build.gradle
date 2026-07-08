@@ -14,7 +14,9 @@ dependencies {
     implementation project(':module-vehicle')
     implementation project(':module-delivery')
     implementation project(':module-dispatch-config')
-    implementation project(':module-shipment')       // ② 플러그인 추가 — 출고진행현황
+    implementation project(':module-shipment')
+    implementation project(':module-wms')
+    implementation project(':module-document')
 
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'

@@ -1,0 +1,13 @@
+// module-wms: WMS 뷰어 + 공통코드 + 물류센터 + 배차전략 모듈
+// 기능: 테이블조회/스키마/데이터/CRUD, 공통코드, 물류센터, 납품처, 차량, 배차전략
+dependencies {
+    compileOnly project(':core')
+
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+}
+
+jar { enabled = true }
+bootJar { enabled = false }

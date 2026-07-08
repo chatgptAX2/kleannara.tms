@@ -6,7 +6,9 @@ include 'module-dispatch'
 include 'module-vehicle'
 include 'module-delivery'
 include 'module-dispatch-config'
-include 'module-shipment'                        // ① 플러그인 추가 — 출고진행현황
+include 'module-shipment'
+include 'module-wms'      // WMS 뷰어 + 공통코드 + 물류센터 + 배차전략
+include 'module-document' // 서류관리 (폴더/파일 업로드·다운로드)
 
 // ──────────────────────────────────────────────────────────────────
 // 플러그인 방식 추가 시 이 파일에 아래 한 줄만 추가하면 됩니다:

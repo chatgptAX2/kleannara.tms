@@ -16,7 +16,7 @@ import java.util.Map;
  * URL prefix: /delivery-api
  */
 @RestController
-@RequestMapping("/delivery-api")
+@RequestMapping({"/delivery-api", "/api"})
 @RequiredArgsConstructor
 public class DeliveryController {
 

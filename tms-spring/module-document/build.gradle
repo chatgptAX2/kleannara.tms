@@ -1,0 +1,13 @@
+// module-document: 서류관리 모듈
+// 기능: 폴더 생성/수정/삭제, 파일 업로드/다운로드/미리보기/삭제
+dependencies {
+    compileOnly project(':core')
+
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+}
+
+jar { enabled = true }
+bootJar { enabled = false }
