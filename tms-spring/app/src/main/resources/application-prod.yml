@@ -1,0 +1,29 @@
+# ======================================================
+# 운영(PROD) 환경 설정
+# 호스트 : 10.2.14.193
+# 포트   : 1522
+# SID    : KNRAWMS
+# 계정   : KNRAWMS
+# ======================================================
+spring:
+  datasource:
+    url: jdbc:oracle:thin:@10.2.14.193:1522:KNRAWMS
+    username: KNRAWMS
+    password: kleannara12#
+    driver-class-name: oracle.jdbc.OracleDriver
+    hikari:
+      pool-name: HikariPool-PROD
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000      # 30초
+      idle-timeout: 600000           # 10분
+      max-lifetime: 1800000          # 30분
+      connection-test-query: SELECT 1 FROM DUAL
+
+  jpa:
+    show-sql: false                  # 운영환경에서 SQL 미출력
+
+logging:
+  level:
+    com.company: INFO
+    org.hibernate.SQL: WARN
