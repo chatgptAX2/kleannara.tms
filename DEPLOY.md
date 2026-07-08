@@ -12,7 +12,7 @@
      [Nginx :80]
         │  모든 요청 프록시
         ▼
-[Spring Boot :18081]  ← kleannara-tms.jar
+[Spring Boot :18081]  ← app.jar
         │
         ▼
 [MariaDB 10.2.14.247:3306/intergration]
@@ -252,7 +252,7 @@ ls -lh /data/tms/app/app.jar
 ## STEP 7 — systemd 서비스 등록
 
 ```bash
-sudo vi /etc/systemd/system/kleannara-tms.service
+sudo vi /etc/systemd/system/tms.service
 ```
 
 아래 내용 붙여넣기:
@@ -290,11 +290,11 @@ WantedBy=multi-user.target
 ```bash
 # 서비스 등록 및 시작
 sudo systemctl daemon-reload
-sudo systemctl enable kleannara-tms
-sudo systemctl start kleannara-tms
+sudo systemctl enable tms
+sudo systemctl start tms
 
 # 상태 확인 (10~20초 대기 후)
-sudo systemctl status kleannara-tms
+sudo systemctl status tms
 
 # 기동 로그 실시간 확인
 tail -f /data/tms/logs/stdout.log
@@ -378,7 +378,7 @@ sudo cp /data/tms/source/tms-spring/app/build/libs/app.jar \
         /data/tms/app/app.jar
 
 # 4. 서비스 재시작
-sudo systemctl restart kleannara-tms
+sudo systemctl restart tms
 
 # 5. 기동 확인 (15초 대기)
 sleep 15 && curl http://localhost:18081/actuator/health
@@ -387,7 +387,7 @@ sleep 15 && curl http://localhost:18081/actuator/health
 > **설정 변경만 할 때** (코드 변경 없음)
 > ```bash
 > sudo vi /data/tms/config/application.yml   # 설정 수정
-> sudo systemctl restart kleannara-tms       # 재시작만
+> sudo systemctl restart tms                 # 재시작만
 > ```
 
 ---
@@ -409,9 +409,20 @@ sleep 15 && curl http://localhost:18081/actuator/health
 
 ### Spring Boot 시작 안 될 때
 ```bash
+sudo systemctl status tms
 tail -100 /data/tms/logs/stdout.log
 mysql -h 10.2.14.247 -u tmsuser -p -e "SELECT 1" intergration
 ss -tlnp | grep 18081
+```
+
+### 서비스 관리 명령어 (tms)
+```bash
+sudo systemctl start   tms   # 시작
+sudo systemctl stop    tms   # 중지
+sudo systemctl restart tms   # 재시작
+sudo systemctl status  tms   # 상태 확인
+sudo systemctl enable  tms   # 부팅 자동시작 등록
+sudo systemctl disable tms   # 부팅 자동시작 해제
 ```
 
 ### Nginx 502 Bad Gateway
