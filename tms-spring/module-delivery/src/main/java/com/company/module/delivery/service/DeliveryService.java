@@ -5,7 +5,6 @@ import com.company.module.delivery.entity.BzptnDetail;
 import com.company.module.delivery.entity.RouteCost;
 import com.company.module.delivery.repository.BzptnDetailRepository;
 import com.company.module.delivery.repository.RouteCostRepository;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,27 +21,20 @@ import java.util.*;
  *        api_route_cost_search / api_route_cost_pivot 대응
  *
  * ─ DB 라우팅 ───────────────────────────────────────────────────
- *   tmsEm  (tmsPU / MariaDB) :
- *     - BzptnDetailRepository (BZPTN_DETAIL)  -- TMS 추가 상세 테이블
- *     - RouteCostRepository   (ROUTE_COST)    -- 운송경로비용
- *     - em.createNativeQuery  UPDATE/INSERT bzptn_detail
- *
  *   wmsEm  (wmsPU / Oracle WMS) :
- *     - em.createNativeQuery  SELECT * FROM BZPTN  -- WMS 원장 테이블
+ *     - BzptnDetailRepository (BZPTN_DETAIL, BZPTN)  -- Oracle WMS 테이블
+ *     - RouteCostRepository   (ROUTE_COST)            -- Oracle WMS 테이블
+ *     - em.createNativeQuery  BZPTN_DETAIL UPDATE/INSERT
  * ───────────────────────────────────────────────────────────────
  */
 @Service
-@Transactional(readOnly = true, transactionManager = "tmsTransactionManager")
+@Transactional(readOnly = true, transactionManager = "wmsTransactionManager")
 public class DeliveryService {
 
     private final BzptnDetailRepository bzptnDetailRepo;
     private final RouteCostRepository   routeCostRepo;
 
-    /** TMS DB (MariaDB) — BZPTN_DETAIL / ROUTE_COST 쓰기용 */
-    @PersistenceContext(unitName = "tmsPU")
-    private EntityManager tmsEm;
-
-    /** WMS DB (Oracle) — BZPTN 원장 읽기용 */
+    /** WMS DB (Oracle) — BZPTN 원장 및 BZPTN_DETAIL 읽기/쓰기용 */
     @PersistenceContext(unitName = "wmsPU")
     private EntityManager wmsEm;
 
@@ -116,9 +108,9 @@ public class DeliveryService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 납품처 저장 (Flask api_delivery_save)
-    // BZPTN_DETAIL 쓰기 → tmsEm (MariaDB)
+    // BZPTN_DETAIL 쓰기 → wmsEm (Oracle)
     // ──────────────────────────────────────────────────────────────────────────
-    @Transactional(transactionManager = "tmsTransactionManager")
+    @Transactional(transactionManager = "wmsTransactionManager")
     public String saveDetail(DeliverySaveRequest req) {
         String ptnrky = req.getPtnrky() == null ? "" : req.getPtnrky().strip();
         String ptnrty = req.getPtnrty() == null ? "CT" : req.getPtnrty().strip();
@@ -129,7 +121,7 @@ public class DeliveryService {
         String nowtm = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
 
         if (bzptnDetailRepo.existsByPtnrkyAndPtnrtyAndOwnrky(ptnrky, ptnrty, ownrky)) {
-            tmsEm.createNativeQuery("""
+            wmsEm.createNativeQuery("""
                 UPDATE bzptn_detail SET
                   WAREKY=?,ROUTE_CD=?,ITEM_GROUP=?,UNLOAD_TIME=?,
                   INB_TIME_FROM1=?,INB_TIME_TO1=?,AREA_CD=?,MAX_HEIGHT=?,
@@ -170,7 +162,7 @@ public class DeliveryService {
               .executeUpdate();
             return "updated";
         } else {
-            tmsEm.createNativeQuery("""
+            wmsEm.createNativeQuery("""
                 INSERT INTO bzptn_detail
                 (PTNRKY,PTNRTY,OWNRKY,WAREKY,ROUTE_CD,ITEM_GROUP,UNLOAD_TIME,
                  INB_TIME_FROM1,INB_TIME_TO1,AREA_CD,MAX_HEIGHT,FORKLIFT_YN,HANDWORK_YN,
@@ -213,9 +205,9 @@ public class DeliveryService {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // 납품처 삭제 (Flask api_delivery_delete) — TMS DB
+    // 납품처 삭제 (Flask api_delivery_delete) — WMS Oracle DB
     // ──────────────────────────────────────────────────────────────────────────
-    @Transactional(transactionManager = "tmsTransactionManager")
+    @Transactional(transactionManager = "wmsTransactionManager")
     public void deleteDetail(String ptnrky, String ptnrty, String ownrky) {
         String nowdt = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
         String nowtm = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
