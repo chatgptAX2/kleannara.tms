@@ -10,16 +10,35 @@ import org.springframework.context.annotation.Primary;
 import javax.sql.DataSource;
 
 /**
- * TMS 전용 DataSource (MariaDB — 10.2.14.247:3306/intergration)
+ * TMS 전용 DataSource (MariaDB)
  *
- * 대상 모듈: PS제약조건관리, 운송경로비용(BZPTN_DETAIL/ROUTE_COST), 서류관리(DOC_FOLDER/DOC_FILE)
+ * ■ 패턴: @ConfigurationProperties + DataSourceBuilder (다중 DataSource 표준 패턴)
  *
- * application.yml 설정:
- * datasource:
- *   tms:
- *     jdbc-url: jdbc:mariadb://10.2.14.247:3306/intergration?...
- *     username: ...
- *     password: ...
+ *   HikariCP 는 url 프로퍼티가 없고 jdbcUrl 만 존재.
+ *   DataSourceBuilder 로 HikariDataSource 를 직접 생성할 때는
+ *   Spring Boot 의 DataSourceProperties(url→jdbcUrl 변환)를 거치지 않으므로
+ *   yml 에 반드시 jdbc-url 키를 사용해야 한다.
+ *
+ *   Spring Boot 공식 문서 인용:
+ *     "Hikari has no url property. Instead, it has a jdbc-url property
+ *      which means that you must rewrite your configuration"
+ *     (https://docs.spring.io/spring-boot/how-to/data-access.html)
+ *
+ * ■ yml 설정 (prefix: datasource.tms)
+ *
+ *   datasource:
+ *     tms:
+ *       jdbc-url: jdbc:mariadb://10.2.14.247:3306/integration?...
+ *       username: appuser
+ *       password: Kleannara12#
+ *       driver-class-name: org.mariadb.jdbc.Driver
+ *       hikari:
+ *         pool-name: HikariPool-TMS
+ *         maximum-pool-size: 20
+ *         minimum-idle: 5
+ *         connection-timeout: 30000
+ *         idle-timeout: 600000
+ *         max-lifetime: 1800000
  */
 @Configuration
 public class TmsDataSourceConfig {
@@ -27,7 +46,9 @@ public class TmsDataSourceConfig {
     @Primary
     @Bean(name = "tmsDataSource")
     @ConfigurationProperties(prefix = "datasource.tms")
-    public DataSource tmsDataSource() {
-        return DataSourceBuilder.create().type(HikariDataSource.class).build();
+    public HikariDataSource tmsDataSource() {
+        return DataSourceBuilder.create()
+                .type(HikariDataSource.class)
+                .build();
     }
 }

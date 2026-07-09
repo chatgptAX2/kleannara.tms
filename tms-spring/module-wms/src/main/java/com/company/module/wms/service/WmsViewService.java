@@ -117,12 +117,28 @@ public class WmsViewService {
             String cntSql = "SELECT COUNT(*) FROM " + tbl;
             Long total = jdbcTemplate.queryForObject(cntSql, Long.class);
 
-            // 데이터 조회
+            // ── Oracle 페이징: FETCH FIRST ... ROWS ONLY (Oracle 12c+ 표준)
+            //    MySQL/MariaDB 의 LIMIT ? OFFSET ? 은 Oracle 에서 지원하지 않음.
+            //    Oracle 표준 문법: ... ORDER BY col OFFSET n ROWS FETCH NEXT m ROWS ONLY
             StringBuilder sql = new StringBuilder("SELECT * FROM ").append(tbl);
-            if (safeSort != null) sql.append(" ORDER BY ").append(safeSort).append(" ").append(safeOrder);
-            sql.append(" LIMIT ? OFFSET ?");
-
-            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql.toString(), size, offset);
+            if (safeSort != null) {
+                sql.append(" ORDER BY ").append(safeSort).append(" ").append(safeOrder);
+            } else {
+                // Oracle 에서 OFFSET/FETCH 는 ORDER BY 가 없으면 결과 순서 불안정
+                // ORDER BY 미지정 시 ROWNUM 기반 서브쿼리로 폴백
+                sql = new StringBuilder(
+                    "SELECT * FROM (SELECT a.*, ROWNUM rn FROM (SELECT * FROM " + tbl + ") a WHERE ROWNUM <= ?)  WHERE rn > ?"
+                );
+            }
+            List<Map<String, Object>> rows;
+            if (safeSort != null) {
+                // ORDER BY 있을 때: OFFSET ... ROWS FETCH NEXT ... ROWS ONLY
+                sql.append(" OFFSET ? ROWS FETCH NEXT ? ROWS ONLY");
+                rows = jdbcTemplate.queryForList(sql.toString(), offset, size);
+            } else {
+                // ORDER BY 없을 때: ROWNUM 서브쿼리 (offset+size 로 상단 자르고, rn>offset 으로 하단 자름)
+                rows = jdbcTemplate.queryForList(sql.toString(), offset + size, offset);
+            }
 
             return Map.of(
                 "ok", true,

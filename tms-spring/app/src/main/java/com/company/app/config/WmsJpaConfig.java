@@ -66,6 +66,10 @@ public class WmsJpaConfig {
         props.setProperty("hibernate.hbm2ddl.auto", "none");
         props.setProperty("hibernate.show_sql",  "false");
         props.setProperty("hibernate.format_sql", "true");
+        // ── Oracle 기본 스키마 명시 ──────────────────────────────────────
+        // KNRATMS 계정으로 접속 시 해당 스키마를 기본으로 사용
+        // 미설정 시 접속 계정 스키마가 자동 적용되나 명시적으로 지정
+        props.setProperty("hibernate.default_schema", "KNRATMS");
         em.setJpaProperties(props);
 
         return em;
@@ -80,11 +84,16 @@ public class WmsJpaConfig {
     /**
      * WMS DB 전용 JdbcTemplate
      * WMS 서비스에서 @Qualifier("wmsJdbcTemplate") 로 주입
+     *
+     * ■ wmsDataSource(Oracle) 를 명시적으로 주입
+     *   — @Primary tmsDataSource(MariaDB) 가 자동 주입되는 것을 방지
      */
     @Bean(name = "wmsJdbcTemplate")
     public JdbcTemplate wmsJdbcTemplate(
             @Qualifier("wmsDataSource") DataSource dataSource) {
-        return new JdbcTemplate(dataSource);
+        JdbcTemplate jt = new JdbcTemplate(dataSource);
+        jt.setQueryTimeout(30);   // Oracle 쿼리 타임아웃 30초
+        return jt;
     }
 
     /**
