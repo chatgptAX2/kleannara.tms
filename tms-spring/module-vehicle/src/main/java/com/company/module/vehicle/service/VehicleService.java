@@ -25,7 +25,7 @@ import java.util.*;
  */
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
+@Transactional(readOnly = true, transactionManager = "wmsTransactionManager")
 public class VehicleService {
 
     private final DsVehicleRepository dsVehicleRepo;
@@ -189,7 +189,7 @@ public class VehicleService {
     // ──────────────────────────────────────────────────────────────────────────
     // Carclass / DS_VEHICLE 저장 (Flask api_carclass_save)
     // ──────────────────────────────────────────────────────────────────────────
-    @Transactional
+    @Transactional(transactionManager = "wmsTransactionManager")
     public void saveCarclass(VehicleSaveRequest req) {
         String nowdt = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
         String nowtm = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
@@ -320,7 +320,7 @@ public class VehicleService {
     // ──────────────────────────────────────────────────────────────────────────
     // VHCMA 저장 (Flask api_vehicle_save)
     // ──────────────────────────────────────────────────────────────────────────
-    @Transactional
+    @Transactional(transactionManager = "wmsTransactionManager")
     public String saveVhcma(VhcmaSaveRequest req) {
         String vno    = req.getVehicleNo() == null ? "" : req.getVehicleNo().strip();
         String ownrky = req.getOwnrky() == null ? "KN" : req.getOwnrky().strip();
@@ -409,7 +409,7 @@ public class VehicleService {
     // ──────────────────────────────────────────────────────────────────────────
     // VHCMA 삭제 (Flask api_vehicle_delete) – 소프트 삭제 (DEL_YN='Y')
     // ──────────────────────────────────────────────────────────────────────────
-    @Transactional
+    @Transactional(transactionManager = "wmsTransactionManager")
     public void deleteVhcma(String vehicleNo, String ownrky) {
         String nowdt = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
         String nowtm = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));

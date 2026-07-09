@@ -8,6 +8,14 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 
+/**
+ * 납품처 Repository — Oracle WMS DB (wmsPU) 로 실행됨
+ *
+ * ■ Oracle 문법 주의사항
+ *   - 페이징: LIMIT/OFFSET(MySQL) → OFFSET ? ROWS FETCH NEXT ? ROWS ONLY (Oracle 12c+)
+ *   - 문자열 연결: CONCAT('%', :p, '%')(MySQL) → '%' || :p || '%' (Oracle)
+ *   - nativeQuery = true 이므로 Oracle SQL 문법을 직접 사용해야 함
+ */
 @Repository
 public interface BzptnDetailRepository extends JpaRepository<BzptnDetail, Long> {
 
@@ -19,7 +27,7 @@ public interface BzptnDetailRepository extends JpaRepository<BzptnDetail, Long> 
         String ptnrky, String ptnrty, String ownrky
     );
 
-    /** 납품처 목록 (BZPTN JOIN 포함) */
+    /** 납품처 목록 (BZPTN JOIN 포함) — Oracle 12c+ 페이징 */
     @Query(value = """
         SELECT b.PTNRKY, b.NAME01, b.PTNRTY, b.OWNRKY,
                b.ADDR01, b.ADDR02, b.REGN01, b.TELN01,
@@ -32,14 +40,14 @@ public interface BzptnDetailRepository extends JpaRepository<BzptnDetail, Long> 
         WHERE b.PTNRTY = 'CT'
           AND (:wareky   IS NULL OR d.WAREKY = :wareky)
           AND (:itemGroup IS NULL OR d.ITEM_GROUP = :itemGroup)
-          AND (:ptnrky   IS NULL OR b.PTNRKY LIKE CONCAT('%',:ptnrky,'%')
-                                 OR b.NAME01  LIKE CONCAT('%',:ptnrky,'%'))
-          AND (:q        IS NULL OR b.PTNRKY LIKE CONCAT('%',:q,'%')
-                                 OR b.NAME01  LIKE CONCAT('%',:q,'%')
-                                 OR b.ADDR01  LIKE CONCAT('%',:q,'%')
-                                 OR b.REGN01  LIKE CONCAT('%',:q,'%'))
+          AND (:ptnrky   IS NULL OR b.PTNRKY LIKE '%' || :ptnrky || '%'
+                                 OR b.NAME01  LIKE '%' || :ptnrky || '%')
+          AND (:q        IS NULL OR b.PTNRKY LIKE '%' || :q || '%'
+                                 OR b.NAME01  LIKE '%' || :q || '%'
+                                 OR b.ADDR01  LIKE '%' || :q || '%'
+                                 OR b.REGN01  LIKE '%' || :q || '%')
         ORDER BY b.PTNRKY
-        LIMIT :size OFFSET :offset
+        OFFSET :offset ROWS FETCH NEXT :size ROWS ONLY
         """, nativeQuery = true)
     java.util.List<Object[]> searchList(
         @Param("wareky")    String wareky,
@@ -57,12 +65,12 @@ public interface BzptnDetailRepository extends JpaRepository<BzptnDetail, Long> 
         WHERE b.PTNRTY = 'CT'
           AND (:wareky   IS NULL OR d.WAREKY = :wareky)
           AND (:itemGroup IS NULL OR d.ITEM_GROUP = :itemGroup)
-          AND (:ptnrky   IS NULL OR b.PTNRKY LIKE CONCAT('%',:ptnrky,'%')
-                                 OR b.NAME01  LIKE CONCAT('%',:ptnrky,'%'))
-          AND (:q        IS NULL OR b.PTNRKY LIKE CONCAT('%',:q,'%')
-                                 OR b.NAME01  LIKE CONCAT('%',:q,'%')
-                                 OR b.ADDR01  LIKE CONCAT('%',:q,'%')
-                                 OR b.REGN01  LIKE CONCAT('%',:q,'%'))
+          AND (:ptnrky   IS NULL OR b.PTNRKY LIKE '%' || :ptnrky || '%'
+                                 OR b.NAME01  LIKE '%' || :ptnrky || '%')
+          AND (:q        IS NULL OR b.PTNRKY LIKE '%' || :q || '%'
+                                 OR b.NAME01  LIKE '%' || :q || '%'
+                                 OR b.ADDR01  LIKE '%' || :q || '%'
+                                 OR b.REGN01  LIKE '%' || :q || '%')
         """, nativeQuery = true)
     long searchCount(
         @Param("wareky")    String wareky,

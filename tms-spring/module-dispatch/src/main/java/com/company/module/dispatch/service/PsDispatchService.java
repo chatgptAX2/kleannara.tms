@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
  */
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
+@Transactional(readOnly = true, transactionManager = "wmsTransactionManager")
 public class PsDispatchService {
 
     private final PsDispatchHRepository dispatchHRepo;
@@ -103,7 +103,7 @@ public class PsDispatchService {
     // ──────────────────────────────────────────────────────────────────────────
     // 배차번호 채번 (Flask _ps_next_dispatch_no)
     // ──────────────────────────────────────────────────────────────────────────
-    @Transactional
+    @Transactional(transactionManager = "wmsTransactionManager")
     public String nextDispatchNo(String yyyymmdd) {
         String dt = yyyymmdd == null ? "" : yyyymmdd.replace("-", "");
         String yymmdd = dt.length() == 8 ? dt.substring(2) : (dt.length() >= 6 ? dt.substring(dt.length() - 6) : dt);
@@ -287,7 +287,7 @@ public class PsDispatchService {
     // ──────────────────────────────────────────────────────────────────────────
     // 배차 저장 (Flask api_ps_dispatch_save)
     // ──────────────────────────────────────────────────────────────────────────
-    @Transactional
+    @Transactional(transactionManager = "wmsTransactionManager")
     public List<String> saveDispatch(PsDispatchSaveRequest req) {
         String today = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE); // yyyyMMdd
         List<String> saved = new ArrayList<>();
@@ -509,7 +509,7 @@ public class PsDispatchService {
     // ──────────────────────────────────────────────────────────────────────────
     // 배차 확정 (Flask api_ps_dispatch_confirm)
     // ──────────────────────────────────────────────────────────────────────────
-    @Transactional
+    @Transactional(transactionManager = "wmsTransactionManager")
     public int confirmDispatch(PsDispatchConfirmRequest req) {
         List<String> nos = req.getDispatchNos();
         String ph = nos.stream().map(x -> "?").collect(Collectors.joining(","));

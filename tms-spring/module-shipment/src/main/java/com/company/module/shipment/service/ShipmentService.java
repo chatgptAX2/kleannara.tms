@@ -26,7 +26,7 @@ import java.util.stream.Collectors;
  */
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
+@Transactional(readOnly = true, transactionManager = "wmsTransactionManager")
 public class ShipmentService {
 
     private static final double PLT_CAP_KG = 1200.0;

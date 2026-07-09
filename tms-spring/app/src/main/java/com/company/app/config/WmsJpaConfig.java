@@ -21,6 +21,7 @@ import java.util.Properties;
  *   - com.company.module.dispatch.repository    (PS배차 — PS_DISPATCH_H/D)
  *   - com.company.module.vehicle.repository     (차량유형/차량마스터 — DS_VEHICLE, VHCMA)
  *   - com.company.module.shipment.repository    (출고진행현황 — SHPDH, SHPDI)
+ *   - com.company.module.delivery.repository    (납품처관리 — BZPTN_DETAIL, ROUTE_COST, BZPTN)
  *
  * WMS JdbcTemplate 빈:
  *   @Qualifier("wmsJdbcTemplate") 로 주입
@@ -34,7 +35,8 @@ import java.util.Properties;
     basePackages = {
         "com.company.module.dispatch.repository",
         "com.company.module.vehicle.repository",
-        "com.company.module.shipment.repository"
+        "com.company.module.shipment.repository",
+        "com.company.module.delivery.repository"   // BZPTN_DETAIL, ROUTE_COST, BZPTN — Oracle WMS
     },
     entityManagerFactoryRef = "wmsEntityManagerFactory",
     transactionManagerRef   = "wmsTransactionManager"
@@ -50,7 +52,8 @@ public class WmsJpaConfig {
         em.setPackagesToScan(
             "com.company.module.dispatch.entity",
             "com.company.module.vehicle.entity",
-            "com.company.module.shipment.entity"
+            "com.company.module.shipment.entity",
+            "com.company.module.delivery.entity"   // BZPTN_DETAIL, ROUTE_COST — Oracle WMS
         );
         em.setPersistenceUnitName("wmsPU");
 
