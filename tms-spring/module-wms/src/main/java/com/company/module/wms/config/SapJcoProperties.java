@@ -3,9 +3,23 @@ package com.company.module.wms.config;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
 
 /**
  * SAP JCo 직접 연결 설정값
+ *
+ * ■ @Component 를 붙여 SapJcoConfig(@ConditionalOnProperty) 와 독립적으로
+ *   항상 Spring 컨텍스트에 빈으로 등록되도록 한다.
+ *
+ *   문제 상황:
+ *     @EnableConfigurationProperties(SapJcoProperties.class) 가 SapJcoConfig 에만 있었음.
+ *     sap.jco.mock=true 시 @ConditionalOnProperty 로 SapJcoConfig 빈 자체가 미등록 →
+ *     SapJcoProperties 빈도 미등록 → SapRfcService 생성자 주입 실패 → 기동 중단.
+ *
+ *   해결:
+ *     @Component 를 직접 부여 → SapJcoConfig 등록 여부와 무관하게 항상 빈 등록.
+ *     SapRfcService 는 mock 여부와 상관없이 SapJcoProperties 를 주입받아
+ *     isMock() 으로 분기 처리 가능.
  *
  * application.yml 예시:
  * sap:
@@ -21,6 +35,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     peak-limit: 10          # 최대 동시 연결 수 (기본 10)
  *     mock: false             # true = SAP 연결 없이 더미 응답
  */
+@Component
 @Getter
 @Setter
 @ConfigurationProperties(prefix = "sap.jco")

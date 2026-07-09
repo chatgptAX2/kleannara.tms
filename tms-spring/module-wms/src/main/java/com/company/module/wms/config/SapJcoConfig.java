@@ -6,7 +6,6 @@ import com.sap.conn.jco.ext.Environment;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
 import jakarta.annotation.PostConstruct;
@@ -38,7 +37,6 @@ import java.util.Properties;
 @Slf4j
 @Configuration
 @RequiredArgsConstructor
-@EnableConfigurationProperties(SapJcoProperties.class)
 @ConditionalOnProperty(name = "sap.jco.mock", havingValue = "false", matchIfMissing = false)
 public class SapJcoConfig {
 
