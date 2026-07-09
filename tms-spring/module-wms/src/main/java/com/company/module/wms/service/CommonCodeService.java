@@ -1,7 +1,7 @@
 package com.company.module.wms.service;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,15 +11,17 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
- * 공통코드 + 물류센터 + 출고문서 서비스
- * Flask: /api/codes/<cmcdky>, /api/wahma/*, /api/shpdh/detail/<shpoky>
+ * 공통코드 + 물류센터 + 출고문서 서비스 (WMS Oracle DB)
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class CommonCodeService {
 
     private final JdbcTemplate jdbc;
+
+    public CommonCodeService(@Qualifier("wmsJdbcTemplate") JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
     private static final DateTimeFormatter YMDFORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     // ── 공통코드 조회 ──────────────────────────────────────────────

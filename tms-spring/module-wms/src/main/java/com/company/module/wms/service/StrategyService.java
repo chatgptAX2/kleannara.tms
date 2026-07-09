@@ -1,7 +1,7 @@
 package com.company.module.wms.service;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,16 +11,17 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
- * 배차전략 서비스 (DS_INCH12, DS_INCH3, DS_VEHICLE, CMCDV 기반)
- * Flask: /api/dispatch/strategy, /api/dispatch/simulate
- *        /api/carclass, /api/carclass-by-product, /api/ds-vehicle, /api/carclass/save
+ * 배차전략 서비스 (WMS Oracle DB)
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class StrategyService {
 
     private final JdbcTemplate jdbc;
+
+    public StrategyService(@Qualifier("wmsJdbcTemplate") JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
     private static final DateTimeFormatter YMDFORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     // ── 배차전략 조회 (DS_INCH12 + DS_INCH3 + DS_VEHICLE) ─────────

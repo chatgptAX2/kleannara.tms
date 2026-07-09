@@ -29,7 +29,7 @@ public class PsDispatchService {
     private final PsDispatchHRepository dispatchHRepo;
     private final PsDispatchIRepository dispatchIRepo;
 
-    @PersistenceContext
+    @PersistenceContext(unitName = "wmsPU")
     private EntityManager em;
 
     // ──────────────────────────────────────────────────────────────────────────

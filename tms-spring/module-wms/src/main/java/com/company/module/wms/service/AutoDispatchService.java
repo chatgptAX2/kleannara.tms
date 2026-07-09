@@ -1,7 +1,7 @@
 package com.company.module.wms.service;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -11,21 +11,17 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 자동배차 알고리즘 Service — Flask api_dcon_auto() 완전 Java 포팅
- *
- * 지원 목적식:
- *   MIN_VEHICLES : 차량 수 최소화 — FFD BinPacking (First-Fit Decreasing)
- *   MAX_FILL     : 적재율 최대화 — BFD BinPacking (Best-Fit Decreasing)
- *   MIN_COST     : 운송비 최소화 — ROUTE_COST 기반 최저비용 차종 선택
- *
- * SKUKEY 구조: [0:2]=prefix [2:5]=inchCode [5:8]=gsm [8]='-' [9:13]=width_mm [13:17]=length_mm
+ * 자동배차 알고리즘 Service (WMS Oracle DB)
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class AutoDispatchService {
 
     private final JdbcTemplate jdbc;
+
+    public AutoDispatchService(@Qualifier("wmsJdbcTemplate") JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
 
     // ── 인치 코드 상수 (Flask PS_INCH12_CODES / PS_INCH3_CODES) ──────
     private static final Set<String> INCH12 = new HashSet<>(Arrays.asList(

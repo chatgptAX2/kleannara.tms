@@ -3,19 +3,18 @@ spring:
     name: kleannara-tms
 
   # -------------------------------------------------------
-  # 활성 프로파일: 외부 설정파일(/data/tms/config/application.yml)에서 지정
-  #   실행 시 --spring.config.location 옵션으로 외부 파일 로드
-  #   이 파일(application.yml)은 공통 기본값만 보유
+  # 다중 DataSource — auto-configuration 비활성
+  # TmsJpaConfig / WmsJpaConfig 에서 수동 설정
   # -------------------------------------------------------
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
 
-  # DB 커넥션은 외부 설정파일(/data/tms/config/application.yml)에서 설정
   jpa:
-    hibernate:
-      ddl-auto: none        # 테이블은 SQL 스크립트로 직접 생성
+    open-in-view: false
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.MariaDBDialect
-        physical_naming_strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
         format_sql: true
     show-sql: false
 
@@ -34,28 +33,57 @@ server:
   servlet:
     context-path: /
   tomcat:
-    max-swallow-size: -1   # 파일 업로드 크기 제한 해제
+    max-swallow-size: -1
 
-# 서류 업로드 기본 경로 (외부 설정파일에서 오버라이드)
+# ── TMS DB (MariaDB — Primary) ───────────────────────────
+# PS제약조건관리 / 운송경로비용(BZPTN_DETAIL, ROUTE_COST) / 서류관리(DOC_FOLDER, DOC_FILE)
+datasource:
+  tms:
+    jdbc-url: jdbc:mariadb://localhost:3306/tms_dev?characterEncoding=UTF-8&serverTimezone=Asia/Seoul&useSSL=false
+    username: tmsuser
+    password: tmspassword
+    driver-class-name: org.mariadb.jdbc.Driver
+    hikari:
+      pool-name: HikariPool-TMS
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  # ── WMS DB (Oracle) ──────────────────────────────────────
+  # PS배차, 출고예정, 공통코드, 물류센터, 차량, 납품처(BZPTN), 출고오더(SHPDH/SHPDI) 등
+  wms:
+    jdbc-url: jdbc:oracle:thin:@10.2.14.190:1522:KNMESWMS
+    username: KNRATMS
+    password: kleannara12#
+    driver-class-name: oracle.jdbc.OracleDriver
+    hikari:
+      pool-name: HikariPool-WMS
+      maximum-pool-size: 10
+      minimum-idle: 3
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+# 서류 업로드 기본 경로
 doc:
   upload:
     base-path: /data/tms/uploads
 
-# SAP RFC/WMS 연동 URL (실제 운영 시 환경변수로 오버라이드)
+# SAP JCo 직접 연결 설정
 sap:
-  rfc:
-    url: ${SAP_RFC_URL:http://localhost:8000/sap/rfc}
-    # mock=true: SAP 연결 없이 더미 응답 반환 (개발/테스트 환경)
-    # 운영 배포 시 반드시 false 로 설정하거나 환경변수 SAP_RFC_MOCK=false 로 오버라이드
-    mock: ${SAP_RFC_MOCK:true}
-    timeout-seconds: ${SAP_RFC_TIMEOUT:30}
-  wms:
-    url: ${SAP_WMS_URL:http://localhost:9000/wms/ifc}
-
-# JWT 설정
-jwt:
-  secret: ${JWT_SECRET:kleannara-tms-jwt-secret-key-256bit-long-change-in-production}
-  expiration-ms: 86400000    # 24시간 (ms)
+  jco:
+    ashost: localhost
+    sysnum: "00"
+    sysid:  ""
+    client: "100"
+    userid: ""
+    passwd: ""
+    langky: KO
+    pool-capacity: 3
+    peak-limit: 10
+    mock: true
 
 logging:
   level:

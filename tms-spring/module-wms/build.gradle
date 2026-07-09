@@ -7,5 +7,14 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    // ── SAP JCo 직접 연결 ──────────────────────────────────────────
+    // sapjco3.jar 는 Maven Central 미배포 — 서버 로컬 파일 참조
+    // 실제 파일 위치: /data/tms/app/libs/sapjco3.jar
+    // 빌드 시: ./gradlew -PsapJcoJar=/data/tms/app/libs/sapjco3.jar bootJar
+    // 미지정 시 더미 경로(빌드 에러 방지용 fallback) 사용
+    implementation files(
+        project.findProperty('sapJcoJar') ?: '/data/tms/app/libs/sapjco3.jar'
+    )
 }
 

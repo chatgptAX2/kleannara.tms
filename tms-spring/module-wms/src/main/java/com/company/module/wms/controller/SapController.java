@@ -1,5 +1,6 @@
 package com.company.module.wms.controller;
 
+import com.company.module.wms.service.SapRfcService;
 import com.company.module.wms.service.SapService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -17,7 +18,14 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class SapController {
 
-    private final SapService sapService;
+    private final SapService    sapService;
+    private final SapRfcService sapRfcService;
+
+    // ── SAP 연결 테스트 ────────────────────────────────────────────
+    @GetMapping("/ps-sap/ping")
+    public ResponseEntity<Map<String, Object>> ping() {
+        return ResponseEntity.ok(sapRfcService.ping());
+    }
 
     // ── 납품처 출고예정 포인트 조회 ────────────────────────────────
     @GetMapping("/delivery/shppoint")

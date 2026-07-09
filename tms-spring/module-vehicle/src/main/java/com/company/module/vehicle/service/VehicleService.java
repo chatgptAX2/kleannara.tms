@@ -31,7 +31,7 @@ public class VehicleService {
     private final DsVehicleRepository dsVehicleRepo;
     private final VhcmaRepository     vhcmaRepo;
 
-    @PersistenceContext
+    @PersistenceContext(unitName = "wmsPU")
     private EntityManager em;
 
     // ──────────────────────────────────────────────────────────────────────────

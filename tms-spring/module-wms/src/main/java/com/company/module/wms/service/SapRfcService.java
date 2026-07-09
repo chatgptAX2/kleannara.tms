@@ -1,13 +1,13 @@
 package com.company.module.wms.service;
 
+import com.company.module.wms.config.SapJcoConfig;
+import com.company.module.wms.config.SapJcoProperties;
+import com.sap.conn.jco.*;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -17,69 +17,57 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
- * SAP RFC / WMS IFC301 HTTP 실제 연동 서비스 — Flask _call_sap_rfc_shipment() + _call_wms_ifc301() 완전 Java 포팅
+ * SAP JCo 직접 연결 서비스
  *
- * ■ Z_TMS_SHIPMENT_CRDL RFC 호출 (SAP 선적생성/삭제)
- *   - POST {sap.rfc.url}/Z_TMS_SHIPMENT_CRDL
- *   - Body: { I_GUBUN, I_TKNUM, T_VBELN: [{VBELN},...] }
- *   - Response: { E_RETURN: {TYPE, CODE, MESSAGE}, E_TKNUM }
+ * ■ 연결 방식
+ *   JCo 직접 연결 (sapjco3.jar + libsapjco3.so)
+ *   JCoDestinationManager.getDestination(DEST_NAME) → JCoFunction 실행
  *
- * ■ WMS_IFC301 공통처리 호출 (WMS 연동)
- *   - POST {sap.wms.url}
- *   - Body: { GUBUN, STDLNR, TKNUM }
+ * ■ 호출 RFC
+ *   Z_TMS_SHIPMENT_CRDL — SAP 선적 생성/삭제
+ *     IMPORT: I_GUBUN (C=생성/D=삭제), I_TKNUM (삭제 시 선적번호)
+ *     TABLE:  T_VBELN (납품문서 목록, 생성 시)
+ *     EXPORT: E_TKNUM (생성된 선적번호), E_RETURN (결과 메시지)
  *
- * ■ Mock 모드: sap.rfc.mock=true 설정 시 SAP 연결 없이 더미 응답 반환
+ * ■ Mock 모드
+ *   sap.jco.mock=true 시 JCo 연결 없이 더미 응답 반환
+ *
+ * ■ 서버 환경 필수 조건
+ *   - /data/tms/app/libs/sapjco3.jar
+ *   - /data/tms/app/libs/libsapjco3.so
+ *   - systemd ExecStart 에 -Djava.library.path=/data/tms/app/libs 추가
  */
 @Slf4j
 @Service
 public class SapRfcService {
 
-    private final JdbcTemplate   jdbc;
-    private final RestTemplate   restTemplate;
-
-    @Value("${sap.rfc.url:http://localhost:8000/sap/rfc}")
-    private String sapRfcUrl;
-
-    @Value("${sap.wms.url:http://localhost:9000/wms/ifc}")
-    private String sapWmsUrl;
-
-    /** true 설정 시 SAP 연결 없이 mock 응답 반환 (개발/테스트 환경) */
-    @Value("${sap.rfc.mock:false}")
-    private boolean mockMode;
-
-    /** RFC 호출 타임아웃 (초, 기본 30초) */
-    @Value("${sap.rfc.timeout-seconds:30}")
-    private int rfcTimeoutSec;
-
-    // 배차번호 자동 채번용 Mock 카운터
-    private static final AtomicLong MOCK_SEQ = new AtomicLong(
-        System.currentTimeMillis() % 10_000_000L
-    );
+    private static final String RFC_SHIPMENT = "Z_TMS_SHIPMENT_CRDL";
 
     private static final DateTimeFormatter YMDFORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final DateTimeFormatter HMSFORMAT = DateTimeFormatter.ofPattern("HHmmss");
 
-    public SapRfcService(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
-        // RestTemplate 직접 생성 (Spring Boot 3 기준 — @Bean 불필요)
-        this.restTemplate = new RestTemplate();
+    // Mock 선적번호 채번용 카운터
+    private static final AtomicLong MOCK_SEQ = new AtomicLong(
+        System.currentTimeMillis() % 10_000_000L
+    );
+
+    private final JdbcTemplate       jdbc;
+    private final SapJcoProperties   jcoProps;
+
+    public SapRfcService(
+            @Qualifier("wmsJdbcTemplate") JdbcTemplate jdbc,
+            SapJcoProperties jcoProps) {
+        this.jdbc     = jdbc;
+        this.jcoProps = jcoProps;
     }
 
     // ════════════════════════════════════════════════════════════════
     //  선적 생성 (GUBUN='C')
     // ════════════════════════════════════════════════════════════════
 
-    /**
-     * SAP 선적 생성 전체 흐름:
-     *   1) PS_DISPATCH_H / PS_DISPATCH_D 조회
-     *   2) Z_TMS_SHIPMENT_CRDL RFC 호출 (GUBUN='C', T_VBELN=납품문서 목록)
-     *   3) E_TKNUM 반환 성공 시 → PS_DISPATCH_H.TKNUM 업데이트, STATUS='SAP_CREATED'
-     *   4) WMS_IFC301 호출 (GUBUN='C', STDLNR=DISPATCH_NO, TKNUM=E_TKNUM)
-     */
     @Transactional
     public Map<String, Object> shipmentCreate(Map<String, Object> body) {
         Long   dispHId = toLong(body.get("disp_h_id"));
-        String env     = str(body.getOrDefault("env", "prod")).toLowerCase();
         if (dispHId == null) return err("disp_h_id 필수");
 
         // 1) 배차 헤더 조회
@@ -93,51 +81,43 @@ public class SapRfcService {
         String dispatchNo = str(head.get("DISPATCH_NO"));
         String existTknum = str(head.get("TKNUM"));
 
-        // 이미 SAP_CREATED 상태이고 TKNUM 있으면 중복 방지
         if ("SAP_CREATED".equals(status) && !existTknum.isEmpty()) {
             return Map.of("ok", true, "message", "이미 선적 생성됨", "tknum", existTknum, "mock", false);
         }
 
-        // 2) 납품문서 목록 수집 (PS_DISPATCH_D.SHPOKY)
+        // 2) 납품문서 목록 수집
         List<Map<String, Object>> details = jdbc.queryForList(
             "SELECT DISTINCT SHPOKY FROM PS_DISPATCH_D WHERE DISP_H_ID=?", dispHId
         );
-        List<String> svbelnList = details.stream()
+        List<String> vbelnList = details.stream()
             .map(r -> str(r.get("SHPOKY"))).filter(s -> !s.isEmpty())
             .collect(Collectors.toList());
 
         // 3) RFC 호출
-        Map<String, Object> rfcResult = callSapRfcShipment("C", svbelnList, "", env);
-        boolean rfcOk = Boolean.TRUE.equals(rfcResult.get("ok"));
-        String  tknum = str(rfcResult.get("E_TKNUM"));
+        Map<String, Object> rfcResult = callSapRfcShipment("C", vbelnList, "");
+        boolean rfcOk  = Boolean.TRUE.equals(rfcResult.get("ok"));
+        String  tknum  = str(rfcResult.get("E_TKNUM"));
         boolean isMock = Boolean.TRUE.equals(rfcResult.get("mock"));
 
         if (!rfcOk) {
             log.warn("SAP RFC 선적생성 실패: dispHId={}, result={}", dispHId, rfcResult);
-            return Map.of("ok", false, "error", "SAP RFC 오류: " + rfcResult.get("E_RETURN"),
+            return Map.of("ok", false,
+                          "error", "SAP RFC 오류: " + rfcResult.get("E_RETURN"),
                           "mock", isMock);
         }
 
-        String today = LocalDate.now().format(YMDFORMAT);
-
         // 4) DB 업데이트
+        String today = LocalDate.now().format(YMDFORMAT);
         jdbc.update(
             "UPDATE PS_DISPATCH_H SET STATUS='SAP_CREATED', TKNUM=?, LMODAT=? WHERE DISP_H_ID=?",
             tknum, today, dispHId
         );
         log.info("선적 생성 완료: dispHId={}, tknum={}, mock={}", dispHId, tknum, isMock);
 
-        // 5) WMS IFC301 호출
-        Map<String, Object> wmsResult = callWmsIfc301(dispatchNo, tknum, "C", env);
-        if (!Boolean.TRUE.equals(wmsResult.get("ok"))) {
-            log.warn("WMS IFC301 선적생성 통지 실패 (DB는 업데이트 완료): {}", wmsResult);
-        }
-
         return Map.of(
             "ok",      true,
             "tknum",   tknum,
             "mock",    isMock,
-            "wms",     wmsResult,
             "message", isMock ? "[MOCK] 선적 생성 완료" : "SAP 선적 생성 완료"
         );
     }
@@ -146,17 +126,9 @@ public class SapRfcService {
     //  선적 삭제 (GUBUN='D')
     // ════════════════════════════════════════════════════════════════
 
-    /**
-     * SAP 선적 삭제 전체 흐름:
-     *   1) PS_DISPATCH_H 조회 → TKNUM 확인
-     *   2) Z_TMS_SHIPMENT_CRDL RFC 호출 (GUBUN='D', I_TKNUM=TKNUM)
-     *   3) 성공 시 → STATUS='CONFIRMED', TKNUM/SVBELN NULL 클리어
-     *   4) WMS_IFC301 호출 (GUBUN='D')
-     */
     @Transactional
     public Map<String, Object> shipmentDelete(Map<String, Object> body) {
         Long   dispHId = toLong(body.get("disp_h_id"));
-        String env     = str(body.getOrDefault("env", "prod")).toLowerCase();
         if (dispHId == null) return err("disp_h_id 필수");
 
         List<Map<String, Object>> heads = jdbc.queryForList(
@@ -166,10 +138,8 @@ public class SapRfcService {
         Map<String, Object> head = heads.get(0);
 
         String tknum      = str(head.get("TKNUM"));
-        String svbeln     = str(head.get("SVBELN"));
         String dispatchNo = str(head.get("DISPATCH_NO"));
 
-        // TKNUM 없으면 상태만 롤백
         if (tknum.isEmpty()) {
             jdbc.update("UPDATE PS_DISPATCH_H SET STATUS='CONFIRMED', LMODAT=? WHERE DISP_H_ID=?",
                 LocalDate.now().format(YMDFORMAT), dispHId);
@@ -177,13 +147,14 @@ public class SapRfcService {
         }
 
         // RFC 호출 (삭제)
-        Map<String, Object> rfcResult = callSapRfcShipment("D", Collections.emptyList(), tknum, env);
+        Map<String, Object> rfcResult = callSapRfcShipment("D", Collections.emptyList(), tknum);
         boolean rfcOk  = Boolean.TRUE.equals(rfcResult.get("ok"));
         boolean isMock = Boolean.TRUE.equals(rfcResult.get("mock"));
 
         if (!rfcOk) {
             log.warn("SAP RFC 선적삭제 실패: dispHId={}, tknum={}, result={}", dispHId, tknum, rfcResult);
-            return Map.of("ok", false, "error", "SAP RFC 오류: " + rfcResult.get("E_RETURN"),
+            return Map.of("ok", false,
+                          "error", "SAP RFC 오류: " + rfcResult.get("E_RETURN"),
                           "mock", isMock);
         }
 
@@ -194,104 +165,93 @@ public class SapRfcService {
         );
         log.info("선적 삭제 완료: dispHId={}, tknum={}, mock={}", dispHId, tknum, isMock);
 
-        // WMS IFC301 삭제 통지
-        Map<String, Object> wmsResult = callWmsIfc301(dispatchNo, tknum, "D", env);
-        if (!Boolean.TRUE.equals(wmsResult.get("ok"))) {
-            log.warn("WMS IFC301 선적삭제 통지 실패 (DB는 업데이트 완료): {}", wmsResult);
-        }
-
         return Map.of(
             "ok",      true,
             "mock",    isMock,
-            "wms",     wmsResult,
             "message", isMock ? "[MOCK] 선적 삭제 완료" : "SAP 선적 삭제 완료"
         );
     }
 
     // ════════════════════════════════════════════════════════════════
-    //  Z_TMS_SHIPMENT_CRDL RFC HTTP 호출
+    //  Z_TMS_SHIPMENT_CRDL JCo 직접 호출
     // ════════════════════════════════════════════════════════════════
 
     /**
-     * Z_TMS_SHIPMENT_CRDL RFC 직접 호출.
+     * SAP RFC Z_TMS_SHIPMENT_CRDL 직접 호출 (JCo)
      *
-     * POST {sapRfcUrl}/Z_TMS_SHIPMENT_CRDL
-     * Request body:
-     * {
-     *   "I_GUBUN": "C" | "D",
-     *   "I_TKNUM": "선적번호(삭제 시)",
-     *   "I_VBELN": "",
-     *   "T_VBELN": [{"VBELN": "납품문서번호"}, ...]
-     * }
-     * Response:
-     * {
-     *   "E_RETURN": {"TYPE":"S","CODE":"488","MESSAGE":"..."},
-     *   "E_TKNUM": "생성된 SAP 선적번호"
-     * }
-     *
-     * @param gubun       'C'=선적생성 / 'D'=선적삭제
-     * @param svbelnList  선적생성 시 납품문서 목록
-     * @param tknum       선적삭제 시 SAP 선적번호
-     * @param env         'dev' | 'prod'
+     * @param gubun     'C' = 선적 생성 / 'D' = 선적 삭제
+     * @param vbelnList 선적 생성 시 납품문서 번호 목록
+     * @param tknum     선적 삭제 시 SAP 선적번호
      */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> callSapRfcShipment(String gubun, List<String> svbelnList,
-                                                    String tknum, String env) {
-        if (mockMode) return sapRfcMock(gubun, tknum, "mock_mode=true");
-
-        // T_VBELN 구성
-        List<Map<String, String>> tVbeln = svbelnList.stream()
-            .map(v -> Map.of("VBELN", String.format("%010d", safeParseLong(v))))
-            .collect(Collectors.toList());
-
-        Map<String, Object> requestBody = new LinkedHashMap<>();
-        requestBody.put("I_GUBUN", gubun);
-        requestBody.put("I_TKNUM", tknum != null ? tknum : "");
-        requestBody.put("I_VBELN", "");
-        requestBody.put("T_VBELN", tVbeln);
-
-        String url = sapRfcUrl + "/Z_TMS_SHIPMENT_CRDL";
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+    public Map<String, Object> callSapRfcShipment(String gubun,
+                                                   List<String> vbelnList,
+                                                   String tknum) {
+        // Mock 모드
+        if (jcoProps.isMock()) {
+            return sapRfcMock(gubun, tknum, "mock=true");
+        }
 
         try {
-            ResponseEntity<Map> response = restTemplate.exchange(
-                url,
-                HttpMethod.POST,
-                new HttpEntity<>(requestBody, headers),
-                Map.class
-            );
+            // 1) Destination 획득 (커넥션 풀에서 연결 대여)
+            JCoDestination dest = JCoDestinationManager.getDestination(SapJcoConfig.DEST_NAME);
 
-            if (!response.getStatusCode().is2xxSuccessful()) {
-                return sapRfcMock(gubun, tknum, "http_status=" + response.getStatusCode());
+            // 2) RFC Function 객체 생성
+            JCoFunction function = dest.getRepository().getFunction(RFC_SHIPMENT);
+            if (function == null) {
+                return err("RFC 함수를 찾을 수 없음: " + RFC_SHIPMENT);
             }
 
-            Map<String, Object> body = response.getBody();
-            if (body == null) return sapRfcMock(gubun, tknum, "empty_response");
+            // 3) IMPORT 파라미터 설정
+            JCoParameterList imports = function.getImportParameterList();
+            imports.setValue("I_GUBUN", gubun);
+            imports.setValue("I_TKNUM", tknum != null ? tknum : "");
+            imports.setValue("I_VBELN", "");
 
-            Map<String, Object> eReturn  = (Map<String, Object>) body.getOrDefault("E_RETURN", new HashMap<>());
-            String eTknum   = str(body.get("E_TKNUM"));
-            String retType  = str(eReturn.get("TYPE"));
+            // 4) TABLE T_VBELN 설정 (선적 생성 시만)
+            if ("C".equals(gubun) && vbelnList != null && !vbelnList.isEmpty()) {
+                JCoTable tVbeln = function.getTableParameterList().getTable("T_VBELN");
+                for (String vbeln : vbelnList) {
+                    tVbeln.appendRow();
+                    // 납품문서번호 10자리 zero-padding
+                    tVbeln.setValue("VBELN", String.format("%010d", safeParseLong(vbeln)));
+                }
+            }
+
+            // 5) RFC 실행
+            function.execute(dest);
+
+            // 6) EXPORT 파라미터 수신
+            JCoParameterList exports = function.getExportParameterList();
+            String eTknum = exports.getString("E_TKNUM");
+
+            // E_RETURN 구조체 파싱
+            JCoStructure eReturn  = exports.getStructure("E_RETURN");
+            String retType  = eReturn.getString("TYPE");
+            String retCode  = eReturn.getString("CODE");
             String retMsg   = buildReturnMessage(eReturn);
 
-            boolean ok = "S".equals(retType);
-            log.info("SAP RFC {} 결과: type={}, tknum={}, msg={}", gubun, retType, eTknum, retMsg);
+            boolean ok = "S".equals(retType) || "I".equals(retType);
+            log.info("SAP RFC {} 결과: type={}, code={}, tknum={}, msg={}",
+                     gubun, retType, retCode, eTknum, retMsg);
+
+            Map<String, Object> eReturnMap = new LinkedHashMap<>();
+            eReturnMap.put("TYPE",    retType);
+            eReturnMap.put("CODE",    retCode);
+            eReturnMap.put("MESSAGE", retMsg);
 
             return Map.of(
                 "ok",       ok,
-                "E_RETURN", eReturn,
-                "E_TKNUM",  eTknum,
+                "E_RETURN", eReturnMap,
+                "E_TKNUM",  eTknum != null ? eTknum : "",
                 "mock",     false
             );
 
-        } catch (RestClientException e) {
-            String errStr = e.getMessage() != null ? e.getMessage() : "";
-            boolean isConnErr = isConnectionError(errStr);
-            log.warn("SAP RFC HTTP 오류 ({}): {}", gubun, errStr);
-            if (isConnErr) return sapRfcMock(gubun, tknum, "conn_error: " + errStr.substring(0, Math.min(120, errStr.length())));
+        } catch (JCoException e) {
+            log.error("SAP JCo RFC 호출 실패: gubun={}, key={}, msg={}",
+                      gubun, e.getKey(), e.getMessage(), e);
             return Map.of(
                 "ok",       false,
-                "E_RETURN", Map.of("TYPE", "E", "CODE", "", "MESSAGE", errStr.substring(0, Math.min(300, errStr.length()))),
+                "E_RETURN", Map.of("TYPE", "E", "CODE", e.getKey(), "MESSAGE", e.getMessage()),
                 "E_TKNUM",  "",
                 "mock",     false
             );
@@ -299,90 +259,39 @@ public class SapRfcService {
     }
 
     // ════════════════════════════════════════════════════════════════
-    //  WMS IFC301 호출
+    //  SAP 연결 테스트 (ping)
     // ════════════════════════════════════════════════════════════════
 
     /**
-     * 선적생성/삭제 후 WMS_IFC301 공통처리 API 호출.
-     *
-     * POST {sap.wms.url}
-     * Body: { "GUBUN": "C"|"D", "STDLNR": "가선적번호", "TKNUM": "SAP선적번호" }
-     *
-     * @param stdlnr  가선적번호 (= DISPATCH_NO)
-     * @param tknum   SAP 선적번호
-     * @param gubun   'C'=생성 / 'D'=삭제
-     * @param env     'dev' | 'prod' (현재 동일 URL 사용, 향후 분리 가능)
+     * SAP 연결 상태 확인
+     * GET /api/ps-sap/ping 에서 호출
      */
-    public Map<String, Object> callWmsIfc301(String stdlnr, String tknum, String gubun, String env) {
-        if (mockMode) {
-            return Map.of("ok", true, "mock", true, "message", "[MOCK] WMS IFC301 호출 생략");
+    public Map<String, Object> ping() {
+        if (jcoProps.isMock()) {
+            return Map.of("ok", true, "mock", true,
+                          "message", "[MOCK] SAP 연결 테스트 생략");
         }
-
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("GUBUN",  gubun);
-        payload.put("STDLNR", stdlnr);
-        payload.put("TKNUM",  tknum);
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-
         try {
-            ResponseEntity<String> response = restTemplate.exchange(
-                sapWmsUrl,
-                HttpMethod.POST,
-                new HttpEntity<>(payload, headers),
-                String.class
-            );
-
-            boolean ok = response.getStatusCode().is2xxSuccessful();
-            String body = response.getBody() != null
-                ? response.getBody().substring(0, Math.min(500, response.getBody().length()))
-                : "";
-            log.info("WMS IFC301 {} 결과: status={}", gubun, response.getStatusCode());
-            return Map.of("ok", ok, "status_code", response.getStatusCode().value(), "body", body, "mock", false);
-
-        } catch (RestClientException e) {
-            String errStr = e.getMessage() != null ? e.getMessage() : "unknown";
-            log.warn("WMS IFC301 HTTP 오류 ({}): {}", gubun, errStr);
-            return Map.of("ok", false, "error", errStr, "mock", false);
+            JCoDestination dest = JCoDestinationManager.getDestination(SapJcoConfig.DEST_NAME);
+            dest.ping();
+            log.info("[SAP JCo] ping 성공: ashost={}", jcoProps.getAshost());
+            return Map.of("ok", true, "mock", false,
+                          "message", "SAP 연결 정상",
+                          "ashost",  jcoProps.getAshost(),
+                          "sysnum",  jcoProps.getSysnum(),
+                          "client",  jcoProps.getClient());
+        } catch (JCoException e) {
+            log.error("[SAP JCo] ping 실패: {}", e.getMessage(), e);
+            return Map.of("ok", false, "mock", false,
+                          "error",   e.getMessage(),
+                          "key",     e.getKey());
         }
     }
 
     // ════════════════════════════════════════════════════════════════
-    //  Mock 응답 (SAP 연결 불가 시 개발/테스트용)
+    //  조회 API (DB 기반 — JCo 미사용)
     // ════════════════════════════════════════════════════════════════
 
-    private Map<String, Object> sapRfcMock(String gubun, String tknum, String reason) {
-        if ("C".equals(gubun)) {
-            // 선적생성 mock: 현재 시각 기반 더미 TKNUM
-            long seq = MOCK_SEQ.incrementAndGet() % 10_000_000L;
-            String mockTknum = String.format("9%07d", seq);
-            log.info("[MOCK] SAP RFC 선적생성 mock: tknum={}, reason={}", mockTknum, reason);
-            return Map.of(
-                "ok",       true,
-                "E_RETURN", Map.of("TYPE","S","CODE","488","MESSAGE","[MOCK] 선적문서 생성됨 [" + mockTknum + "] (" + reason + ")"),
-                "E_TKNUM",  mockTknum,
-                "mock",     true
-            );
-        } else {
-            // 선적삭제 mock
-            log.info("[MOCK] SAP RFC 선적삭제 mock: tknum={}, reason={}", tknum, reason);
-            return Map.of(
-                "ok",       true,
-                "E_RETURN", Map.of("TYPE","S","CODE","489","MESSAGE","[MOCK] 선적문서 삭제됨 (" + reason + ")"),
-                "E_TKNUM",  "",
-                "mock",     true
-            );
-        }
-    }
-
-    // ════════════════════════════════════════════════════════════════
-    //  추가 SAP 조회 API (Flask ps-sap 포팅)
-    // ════════════════════════════════════════════════════════════════
-
-    /**
-     * SAP 선적 목록 조회 (PS_DISPATCH_H 기반)
-     */
     public Map<String, Object> sapList(Map<String, Object> body) {
         try {
             String dateFrom = str(body.get("dateFrom")).replace("-", "");
@@ -399,7 +308,7 @@ public class SapRfcService {
             List<Object> args = new ArrayList<>();
             if (!dateFrom.isEmpty()) { sql.append("AND h.DISP_DATE>=? "); args.add(dateFrom); }
             if (!dateTo.isEmpty())   { sql.append("AND h.DISP_DATE<=? "); args.add(dateTo); }
-            if (!dptnky.isEmpty())   { sql.append("AND h.DPTNKY=? "); args.add(dptnky); }
+            if (!dptnky.isEmpty())   { sql.append("AND h.DPTNKY=? ");     args.add(dptnky); }
             sql.append("GROUP BY h.DISP_H_ID ORDER BY h.DISP_DATE DESC, h.DISPATCH_NO");
 
             List<Map<String, Object>> rows = jdbc.queryForList(sql.toString(), args.toArray());
@@ -407,9 +316,6 @@ public class SapRfcService {
         } catch (Exception e) { return errMap(e); }
     }
 
-    /**
-     * SAP 선적 아이템 조회
-     */
     public Map<String, Object> sapItems(Map<String, Object> body) {
         Long dispHId = toLong(body.get("disp_h_id"));
         if (dispHId == null) return err("disp_h_id 필수");
@@ -423,9 +329,6 @@ public class SapRfcService {
         } catch (Exception e) { return errMap(e); }
     }
 
-    /**
-     * SAP 서류 목록 (DOC_FILE 연동)
-     */
     public Map<String, Object> sapDocs(Map<String, Object> body) {
         Long dispHId = toLong(body.get("disp_h_id"));
         if (dispHId == null) return err("disp_h_id 필수");
@@ -439,9 +342,6 @@ public class SapRfcService {
         } catch (Exception e) { return errMap(e); }
     }
 
-    /**
-     * 차량 검색 (VHCMA)
-     */
     public Map<String, Object> vehicleSearch(Map<String, Object> body) {
         try {
             String cartype = str(body.get("cartype"));
@@ -455,43 +355,60 @@ public class SapRfcService {
         } catch (Exception e) { return errMap(e); }
     }
 
-    /**
-     * 차량 배정
-     */
     @Transactional
     public Map<String, Object> assignVehicle(Map<String, Object> body) {
         Long dispHId = toLong(body.get("disp_h_id"));
         if (dispHId == null) return err("disp_h_id 필수");
         try {
-            String today = LocalDate.now().format(YMDFORMAT);
             jdbc.update(
                 "UPDATE PS_DISPATCH_H SET VHCLNO=?, DRIVER_NM=?, DRIVER_TEL=?, LMODAT=? WHERE DISP_H_ID=?",
                 str(body.get("vhclno")), str(body.get("driver_nm")), str(body.get("driver_tel")),
-                today, dispHId
+                LocalDate.now().format(YMDFORMAT), dispHId
             );
             return Map.of("ok", true);
         } catch (Exception e) { return errMap(e); }
     }
 
     // ════════════════════════════════════════════════════════════════
+    //  Mock 응답
+    // ════════════════════════════════════════════════════════════════
+
+    private Map<String, Object> sapRfcMock(String gubun, String tknum, String reason) {
+        if ("C".equals(gubun)) {
+            long seq = MOCK_SEQ.incrementAndGet() % 10_000_000L;
+            String mockTknum = String.format("9%07d", seq);
+            log.info("[MOCK] SAP RFC 선적생성: tknum={}, reason={}", mockTknum, reason);
+            return Map.of(
+                "ok",       true,
+                "E_RETURN", Map.of("TYPE","S","CODE","488",
+                                   "MESSAGE","[MOCK] 선적문서 생성됨 [" + mockTknum + "]"),
+                "E_TKNUM",  mockTknum,
+                "mock",     true
+            );
+        } else {
+            log.info("[MOCK] SAP RFC 선적삭제: tknum={}, reason={}", tknum, reason);
+            return Map.of(
+                "ok",       true,
+                "E_RETURN", Map.of("TYPE","S","CODE","489","MESSAGE","[MOCK] 선적문서 삭제됨"),
+                "E_TKNUM",  "",
+                "mock",     true
+            );
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════
     //  헬퍼
     // ════════════════════════════════════════════════════════════════
 
-    private String buildReturnMessage(Map<String, Object> eReturn) {
-        StringBuilder sb = new StringBuilder(str(eReturn.get("MESSAGE")));
-        for (String vi : Arrays.asList("MESSAGE_V1","MESSAGE_V2","MESSAGE_V3","MESSAGE_V4")) {
-            String v = str(eReturn.get(vi));
-            if (!v.isEmpty()) sb.append(" ").append(v);
+    private String buildReturnMessage(JCoStructure eReturn) {
+        StringBuilder sb = new StringBuilder(nullSafe(eReturn.getString("MESSAGE")));
+        for (String vi : List.of("MESSAGE_V1","MESSAGE_V2","MESSAGE_V3","MESSAGE_V4")) {
+            try {
+                String v = eReturn.getString(vi);
+                if (v != null && !v.isBlank()) sb.append(" ").append(v);
+            } catch (JCoRuntimeException ignored) { /* 필드 없으면 무시 */ }
         }
         return sb.toString().trim();
-    }
-
-    private boolean isConnectionError(String msg) {
-        if (msg == null) return false;
-        String lower = msg.toLowerCase();
-        return lower.contains("connection") || lower.contains("timeout")
-            || lower.contains("unreachable") || lower.contains("refused")
-            || lower.contains("network") || lower.contains("i/o error");
     }
 
     private long safeParseLong(String s) {
@@ -504,10 +421,11 @@ public class SapRfcService {
 
     private Map<String, Object> errMap(Exception e) {
         log.error("SapRfcService error: {}", e.getMessage(), e);
-        return Map.of("ok", false, "error", e.getMessage());
+        return Map.of("ok", false, "error", e.getMessage() != null ? e.getMessage() : "알 수 없는 오류");
     }
 
-    private String str(Object v) { return v == null ? "" : v.toString().trim(); }
+    private String str(Object v)      { return v == null ? "" : v.toString().trim(); }
+    private String nullSafe(String v) { return v == null ? "" : v; }
 
     private Long toLong(Object v) {
         try { return v == null ? null : Long.valueOf(v.toString()); }

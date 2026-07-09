@@ -34,7 +34,7 @@ public class ShipmentService {
     private final ShpdHRepository shpdHRepository;
     private final ShpdIRepository shpdIRepository;
 
-    @PersistenceContext
+    @PersistenceContext(unitName = "wmsPU")
     private EntityManager em;
 
     // ──────────────────────────────────────────────────────────────────────────

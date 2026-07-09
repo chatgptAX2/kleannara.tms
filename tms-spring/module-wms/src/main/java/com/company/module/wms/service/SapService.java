@@ -1,7 +1,7 @@
 package com.company.module.wms.service;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,20 +12,24 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
- * SAP RFC 연동 및 PS배차 확장 서비스
- * Flask: /api/ps-sap/*, /api/delivery/shppoint, /api/ps-dispatch 추가 API
- *
- * ※ SAP RFC/WMS HTTP 실제 연동은 SapRfcService 로 위임
- * ※ 자동배차 알고리즘은 AutoDispatchService 로 위임
+ * SAP RFC 연동 및 PS배차 확장 서비스 (WMS Oracle DB)
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class SapService {
 
     private final JdbcTemplate        jdbc;
     private final SapRfcService        sapRfc;
     private final AutoDispatchService  autoDispatch;
+
+    public SapService(
+            @Qualifier("wmsJdbcTemplate") JdbcTemplate jdbc,
+            SapRfcService sapRfc,
+            AutoDispatchService autoDispatch) {
+        this.jdbc         = jdbc;
+        this.sapRfc       = sapRfc;
+        this.autoDispatch = autoDispatch;
+    }
 
     private static final DateTimeFormatter YMDFORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final DateTimeFormatter HMSFORMAT = DateTimeFormatter.ofPattern("HHmmss");
