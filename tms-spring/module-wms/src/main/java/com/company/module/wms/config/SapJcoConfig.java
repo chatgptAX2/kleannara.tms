@@ -5,6 +5,7 @@ import com.sap.conn.jco.ext.DestinationDataProvider;
 import com.sap.conn.jco.ext.Environment;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
@@ -27,11 +28,18 @@ import java.util.Properties;
  *
  * ■ 실행 시 JVM 옵션 (systemd tms.service ExecStart 에 추가)
  *   -Djava.library.path=/data/tms/app/libs
+ *
+ * ■ Mock 모드 (sap.jco.mock=true)
+ *   @ConditionalOnProperty 로 이 빈 자체가 Spring 컨텍스트에 등록되지 않음.
+ *   → JCo 클래스(MiddlewareJavaRfc 등)가 로딩되지 않으므로
+ *     libsapjco3.so 가 없어도 UnsatisfiedLinkError 가 발생하지 않음.
+ *   → SapRfcService 는 isMock() 체크로 JCo API 를 호출하지 않음.
  */
 @Slf4j
 @Configuration
 @RequiredArgsConstructor
 @EnableConfigurationProperties(SapJcoProperties.class)
+@ConditionalOnProperty(name = "sap.jco.mock", havingValue = "false", matchIfMissing = false)
 public class SapJcoConfig {
 
     /** JCo Destination 이름 — SapRfcService 에서 이 이름으로 연결 */
@@ -41,23 +49,38 @@ public class SapJcoConfig {
 
     @PostConstruct
     public void registerDestinationDataProvider() {
-        if (props.isMock()) {
-            log.info("[SAP JCo] Mock 모드 활성 — SAP 커넥션 풀 등록 생략");
-            return;
-        }
-
         try {
             TmsDestinationDataProvider provider = new TmsDestinationDataProvider(props);
             Environment.registerDestinationDataProvider(provider);
             log.info("[SAP JCo] Destination 등록 완료: name={}, ashost={}, sysnum={}, client={}",
                     DEST_NAME, props.getAshost(), props.getSysnum(), props.getClient());
-        } catch (Exception e) {
-            // 이미 등록된 경우 예외 무시 (재기동 시)
-            if (e.getMessage() != null && e.getMessage().contains("already registered")) {
+        } catch (Throwable t) {
+            // ── ExceptionInInitializerError / UnsatisfiedLinkError 처리 ──────────
+            //  catch(Exception) 은 Error 계층을 잡지 못함.
+            //  libsapjco3.so 가 java.library.path 에 없으면
+            //  MiddlewareJavaRfc.<clinit> 에서 ExceptionInInitializerError(Error) 가 발생.
+            //  Throwable 로 확장해야 기동 중단을 막을 수 있음.
+            String msg = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
+
+            if (msg.contains("already registered")) {
+                // 재기동 시 이미 등록된 경우 — 정상
                 log.info("[SAP JCo] DestinationDataProvider 이미 등록됨 — 재사용");
+
+            } else if (t instanceof ExceptionInInitializerError
+                    || t instanceof UnsatisfiedLinkError
+                    || (t.getCause() instanceof UnsatisfiedLinkError)) {
+                // libsapjco3.so 미설치 — 기동은 허용하되 SAP 기능 비활성
+                log.error("[SAP JCo] 네이티브 라이브러리 로딩 실패 — SAP 연동이 비활성화됩니다.");
+                log.error("[SAP JCo] 원인: {}", msg);
+                log.error("[SAP JCo] 해결: /data/tms/app/libs/libsapjco3.so 배포 후");
+                log.error("[SAP JCo]       systemd ExecStart 에 -Djava.library.path=/data/tms/app/libs 추가");
+                log.error("[SAP JCo] 현재 java.library.path = {}",
+                        System.getProperty("java.library.path"));
+                // 기동 중단하지 않음 — SapRfcService 는 JCo 호출 시 예외 반환
+
             } else {
-                log.error("[SAP JCo] DestinationDataProvider 등록 실패: {}", e.getMessage(), e);
-                throw new IllegalStateException("SAP JCo 초기화 실패", e);
+                log.error("[SAP JCo] DestinationDataProvider 등록 실패: {}", msg, t);
+                throw new IllegalStateException("SAP JCo 초기화 실패", t);
             }
         }
     }

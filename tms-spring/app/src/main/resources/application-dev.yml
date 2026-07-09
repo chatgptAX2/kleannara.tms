@@ -1,29 +1,52 @@
 # ======================================================
 # 개발(DEV) 환경 설정
-# DB    : MariaDB 10.11+  (utf8mb4)
-# Host  : localhost:3306
-# Schema: tms_dev
+#
+# ■ 다중 DataSource 패턴: @ConfigurationProperties + DataSourceBuilder
+#   HikariCP 는 jdbcUrl 프로퍼티만 존재 (url 없음)
+#   → yml 에 반드시 jdbc-url 키 사용
+#
+# ■ 개발 환경에서는 WMS DB(Oracle) 대신 TMS DB(MariaDB) 하나만 사용
+#   WMS 관련 기능은 실제 Oracle 서버 연결 없이 동작 불가
 # ======================================================
-spring:
-  datasource:
-    url: jdbc:mariadb://localhost:3306/tms_dev?characterEncoding=UTF-8&serverTimezone=Asia/Seoul&useSSL=false&allowPublicKeyRetrieval=true
+
+# ── TMS DB (MariaDB — 개발용 로컬) ─────────────────────
+# prefix: datasource.tms  ← TmsDataSourceConfig @ConfigurationProperties
+datasource:
+  tms:
+    jdbc-url: jdbc:mariadb://localhost:3306/tms_dev?characterEncoding=UTF-8&serverTimezone=Asia/Seoul&useSSL=false&allowPublicKeyRetrieval=true
     username: tmsuser
     password: tmspassword
     driver-class-name: org.mariadb.jdbc.Driver
     hikari:
-      pool-name: HikariPool-DEV
+      pool-name: HikariPool-TMS-DEV
       maximum-pool-size: 10
       minimum-idle: 2
-      connection-timeout: 30000      # 30초
-      idle-timeout: 600000           # 10분
-      max-lifetime: 1800000          # 30분
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
       connection-test-query: SELECT 1
 
+  # ── WMS DB (Oracle — 개발 시 운영 서버 직접 접속) ────────
+  # prefix: datasource.wms  ← WmsDataSourceConfig @ConfigurationProperties
+  wms:
+    jdbc-url: jdbc:oracle:thin:@10.2.14.190:1522:KNMESWMS
+    username: KNRATMS
+    password: kleannara12#
+    driver-class-name: oracle.jdbc.OracleDriver
+    hikari:
+      pool-name: HikariPool-WMS-DEV
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+spring:
   jpa:
-    show-sql: true                   # 개발환경에서 SQL 출력
+    show-sql: true
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.MariaDBDialect
+        format_sql: true
 
 logging:
   level:
