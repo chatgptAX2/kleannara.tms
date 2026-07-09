@@ -1,6 +1,6 @@
 # Kleannara TMS 배포 가이드 (Spring Boot 단일 구성)
 
-> Rocky Linux 9.x | **Nginx + Spring Boot 단일 구성** | MariaDB 10.2.14.247:3306/intergration
+> Rocky Linux 9.x | **Nginx + Spring Boot 단일 구성** | TMS DB: MariaDB 10.2.14.247:3306/intergration | WMS DB: Oracle 10.2.14.190:1522/KNMESWMS (KNRATMS)
 
 ---
 
@@ -14,11 +14,14 @@
         ▼
 [Spring Boot :18081]  ← app.jar
         │
-        ▼
-[MariaDB 10.2.14.247:3306/intergration]
+        ├─[TMS DB] MariaDB 10.2.14.247:3306/intergration  ← PS제약조건관리·운송경로비용·차량·배차·서류관리
+        │
+        └─[WMS DB] Oracle 10.2.14.190:1522:KNMESWMS       ← 공통코드·물류센터·SKU·납품처·출고문서
+                   (접속계정: KNRATMS)
 ```
 
-> **Flask 완전 제거** — Python/Flask 의존성 없음, SQLite 사용 안 함
+> **Flask 완전 제거** — Python/Flask 의존성 없음, SQLite 사용 안 함  
+> **이중 DB 구성** — TMS MariaDB(Primary) + WMS Oracle 분리, Spring Boot Multi-DataSource
 
 ---
 
@@ -37,7 +40,10 @@
 │       ├── wms.db
 │       └── migrate_to_mariadb.py
 ├── app/
-│   └── app.jar                   ← 실행 JAR (빌드 후 복사)
+│   ├── app.jar                   ← 실행 JAR (빌드 후 복사)
+│   └── libs/                     ← SAP JCo 라이브러리 (git 미관리)
+│       ├── sapjco3.jar           ← SAP JCo Java 클래스
+│       └── libsapjco3.so         ← SAP JCo 네이티브 라이브러리
 ├── config/
 │   └── application.yml           ← 운영 설정파일 (git 미관리 · 서버에서 직접 편집)
 ├── logs/
@@ -100,12 +106,35 @@ sudo mkdir -p /data/tms/app
 sudo mkdir -p /data/tms/config
 sudo mkdir -p /data/tms/logs
 sudo mkdir -p /data/tms/uploads
+sudo mkdir -p /data/tms/app/libs        # SAP JCo 라이브러리
 
 # 실행 전용 유저 생성 (root 실행 방지)
 sudo useradd -r -s /sbin/nologin tmsuser
 
 # 소유권 설정
 sudo chown -R tmsuser:tmsuser /data/tms
+```
+
+---
+
+## STEP 2-1 — SAP JCo 라이브러리 배치
+
+> SAP JCo 는 SAP Service Marketplace 에서 별도 다운로드 (라이선스 필요)  
+> 파일명: `sapjco3.jar`, `libsapjco3.so` (Linux x86_64 버전)
+
+```bash
+# JCo 파일을 /data/tms/app/libs/ 에 복사
+sudo cp sapjco3.jar    /data/tms/app/libs/
+sudo cp libsapjco3.so  /data/tms/app/libs/
+
+# 소유권 및 권한 설정
+sudo chown tmsuser:tmsuser /data/tms/app/libs/sapjco3.jar
+sudo chown tmsuser:tmsuser /data/tms/app/libs/libsapjco3.so
+sudo chmod 644 /data/tms/app/libs/sapjco3.jar
+sudo chmod 755 /data/tms/app/libs/libsapjco3.so
+
+# 확인
+ls -lh /data/tms/app/libs/
 ```
 
 ---
@@ -125,18 +154,60 @@ ls /data/tms/source/
 
 ---
 
-## STEP 4 — MariaDB 스키마 적용
+## STEP 4 — DB 스키마 적용
+
+### 4-1. TMS DB (MariaDB) — 테이블 생성
+
+> 아래 SQL 파일들을 **TMS MariaDB** (`intergration` 스키마)에 실행합니다.  
+> `IF NOT EXISTS` 조건이므로 기존 테이블이 있어도 안전하게 재실행 가능.
 
 ```bash
-# 신규 테이블 DDL 적용 (IF NOT EXISTS → 안전하게 재실행 가능)
+# ── 통합 백업 SQL (권장) — TMS DB 전체 테이블을 한 번에 생성 ──
 mysql -h 10.2.14.247 -u tmsuser -p intergration \
-  -e "source /data/tms/source/sql/module-wms/01_schema.sql"
+  < /data/tms/source/sql/tms-all-tables.sql
+
+# ── 모듈별 개별 실행 (선택) ──
+mysql -h 10.2.14.247 -u tmsuser -p intergration \
+  < /data/tms/source/sql/module-wms/01_schema.sql
 
 mysql -h 10.2.14.247 -u tmsuser -p intergration \
-  -e "source /data/tms/source/sql/module-document/01_schema.sql"
+  < /data/tms/source/sql/module-dispatch-config/01_schema.sql
+
+mysql -h 10.2.14.247 -u tmsuser -p intergration \
+  < /data/tms/source/sql/module-dispatch/01_schema.sql
+
+mysql -h 10.2.14.247 -u tmsuser -p intergration \
+  < /data/tms/source/sql/module-delivery/01_schema.sql
+
+mysql -h 10.2.14.247 -u tmsuser -p intergration \
+  < /data/tms/source/sql/module-vehicle/01_schema.sql
+
+mysql -h 10.2.14.247 -u tmsuser -p intergration \
+  < /data/tms/source/sql/module-document/01_schema.sql
+
+mysql -h 10.2.14.247 -u tmsuser -p intergration \
+  < /data/tms/source/sql/module-shipment/01_schema.sql
+
+# 시드 데이터 (초기 목적식 3종 등)
+mysql -h 10.2.14.247 -u tmsuser -p intergration \
+  < /data/tms/source/sql/module-dispatch-config/02_seed_data.sql
+mysql -h 10.2.14.247 -u tmsuser -p intergration \
+  < /data/tms/source/sql/module-vehicle/02_seed_data.sql
 ```
 
-### SQLite → MariaDB 데이터 이관 (최초 1회)
+### 4-2. WMS DB (Oracle KNMESWMS) — 테이블 확인
+
+> WMS Oracle DB의 CMCDM·CMCDV·WAHMA·SKUMA·BZPTN·MEASI·SHPDH·SHPDI·IFWMS113·RECDI 테이블은  
+> **Oracle DB에 이미 존재하는 원장 테이블**이므로 별도 생성 불필요.  
+> TMS 앱이 `KNRATMS` 계정으로 해당 테이블을 **조회만** 합니다.
+
+```bash
+# Oracle 접속 확인 (sqlplus 또는 jdbc 테스트)
+# sqlplus KNRATMS/kleannara12#@10.2.14.190:1522:KNMESWMS
+# SQL> SELECT COUNT(*) FROM CMCDM;
+```
+
+### SQLite → MariaDB 데이터 이관 (최초 1회, 해당 시)
 
 ```bash
 # pymysql 설치
@@ -161,15 +232,15 @@ cd /data/tms/source/tms-spring
 # Gradle Wrapper 실행 권한 부여 (최초 1회)
 chmod +x gradlew
 
-# 빌드 (테스트 제외)
-./gradlew clean bootJar -x test
+# 빌드 (테스트 제외) — sapjco3.jar 경로 지정 필수
+./gradlew clean bootJar -x test -PsapJcoJar=/data/tms/app/libs/sapjco3.jar
 
 # 빌드 결과 확인
 ls -lh app/build/libs/
 # → app.jar (50~80MB 예상)
 
 # 오류 시 로그 확인
-./gradlew clean bootJar -x test 2>&1 | tee /tmp/build.log
+./gradlew clean bootJar -x test -PsapJcoJar=/data/tms/app/libs/sapjco3.jar 2>&1 | tee /tmp/build.log
 grep "error:" /tmp/build.log | head -30
 ```
 
@@ -187,36 +258,78 @@ sudo vi /data/tms/config/application.yml
 
 ```yaml
 spring:
-  profiles:
-    active: prod
+  # ── 다중 DataSource — Spring Boot 자동설정 비활성 ────────
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
 
-  datasource:
-    url: jdbc:mariadb://10.2.14.247:3306/intergration?characterEncoding=UTF-8&serverTimezone=Asia/Seoul&useSSL=false
-    username: 실제DB계정
+  jpa:
+    open-in-view: false
+    show-sql: false
+
+# ── TMS DB (MariaDB — Primary) ───────────────────────────
+# 대상 테이블:
+#   PS제약조건관리 : DS_DISPATCH_OBJECTIVE, DS_DISPATCH_PROFILE,
+#                   DS_DISPATCH_CONSTRAINT, DS_DISPATCH_CONST_SET,
+#                   DS_DISPATCH_CONST_SET_ITEM, DS_DISPATCH_CONST
+#                   DS_INCH12, DS_INCH3
+#   운송경로비용   : BZPTN_DETAIL, ROUTE_COST
+#   차량관리       : DS_VEHICLE, VHCMA
+#   배차관리       : PS_DISPATCH_H, PS_DISPATCH_D, PS_DISPATCH_SPLIT
+#   서류관리       : DOC_FOLDER, DOC_FILE
+datasource:
+  tms:
+    jdbc-url: jdbc:mariadb://10.2.14.247:3306/intergration?characterEncoding=UTF-8&serverTimezone=Asia/Seoul&useSSL=false&allowPublicKeyRetrieval=true
+    username: 실제DB계정              # ← 반드시 변경
     password: 실제DB패스워드          # ← 반드시 변경
     driver-class-name: org.mariadb.jdbc.Driver
     hikari:
-      pool-name: HikariPool-PROD
+      pool-name: HikariPool-TMS
       maximum-pool-size: 20
       minimum-idle: 5
       connection-timeout: 30000
       idle-timeout: 600000
       max-lifetime: 1800000
+      connection-test-query: SELECT 1
 
-  jpa:
-    show-sql: false
+  # ── WMS DB (Oracle KNMESWMS — KNRATMS 계정) ──────────────
+  # 대상 테이블 (Oracle 원장 — 읽기 위주):
+  #   공통코드  : CMCDM, CMCDV
+  #   물류센터  : WAHMA
+  #   SKU/단위  : SKUMA, MEASI
+  #   납품처    : BZPTN
+  #   출고문서  : SHPDH, SHPDI, IFWMS113
+  #   수령자    : RECDI
+  wms:
+    jdbc-url: jdbc:oracle:thin:@10.2.14.190:1522:KNMESWMS
+    username: KNRATMS
+    password: kleannara12#
+    driver-class-name: oracle.jdbc.OracleDriver
+    hikari:
+      pool-name: HikariPool-WMS
+      maximum-pool-size: 10
+      minimum-idle: 3
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
 
 doc:
   upload:
     base-path: /data/tms/uploads
 
 sap:
-  rfc:
-    mock: false                      # SAP 미연동 시 true
-    url: http://SAP서버IP:8000/sap/rfc
-    timeout-seconds: 30
-  wms:
-    url: http://WMS서버IP:9000/wms/ifc
+  jco:
+    ashost: 10.2.14.210
+    sysnum: "01"
+    sysid:  DPQ
+    client: "100"
+    userid: WMS001
+    passwd: 실제SAP패스워드           # ← 반드시 변경
+    langky: KO
+    pool-capacity: 3
+    peak-limit: 10
+    mock: false                      # SAP 실제 연결 (테스트 시 true)
 
 logging:
   level:
@@ -266,6 +379,7 @@ WorkingDirectory=/data/tms/app
 
 ExecStart=/usr/bin/java \
   -Xmx1g -Xms512m \
+  -Djava.library.path=/data/tms/app/libs \
   -jar /data/tms/app/app.jar \
   --spring.config.location=file:/data/tms/config/application.yml
 
@@ -367,7 +481,7 @@ sudo systemctl daemon-reload
 cd /data/tms/source && git pull origin main
 
 # 2. 재빌드
-cd /data/tms/source/tms-spring && ./gradlew clean bootJar -x test
+cd /data/tms/source/tms-spring && ./gradlew clean bootJar -x test -PsapJcoJar=/data/tms/app/libs/sapjco3.jar
 
 # 3. JAR 교체
 sudo cp /data/tms/source/tms-spring/app/build/libs/app.jar \
@@ -407,8 +521,25 @@ sleep 15 && curl http://localhost:18081/actuator/health
 ```bash
 sudo systemctl status tms
 tail -100 /data/tms/logs/stdout.log
+# TMS DB 연결 확인
 mysql -h 10.2.14.247 -u tmsuser -p -e "SELECT 1" intergration
+# WMS DB 연결 확인 (sqlplus 필요)
+# sqlplus KNRATMS/kleannara12#@10.2.14.190:1522:KNMESWMS
 ss -tlnp | grep 18081
+```
+
+### WMS Oracle DB 연결 오류 (`Table 'integration.CMCDM' doesn't exist` 등)
+```
+원인: 운영 서버 /data/tms/config/application.yml 이 구(舊) 단일 MariaDB 구조로 되어 있음
+      → Spring Boot가 WMS 테이블을 MariaDB에서 찾아 1146 오류 발생
+
+해결:
+  1. /data/tms/config/application.yml 을 이중 datasource 구조로 갱신 (STEP 6 참조)
+  2. datasource.wms 블록에 Oracle 접속 정보 기입 확인
+     jdbc-url: jdbc:oracle:thin:@10.2.14.190:1522:KNMESWMS
+     username: KNRATMS
+     password: kleannara12#
+  3. 서비스 재시작: sudo systemctl restart tms
 ```
 
 ### 서비스 관리 명령어 (tms)

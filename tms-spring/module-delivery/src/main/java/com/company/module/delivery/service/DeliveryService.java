@@ -5,7 +5,7 @@ import com.company.module.delivery.entity.BzptnDetail;
 import com.company.module.delivery.entity.RouteCost;
 import com.company.module.delivery.repository.BzptnDetailRepository;
 import com.company.module.delivery.repository.RouteCostRepository;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,17 +20,38 @@ import java.util.*;
  * 납품처 관리 서비스
  * Flask: api_delivery_list / api_delivery_detail / api_delivery_save / api_delivery_delete
  *        api_route_cost_search / api_route_cost_pivot 대응
+ *
+ * ─ DB 라우팅 ───────────────────────────────────────────────────
+ *   tmsEm  (tmsPU / MariaDB) :
+ *     - BzptnDetailRepository (BZPTN_DETAIL)  -- TMS 추가 상세 테이블
+ *     - RouteCostRepository   (ROUTE_COST)    -- 운송경로비용
+ *     - em.createNativeQuery  UPDATE/INSERT bzptn_detail
+ *
+ *   wmsEm  (wmsPU / Oracle WMS) :
+ *     - em.createNativeQuery  SELECT * FROM BZPTN  -- WMS 원장 테이블
+ * ───────────────────────────────────────────────────────────────
  */
 @Service
-@RequiredArgsConstructor
-@Transactional(readOnly = true)
+@Transactional(readOnly = true, transactionManager = "tmsTransactionManager")
 public class DeliveryService {
 
     private final BzptnDetailRepository bzptnDetailRepo;
     private final RouteCostRepository   routeCostRepo;
 
-    @PersistenceContext
-    private EntityManager em;
+    /** TMS DB (MariaDB) — BZPTN_DETAIL / ROUTE_COST 쓰기용 */
+    @PersistenceContext(unitName = "tmsPU")
+    private EntityManager tmsEm;
+
+    /** WMS DB (Oracle) — BZPTN 원장 읽기용 */
+    @PersistenceContext(unitName = "wmsPU")
+    private EntityManager wmsEm;
+
+    public DeliveryService(
+            BzptnDetailRepository bzptnDetailRepo,
+            RouteCostRepository   routeCostRepo) {
+        this.bzptnDetailRepo = bzptnDetailRepo;
+        this.routeCostRepo   = routeCostRepo;
+    }
 
     // ──────────────────────────────────────────────────────────────────────────
     // 납품처 목록 (Flask api_delivery_list)
@@ -75,10 +96,11 @@ public class DeliveryService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 납품처 상세 (Flask api_delivery_detail)
+    // BZPTN 원장 → wmsEm (Oracle), BZPTN_DETAIL 추가정보 → bzptnDetailRepo (MariaDB)
     // ──────────────────────────────────────────────────────────────────────────
     public Map<String, Object> getDetail(String ptnrky, String ptnrty, String ownrky) {
         @SuppressWarnings("unchecked")
-        List<Object[]> bRows = em.createNativeQuery(
+        List<Object[]> bRows = wmsEm.createNativeQuery(
             "SELECT * FROM BZPTN WHERE PTNRKY=? AND PTNRTY=? AND OWNRKY=?")
             .setParameter(1, ptnrky).setParameter(2, ptnrty).setParameter(3, ownrky)
             .getResultList();
@@ -94,8 +116,9 @@ public class DeliveryService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 납품처 저장 (Flask api_delivery_save)
+    // BZPTN_DETAIL 쓰기 → tmsEm (MariaDB)
     // ──────────────────────────────────────────────────────────────────────────
-    @Transactional
+    @Transactional(transactionManager = "tmsTransactionManager")
     public String saveDetail(DeliverySaveRequest req) {
         String ptnrky = req.getPtnrky() == null ? "" : req.getPtnrky().strip();
         String ptnrty = req.getPtnrty() == null ? "CT" : req.getPtnrty().strip();
@@ -106,7 +129,7 @@ public class DeliveryService {
         String nowtm = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
 
         if (bzptnDetailRepo.existsByPtnrkyAndPtnrtyAndOwnrky(ptnrky, ptnrty, ownrky)) {
-            em.createNativeQuery("""
+            tmsEm.createNativeQuery("""
                 UPDATE bzptn_detail SET
                   WAREKY=?,ROUTE_CD=?,ITEM_GROUP=?,UNLOAD_TIME=?,
                   INB_TIME_FROM1=?,INB_TIME_TO1=?,AREA_CD=?,MAX_HEIGHT=?,
@@ -147,7 +170,7 @@ public class DeliveryService {
               .executeUpdate();
             return "updated";
         } else {
-            em.createNativeQuery("""
+            tmsEm.createNativeQuery("""
                 INSERT INTO bzptn_detail
                 (PTNRKY,PTNRTY,OWNRKY,WAREKY,ROUTE_CD,ITEM_GROUP,UNLOAD_TIME,
                  INB_TIME_FROM1,INB_TIME_TO1,AREA_CD,MAX_HEIGHT,FORKLIFT_YN,HANDWORK_YN,
@@ -190,9 +213,9 @@ public class DeliveryService {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // 납품처 삭제 (Flask api_delivery_delete)
+    // 납품처 삭제 (Flask api_delivery_delete) — TMS DB
     // ──────────────────────────────────────────────────────────────────────────
-    @Transactional
+    @Transactional(transactionManager = "tmsTransactionManager")
     public void deleteDetail(String ptnrky, String ptnrty, String ownrky) {
         String nowdt = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
         String nowtm = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));

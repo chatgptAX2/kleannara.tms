@@ -1,7 +1,7 @@
 package com.company.module.wms.service;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,16 +12,21 @@ import java.util.*;
 import java.util.regex.Pattern;
 
 /**
- * WMS 뷰어 서비스 — JDBC 기반 동적 쿼리
- * Flask SQLite 동적 테이블 조회를 MariaDB JDBC로 완전 재구현
+ * WMS 뷰어 서비스 — JDBC 기반 동적 쿼리 (WMS Oracle DB)
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class WmsViewService {
 
     private final JdbcTemplate jdbcTemplate;
     private final DataSource   dataSource;
+
+    public WmsViewService(
+            @Qualifier("wmsJdbcTemplate") JdbcTemplate jdbcTemplate,
+            @Qualifier("wmsDataSource")   DataSource dataSource) {
+        this.jdbcTemplate = jdbcTemplate;
+        this.dataSource   = dataSource;
+    }
 
     // ── 허용 테이블 목록 (Flask TABLE_META 기반) ────────────────────
     // 인증된 사용자만 접근하므로 목록을 화이트리스트로 관리

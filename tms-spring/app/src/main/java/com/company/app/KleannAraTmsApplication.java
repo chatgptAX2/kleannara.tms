@@ -2,25 +2,34 @@ package com.company.app;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
+import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration;
 import org.springframework.context.annotation.ComponentScan;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 
 /**
  * Kleannara TMS Spring Boot 진입점
  *
- * 멀티모듈 플러그인 방식:
- *   @ComponentScan      → com.company.module.** Controller/Service 자동 등록
- *   @EntityScan         → com.company.module.** Entity 자동 스캔
- *   @EnableJpaRepositories → com.company.module.** Repository 자동 등록
+ * ■ 다중 DataSource 구조
+ *   - TMS DB (MariaDB, Primary) : PS제약조건관리 / 운송경로비용 / 서류관리
+ *   - WMS DB (Oracle)           : PS배차 / 출고예정 / 공통코드 / 물류센터 / 차량 / 납품처 등
+ *
+ * ■ 자동설정 제외
+ *   DataSourceAutoConfiguration, HibernateJpaAutoConfiguration 을 exclude 하고
+ *   TmsJpaConfig / WmsJpaConfig 에서 수동으로 각 DataSource/EntityManagerFactory 를 등록
+ *
+ * ■ @EnableJpaRepositories 는 각 JpaConfig 클래스에서 패키지별로 선언
  */
-@SpringBootApplication
+@SpringBootApplication(exclude = {
+    DataSourceAutoConfiguration.class,
+    HibernateJpaAutoConfiguration.class
+})
 @ComponentScan(basePackages = {
+    "com.company.app",
     "com.company.core",
     "com.company.module"
 })
 @EntityScan(basePackages = "com.company.module")
-@EnableJpaRepositories(basePackages = "com.company.module")
 public class KleannAraTmsApplication {
 
     public static void main(String[] args) {

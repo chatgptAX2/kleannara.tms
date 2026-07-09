@@ -9,28 +9,89 @@
 # systemd ExecStart 에서 아래 옵션으로 외부 파일을 로드:
 #   --spring.config.location=file:/data/tms/config/application.yml
 #
-# DB    : MariaDB  Host: 10.2.14.247:3306  Schema: intergration
+# ─────────────────────────────────────────────────────
+# TMS DB  (MariaDB)  : 10.2.14.247:3306  Schema: intergration
+# WMS DB  (Oracle)   : 10.2.14.190:1522  SID: KNMESWMS  User: KNRATMS
 # ======================================================
 spring:
-  datasource:
-    url: jdbc:mariadb://10.2.14.247:3306/intergration?characterEncoding=UTF-8&serverTimezone=Asia/Seoul&useSSL=false&allowPublicKeyRetrieval=true
-    username: ${DB_USERNAME:tmsuser}
-    password: ${DB_PASSWORD:tmspassword}          # 운영 서버에서 환경변수로 오버라이드: DB_PASSWORD
-    driver-class-name: org.mariadb.jdbc.Driver
-    hikari:
-      pool-name: HikariPool-PROD
-      maximum-pool-size: 20
-      minimum-idle: 5
-      connection-timeout: 30000      # 30초
-      idle-timeout: 600000           # 10분
-      max-lifetime: 1800000          # 30분
-      connection-test-query: SELECT 1
+  # ── 다중 DataSource — Spring Boot 자동설정 비활성 ──────
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
 
   jpa:
-    show-sql: false                  # 운영환경에서 SQL 미출력
+    open-in-view: false
+    show-sql: false
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.MariaDBDialect
+        format_sql: true
+
+# ── TMS DB (MariaDB — Primary) ───────────────────────────
+# 대상 테이블 (TMS 자체 관리):
+#   PS제약조건관리: DS_DISPATCH_OBJECTIVE, DS_DISPATCH_PROFILE,
+#                  DS_DISPATCH_CONSTRAINT, DS_DISPATCH_CONST_SET,
+#                  DS_DISPATCH_CONST_SET_ITEM, DS_DISPATCH_CONST,
+#                  DS_INCH12, DS_INCH3
+#   운송경로비용 : BZPTN_DETAIL, ROUTE_COST
+#   차량관리     : DS_VEHICLE, VHCMA
+#   배차관리     : PS_DISPATCH_H, PS_DISPATCH_D, PS_DISPATCH_SPLIT
+#   서류관리     : DOC_FOLDER, DOC_FILE
+datasource:
+  tms:
+    jdbc-url: jdbc:mariadb://10.2.14.247:3306/intergration?characterEncoding=UTF-8&serverTimezone=Asia/Seoul&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${TMS_DB_USERNAME:tmsuser}
+    password: ${TMS_DB_PASSWORD:changeMe!}    # ← 환경변수 또는 직접 입력
+    driver-class-name: org.mariadb.jdbc.Driver
+    hikari:
+      pool-name: HikariPool-TMS
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      connection-test-query: SELECT 1
+
+  # ── WMS DB (Oracle KNMESWMS — KNRATMS 계정) ──────────────
+  # 대상 테이블 (WMS Oracle 원장 — 읽기 전용 or 조회 위주):
+  #   공통코드  : CMCDM, CMCDV
+  #   물류센터  : WAHMA
+  #   SKU 마스터: SKUMA, MEASI
+  #   납품처    : BZPTN
+  #   출고문서  : SHPDH, SHPDI, IFWMS113
+  #   수령자    : RECDI
+  # 접속정보: KNRATMS / kleannara12# @ 10.2.14.190:1522 SID=KNMESWMS
+  wms:
+    jdbc-url: jdbc:oracle:thin:@10.2.14.190:1522:KNMESWMS
+    username: KNRATMS
+    password: kleannara12#
+    driver-class-name: oracle.jdbc.OracleDriver
+    hikari:
+      pool-name: HikariPool-WMS
+      maximum-pool-size: 10
+      minimum-idle: 3
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+# ── 서류 업로드 경로 ──────────────────────────────────────
+doc:
+  upload:
+    base-path: /data/tms/uploads
+
+# ── SAP JCo 설정 ─────────────────────────────────────────
+sap:
+  jco:
+    ashost: 10.2.14.210          # SAP 서버 IP (실제 값으로 변경)
+    sysnum: "01"
+    sysid:  DPQ
+    client: "100"
+    userid: WMS001
+    passwd: ${SAP_PASSWORD:changeMe!}  # ← 환경변수 또는 직접 입력
+    langky: KO
+    pool-capacity: 3
+    peak-limit: 10
+    mock: false                  # 운영: false, 테스트: true
 
 logging:
   level:

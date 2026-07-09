@@ -1,7 +1,7 @@
 package com.company.module.wms.service;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,16 +11,17 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
- * 배차설정 API Service (Flask 실제 스키마 기반)
- * DS_DISPATCH_OBJECTIVE, DS_DISPATCH_PROFILE, DS_DISPATCH_CONST,
- * DS_DISPATCH_CONST_SET, DS_DISPATCH_CONST_SET_ITEM
+ * 배차설정 API Service (WMS Oracle DB)
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class DispatchConfigApiService {
 
     private final JdbcTemplate jdbc;
+
+    public DispatchConfigApiService(@Qualifier("wmsJdbcTemplate") JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
     private static final DateTimeFormatter YMDFORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private String today() { return LocalDate.now().format(YMDFORMAT); }
