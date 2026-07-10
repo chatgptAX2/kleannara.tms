@@ -32,8 +32,8 @@ public interface PsDispatchIRepository extends JpaRepository<PsDispatchI, Long> 
                COALESCE(d.GRSWGT,   0) AS GRSWGT,
                COALESCE(d.KG_WEIGHT,0) AS KG_WEIGHT,
                COALESCE(rd.QTYRCV,  0) AS UNIT_WEIGHT
-        FROM ps_dispatch_i d
-        LEFT JOIN RECDI rd ON rd.SKUKEY = d.SKUKEY
+        FROM ps_dispatch_d d
+        LEFT JOIN KNRAWMS.RECDI rd ON rd.SKUKEY = d.SKUKEY
         WHERE d.DISPATCH_NO = :dispatchNo
         ORDER BY d.SEQ
         """, nativeQuery = true)

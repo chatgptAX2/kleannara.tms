@@ -76,7 +76,7 @@ public class CommonCodeService {
             );
             if (exists.isEmpty()) {
                 jdbc.update(
-                    "INSERT INTO WAHMA (WAREKY, WARENM, WADDR1, WADDR2, POSTCD, TELNO, FAXNO, USARG1, USARG2, ACTIVE, CREDAT, LMODAT) " +
+                    "INSERT INTO KNRAWMS.WAHMA (WAREKY, WARENM, WADDR1, WADDR2, POSTCD, TELNO, FAXNO, USARG1, USARG2, ACTIVE, CREDAT, LMODAT) " +
                     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                     wareky, warenm,
                     body.get("WADDR1"), body.get("WADDR2"), body.get("POSTCD"),
@@ -87,7 +87,7 @@ public class CommonCodeService {
                 );
             } else {
                 jdbc.update(
-                    "UPDATE WAHMA SET WARENM=?, WADDR1=?, WADDR2=?, POSTCD=?, TELNO=?, FAXNO=?, " +
+                    "UPDATE KNRAWMS.WAHMA SET WARENM=?, WADDR1=?, WADDR2=?, POSTCD=?, TELNO=?, FAXNO=?, " +
                     "USARG1=?, USARG2=?, ACTIVE=?, LMODAT=? WHERE WAREKY=?",
                     warenm,
                     body.get("WADDR1"), body.get("WADDR2"), body.get("POSTCD"),

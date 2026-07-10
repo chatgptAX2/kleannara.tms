@@ -51,13 +51,18 @@ public class SapRfcService {
         System.currentTimeMillis() % 10_000_000L
     );
 
-    private final JdbcTemplate       jdbc;
+    /** Oracle WMS — KNRAWMS 테이블 (SHPDI/SHPDH 등, 선적 생성/삭제에 미사용) */
+    private final JdbcTemplate       wmsJdbc;
+    /** MariaDB TMS — PS_DISPATCH_H/D, VHCMA (배차 조회/확정) */
+    private final JdbcTemplate       tmsJdbc;
     private final SapJcoProperties   jcoProps;
 
     public SapRfcService(
-            @Qualifier("wmsJdbcTemplate") JdbcTemplate jdbc,
+            @Qualifier("wmsJdbcTemplate") JdbcTemplate wmsJdbc,
+            @Qualifier("tmsJdbcTemplate") JdbcTemplate tmsJdbc,
             SapJcoProperties jcoProps) {
-        this.jdbc     = jdbc;
+        this.wmsJdbc  = wmsJdbc;
+        this.tmsJdbc  = tmsJdbc;
         this.jcoProps = jcoProps;
     }
 
@@ -70,8 +75,8 @@ public class SapRfcService {
         Long   dispHId = toLong(body.get("disp_h_id"));
         if (dispHId == null) return err("disp_h_id 필수");
 
-        // 1) 배차 헤더 조회
-        List<Map<String, Object>> heads = jdbc.queryForList(
+        // 1) 배차 헤더 조회 (MariaDB PS_DISPATCH_H → tmsJdbc)
+        List<Map<String, Object>> heads = tmsJdbc.queryForList(
             "SELECT * FROM PS_DISPATCH_H WHERE DISP_H_ID=?", dispHId
         );
         if (heads.isEmpty()) return err("배차 문서 없음: disp_h_id=" + dispHId);
@@ -85,8 +90,8 @@ public class SapRfcService {
             return Map.of("ok", true, "message", "이미 선적 생성됨", "tknum", existTknum, "mock", false);
         }
 
-        // 2) 납품문서 목록 수집
-        List<Map<String, Object>> details = jdbc.queryForList(
+        // 2) 납품문서 목록 수집 (MariaDB PS_DISPATCH_D → tmsJdbc)
+        List<Map<String, Object>> details = tmsJdbc.queryForList(
             "SELECT DISTINCT SHPOKY FROM PS_DISPATCH_D WHERE DISP_H_ID=?", dispHId
         );
         List<String> vbelnList = details.stream()
@@ -107,8 +112,9 @@ public class SapRfcService {
         }
 
         // 4) DB 업데이트
+        // 4) DB 업데이트 (MariaDB PS_DISPATCH_H → tmsJdbc)
         String today = LocalDate.now().format(YMDFORMAT);
-        jdbc.update(
+        tmsJdbc.update(
             "UPDATE PS_DISPATCH_H SET STATUS='SAP_CREATED', TKNUM=?, LMODAT=? WHERE DISP_H_ID=?",
             tknum, today, dispHId
         );
@@ -131,7 +137,7 @@ public class SapRfcService {
         Long   dispHId = toLong(body.get("disp_h_id"));
         if (dispHId == null) return err("disp_h_id 필수");
 
-        List<Map<String, Object>> heads = jdbc.queryForList(
+        List<Map<String, Object>> heads = tmsJdbc.queryForList(
             "SELECT * FROM PS_DISPATCH_H WHERE DISP_H_ID=?", dispHId
         );
         if (heads.isEmpty()) return err("배차 문서 없음: disp_h_id=" + dispHId);
@@ -141,7 +147,7 @@ public class SapRfcService {
         String dispatchNo = str(head.get("DISPATCH_NO"));
 
         if (tknum.isEmpty()) {
-            jdbc.update("UPDATE PS_DISPATCH_H SET STATUS='CONFIRMED', LMODAT=? WHERE DISP_H_ID=?",
+            tmsJdbc.update("UPDATE PS_DISPATCH_H SET STATUS='CONFIRMED', LMODAT=? WHERE DISP_H_ID=?",
                 LocalDate.now().format(YMDFORMAT), dispHId);
             return Map.of("ok", true, "message", "TKNUM 없음 — 상태만 CONFIRMED로 복원", "mock", false);
         }
@@ -159,7 +165,7 @@ public class SapRfcService {
         }
 
         String today = LocalDate.now().format(YMDFORMAT);
-        jdbc.update(
+        tmsJdbc.update(
             "UPDATE PS_DISPATCH_H SET STATUS='CONFIRMED', TKNUM=NULL, SVBELN=NULL, LMODAT=? WHERE DISP_H_ID=?",
             today, dispHId
         );
@@ -298,6 +304,7 @@ public class SapRfcService {
             String dateTo   = str(body.get("dateTo")).replace("-", "");
             String dptnky   = str(body.get("dptnky"));
 
+            // PS_DISPATCH_H / PS_DISPATCH_D → MariaDB tmsJdbc
             StringBuilder sql = new StringBuilder(
                 "SELECT h.DISP_H_ID, h.DISPATCH_NO, h.DPTNKY, h.DPTNM, h.DISP_DATE, " +
                 "       h.STATUS, h.CARTYPE, h.DRIVER_NM, h.DRIVER_TEL, h.TKNUM, h.SVBELN, " +
@@ -311,7 +318,7 @@ public class SapRfcService {
             if (!dptnky.isEmpty())   { sql.append("AND h.DPTNKY=? ");     args.add(dptnky); }
             sql.append("GROUP BY h.DISP_H_ID ORDER BY h.DISP_DATE DESC, h.DISPATCH_NO");
 
-            List<Map<String, Object>> rows = jdbc.queryForList(sql.toString(), args.toArray());
+            List<Map<String, Object>> rows = tmsJdbc.queryForList(sql.toString(), args.toArray());
             return Map.of("ok", true, "rows", rows);
         } catch (Exception e) { return errMap(e); }
     }
@@ -320,7 +327,8 @@ public class SapRfcService {
         Long dispHId = toLong(body.get("disp_h_id"));
         if (dispHId == null) return err("disp_h_id 필수");
         try {
-            List<Map<String, Object>> rows = jdbc.queryForList(
+            // PS_DISPATCH_D / PS_DISPATCH_H → MariaDB tmsJdbc
+            List<Map<String, Object>> rows = tmsJdbc.queryForList(
                 "SELECT d.*, h.CARTYPE, h.DISP_DATE FROM PS_DISPATCH_D d " +
                 "JOIN PS_DISPATCH_H h ON h.DISP_H_ID=d.DISP_H_ID " +
                 "WHERE d.DISP_H_ID=? ORDER BY d.ITEM_SEQ", dispHId
@@ -333,7 +341,8 @@ public class SapRfcService {
         Long dispHId = toLong(body.get("disp_h_id"));
         if (dispHId == null) return err("disp_h_id 필수");
         try {
-            List<Map<String, Object>> rows = jdbc.queryForList(
+            // DOC_FILE → MariaDB tmsJdbc
+            List<Map<String, Object>> rows = tmsJdbc.queryForList(
                 "SELECT * FROM DOC_FILE WHERE DEL_YN='N' " +
                 "AND FILE_NM LIKE CONCAT('%',?,'%') ORDER BY CREDAT DESC, FILE_ID DESC",
                 dispHId.toString()
@@ -344,13 +353,14 @@ public class SapRfcService {
 
     public Map<String, Object> vehicleSearch(Map<String, Object> body) {
         try {
+            // VHCMA → MariaDB tmsJdbc
             String cartype = str(body.get("cartype"));
             String sql = "SELECT * FROM VHCMA WHERE " +
                 (cartype.isEmpty() ? "1=1" : "CARTYPE=?") +
                 " AND (USE_YN IS NULL OR USE_YN='Y') ORDER BY VHCLNO LIMIT 100";
             List<Map<String, Object>> rows = cartype.isEmpty()
-                ? jdbc.queryForList(sql)
-                : jdbc.queryForList(sql, cartype);
+                ? tmsJdbc.queryForList(sql)
+                : tmsJdbc.queryForList(sql, cartype);
             return Map.of("ok", true, "vehicles", rows);
         } catch (Exception e) { return errMap(e); }
     }
@@ -360,7 +370,8 @@ public class SapRfcService {
         Long dispHId = toLong(body.get("disp_h_id"));
         if (dispHId == null) return err("disp_h_id 필수");
         try {
-            jdbc.update(
+            // PS_DISPATCH_H → MariaDB tmsJdbc
+            tmsJdbc.update(
                 "UPDATE PS_DISPATCH_H SET VHCLNO=?, DRIVER_NM=?, DRIVER_TEL=?, LMODAT=? WHERE DISP_H_ID=?",
                 str(body.get("vhclno")), str(body.get("driver_nm")), str(body.get("driver_tel")),
                 LocalDate.now().format(YMDFORMAT), dispHId

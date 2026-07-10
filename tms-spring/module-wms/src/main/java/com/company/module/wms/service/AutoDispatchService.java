@@ -11,16 +11,29 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 자동배차 알고리즘 Service (WMS Oracle DB)
+ * 자동배차 알고리즘 Service
+ *
+ * ■ DataSource 라우팅
+ *   - wmsJdbc (Oracle KNRAWMS): SKUMA, SHPDH, SHPDI, BZPTN, BZPTN_DETAIL, CMCDV
+ *   - tmsJdbc (MariaDB integration): DS_VEHICLE, DS_INCH12, DS_INCH3,
+ *                                    DS_DISPATCH_PROFILE, DS_DISPATCH_CONST, ROUTE_COST
+ *
+ *   ※ Cross-DB 조인(KNRAWMS.CMCDV ↔ DS_VEHICLE 등) 불가 → 2-step 분리
  */
 @Slf4j
 @Service
 public class AutoDispatchService {
 
-    private final JdbcTemplate jdbc;
+    /** Oracle KNRAWMS 전용 JdbcTemplate */
+    private final JdbcTemplate wmsJdbc;
+    /** MariaDB integration 전용 JdbcTemplate */
+    private final JdbcTemplate tmsJdbc;
 
-    public AutoDispatchService(@Qualifier("wmsJdbcTemplate") JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    public AutoDispatchService(
+            @Qualifier("wmsJdbcTemplate") JdbcTemplate wmsJdbc,
+            @Qualifier("tmsJdbcTemplate") JdbcTemplate tmsJdbc) {
+        this.wmsJdbc = wmsJdbc;
+        this.tmsJdbc = tmsJdbc;
     }
 
     // ── 인치 코드 상수 (Flask PS_INCH12_CODES / PS_INCH3_CODES) ──────
@@ -65,8 +78,8 @@ public class AutoDispatchService {
         String objective = str(prof.getOrDefault("OBJECTIVE", "MIN_VEHICLES"));
         long pid         = toLong(prof.get("PROFILE_ID"), 0L);
 
-        // 제약 조건 로드
-        List<Map<String, Object>> constRows = jdbc.queryForList(
+        // 제약 조건 로드 (DS_DISPATCH_CONST: MariaDB)
+        List<Map<String, Object>> constRows = tmsJdbc.queryForList(
             "SELECT * FROM DS_DISPATCH_CONST WHERE PROFILE_ID=? AND ACTIVE_YN='Y' ORDER BY SORT_SEQ",
             pid
         );
@@ -724,17 +737,19 @@ public class AutoDispatchService {
     //  DB 조회 헬퍼
     // ════════════════════════════════════════════════════════════════
 
+    /** DS_DISPATCH_PROFILE 로드 — MariaDB: LIMIT 정상 지원 */
     private Map<String, Object> loadProfile(Integer profileId) {
         List<Map<String, Object>> rows;
         if (profileId != null) {
-            rows = jdbc.queryForList("SELECT * FROM DS_DISPATCH_PROFILE WHERE PROFILE_ID=?", profileId);
+            rows = tmsJdbc.queryForList("SELECT * FROM DS_DISPATCH_PROFILE WHERE PROFILE_ID=?", profileId);
         } else {
-            rows = jdbc.queryForList(
+            rows = tmsJdbc.queryForList(
                 "SELECT * FROM DS_DISPATCH_PROFILE WHERE ACTIVE_YN='Y' ORDER BY PROFILE_ID LIMIT 1");
         }
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    /** 출고 아이템 조회 — Oracle KNRAWMS: SHPDH, SHPDI, BZPTN */
     private List<Map<String, Object>> fetchItemsByDate(String yyyymmdd, String ptnrkyFilter) {
         StringBuilder sql = new StringBuilder(
             "SELECT h.SHPOKY, h.DPTNKY, b.NAME01 AS DPTNM, h.RQSHPD, " +
@@ -747,26 +762,50 @@ public class AutoDispatchService {
         List<Object> args = new ArrayList<>();
         args.add(yyyymmdd);
         if (!ptnrkyFilter.isEmpty()) { sql.append(" AND h.DPTNKY=?"); args.add(ptnrkyFilter); }
-        return jdbc.queryForList(sql.toString(), args.toArray());
+        return wmsJdbc.queryForList(sql.toString(), args.toArray());
     }
 
+    /**
+     * 차량 순서 로드 — DS_VEHICLE: MariaDB / CMCDV: Oracle → 2-step
+     * Cross-DB 조인(MariaDB DS_VEHICLE ↔ Oracle KNRAWMS.CMCDV) 불가
+     */
     private List<Map<String, Object>> loadCarOrder() {
-        return jdbc.queryForList(
-            "SELECT v.CARTYPE, v.LOAD_TON, v.SORT_SEQ FROM DS_VEHICLE v " +
-            "LEFT JOIN KNRAWMS.CMCDV c ON c.CMCDKY='TMS_CARCLASS10' AND c.CMCDVL=v.CARCLASS_CD " +
-            "WHERE COALESCE(c.USARG1,'Y')='Y' ORDER BY v.SORT_SEQ DESC"
+        // Step 1: MariaDB DS_VEHICLE
+        List<Map<String, Object>> all = tmsJdbc.queryForList(
+            "SELECT v.CARTYPE, v.LOAD_TON, v.SORT_SEQ, v.CARCLASS_CD FROM DS_VEHICLE v ORDER BY v.SORT_SEQ DESC"
         );
+        // Step 2: Oracle KNRAWMS.CMCDV — USE_YN 필터
+        List<Map<String, Object>> ccRows = wmsJdbc.queryForList(
+            "SELECT CMCDVL, USARG1 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10'"
+        );
+        Map<String, String> useYnMap = new HashMap<>();
+        for (Map<String, Object> r : ccRows) useYnMap.put(str(r.get("CMCDVL")), str(r.get("USARG1")));
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> v : all) {
+            String cc = str(v.get("CARCLASS_CD"));
+            String useYn = useYnMap.getOrDefault(cc, "Y");
+            if ("Y".equalsIgnoreCase(useYn) || useYn.isEmpty()) result.add(v);
+        }
+        return result;
     }
 
+    /** 차량 상세 정보 로드 — DS_VEHICLE: MariaDB / CMCDV USE_YN 필터: Oracle → 2-step */
     private Map<String, VehInfo> loadVehInfo() {
-        List<Map<String, Object>> rows = jdbc.queryForList(
+        List<Map<String, Object>> rows = tmsJdbc.queryForList(
             "SELECT v.CARTYPE, v.LENGTH_M, v.WIDTH_M, v.HEIGHT_M, v.LOAD_TON, " +
-            "       v.PALLET_HEIGHT_M, v.CARCLASS_CD FROM DS_VEHICLE v " +
-            "LEFT JOIN KNRAWMS.CMCDV c ON c.CMCDKY='TMS_CARCLASS10' AND c.CMCDVL=v.CARCLASS_CD " +
-            "WHERE COALESCE(c.USARG1,'Y')='Y'"
+            "       v.PALLET_HEIGHT_M, v.CARCLASS_CD FROM DS_VEHICLE v"
         );
+        // CMCDV USE_YN 필터 (Oracle)
+        List<Map<String, Object>> ccRows = wmsJdbc.queryForList(
+            "SELECT CMCDVL, USARG1 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10'"
+        );
+        Map<String, String> useYnMap = new HashMap<>();
+        for (Map<String, Object> r : ccRows) useYnMap.put(str(r.get("CMCDVL")), str(r.get("USARG1")));
         Map<String, VehInfo> result = new HashMap<>();
         for (Map<String, Object> r : rows) {
+            String cc = str(r.get("CARCLASS_CD"));
+            String useYn = useYnMap.getOrDefault(cc, "Y");
+            if (!"Y".equalsIgnoreCase(useYn) && !useYn.isEmpty()) continue;
             VehInfo vi = new VehInfo();
             vi.heightM          = dbl(r.get("HEIGHT_M"));
             vi.palletHeightM    = dbl(r.get("PALLET_HEIGHT_M"));
@@ -780,10 +819,11 @@ public class AutoDispatchService {
         return result;
     }
 
+    /** DS_INCH12 / DS_INCH3 로드 — MariaDB */
     private InchMaps loadInchMaps() {
         InchMaps m = new InchMaps();
-        List<Map<String, Object>> i12 = jdbc.queryForList("SELECT CARTYPE,GRM_COND,MAX_COUNT FROM DS_INCH12");
-        List<Map<String, Object>> i3  = jdbc.queryForList("SELECT CARTYPE,GRM_COND,MAX_COUNT FROM DS_INCH3");
+        List<Map<String, Object>> i12 = tmsJdbc.queryForList("SELECT CARTYPE,GRM_COND,MAX_COUNT FROM DS_INCH12");
+        List<Map<String, Object>> i3  = tmsJdbc.queryForList("SELECT CARTYPE,GRM_COND,MAX_COUNT FROM DS_INCH3");
         for (Map<String, Object> r : i12)
             m.inch12.computeIfAbsent(str(r.get("CARTYPE")), k -> new HashMap<>())
                     .put(str(r.get("GRM_COND")), (int) dbl(r.get("MAX_COUNT")));
@@ -793,8 +833,9 @@ public class AutoDispatchService {
         return m;
     }
 
+    /** SKUMA 로드 — Oracle KNRAWMS */
     private Map<String, SkuInfo> loadSkumaMap() {
-        List<Map<String, Object>> rows = jdbc.queryForList(
+        List<Map<String, Object>> rows = wmsJdbc.queryForList(
             "SELECT SKUKEY, GRSWGT, ASKL04, ASKL05, CUBICM FROM KNRAWMS.SKUMA WHERE MTYPE='P'"
         );
         Map<String, SkuInfo> result = new HashMap<>();
@@ -809,17 +850,28 @@ public class AutoDispatchService {
         return result;
     }
 
+    /**
+     * 운송비 로드 — ROUTE_COST: MariaDB / CMCDV: Oracle → 2-step
+     * Cross-DB 조인 불가 → CARCLASS 코드명 별도 조회 후 매핑
+     */
     private Map<String, Map<String, Double>> loadRouteCostMap(String costDate) {
-        List<Map<String, Object>> rows = jdbc.queryForList(
-            "SELECT rc.PTNRKY, cc.CDESC1 AS CARTYPE, rc.COST, rc.CARCLASS " +
+        // Step 1: MariaDB ROUTE_COST
+        List<Map<String, Object>> rows = tmsJdbc.queryForList(
+            "SELECT rc.PTNRKY, rc.CARCLASS, rc.COST " +
             "FROM ROUTE_COST rc " +
-            "LEFT JOIN KNRAWMS.CMCDV cc ON cc.CMCDKY='TMS_CARCLASS10' AND cc.CMCDVL=rc.CARCLASS " +
             "WHERE rc.DATE_START<=? AND rc.DATE_END>=?", costDate, costDate
         );
+        // Step 2: Oracle KNRAWMS.CMCDV — CARCLASS 코드 → 차종명 매핑
+        List<Map<String, Object>> ccRows = wmsJdbc.queryForList(
+            "SELECT CMCDVL, CDESC1 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10'"
+        );
+        Map<String, String> ccMap = new HashMap<>();
+        for (Map<String, Object> r : ccRows) ccMap.put(str(r.get("CMCDVL")), str(r.get("CDESC1")));
+
         Map<String, Map<String, Double>> result = new HashMap<>();
         for (Map<String, Object> r : rows) {
-            String ct = str(r.get("CARTYPE"));
-            if (!ct.isEmpty()) {
+            String ct = ccMap.get(str(r.get("CARCLASS")));
+            if (ct != null && !ct.isEmpty()) {
                 result.computeIfAbsent(str(r.get("PTNRKY")), k -> new HashMap<>())
                       .put(ct, dbl(r.get("COST")));
             }
@@ -827,17 +879,18 @@ public class AutoDispatchService {
         return result;
     }
 
+    /** 납품처 TMS 정보 로드 — BZPTN_DETAIL, CMCDV: Oracle KNRAWMS */
     private Map<String, PtnrInfo> loadPtnrInfo(List<String> dptnkyList,
                                                  Map<String, VehInfo> vehInfo) {
         if (dptnkyList.isEmpty()) return Collections.emptyMap();
         String ph = dptnkyList.stream().map(x -> "?").collect(Collectors.joining(","));
-        List<Map<String, Object>> rows = jdbc.queryForList(
+        List<Map<String, Object>> rows = wmsJdbc.queryForList(
             "SELECT PTNRKY,DEADLINE_TIME,FORKLIFT_YN,MAX_TON,DYNAMIC_YN " +
             "FROM KNRAWMS.BZPTN_DETAIL WHERE PTNRKY IN (" + ph + ") AND PTNRTY='CT'",
             dptnkyList.toArray()
         );
-        // CARCLASS10 코드명 매핑
-        List<Map<String, Object>> ccRows = jdbc.queryForList(
+        // CARCLASS10 코드명 매핑 (Oracle)
+        List<Map<String, Object>> ccRows = wmsJdbc.queryForList(
             "SELECT CMCDVL,CDESC1 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10'"
         );
         Map<String, String> ccMap = new HashMap<>();
@@ -873,7 +926,7 @@ public class AutoDispatchService {
             Map<String, String> postcdMap = new HashMap<>();
             if (!allDks.isEmpty()) {
                 String ph = allDks.stream().map(x -> "?").collect(Collectors.joining(","));
-                List<Map<String, Object>> prows = jdbc.queryForList(
+                List<Map<String, Object>> prows = wmsJdbc.queryForList(
                     "SELECT PTNRKY, POSTCD FROM KNRAWMS.BZPTN WHERE PTNRKY IN (" + ph + ") AND PTNRTY='CT'",
                     allDks.toArray());
                 for (Map<String, Object> r : prows) {

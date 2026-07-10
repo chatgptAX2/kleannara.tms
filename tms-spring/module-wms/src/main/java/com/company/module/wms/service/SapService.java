@@ -12,21 +12,30 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
- * SAP RFC 연동 및 PS배차 확장 서비스 (WMS Oracle DB)
+ * SAP RFC 연동 및 PS배차 확장 서비스
+ *
+ * ■ DataSource 라우팅
+ *   wmsJdbc (Oracle KNRAWMS): SHPDH, SHPDI, BZPTN (납품예정 조회)
+ *   tmsJdbc (MariaDB TMS):    PS_DISPATCH_H/D, VHCMA, DOC_FILE, PS_DISPATCH_SPLIT
  */
 @Slf4j
 @Service
 public class SapService {
 
-    private final JdbcTemplate        jdbc;
+    /** Oracle WMS — KNRAWMS.SHPDH / SHPDI / BZPTN 조회 */
+    private final JdbcTemplate        wmsJdbc;
+    /** MariaDB TMS — PS_DISPATCH_H/D, VHCMA 등 직접 조작 */
+    private final JdbcTemplate        tmsJdbc;
     private final SapRfcService        sapRfc;
     private final AutoDispatchService  autoDispatch;
 
     public SapService(
-            @Qualifier("wmsJdbcTemplate") JdbcTemplate jdbc,
+            @Qualifier("wmsJdbcTemplate") JdbcTemplate wmsJdbc,
+            @Qualifier("tmsJdbcTemplate") JdbcTemplate tmsJdbc,
             SapRfcService sapRfc,
             AutoDispatchService autoDispatch) {
-        this.jdbc         = jdbc;
+        this.wmsJdbc      = wmsJdbc;
+        this.tmsJdbc      = tmsJdbc;
         this.sapRfc       = sapRfc;
         this.autoDispatch = autoDispatch;
     }
@@ -34,7 +43,7 @@ public class SapService {
     private static final DateTimeFormatter YMDFORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final DateTimeFormatter HMSFORMAT = DateTimeFormatter.ofPattern("HHmmss");
 
-    // ── 납품처 출고예정 포인트 조회 (SHPDH 기반) ─────────────────
+    // ── 납품처 출고예정 포인트 조회 (Oracle KNRAWMS.SHPDH 기반) ───────────────
     public Map<String, Object> shppoint(String wareky, String dateFrom, String dateTo) {
         try {
             StringBuilder sql = new StringBuilder(
@@ -48,12 +57,13 @@ public class SapService {
             if (dateFrom != null && !dateFrom.isBlank()) { sql.append(" AND h.RQSHPD>=?"); args.add(dateFrom.replace("-", "")); }
             if (dateTo   != null && !dateTo.isBlank())   { sql.append(" AND h.RQSHPD<=?"); args.add(dateTo.replace("-", "")); }
             sql.append(" GROUP BY h.DPTNKY, b.NAME01, h.RQSHPD ORDER BY h.RQSHPD, h.DPTNKY");
-            List<Map<String, Object>> rows = jdbc.queryForList(sql.toString(), args.toArray());
+            // Oracle KNRAWMS → wmsJdbc
+            List<Map<String, Object>> rows = wmsJdbc.queryForList(sql.toString(), args.toArray());
             return Map.of("ok", true, "rows", rows);
         } catch (Exception e) { return errMap(e); }
     }
 
-    // ── SAP 선적 생성 — SapRfcService (Z_TMS_SHIPMENT_CRDL RFC + WMS IFC301) 로 위임 ──
+    // ── SAP 선적 생성 — SapRfcService (Z_TMS_SHIPMENT_CRDL RFC) 로 위임 ──
     public Map<String, Object> shipmentCreate(Map<String, Object> body) {
         try {
             return sapRfc.shipmentCreate(body);
@@ -96,6 +106,7 @@ public class SapService {
 
     public Map<String, Object> psSearch(String dateFrom, String dateTo, String dptnky, String shpoky, String status) {
         try {
+            // KNRAWMS.SHPDH / SHPDI / BZPTN → Oracle wmsJdbc
             StringBuilder sql = new StringBuilder(
                 "SELECT h.SHPOKY, h.DPTNKY, COALESCE(b.NAME01,h.DPTNKY) AS DPTNM, " +
                 "       h.RQSHPD, COUNT(i.SHPOIT) AS ITEM_CNT, SUM(i.QTSHPO) AS TOTAL_QTY " +
@@ -109,12 +120,12 @@ public class SapService {
             if (dptnky   != null && !dptnky.isBlank())   { sql.append(" AND h.DPTNKY=?"); args.add(dptnky); }
             if (shpoky   != null && !shpoky.isBlank())   { sql.append(" AND h.SHPOKY=?"); args.add(shpoky); }
             sql.append(" GROUP BY h.SHPOKY, h.DPTNKY, b.NAME01, h.RQSHPD ORDER BY h.RQSHPD, h.DPTNKY");
-            List<Map<String, Object>> rows = jdbc.queryForList(sql.toString(), args.toArray());
+            List<Map<String, Object>> rows = wmsJdbc.queryForList(sql.toString(), args.toArray());
             return Map.of("ok", true, "rows", rows);
         } catch (Exception e) { return errMap(e); }
     }
 
-    /** 자동배차 — AutoDispatchService (FFD/BFD/MIN_COST 완전 구현) 로 위임 */
+    /** 자동배차 — AutoDispatchService 로 위임 */
     public Map<String, Object> psAuto(Map<String, Object> body) {
         try {
             return autoDispatch.runAuto(body);
@@ -127,10 +138,11 @@ public class SapService {
         Long dispHId = toLong(body.get("disp_h_id"));
         if (dispHId == null) return Map.of("ok", false, "error", "disp_h_id 필수");
         try {
-            List<Map<String, Object>> heads = jdbc.queryForList(
+            // PS_DISPATCH_H / PS_DISPATCH_D → MariaDB tmsJdbc
+            List<Map<String, Object>> heads = tmsJdbc.queryForList(
                 "SELECT * FROM PS_DISPATCH_H WHERE DISP_H_ID=?", dispHId
             );
-            List<Map<String, Object>> details = jdbc.queryForList(
+            List<Map<String, Object>> details = tmsJdbc.queryForList(
                 "SELECT * FROM PS_DISPATCH_D WHERE DISP_H_ID=? ORDER BY ITEM_SEQ", dispHId
             );
             return Map.of("ok", true, "header", heads.isEmpty() ? null : heads.get(0), "details", details);
@@ -142,8 +154,9 @@ public class SapService {
         Long dispHId = toLong(body.get("disp_h_id"));
         if (dispHId == null) return Map.of("ok", false, "error", "disp_h_id 필수");
         try {
-            jdbc.update("DELETE FROM PS_DISPATCH_D WHERE DISP_H_ID=?", dispHId);
-            jdbc.update("DELETE FROM PS_DISPATCH_H WHERE DISP_H_ID=?", dispHId);
+            // PS_DISPATCH_D / PS_DISPATCH_H → MariaDB tmsJdbc
+            tmsJdbc.update("DELETE FROM PS_DISPATCH_D WHERE DISP_H_ID=?", dispHId);
+            tmsJdbc.update("DELETE FROM PS_DISPATCH_H WHERE DISP_H_ID=?", dispHId);
             return Map.of("ok", true);
         } catch (Exception e) { return errMap(e); }
     }
@@ -155,13 +168,13 @@ public class SapService {
         String today = LocalDate.now().format(YMDFORMAT);
         String now   = LocalDateTime.now().format(HMSFORMAT);
         try {
-            // 분할 정보 저장
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> splitItems = (List<Map<String, Object>>) body.get("split_items");
             if (splitItems == null) return Map.of("ok", false, "error", "split_items 필수");
             int saved = 0;
             for (Map<String, Object> it : splitItems) {
-                jdbc.update(
+                // PS_DISPATCH_SPLIT → MariaDB tmsJdbc
+                tmsJdbc.update(
                     "INSERT INTO PS_DISPATCH_SPLIT (DISP_H_ID,ORIG_ITEM,SPLIT_SEQ,SKUKEY,QTSHPO,KG_WEIGHT,NOTE,CREDAT,CRETIM) VALUES (?,?,?,?,?,?,?,?,?)",
                     dispHId, it.get("orig_item"), it.get("split_seq"), it.get("skukey"),
                     it.get("qtshpo"), it.get("kg_weight"), it.get("note"), today, now
@@ -189,7 +202,8 @@ public class SapService {
             }
             if (sets.isEmpty()) return Map.of("ok", false, "error", "변경 필드 없음");
             sets.add("LMODAT=?"); args.add(today); args.add(dispDId);
-            jdbc.update("UPDATE PS_DISPATCH_D SET " + String.join(",", sets) + " WHERE DISP_D_ID=?", args.toArray());
+            // PS_DISPATCH_D → MariaDB tmsJdbc
+            tmsJdbc.update("UPDATE PS_DISPATCH_D SET " + String.join(",", sets) + " WHERE DISP_D_ID=?", args.toArray());
             return Map.of("ok", true);
         } catch (Exception e) { return errMap(e); }
     }
@@ -205,22 +219,23 @@ public class SapService {
             String cartype = str(body.get("cartype"));
             if (dptnky.isBlank()) return Map.of("ok", false, "error", "dptnky 필수");
 
-            // 배차번호 생성
+            // PS_DISPATCH_H → MariaDB tmsJdbc
             String dispatchNo = "PS" + dispDate + now;
-            jdbc.update(
+            tmsJdbc.update(
                 "INSERT INTO PS_DISPATCH_H (DISPATCH_NO,DPTNKY,DPTNM,DISP_DATE,STATUS,CARTYPE,NOTE,CREDAT,CRETIM,LMODAT) " +
                 "VALUES (?,?,?,?,?,?,?,?,?,?)",
                 dispatchNo, dptnky, dptnm, dispDate, "DRAFT", cartype,
                 str(body.get("note")), today, now, today
             );
-            Long newId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+            Long newId = tmsJdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> items = (List<Map<String, Object>>) body.get("items");
             if (items != null) {
                 int seq = 1;
                 for (Map<String, Object> it : items) {
-                    jdbc.update(
+                    // PS_DISPATCH_D → MariaDB tmsJdbc
+                    tmsJdbc.update(
                         "INSERT INTO PS_DISPATCH_D (DISP_H_ID,SHPOKY,SHPOIT,SKUKEY,QTSHPO,KG_WEIGHT,ITEM_SEQ,CREDAT) VALUES (?,?,?,?,?,?,?,?)",
                         newId, it.get("shpoky"), it.get("shpoit"), it.get("skukey"),
                         it.get("qtshpo"), it.get("kg_weight"), seq++, today

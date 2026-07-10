@@ -15,28 +15,27 @@ import javax.sql.DataSource;
 import java.util.Properties;
 
 /**
- * WMS DB (Oracle) 전용 JPA + JdbcTemplate 설정
+ * WMS DB (Oracle KNRAWMS) 전용 JPA + JdbcTemplate 설정
  *
- * 관리 패키지 (Repository):
- *   - com.company.module.dispatch.repository    (PS배차 — PS_DISPATCH_H/D)
- *   - com.company.module.vehicle.repository     (차량유형/차량마스터 — DS_VEHICLE, VHCMA)
- *   - com.company.module.shipment.repository    (출고진행현황 — SHPDH, SHPDI)
- *   - com.company.module.delivery.repository    (납품처관리 — BZPTN_DETAIL, ROUTE_COST, BZPTN)
+ * ■ Oracle 전용 Repository (KNRAWMS 스키마 테이블만)
+ *   - com.company.module.shipment.repository       (SHPDH, SHPDI — Oracle KNRAWMS)
+ *   - com.company.module.delivery.repository       (BZPTN_DETAIL — Oracle KNRAWMS)
+ *   - com.company.module.vehicle.repository.wms    (VHCMA — Oracle KNRAWMS)
+ *
+ * ■ MariaDB 테이블은 TmsJpaConfig 에서 관리
+ *   dispatch(PS_DISPATCH_H/D), vehicle(DS_VEHICLE), delivery.RouteCost(ROUTE_COST)
  *
  * WMS JdbcTemplate 빈:
  *   @Qualifier("wmsJdbcTemplate") 로 주입
- *   → WmsViewService, CommonCodeService, AutoDispatchService,
- *     SapRfcService, SapService, StrategyService, DispatchConfigApiService
  *
  * 트랜잭션 한정자: @Transactional("wmsTransactionManager")
  */
 @Configuration
 @EnableJpaRepositories(
     basePackages = {
-        "com.company.module.dispatch.repository",
-        "com.company.module.vehicle.repository",
-        "com.company.module.shipment.repository",
-        "com.company.module.delivery.repository"   // BZPTN_DETAIL, ROUTE_COST, BZPTN — Oracle WMS
+        "com.company.module.shipment.repository",       // SHPDH, SHPDI — Oracle KNRAWMS
+        "com.company.module.delivery.repository",       // BZPTN_DETAIL — Oracle KNRAWMS
+        "com.company.module.vehicle.repository.wms"     // VHCMA — Oracle KNRAWMS
     },
     entityManagerFactoryRef = "wmsEntityManagerFactory",
     transactionManagerRef   = "wmsTransactionManager"
@@ -50,10 +49,9 @@ public class WmsJpaConfig {
         LocalContainerEntityManagerFactoryBean em = new LocalContainerEntityManagerFactoryBean();
         em.setDataSource(dataSource);
         em.setPackagesToScan(
-            "com.company.module.dispatch.entity",
-            "com.company.module.vehicle.entity",
-            "com.company.module.shipment.entity",
-            "com.company.module.delivery.entity"   // BZPTN_DETAIL, ROUTE_COST — Oracle WMS
+            "com.company.module.shipment.entity",       // ShpdH, ShpdI — Oracle KNRAWMS
+            "com.company.module.delivery.entity",       // BzptnDetail — Oracle KNRAWMS (RouteCost는 entity.tms 로 분리됨)
+            "com.company.module.vehicle.entity.wms"     // Vhcma — Oracle KNRAWMS
         );
         em.setPersistenceUnitName("wmsPU");
 
@@ -69,9 +67,8 @@ public class WmsJpaConfig {
         props.setProperty("hibernate.hbm2ddl.auto", "none");
         props.setProperty("hibernate.show_sql",  "false");
         props.setProperty("hibernate.format_sql", "true");
-        // ── Oracle 기본 스키마 명시 ──────────────────────────────────────
-        // KNRATMS 계정으로 접속 시 해당 스키마를 기본으로 사용
-        // 미설정 시 접속 계정 스키마가 자동 적용되나 명시적으로 지정
+        // Oracle 기본 스키마: KNRATMS 계정으로 접속
+        // KNRAWMS 스키마 테이블은 엔티티/쿼리에서 명시적 스키마 접두어 사용
         props.setProperty("hibernate.default_schema", "KNRATMS");
         em.setJpaProperties(props);
 

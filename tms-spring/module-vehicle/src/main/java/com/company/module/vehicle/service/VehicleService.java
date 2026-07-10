@@ -2,9 +2,9 @@ package com.company.module.vehicle.service;
 
 import com.company.module.vehicle.dto.*;
 import com.company.module.vehicle.entity.DsVehicle;
-import com.company.module.vehicle.entity.Vhcma;
+import com.company.module.vehicle.entity.wms.Vhcma;
 import com.company.module.vehicle.repository.DsVehicleRepository;
-import com.company.module.vehicle.repository.VhcmaRepository;
+import com.company.module.vehicle.repository.wms.VhcmaRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -22,6 +22,13 @@ import java.util.*;
 /**
  * 차량유형 / 차량마스터 서비스
  * Flask: api_carclass / api_ds_vehicle / api_vehicle_* 대응
+ *
+ * ■ DataSource 라우팅
+ *   - em    (wmsPU, Oracle KNRAWMS): CMCDM, CMCDV, WAHMA, VHCMA
+ *   - tmsEm (tmsPU, MariaDB TMS):   DS_VEHICLE
+ *
+ *   ※ VhcmaRepository → WmsJpaConfig (wmsPU, Oracle KNRAWMS)
+ *      DsVehicleRepository → TmsJpaConfig (tmsPU, MariaDB)
  */
 @Service
 @RequiredArgsConstructor
@@ -31,11 +38,17 @@ public class VehicleService {
     private final DsVehicleRepository dsVehicleRepo;
     private final VhcmaRepository     vhcmaRepo;
 
+    /** Oracle WMS — KNRAWMS.CMCDM / CMCDV / WAHMA / VHCMA */
     @PersistenceContext(unitName = "wmsPU")
     private EntityManager em;
 
+    /** MariaDB TMS — DS_VEHICLE (차종 직접 쿼리) */
+    @PersistenceContext(unitName = "tmsPU")
+    private EntityManager tmsEm;
+
     // ──────────────────────────────────────────────────────────────────────────
     // DS_VEHICLE 목록 (Flask api_ds_vehicle)
+    // DsVehicleRepository → TmsJpaConfig → MariaDB 자동 라우팅
     // ──────────────────────────────────────────────────────────────────────────
     public List<DsVehicleResponse> getDsVehicleList() {
         List<DsVehicle> list = dsVehicleRepo.findAllByOrderBySortSeqAsc();
@@ -80,9 +93,10 @@ public class VehicleService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // Carclass 통합 조회 (Flask api_carclass)
+    // CMCDV → Oracle em / DsVehicleRepository → MariaDB 자동
     // ──────────────────────────────────────────────────────────────────────────
     public Map<String, Object> getCarclass() {
-        // TMS_CARCLASS10 공통코드
+        // TMS_CARCLASS10 공통코드 (Oracle KNRAWMS.CMCDV → em)
         @SuppressWarnings("unchecked")
         List<Object[]> ccRows = em.createNativeQuery("""
             SELECT CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5
@@ -139,11 +153,13 @@ public class VehicleService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 제품군별 차량톤수 공통코드 (Flask api_carclass_by_product)
+    // CMCDM, CMCDV → Oracle em / DsVehicleRepository → MariaDB 자동
     // ──────────────────────────────────────────────────────────────────────────
     public Map<String, Object> getCarclassByProduct(String productGroup) {
         Map<String, String> cmcdkyMap = Map.of("10", "TMS_CARCLASS10", "20", "TMS_CARCLASS20");
         String cmcdky = cmcdkyMap.getOrDefault(productGroup == null ? "" : productGroup.strip(), "TMS_CARCLASS10");
 
+        // Oracle KNRAWMS.CMCDM → em
         @SuppressWarnings("unchecked")
         Object[] mRow = (Object[]) em.createNativeQuery(
             "SELECT USARL1, USARL2, USARL3, USARL4, USARL5 FROM KNRAWMS.CMCDM WHERE CMCDKY=?")
@@ -160,6 +176,7 @@ public class VehicleService {
             }
         }
 
+        // Oracle KNRAWMS.CMCDV → em
         @SuppressWarnings("unchecked")
         List<Object[]> vRows = em.createNativeQuery(
             "SELECT CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5 FROM KNRAWMS.CMCDV WHERE CMCDKY=? ORDER BY CMCDVL")
@@ -188,6 +205,7 @@ public class VehicleService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // Carclass / DS_VEHICLE 저장 (Flask api_carclass_save)
+    // CMCDV 업데이트 → Oracle em(wmsPU) / DsVehicle CUD → MariaDB Repository 자동
     // ──────────────────────────────────────────────────────────────────────────
     @Transactional(transactionManager = "wmsTransactionManager")
     public void saveCarclass(VehicleSaveRequest req) {
@@ -197,7 +215,7 @@ public class VehicleService {
         if ("carclass".equals(req.getTable())) {
             String key = req.getCmcdvl();
             if (key == null || key.isBlank()) throw new IllegalArgumentException("CMCDVL 필수");
-            // native UPDATE CMCDV
+            // Oracle KNRAWMS.CMCDV 업데이트 → em
             em.createNativeQuery("""
                 UPDATE KNRAWMS.CMCDV SET CDESC1=?, USARG1=?, USARG2=?, USARG3=?, USARG4=?, USARG5=?,
                 LMODAT=?, LMOTIM=?, LMOUSR=?
@@ -216,7 +234,7 @@ public class VehicleService {
         } else if ("vehicle".equals(req.getTable())) {
             String carclassCd = req.getCarclassCd();
             if (carclassCd == null || carclassCd.isBlank()) {
-                // CARTYPE으로 자동 보완
+                // CARTYPE으로 자동 보완 (MariaDB DsVehicleRepository → TmsJpaConfig 자동)
                 Optional<DsVehicle> opt = dsVehicleRepo.findByCartype(req.getCartype());
                 carclassCd = opt.map(DsVehicle::getCarclassCd).orElse(null);
             }
@@ -269,12 +287,15 @@ public class VehicleService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // VHCMA 차량 목록 (Flask api_vehicle_list)
+    // VhcmaRepository.searchPage() → WmsJpaConfig → Oracle KNRAWMS 자동
+    // WAHMA(창고) → Oracle em
     // ──────────────────────────────────────────────────────────────────────────
     public Map<String, Object> getVhcmaList(VhcmaSearchRequest req) {
         int page = req.getPage() == null ? 1 : req.getPage();
         int size = req.getSize() == null ? 50 : req.getSize();
         Pageable pageable = PageRequest.of(page - 1, size);
 
+        // VhcmaRepository → WmsJpaConfig → Oracle KNRAWMS (Oracle LIKE '%'||?||'%' 적용)
         Page<Object[]> pageResult = vhcmaRepo.searchPage(
             nullIfBlank(req.getShipPoint()), nullIfBlank(req.getProductGroup()),
             nullIfBlank(req.getDeliveryZone()), nullIfBlank(req.getCarrier()),
@@ -283,7 +304,7 @@ public class VehicleService {
             pageable
         );
 
-        // 창고 목록 (WAHMA)
+        // 창고 목록 (Oracle KNRAWMS.WAHMA → em)
         @SuppressWarnings("unchecked")
         List<Object[]> shipPoints = em.createNativeQuery(
             "SELECT WAREKY, NAME01 FROM KNRAWMS.WAHMA WHERE DELMAK=' ' OR DELMAK='' ORDER BY WAREKY"
@@ -310,6 +331,7 @@ public class VehicleService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // VHCMA 상세 (Flask api_vehicle_detail)
+    // VhcmaRepository → WmsJpaConfig → Oracle KNRAWMS 자동
     // ──────────────────────────────────────────────────────────────────────────
     public Vhcma getVhcmaDetail(String vehicleNo, String ownrky) {
         return vhcmaRepo.findByVehicleNoAndOwnrky(vehicleNo, ownrky == null ? "KN" : ownrky)
@@ -319,6 +341,7 @@ public class VehicleService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // VHCMA 저장 (Flask api_vehicle_save)
+    // vhcma → Oracle em (wmsPU) — VHCMA는 KNRAWMS Oracle 테이블
     // ──────────────────────────────────────────────────────────────────────────
     @Transactional(transactionManager = "wmsTransactionManager")
     public String saveVhcma(VhcmaSaveRequest req) {
@@ -330,8 +353,9 @@ public class VehicleService {
         String nowtm = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
 
         if (vhcmaRepo.existsByVehicleNoAndOwnrky(vno, ownrky)) {
+            // Oracle KNRAWMS.VHCMA UPDATE → em (wmsPU)
             em.createNativeQuery("""
-                UPDATE vhcma SET SHIP_POINT=?,PRODUCT_GROUP=?,DELIVERY_ZONE=?,CARRIER=?,
+                UPDATE KNRAWMS.VHCMA SET SHIP_POINT=?,PRODUCT_GROUP=?,DELIVERY_ZONE=?,CARRIER=?,
                 VEHICLE_TYPE=?,VEHICLE_KIND=?,VEHICLE_CLASS=?,CARTYPE=?,CARCLASS_CD=?,
                 DRIVER_NAME=?,CONTACT_NO=?,PALLET_QTY=?,FLOOR_TYPE=?,USE_YN=?,OPERABLE_YN=?,
                 FIX_YN=?,DLV_TIME_FROM=?,DLV_TIME_TO=?,VEHICLE_YEAR=?,
@@ -366,8 +390,9 @@ public class VehicleService {
               .executeUpdate();
             return "updated";
         } else {
+            // Oracle KNRAWMS.VHCMA INSERT → em (wmsPU)
             em.createNativeQuery("""
-                INSERT INTO vhcma
+                INSERT INTO KNRAWMS.VHCMA
                 (VEHICLE_NO,OWNRKY,SHIP_POINT,PRODUCT_GROUP,DELIVERY_ZONE,CARRIER,
                  VEHICLE_TYPE,VEHICLE_KIND,VEHICLE_CLASS,CARTYPE,CARCLASS_CD,
                  DRIVER_NAME,CONTACT_NO,PALLET_QTY,FLOOR_TYPE,USE_YN,OPERABLE_YN,FIX_YN,
@@ -408,6 +433,7 @@ public class VehicleService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // VHCMA 삭제 (Flask api_vehicle_delete) – 소프트 삭제 (DEL_YN='Y')
+    // Vhcma entity는 WmsJpaConfig 관리 → wmsTransactionManager 사용
     // ──────────────────────────────────────────────────────────────────────────
     @Transactional(transactionManager = "wmsTransactionManager")
     public void deleteVhcma(String vehicleNo, String ownrky) {
