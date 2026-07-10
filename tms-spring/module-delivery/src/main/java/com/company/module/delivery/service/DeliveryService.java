@@ -22,9 +22,9 @@ import java.util.*;
  *
  * ─ DB 라우팅 ───────────────────────────────────────────────────
  *   wmsEm  (wmsPU / Oracle WMS) :
- *     - BzptnDetailRepository (BZPTN_DETAIL, BZPTN)  -- Oracle WMS 테이블
- *     - RouteCostRepository   (ROUTE_COST)            -- Oracle WMS 테이블
- *     - em.createNativeQuery  BZPTN_DETAIL UPDATE/INSERT
+ *     - BzptnDetailRepository (KNRAWMS.BZPTN_DETAIL, KNRAWMS.BZPTN)  -- Oracle WMS 테이블
+ *     - RouteCostRepository   (ROUTE_COST)                             -- Oracle WMS 테이블
+ *     - em.createNativeQuery  KNRAWMS.BZPTN_DETAIL UPDATE/INSERT
  * ───────────────────────────────────────────────────────────────
  */
 @Service
@@ -34,7 +34,7 @@ public class DeliveryService {
     private final BzptnDetailRepository bzptnDetailRepo;
     private final RouteCostRepository   routeCostRepo;
 
-    /** WMS DB (Oracle) — BZPTN 원장 및 BZPTN_DETAIL 읽기/쓰기용 */
+    /** WMS DB (Oracle) — KNRAWMS.BZPTN 원장 및 KNRAWMS.BZPTN_DETAIL 읽기/쓰기용 */
     @PersistenceContext(unitName = "wmsPU")
     private EntityManager wmsEm;
 
@@ -88,12 +88,12 @@ public class DeliveryService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 납품처 상세 (Flask api_delivery_detail)
-    // BZPTN 원장 → wmsEm (Oracle), BZPTN_DETAIL 추가정보 → bzptnDetailRepo (MariaDB)
+    // KNRAWMS.BZPTN 원장 → wmsEm (Oracle), KNRAWMS.BZPTN_DETAIL 추가정보 → bzptnDetailRepo (Oracle)
     // ──────────────────────────────────────────────────────────────────────────
     public Map<String, Object> getDetail(String ptnrky, String ptnrty, String ownrky) {
         @SuppressWarnings("unchecked")
         List<Object[]> bRows = wmsEm.createNativeQuery(
-            "SELECT * FROM BZPTN WHERE PTNRKY=? AND PTNRTY=? AND OWNRKY=?")
+            "SELECT * FROM KNRAWMS.BZPTN WHERE PTNRKY=? AND PTNRTY=? AND OWNRKY=?")
             .setParameter(1, ptnrky).setParameter(2, ptnrty).setParameter(3, ownrky)
             .getResultList();
         if (bRows.isEmpty()) throw new com.company.core.common.exception.EntityNotFoundException(
@@ -108,7 +108,7 @@ public class DeliveryService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 납품처 저장 (Flask api_delivery_save)
-    // BZPTN_DETAIL 쓰기 → wmsEm (Oracle)
+    // KNRAWMS.BZPTN_DETAIL 쓰기 → wmsEm (Oracle)
     // ──────────────────────────────────────────────────────────────────────────
     @Transactional(transactionManager = "wmsTransactionManager")
     public String saveDetail(DeliverySaveRequest req) {
@@ -122,7 +122,7 @@ public class DeliveryService {
 
         if (bzptnDetailRepo.existsByPtnrkyAndPtnrtyAndOwnrky(ptnrky, ptnrty, ownrky)) {
             wmsEm.createNativeQuery("""
-                UPDATE bzptn_detail SET
+                UPDATE KNRAWMS.BZPTN_DETAIL SET
                   WAREKY=?,ROUTE_CD=?,ITEM_GROUP=?,UNLOAD_TIME=?,
                   INB_TIME_FROM1=?,INB_TIME_TO1=?,AREA_CD=?,MAX_HEIGHT=?,
                   FORKLIFT_YN=?,HANDWORK_YN=?,AUTO_PLT=?,MAX_BOX_QTY=?,
@@ -163,7 +163,7 @@ public class DeliveryService {
             return "updated";
         } else {
             wmsEm.createNativeQuery("""
-                INSERT INTO bzptn_detail
+                INSERT INTO KNRAWMS.BZPTN_DETAIL
                 (PTNRKY,PTNRTY,OWNRKY,WAREKY,ROUTE_CD,ITEM_GROUP,UNLOAD_TIME,
                  INB_TIME_FROM1,INB_TIME_TO1,AREA_CD,MAX_HEIGHT,FORKLIFT_YN,HANDWORK_YN,
                  AUTO_PLT,MAX_BOX_QTY,AUTO_ALLOC_YN,SINGLE_ITEM_YN,NY_TYPE,SINGLE_HEIGHT,

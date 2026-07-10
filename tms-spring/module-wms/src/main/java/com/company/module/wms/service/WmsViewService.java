@@ -30,6 +30,12 @@ public class WmsViewService {
 
     // ── 허용 테이블 목록 (Flask TABLE_META 기반) ────────────────────
     // 인증된 사용자만 접근하므로 목록을 화이트리스트로 관리
+    /** Oracle WMS(KNRAWMS 스키마) 소속 테이블 — 조회 시 스키마명 접두어 필요 */
+    private static final Set<String> ORACLE_WMS_TABLES = new HashSet<>(Arrays.asList(
+        "CMCDM", "CMCDV", "WAHMA", "SKUMA", "BZPTN", "MEASI",
+        "SHPDH", "SHPDI", "IFWMS113", "RECDI", "BZPTN_DETAIL"
+    ));
+
     private static final Set<String> ALLOWED_TABLES = new LinkedHashSet<>(Arrays.asList(
         "CMCDM", "CMCDV", "WAHMA", "SKUMA", "BZPTN", "MEASI",
         "SHPDH", "SHPDI", "IFWMS113",
@@ -289,10 +295,15 @@ public class WmsViewService {
     }
 
     // ── 내부 유틸 ──────────────────────────────────────────────────
+    /**
+     * 테이블명 검증 후 반환.
+     * Oracle WMS(KNRAWMS 스키마) 소속 테이블은 "KNRAWMS.TABLE" 형태로 반환.
+     * 자체 KNRATMS 테이블은 TABLE 형태로 반환.
+     */
     private String validateTable(String table) {
         String upper = table.toUpperCase();
         if (!ALLOWED_TABLES.contains(upper))
             throw new IllegalArgumentException("허용되지 않는 테이블: " + table);
-        return upper;
+        return ORACLE_WMS_TABLES.contains(upper) ? "KNRAWMS." + upper : upper;
     }
 }

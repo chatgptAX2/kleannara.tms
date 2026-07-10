@@ -16,7 +16,7 @@ public interface ShpdIRepository extends JpaRepository<ShpdI, ShpdIId> {
      * LOTA02(플랜트) 필터 옵션 조회 — 공백 제거
      */
     @Query(value = """
-        SELECT DISTINCT LOTA02 FROM SHPDI
+        SELECT DISTINCT LOTA02 FROM KNRAWMS.SHPDI
         WHERE LOTA02 IS NOT NULL AND TRIM(LOTA02) != ''
         ORDER BY LOTA02
         """, nativeQuery = true)
@@ -27,7 +27,7 @@ public interface ShpdIRepository extends JpaRepository<ShpdI, ShpdIId> {
      */
     @Query(value = """
         SELECT CMCDVL AS value, CDESC1 AS label
-        FROM CMCDV
+        FROM KNRAWMS.CMCDV
         WHERE CMCDKY = 'SKUG05'
         ORDER BY CMCDVL
         """, nativeQuery = true)

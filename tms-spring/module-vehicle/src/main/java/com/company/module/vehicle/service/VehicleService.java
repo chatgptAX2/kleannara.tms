@@ -86,7 +86,7 @@ public class VehicleService {
         @SuppressWarnings("unchecked")
         List<Object[]> ccRows = em.createNativeQuery("""
             SELECT CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5
-            FROM CMCDV WHERE CMCDKY = 'TMS_CARCLASS10' ORDER BY CMCDVL
+            FROM KNRAWMS.CMCDV WHERE CMCDKY = 'TMS_CARCLASS10' ORDER BY CMCDVL
             """).getResultList();
 
         List<DsVehicle> vhcList = dsVehicleRepo.findAllByOrderBySortSeqAsc();
@@ -146,7 +146,7 @@ public class VehicleService {
 
         @SuppressWarnings("unchecked")
         Object[] mRow = (Object[]) em.createNativeQuery(
-            "SELECT USARL1, USARL2, USARL3, USARL4, USARL5 FROM CMCDM WHERE CMCDKY=?")
+            "SELECT USARL1, USARL2, USARL3, USARL4, USARL5 FROM KNRAWMS.CMCDM WHERE CMCDKY=?")
             .setParameter(1, cmcdky)
             .getResultStream().findFirst().orElse(null);
 
@@ -162,7 +162,7 @@ public class VehicleService {
 
         @SuppressWarnings("unchecked")
         List<Object[]> vRows = em.createNativeQuery(
-            "SELECT CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5 FROM CMCDV WHERE CMCDKY=? ORDER BY CMCDVL")
+            "SELECT CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5 FROM KNRAWMS.CMCDV WHERE CMCDKY=? ORDER BY CMCDVL")
             .setParameter(1, cmcdky)
             .getResultList();
 
@@ -199,7 +199,7 @@ public class VehicleService {
             if (key == null || key.isBlank()) throw new IllegalArgumentException("CMCDVL 필수");
             // native UPDATE CMCDV
             em.createNativeQuery("""
-                UPDATE CMCDV SET CDESC1=?, USARG1=?, USARG2=?, USARG3=?, USARG4=?, USARG5=?,
+                UPDATE KNRAWMS.CMCDV SET CDESC1=?, USARG1=?, USARG2=?, USARG3=?, USARG4=?, USARG5=?,
                 LMODAT=?, LMOTIM=?, LMOUSR=?
                 WHERE CMCDKY='TMS_CARCLASS10' AND CMCDVL=?
                 """)
@@ -286,7 +286,7 @@ public class VehicleService {
         // 창고 목록 (WAHMA)
         @SuppressWarnings("unchecked")
         List<Object[]> shipPoints = em.createNativeQuery(
-            "SELECT WAREKY, NAME01 FROM WAHMA WHERE DELMAK=' ' OR DELMAK='' ORDER BY WAREKY"
+            "SELECT WAREKY, NAME01 FROM KNRAWMS.WAHMA WHERE DELMAK=' ' OR DELMAK='' ORDER BY WAREKY"
         ).getResultList();
 
         List<Map<String, Object>> spList = new ArrayList<>();

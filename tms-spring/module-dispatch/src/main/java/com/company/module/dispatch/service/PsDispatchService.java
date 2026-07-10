@@ -132,7 +132,7 @@ public class PsDispatchService {
         @SuppressWarnings("unchecked")
         List<String> dispatchedKeys = em.createNativeQuery("""
             SELECT CONCAT(SHPOKY,'|',SHPOIT)
-            FROM SHPDI
+            FROM KNRAWMS.SHPDI
             WHERE STATIT='NEW' AND TRIM(STDLNR) != ''
             """).getResultList();
         Set<String> dispatchedSet = new HashSet<>(dispatchedKeys);
@@ -150,12 +150,12 @@ public class PsDispatchService {
                    COALESCE(m.GRSWGT, 0) AS GRSWGT,
                    TRIM(COALESCE(i.LOTA03,'')) AS LOTA03,
                    COALESCE(rd.QTYRCV, 0) AS UNIT_WEIGHT
-            FROM SHPDI i
-            JOIN SHPDH h ON i.SHPOKY = h.SHPOKY
-            LEFT JOIN BZPTN b ON b.PTNRKY = h.DPTNKY AND b.PTNRTY = 'CT'
-            LEFT JOIN CMCDV c ON c.CMCDKY = 'TASOTY' AND c.CMCDVL = h.SHPMTY
-            LEFT JOIN SKUMA m ON m.SKUKEY = i.SKUKEY
-            LEFT JOIN RECDI rd ON rd.SKUKEY = i.SKUKEY
+            FROM KNRAWMS.SHPDI i
+            JOIN KNRAWMS.SHPDH h ON i.SHPOKY = h.SHPOKY
+            LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY = h.DPTNKY AND b.PTNRTY = 'CT'
+            LEFT JOIN KNRAWMS.CMCDV c ON c.CMCDKY = 'TASOTY' AND c.CMCDVL = h.SHPMTY
+            LEFT JOIN KNRAWMS.SKUMA m ON m.SKUKEY = i.SKUKEY
+            LEFT JOIN KNRAWMS.RECDI rd ON rd.SKUKEY = i.SKUKEY
             WHERE TRIM(i.SKUG05) = '10' AND h.WAREKY = '1100'
             """);
 
@@ -442,7 +442,7 @@ public class PsDispatchService {
                        COALESCE(d.GRSWGT,0), COALESCE(d.KG_WEIGHT,0),
                        COALESCE(rd.QTYRCV,0)
                 FROM PS_DISPATCH_D d
-                LEFT JOIN RECDI rd ON rd.SKUKEY = d.SKUKEY
+                LEFT JOIN KNRAWMS.RECDI rd ON rd.SKUKEY = d.SKUKEY
                 WHERE d.DISPATCH_NO = ?
                 ORDER BY d.SEQ
                 """)
