@@ -40,7 +40,7 @@ public class SapService {
             StringBuilder sql = new StringBuilder(
                 "SELECT DISTINCT h.DPTNKY AS PTNRKY, COALESCE(b.NAME01,h.DPTNKY) AS PTNRNM, " +
                 "       h.RQSHPD, COUNT(*) AS DOC_CNT " +
-                "FROM SHPDH h LEFT JOIN BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT' " +
+                "FROM KNRAWMS.SHPDH h LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT' " +
                 "WHERE 1=1"
             );
             List<Object> args = new ArrayList<>();
@@ -99,8 +99,8 @@ public class SapService {
             StringBuilder sql = new StringBuilder(
                 "SELECT h.SHPOKY, h.DPTNKY, COALESCE(b.NAME01,h.DPTNKY) AS DPTNM, " +
                 "       h.RQSHPD, COUNT(i.SHPOIT) AS ITEM_CNT, SUM(i.QTSHPO) AS TOTAL_QTY " +
-                "FROM SHPDH h JOIN SHPDI i ON h.SHPOKY=i.SHPOKY " +
-                "LEFT JOIN BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT' " +
+                "FROM KNRAWMS.SHPDH h JOIN KNRAWMS.SHPDI i ON h.SHPOKY=i.SHPOKY " +
+                "LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT' " +
                 "WHERE 1=1"
             );
             List<Object> args = new ArrayList<>();

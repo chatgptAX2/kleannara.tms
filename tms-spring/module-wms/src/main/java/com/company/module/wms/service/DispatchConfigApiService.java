@@ -212,8 +212,8 @@ public class DispatchConfigApiService {
                 "       COALESCE(c10.USARG1,'Y') AS USE_YN_PS, " +
                 "       COALESCE(c20.USARG1,'Y') AS USE_YN_HL " +
                 "FROM DS_VEHICLE v " +
-                "LEFT JOIN CMCDV c10 ON c10.CMCDKY='TMS_CARCLASS10' AND c10.CMCDVL=v.CARCLASS_CD " +
-                "LEFT JOIN CMCDV c20 ON c20.CMCDKY='TMS_CARCLASS20' AND c20.CMCDVL=v.CARCLASS_CD " +
+                "LEFT JOIN KNRAWMS.CMCDV c10 ON c10.CMCDKY='TMS_CARCLASS10' AND c10.CMCDVL=v.CARCLASS_CD " +
+                "LEFT JOIN KNRAWMS.CMCDV c20 ON c20.CMCDKY='TMS_CARCLASS20' AND c20.CMCDVL=v.CARCLASS_CD " +
                 "ORDER BY v.SORT_SEQ"
             );
             return Map.of("ok", true, "vehicles", rows);
@@ -277,14 +277,14 @@ public class DispatchConfigApiService {
     public Map<String, Object> setRegionList() {
         try {
             List<Map<String, Object>> tmsRegions = jdbc.queryForList(
-                "SELECT CMCDVL, CDESC1, CDESC2, USARG3, USARG4 FROM CMCDV WHERE CMCDKY='TMS_REGION' ORDER BY CMCDVL"
+                "SELECT CMCDVL, CDESC1, CDESC2, USARG3, USARG4 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_REGION' ORDER BY CMCDVL"
             );
             List<Map<String, Object>> partners = jdbc.queryForList(
                 "SELECT DISTINCT h.DPTNKY AS PTNRKY, COALESCE(b.NAME01,h.DPTNKY) AS NAME01, " +
                 "       COALESCE(b.POSTCD,'') AS POSTCD, COALESCE(d.AREA_CD,'') AS AREA_CD, " +
                 "       COALESCE(d.REGION_YN,'') AS REGION_YN " +
-                "FROM SHPDH h LEFT JOIN BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT' " +
-                "LEFT JOIN BZPTN_DETAIL d ON d.PTNRKY=h.DPTNKY AND d.PTNRTY='CT' AND (d.DEL_YN IS NULL OR d.DEL_YN!='Y') " +
+                "FROM KNRAWMS.SHPDH h LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT' " +
+                "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=h.DPTNKY AND d.PTNRTY='CT' AND (d.DEL_YN IS NULL OR d.DEL_YN!='Y') " +
                 "WHERE h.DPTNKY IS NOT NULL AND TRIM(h.DPTNKY)!='' ORDER BY h.DPTNKY"
             );
             // Python 로직: 우편번호 범위 매핑
@@ -334,10 +334,10 @@ public class DispatchConfigApiService {
             List<Map<String, Object>> partners = jdbc.queryForList(
                 "SELECT PTNRKY,'CT' AS PTNRTY,COALESCE(OWNRKY,'KN') AS OWNRKY,COALESCE(WAREKY,'W001') AS WAREKY," +
                 "COALESCE(NAME01,PTNRKY) AS NAME01,AREA_CD,MAX_TON,AUTO_ALLOC_YN " +
-                "FROM BZPTN_DETAIL WHERE (DEL_YN IS NULL OR DEL_YN!='Y') ORDER BY AREA_CD, PTNRKY"
+                "FROM KNRAWMS.BZPTN_DETAIL WHERE (DEL_YN IS NULL OR DEL_YN!='Y') ORDER BY AREA_CD, PTNRKY"
             );
             List<Map<String, Object>> carclasses = jdbc.queryForList(
-                "SELECT CMCDVL AS value, CDESC1 AS label FROM CMCDV WHERE CMCDKY='TMS_CARCLASS10' ORDER BY CMCDVL"
+                "SELECT CMCDVL AS value, CDESC1 AS label FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10' ORDER BY CMCDVL"
             );
             return Map.of("ok", true, "partners", partners, "carclasses", carclasses);
         } catch (Exception e) { return errMap(e); }
@@ -353,7 +353,7 @@ public class DispatchConfigApiService {
             List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT PTNRKY,'CT' AS PTNRTY,COALESCE(OWNRKY,'KN') AS OWNRKY,COALESCE(WAREKY,'W001') AS WAREKY," +
                 "COALESCE(NAME01,PTNRKY) AS NAME01,AREA_CD,FORKLIFT_YN,AUTO_ALLOC_YN " +
-                "FROM BZPTN_DETAIL WHERE (DEL_YN IS NULL OR DEL_YN!='Y') ORDER BY AREA_CD, PTNRKY"
+                "FROM KNRAWMS.BZPTN_DETAIL WHERE (DEL_YN IS NULL OR DEL_YN!='Y') ORDER BY AREA_CD, PTNRKY"
             );
             return Map.of("ok", true, "partners", rows);
         } catch (Exception e) { return errMap(e); }
@@ -369,7 +369,7 @@ public class DispatchConfigApiService {
             List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT PTNRKY,'CT' AS PTNRTY,COALESCE(OWNRKY,'KN') AS OWNRKY,COALESCE(WAREKY,'W001') AS WAREKY," +
                 "COALESCE(NAME01,PTNRKY) AS NAME01,AREA_CD,DYNAMIC_YN,AUTO_ALLOC_YN " +
-                "FROM BZPTN_DETAIL WHERE (DEL_YN IS NULL OR DEL_YN!='Y') ORDER BY AREA_CD, PTNRKY"
+                "FROM KNRAWMS.BZPTN_DETAIL WHERE (DEL_YN IS NULL OR DEL_YN!='Y') ORDER BY AREA_CD, PTNRKY"
             );
             return Map.of("ok", true, "partners", rows);
         } catch (Exception e) { return errMap(e); }
@@ -571,11 +571,11 @@ public class DispatchConfigApiService {
                 "FROM DS_VEHICLE ORDER BY SORT_SEQ"
             );
             List<Map<String, Object>> carclasses = jdbc.queryForList(
-                "SELECT CMCDVL, CDESC1 FROM CMCDV WHERE CMCDKY='TMS_CARCLASS10' ORDER BY CMCDVL"
+                "SELECT CMCDVL, CDESC1 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10' ORDER BY CMCDVL"
             );
             List<Map<String, Object>> partners = jdbc.queryForList(
                 "SELECT DISTINCT rc.PTNRKY, COALESCE(b.NAME01,rc.PTNRKY) AS PTNRNM " +
-                "FROM ROUTE_COST rc LEFT JOIN BZPTN b ON b.PTNRKY=rc.PTNRKY ORDER BY rc.PTNRKY LIMIT 300"
+                "FROM ROUTE_COST rc LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY=rc.PTNRKY ORDER BY rc.PTNRKY LIMIT 300"
             );
             List<Map<String, Object>> constKeyDefs = buildConstKeyDefs();
             return Map.of("ok", true, "vehicles", vehicles, "carclasses", carclasses,
@@ -610,7 +610,7 @@ public class DispatchConfigApiService {
                 if (ptnrky.isBlank()) continue;
                 // ON DUPLICATE KEY UPDATE
                 jdbc.update(
-                    "INSERT INTO BZPTN_DETAIL (PTNRKY,PTNRTY,OWNRKY,WAREKY," + columnName + ",LMODAT,LMOTIM,LMOUSR) " +
+                    "INSERT INTO KNRAWMS.BZPTN_DETAIL (PTNRKY,PTNRTY,OWNRKY,WAREKY," + columnName + ",LMODAT,LMOTIM,LMOUSR) " +
                     "VALUES (?,?,?,?,?,?,?,'DCON_SET') " +
                     "ON DUPLICATE KEY UPDATE " + columnName + "=VALUES(" + columnName + "),LMODAT=VALUES(LMODAT),LMOTIM=VALUES(LMOTIM),LMOUSR='DCON_SET'",
                     ptnrky, ptnrty, ownrky, wareky, colVal, lmodat, lmotim

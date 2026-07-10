@@ -29,7 +29,7 @@ public class CommonCodeService {
         try {
             List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT CMCDVL, CDESC1, CDESC2, USARG1, USARG2, USARG3, USARG4, USARG5, SORTNO " +
-                "FROM CMCDV WHERE CMCDKY = ? ORDER BY SORTNO, CMCDVL", cmcdky
+                "FROM KNRAWMS.CMCDV WHERE CMCDKY = ? ORDER BY SORTNO, CMCDVL", cmcdky
             );
             return Map.of("ok", true, "rows", rows);
         } catch (Exception e) {
@@ -41,7 +41,7 @@ public class CommonCodeService {
     public Map<String, Object> wahmaList() {
         try {
             List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT * FROM WAHMA ORDER BY WAREKY"
+                "SELECT * FROM KNRAWMS.WAHMA ORDER BY WAREKY"
             );
             return Map.of("ok", true, "rows", rows);
         } catch (Exception e) {
@@ -53,7 +53,7 @@ public class CommonCodeService {
     public Map<String, Object> wahmaDetail(String wareky) {
         try {
             List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT * FROM WAHMA WHERE WAREKY = ?", wareky
+                "SELECT * FROM KNRAWMS.WAHMA WHERE WAREKY = ?", wareky
             );
             return Map.of("ok", true, "row", rows.isEmpty() ? null : rows.get(0));
         } catch (Exception e) {
@@ -72,7 +72,7 @@ public class CommonCodeService {
 
         try {
             List<Map<String, Object>> exists = jdbc.queryForList(
-                "SELECT WAREKY FROM WAHMA WHERE WAREKY = ?", wareky
+                "SELECT WAREKY FROM KNRAWMS.WAHMA WHERE WAREKY = ?", wareky
             );
             if (exists.isEmpty()) {
                 jdbc.update(
@@ -110,7 +110,7 @@ public class CommonCodeService {
         if (wareky == null || wareky.isBlank())
             return Map.of("ok", false, "error", "WAREKY 필수");
         try {
-            int affected = jdbc.update("DELETE FROM WAHMA WHERE WAREKY = ?", wareky);
+            int affected = jdbc.update("DELETE FROM KNRAWMS.WAHMA WHERE WAREKY = ?", wareky);
             return Map.of("ok", true, "affected", affected);
         } catch (Exception e) {
             return Map.of("ok", false, "error", e.getMessage());
@@ -122,14 +122,14 @@ public class CommonCodeService {
         try {
             List<Map<String, Object>> header = jdbc.queryForList(
                 "SELECT h.*, b.NAME01 AS DPTNM_FULL " +
-                "FROM SHPDH h LEFT JOIN BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT' " +
+                "FROM KNRAWMS.SHPDH h LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT' " +
                 "WHERE h.SHPOKY = ?", shpoky
             );
             if (header.isEmpty()) return Map.of("ok", false, "error", "문서 없음");
 
             List<Map<String, Object>> items = jdbc.queryForList(
                 "SELECT i.*, s.SKUNM AS SKUNM_FULL " +
-                "FROM SHPDI i LEFT JOIN SKUMA s ON s.SKUKEY = i.SKUKEY " +
+                "FROM KNRAWMS.SHPDI i LEFT JOIN KNRAWMS.SKUMA s ON s.SKUKEY = i.SKUKEY " +
                 "WHERE i.SHPOKY = ? ORDER BY i.SHPOIT", shpoky
             );
             return Map.of("ok", true, "header", header.get(0), "items", items);

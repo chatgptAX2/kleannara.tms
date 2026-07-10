@@ -99,7 +99,9 @@ public class DataSourceConnectionVerifier {
 
     // ── WMS 핵심 테이블 접근 가능 여부 확인 ─────────────────────────────────
     private void verifyWmsTableAccess(Connection conn) {
-        String[] checkTables = {"CMCDM", "BZPTN", "SHPDH", "PS_DISPATCH_H", "VHCMA"};
+        // Oracle WMS(KNRAWMS) 테이블은 스키마명 접두어 필수
+        // 자체 KNRATMS 테이블(PS_DISPATCH_H, VHCMA)은 스키마명 불필요
+        String[] checkTables = {"KNRAWMS.CMCDM", "KNRAWMS.BZPTN", "KNRAWMS.SHPDH", "PS_DISPATCH_H", "VHCMA"};
         StringBuilder ok  = new StringBuilder();
         StringBuilder err = new StringBuilder();
 

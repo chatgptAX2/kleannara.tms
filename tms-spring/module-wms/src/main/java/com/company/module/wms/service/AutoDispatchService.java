@@ -740,8 +740,8 @@ public class AutoDispatchService {
             "SELECT h.SHPOKY, h.DPTNKY, b.NAME01 AS DPTNM, h.RQSHPD, " +
             "       i.SHPOIT, i.SKUKEY, i.QTSHPO, i.DESC01 AS SKUNM, " +
             "       i.GRSWGT, i.WGTUNT, i.UOMKEY, i.LENGTH, i.WIDTHW AS WIDTH_MM, i.HEIGHT " +
-            "FROM SHPDH h JOIN SHPDI i ON h.SHPOKY=i.SHPOKY " +
-            "LEFT JOIN BZPTN b ON h.DPTNKY=b.PTNRKY AND b.PTNRTY='CT' " +
+            "FROM KNRAWMS.SHPDH h JOIN KNRAWMS.SHPDI i ON h.SHPOKY=i.SHPOKY " +
+            "LEFT JOIN KNRAWMS.BZPTN b ON h.DPTNKY=b.PTNRKY AND b.PTNRTY='CT' " +
             "WHERE h.RQSHPD=?"
         );
         List<Object> args = new ArrayList<>();
@@ -753,7 +753,7 @@ public class AutoDispatchService {
     private List<Map<String, Object>> loadCarOrder() {
         return jdbc.queryForList(
             "SELECT v.CARTYPE, v.LOAD_TON, v.SORT_SEQ FROM DS_VEHICLE v " +
-            "LEFT JOIN CMCDV c ON c.CMCDKY='TMS_CARCLASS10' AND c.CMCDVL=v.CARCLASS_CD " +
+            "LEFT JOIN KNRAWMS.CMCDV c ON c.CMCDKY='TMS_CARCLASS10' AND c.CMCDVL=v.CARCLASS_CD " +
             "WHERE COALESCE(c.USARG1,'Y')='Y' ORDER BY v.SORT_SEQ DESC"
         );
     }
@@ -762,7 +762,7 @@ public class AutoDispatchService {
         List<Map<String, Object>> rows = jdbc.queryForList(
             "SELECT v.CARTYPE, v.LENGTH_M, v.WIDTH_M, v.HEIGHT_M, v.LOAD_TON, " +
             "       v.PALLET_HEIGHT_M, v.CARCLASS_CD FROM DS_VEHICLE v " +
-            "LEFT JOIN CMCDV c ON c.CMCDKY='TMS_CARCLASS10' AND c.CMCDVL=v.CARCLASS_CD " +
+            "LEFT JOIN KNRAWMS.CMCDV c ON c.CMCDKY='TMS_CARCLASS10' AND c.CMCDVL=v.CARCLASS_CD " +
             "WHERE COALESCE(c.USARG1,'Y')='Y'"
         );
         Map<String, VehInfo> result = new HashMap<>();
@@ -795,7 +795,7 @@ public class AutoDispatchService {
 
     private Map<String, SkuInfo> loadSkumaMap() {
         List<Map<String, Object>> rows = jdbc.queryForList(
-            "SELECT SKUKEY, GRSWGT, ASKL04, ASKL05, CUBICM FROM SKUMA WHERE MTYPE='P'"
+            "SELECT SKUKEY, GRSWGT, ASKL04, ASKL05, CUBICM FROM KNRAWMS.SKUMA WHERE MTYPE='P'"
         );
         Map<String, SkuInfo> result = new HashMap<>();
         for (Map<String, Object> r : rows) {
@@ -813,7 +813,7 @@ public class AutoDispatchService {
         List<Map<String, Object>> rows = jdbc.queryForList(
             "SELECT rc.PTNRKY, cc.CDESC1 AS CARTYPE, rc.COST, rc.CARCLASS " +
             "FROM ROUTE_COST rc " +
-            "LEFT JOIN CMCDV cc ON cc.CMCDKY='TMS_CARCLASS10' AND cc.CMCDVL=rc.CARCLASS " +
+            "LEFT JOIN KNRAWMS.CMCDV cc ON cc.CMCDKY='TMS_CARCLASS10' AND cc.CMCDVL=rc.CARCLASS " +
             "WHERE rc.DATE_START<=? AND rc.DATE_END>=?", costDate, costDate
         );
         Map<String, Map<String, Double>> result = new HashMap<>();
@@ -833,12 +833,12 @@ public class AutoDispatchService {
         String ph = dptnkyList.stream().map(x -> "?").collect(Collectors.joining(","));
         List<Map<String, Object>> rows = jdbc.queryForList(
             "SELECT PTNRKY,DEADLINE_TIME,FORKLIFT_YN,MAX_TON,DYNAMIC_YN " +
-            "FROM BZPTN_DETAIL WHERE PTNRKY IN (" + ph + ") AND PTNRTY='CT'",
+            "FROM KNRAWMS.BZPTN_DETAIL WHERE PTNRKY IN (" + ph + ") AND PTNRTY='CT'",
             dptnkyList.toArray()
         );
         // CARCLASS10 코드명 매핑
         List<Map<String, Object>> ccRows = jdbc.queryForList(
-            "SELECT CMCDVL,CDESC1 FROM CMCDV WHERE CMCDKY='TMS_CARCLASS10'"
+            "SELECT CMCDVL,CDESC1 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10'"
         );
         Map<String, String> ccMap = new HashMap<>();
         for (Map<String, Object> r : ccRows) ccMap.put(str(r.get("CMCDVL")), str(r.get("CDESC1")));
@@ -874,7 +874,7 @@ public class AutoDispatchService {
             if (!allDks.isEmpty()) {
                 String ph = allDks.stream().map(x -> "?").collect(Collectors.joining(","));
                 List<Map<String, Object>> prows = jdbc.queryForList(
-                    "SELECT PTNRKY, POSTCD FROM BZPTN WHERE PTNRKY IN (" + ph + ") AND PTNRTY='CT'",
+                    "SELECT PTNRKY, POSTCD FROM KNRAWMS.BZPTN WHERE PTNRKY IN (" + ph + ") AND PTNRTY='CT'",
                     allDks.toArray());
                 for (Map<String, Object> r : prows) {
                     String pc = str(r.get("POSTCD"));

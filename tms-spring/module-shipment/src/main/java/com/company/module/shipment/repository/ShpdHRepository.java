@@ -18,8 +18,8 @@ public interface ShpdHRepository extends JpaRepository<ShpdH, String> {
      */
     @Query(value = """
         SELECT MAX(h.RQSHPD)
-        FROM SHPDH h
-        WHERE EXISTS (SELECT 1 FROM SHPDI i WHERE i.SHPOKY = h.SHPOKY)
+        FROM KNRAWMS.SHPDH h
+        WHERE EXISTS (SELECT 1 FROM KNRAWMS.SHPDI i WHERE i.SHPOKY = h.SHPOKY)
           AND h.RQSHPD IS NOT NULL AND TRIM(h.RQSHPD) != ''
         """, nativeQuery = true)
     Optional<String> findMaxRqshpd();
@@ -28,7 +28,7 @@ public interface ShpdHRepository extends JpaRepository<ShpdH, String> {
      * 창고별 WAREKY 목록
      */
     @Query(value = """
-        SELECT DISTINCT WAREKY FROM SHPDH
+        SELECT DISTINCT WAREKY FROM KNRAWMS.SHPDH
         WHERE WAREKY IS NOT NULL AND TRIM(WAREKY) != ''
         ORDER BY WAREKY
         """, nativeQuery = true)
