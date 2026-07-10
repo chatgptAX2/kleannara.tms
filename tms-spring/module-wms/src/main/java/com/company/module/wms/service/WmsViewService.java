@@ -61,17 +61,20 @@ public class WmsViewService {
     public Map<String, Object> getTables() {
         List<Map<String, Object>> tables = new ArrayList<>();
         for (String tbl : ALLOWED_TABLES) {
+            // ORACLE_WMS_TABLES 소속이면 KNRAWMS. 접두어 붙여서 쿼리
+            String qualifiedTbl = ORACLE_WMS_TABLES.contains(tbl)
+                ? "KNRAWMS." + tbl : tbl;
             try {
                 Long cnt = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM " + tbl, Long.class
+                    "SELECT COUNT(*) FROM " + qualifiedTbl, Long.class
                 );
                 Map<String, Object> row = new LinkedHashMap<>();
-                row.put("name", tbl);
+                row.put("name", tbl);          // UI에는 원시 테이블명 표시
                 row.put("rows", cnt != null ? cnt : 0);
                 tables.add(row);
             } catch (Exception e) {
                 // 테이블 미존재 시 목록에서 제외
-                log.debug("Table {} not found: {}", tbl, e.getMessage());
+                log.debug("Table {} not found: {}", qualifiedTbl, e.getMessage());
             }
         }
         return Map.of("ok", true, "tables", tables);
@@ -79,18 +82,28 @@ public class WmsViewService {
 
     // ── 테이블 스키마 (컬럼 목록) ─────────────────────────────────
     public Map<String, Object> getSchema(String table) {
-        String tbl = validateTable(table);
+        String upper = table.toUpperCase();
+        if (!ALLOWED_TABLES.contains(upper))
+            throw new IllegalArgumentException("허용되지 않는 테이블: " + table);
+
+        // Oracle JDBC DatabaseMetaData 는 schema/tableName 을 분리해서 넘겨야 함.
+        // "KNRAWMS.CMCDM" 을 그대로 tableName 으로 넘기면 컬럼을 못 찾음.
+        boolean isOracleWms = ORACLE_WMS_TABLES.contains(upper);
+        String schemaParam = isOracleWms ? "KNRAWMS" : null;
+        String tableParam  = upper;   // 순수 테이블명 (점 없음)
+        String qualifiedTbl = isOracleWms ? "KNRAWMS." + upper : upper;
+
         List<Map<String, Object>> cols = new ArrayList<>();
         try (Connection conn = dataSource.getConnection()) {
             DatabaseMetaData meta = conn.getMetaData();
 
-            // PK 컬럼 조회
+            // PK 컬럼 조회 — schema 분리
             Set<String> pkCols = new HashSet<>();
-            try (ResultSet pk = meta.getPrimaryKeys(null, null, tbl)) {
+            try (ResultSet pk = meta.getPrimaryKeys(null, schemaParam, tableParam)) {
                 while (pk.next()) pkCols.add(pk.getString("COLUMN_NAME"));
             }
-            // 컬럼 목록
-            try (ResultSet rs = meta.getColumns(null, null, tbl, null)) {
+            // 컬럼 목록 — schema 분리
+            try (ResultSet rs = meta.getColumns(null, schemaParam, tableParam, null)) {
                 while (rs.next()) {
                     Map<String, Object> col = new LinkedHashMap<>();
                     String colNm = rs.getString("COLUMN_NAME");
@@ -104,10 +117,27 @@ public class WmsViewService {
                     cols.add(col);
                 }
             }
+            // 컬럼 목록이 비어 있으면 — MariaDB 테이블은 schema 파라미터 무시하고 재시도
+            if (cols.isEmpty() && !isOracleWms) {
+                try (ResultSet rs = meta.getColumns(null, null, tableParam, null)) {
+                    while (rs.next()) {
+                        Map<String, Object> col = new LinkedHashMap<>();
+                        String colNm = rs.getString("COLUMN_NAME");
+                        col.put("name", colNm);
+                        col.put("type", rs.getString("TYPE_NAME"));
+                        col.put("nullable", rs.getInt("NULLABLE") == DatabaseMetaData.columnNullable);
+                        col.put("pk", pkCols.contains(colNm));
+                        col.put("default", rs.getString("COLUMN_DEF"));
+                        col.put("size", rs.getInt("COLUMN_SIZE"));
+                        col.put("remark", rs.getString("REMARKS"));
+                        cols.add(col);
+                    }
+                }
+            }
         } catch (Exception e) {
             return Map.of("ok", false, "error", e.getMessage());
         }
-        return Map.of("ok", true, "table", tbl, "columns", cols);
+        return Map.of("ok", true, "table", qualifiedTbl, "columns", cols);
     }
 
     // ── 테이블 데이터 조회 ─────────────────────────────────────────
@@ -201,13 +231,18 @@ public class WmsViewService {
     public Map<String, Object> getStats() {
         List<Map<String, Object>> stats = new ArrayList<>();
         for (String tbl : ALLOWED_TABLES) {
+            // ORACLE_WMS_TABLES 소속이면 KNRAWMS. 접두어 붙여서 쿼리
+            String qualifiedTbl = ORACLE_WMS_TABLES.contains(tbl)
+                ? "KNRAWMS." + tbl : tbl;
             try {
-                Long cnt = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + tbl, Long.class);
+                Long cnt = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + qualifiedTbl, Long.class);
                 Map<String, Object> row = new LinkedHashMap<>();
-                row.put("table", tbl);
+                row.put("table", tbl);          // UI에는 원시 테이블명 표시
                 row.put("rows", cnt != null ? cnt : 0);
                 stats.add(row);
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                log.debug("Stats COUNT error for {}: {}", qualifiedTbl, e.getMessage());
+            }
         }
         return Map.of("ok", true, "stats", stats);
     }
@@ -296,9 +331,12 @@ public class WmsViewService {
 
     // ── 내부 유틸 ──────────────────────────────────────────────────
     /**
-     * 테이블명 검증 후 반환.
-     * Oracle WMS(KNRAWMS 스키마) 소속 테이블은 "KNRAWMS.TABLE" 형태로 반환.
-     * 자체 KNRATMS 테이블은 TABLE 형태로 반환.
+     * 테이블명 검증 후 SQL 에 사용할 정규화된 테이블명 반환.
+     * Oracle WMS(KNRAWMS 스키마) 소속 → "KNRAWMS.TABLE"
+     * 자체 KNRATMS/MariaDB 테이블 → "TABLE"
+     *
+     * ※ getSchema() 에서는 DatabaseMetaData API 특성상 schema/table 분리가 필요하므로
+     *   이 메서드를 사용하지 않고 내부에서 직접 처리.
      */
     private String validateTable(String table) {
         String upper = table.toUpperCase();
