@@ -1,6 +1,6 @@
-package com.company.module.vehicle.repository;
+package com.company.module.vehicle.repository.wms;
 
-import com.company.module.vehicle.entity.Vhcma;
+import com.company.module.vehicle.entity.wms.Vhcma;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -11,6 +11,12 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * VHCMA 차량마스터 Repository — Oracle KNRAWMS
+ *
+ * ■ DataSource: wmsPU (Oracle KNRAWMS)
+ *   WmsJpaConfig.basePackages → com.company.module.vehicle.repository.wms
+ */
 @Repository
 public interface VhcmaRepository extends JpaRepository<Vhcma, Long> {
 
@@ -19,27 +25,27 @@ public interface VhcmaRepository extends JpaRepository<Vhcma, Long> {
     boolean existsByVehicleNoAndOwnrky(String vehicleNo, String ownrky);
 
     @Query(value = """
-        SELECT * FROM vhcma
+        SELECT * FROM KNRAWMS.VHCMA
         WHERE (:shipPoint IS NULL OR SHIP_POINT = :shipPoint)
           AND (:productGroup IS NULL OR PRODUCT_GROUP = :productGroup)
           AND (:deliveryZone IS NULL OR DELIVERY_ZONE = :deliveryZone)
-          AND (:carrier IS NULL OR CARRIER LIKE CONCAT('%',:carrier,'%'))
+          AND (:carrier IS NULL OR CARRIER LIKE '%' || :carrier || '%')
           AND (:vehicleType IS NULL OR VEHICLE_TYPE = :vehicleType)
           AND (:vehicleKind IS NULL OR VEHICLE_KIND = :vehicleKind)
           AND (:vehicleClass IS NULL OR VEHICLE_CLASS = :vehicleClass)
-          AND (:vehicleNo IS NULL OR VEHICLE_NO LIKE CONCAT('%',:vehicleNo,'%'))
+          AND (:vehicleNo IS NULL OR VEHICLE_NO LIKE '%' || :vehicleNo || '%')
         ORDER BY SHIP_POINT ASC, VEHICLE_NO ASC
         """, nativeQuery = true,
         countQuery = """
-        SELECT COUNT(*) FROM vhcma
+        SELECT COUNT(*) FROM KNRAWMS.VHCMA
         WHERE (:shipPoint IS NULL OR SHIP_POINT = :shipPoint)
           AND (:productGroup IS NULL OR PRODUCT_GROUP = :productGroup)
           AND (:deliveryZone IS NULL OR DELIVERY_ZONE = :deliveryZone)
-          AND (:carrier IS NULL OR CARRIER LIKE CONCAT('%',:carrier,'%'))
+          AND (:carrier IS NULL OR CARRIER LIKE '%' || :carrier || '%')
           AND (:vehicleType IS NULL OR VEHICLE_TYPE = :vehicleType)
           AND (:vehicleKind IS NULL OR VEHICLE_KIND = :vehicleKind)
           AND (:vehicleClass IS NULL OR VEHICLE_CLASS = :vehicleClass)
-          AND (:vehicleNo IS NULL OR VEHICLE_NO LIKE CONCAT('%',:vehicleNo,'%'))
+          AND (:vehicleNo IS NULL OR VEHICLE_NO LIKE '%' || :vehicleNo || '%')
         """)
     Page<Object[]> searchPage(
         @Param("shipPoint")    String shipPoint,

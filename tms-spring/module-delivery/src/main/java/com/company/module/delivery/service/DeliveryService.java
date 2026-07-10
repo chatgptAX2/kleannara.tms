@@ -2,9 +2,9 @@ package com.company.module.delivery.service;
 
 import com.company.module.delivery.dto.*;
 import com.company.module.delivery.entity.BzptnDetail;
-import com.company.module.delivery.entity.RouteCost;
+import com.company.module.delivery.entity.tms.RouteCost;
 import com.company.module.delivery.repository.BzptnDetailRepository;
-import com.company.module.delivery.repository.RouteCostRepository;
+import com.company.module.delivery.repository.tms.RouteCostRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,7 +23,7 @@ import java.util.*;
  * ─ DB 라우팅 ───────────────────────────────────────────────────
  *   wmsEm  (wmsPU / Oracle WMS) :
  *     - BzptnDetailRepository (KNRAWMS.BZPTN_DETAIL, KNRAWMS.BZPTN)  -- Oracle WMS 테이블
- *     - RouteCostRepository   (ROUTE_COST)                             -- Oracle WMS 테이블
+ *     - RouteCostRepository   (ROUTE_COST)                             -- MariaDB TMS 테이블
  *     - em.createNativeQuery  KNRAWMS.BZPTN_DETAIL UPDATE/INSERT
  * ───────────────────────────────────────────────────────────────
  */

@@ -1,14 +1,17 @@
-package com.company.module.vehicle.entity;
+package com.company.module.vehicle.entity.wms;
 
 import jakarta.persistence.*;
 import lombok.*;
 
 /**
- * 차량 마스터 (VHCMA) – 실제 차량 등록/관리
+ * 차량 마스터 (KNRAWMS.VHCMA) – Oracle KNRAWMS 스키마
  * Flask: api_vehicle_list / api_vehicle_save / api_vehicle_delete 대응
+ *
+ * ■ DataSource: wmsPU (Oracle KNRAWMS)
+ *   WmsJpaConfig.setPackagesToScan → com.company.module.vehicle.entity.wms
  */
 @Entity
-@Table(name = "vhcma",
+@Table(schema = "KNRAWMS", name = "VHCMA",
        uniqueConstraints = @UniqueConstraint(
            name = "UK_VHCMA", columnNames = {"VEHICLE_NO", "OWNRKY"}))
 @Getter
@@ -17,7 +20,11 @@ import lombok.*;
 @AllArgsConstructor
 public class Vhcma {
 
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id @GeneratedValue(strategy = GenerationType.SEQUENCE,
+                        generator = "VHCMA_SEQ")
+    @SequenceGenerator(name = "VHCMA_SEQ",
+                       sequenceName = "KNRAWMS.VHCMA_SEQ",
+                       allocationSize = 1)
     @Column(name = "VHC_ID")
     private Long vhcId;
 

@@ -20,17 +20,26 @@ import java.util.stream.Collectors;
  * PS배차 서비스
  * Flask: api_ps_dispatch_search / api_ps_dispatch_save / api_ps_dispatch_list
  *        / api_ps_dispatch_confirm 대응
+ *
+ * ■ DataSource 라우팅
+ *   - em     (wmsPU, Oracle KNRAWMS): SHPDI, SHPDH, BZPTN, CMCDV, SKUMA, RECDI
+ *   - tmsEm  (tmsPU, MariaDB TMS):   PS_DISPATCH_H, PS_DISPATCH_D, ds_vehicle
  */
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true, transactionManager = "wmsTransactionManager")
+@Transactional(readOnly = true, transactionManager = "tmsTransactionManager")
 public class PsDispatchService {
 
     private final PsDispatchHRepository dispatchHRepo;
     private final PsDispatchIRepository dispatchIRepo;
 
+    /** Oracle WMS — KNRAWMS.SHPDI / SHPDH / BZPTN / CMCDV / SKUMA / RECDI */
     @PersistenceContext(unitName = "wmsPU")
     private EntityManager em;
+
+    /** MariaDB TMS — PS_DISPATCH_H / PS_DISPATCH_D / ds_vehicle */
+    @PersistenceContext(unitName = "tmsPU")
+    private EntityManager tmsEm;
 
     // ──────────────────────────────────────────────────────────────────────────
     // SKUKEY 파싱 헬퍼 (Flask _ps_* 함수 Java 포팅)
@@ -102,8 +111,9 @@ public class PsDispatchService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 배차번호 채번 (Flask _ps_next_dispatch_no)
+    // MariaDB PS_DISPATCH_H 에서 채번 → tmsTransactionManager
     // ──────────────────────────────────────────────────────────────────────────
-    @Transactional(transactionManager = "wmsTransactionManager")
+    @Transactional(transactionManager = "tmsTransactionManager")
     public String nextDispatchNo(String yyyymmdd) {
         String dt = yyyymmdd == null ? "" : yyyymmdd.replace("-", "");
         String yymmdd = dt.length() == 8 ? dt.substring(2) : (dt.length() >= 6 ? dt.substring(dt.length() - 6) : dt);
@@ -119,6 +129,7 @@ public class PsDispatchService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 납품문서 검색 (Flask api_ps_dispatch_search)
+    // Oracle WMS: SHPDI, SHPDH, BZPTN, CMCDV, SKUMA, RECDI → em(wmsPU)
     // ──────────────────────────────────────────────────────────────────────────
     public List<PsDispatchDocResponse> searchDocs(PsDispatchSearchRequest req) {
         String dateFrom  = req.normalizedDateFrom();
@@ -128,7 +139,7 @@ public class PsDispatchService {
         List<String> shpmtyList = req.getShpmty();
         String dispStat  = req.getStatus() == null ? "all" : req.getStatus();
 
-        // 배차완료 키 목록
+        // 배차완료 키 목록 (Oracle KNRAWMS.SHPDI → em)
         @SuppressWarnings("unchecked")
         List<String> dispatchedKeys = em.createNativeQuery("""
             SELECT CONCAT(SHPOKY,'|',SHPOIT)
@@ -137,7 +148,7 @@ public class PsDispatchService {
             """).getResultList();
         Set<String> dispatchedSet = new HashSet<>(dispatchedKeys);
 
-        // 동적 WHERE 구성
+        // 동적 WHERE 구성 (Oracle KNRAWMS 테이블 → em)
         StringBuilder sb = new StringBuilder("""
             SELECT i.SHPOKY, i.SHPOIT, i.SKUKEY, i.DESC01,
                    TRIM(COALESCE(i.SVBELN,'')) AS SVBELN,
@@ -183,6 +194,7 @@ public class PsDispatchService {
         }
         sb.append(" ORDER BY h.RQSHPD, h.DPTNKY, i.SHPOKY, i.SHPOIT");
 
+        // Oracle em으로 실행
         var query = em.createNativeQuery(sb.toString());
         for (int i = 0; i < params.size(); i++) {
             query.setParameter(i + 1, params.get(i));
@@ -286,8 +298,10 @@ public class PsDispatchService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 배차 저장 (Flask api_ps_dispatch_save)
+    // PS_DISPATCH_H/D → MariaDB tmsEm
+    // SHPDI.STDLNR, SHPDH.VEHINO 업데이트 → Oracle em
     // ──────────────────────────────────────────────────────────────────────────
-    @Transactional(transactionManager = "wmsTransactionManager")
+    @Transactional(transactionManager = "tmsTransactionManager")
     public List<String> saveDispatch(PsDispatchSaveRequest req) {
         String today = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE); // yyyyMMdd
         List<String> saved = new ArrayList<>();
@@ -299,8 +313,8 @@ public class PsDispatchService {
             double totalKg     = veh.getTotalKg() == null ? 0.0 : veh.getTotalKg();
             int    totalCnt    = veh.getItems() == null ? 0 : veh.getItems().size();
 
-            // PS_DISPATCH_H INSERT (native: STATUS 컬럼명 Flask 그대로)
-            em.createNativeQuery("""
+            // PS_DISPATCH_H INSERT → MariaDB tmsEm
+            tmsEm.createNativeQuery("""
                 INSERT INTO PS_DISPATCH_H
                   (DISPATCH_NO, DISPATCH_DT, RQSHPD, DPTNKY, DPTNM,
                    CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR)
@@ -325,7 +339,8 @@ public class PsDispatchService {
             if (items != null) {
                 int seq = 1;
                 for (PsDispatchSaveRequest.ItemBlock it : items) {
-                    em.createNativeQuery("""
+                    // PS_DISPATCH_D INSERT → MariaDB tmsEm
+                    tmsEm.createNativeQuery("""
                         INSERT INTO PS_DISPATCH_D
                           (DISPATCH_NO,SEQ,SHPOKY,SHPOIT,SKUKEY,DESC01,
                            QTSHPO,UOMKEY,DPTNKY,DPTNM,IS_SPLIT,ORG_SHPOKY,ORG_SHPOIT,
@@ -356,12 +371,12 @@ public class PsDispatchService {
                 }
             }
 
-            // SHPDI.STDLNR = DISPATCH_NO (가선적번호 채번)
+            // SHPDI.STDLNR = DISPATCH_NO (Oracle KNRAWMS.SHPDI 업데이트 → em)
             for (String[] key : shpdiKeys) {
                 em.createNativeQuery("""
-                    UPDATE SHPDI
+                    UPDATE KNRAWMS.SHPDI
                     SET STDLNR  = ?,
-                        LMODAT  = DATE_FORMAT(NOW(), '%Y%m%d'),
+                        LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
                         LMOUSR  = 'WEB'
                     WHERE SHPOKY = ? AND SHPOIT = ? AND STATIT = 'NEW'
                     """)
@@ -371,12 +386,12 @@ public class PsDispatchService {
                   .executeUpdate();
             }
 
-            // SHPDH.VEHINO = carclass_cd
+            // SHPDH.VEHINO = carclass_cd (Oracle KNRAWMS.SHPDH 업데이트 → em)
             if (!shpokySet.isEmpty()) {
                 String ph = shpokySet.stream().map(x -> "?").collect(Collectors.joining(","));
                 var q = em.createNativeQuery(
-                    "UPDATE SHPDH SET VEHINO=?, CARTON=?, CARNO=NULL, DRIVER=NULL, DRIVERCEL=NULL," +
-                    " LMODAT=DATE_FORMAT(NOW(),'%Y%m%d'), LMOUSR='WEB' WHERE SHPOKY IN (" + ph + ")"
+                    "UPDATE KNRAWMS.SHPDH SET VEHINO=?, CARTON=?, CARNO=NULL, DRIVER=NULL, DRIVERCEL=NULL," +
+                    " LMODAT=TO_CHAR(SYSDATE,'YYYYMMDD'), LMOUSR='WEB' WHERE SHPOKY IN (" + ph + ")"
                 );
                 q.setParameter(1, carclassCd.isEmpty() ? null : carclassCd);
                 q.setParameter(2, carclassCd.isEmpty() ? null : carclassCd);
@@ -392,6 +407,8 @@ public class PsDispatchService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 배차 목록 조회 (Flask api_ps_dispatch_list)
+    // PS_DISPATCH_H + ds_vehicle → MariaDB tmsEm
+    // PS_DISPATCH_D 조회 후 RECDI(Oracle) 별도 조회 → Cross-DB join 분리
     // ──────────────────────────────────────────────────────────────────────────
     public List<PsDispatchListResponse> getList(PsDispatchListRequest req) {
         String dateFrom   = req.normalizedDateFrom();
@@ -400,6 +417,7 @@ public class PsDispatchService {
         String status     = req.getStatus();
         String dispatchNo = req.getDispatchNo();
 
+        // PS_DISPATCH_H + ds_vehicle → MariaDB tmsEm
         StringBuilder sb = new StringBuilder("""
             SELECT h.DISPATCH_NO, h.DISPATCH_DT, h.RQSHPD,
                    h.DPTNKY, h.DPTNM, h.CARTYPE, h.STATUS,
@@ -421,7 +439,8 @@ public class PsDispatchService {
         if (dispatchNo != null && !dispatchNo.isEmpty()) { sb.append(" AND h.DISPATCH_NO LIKE ?"); params.add("%" + dispatchNo + "%"); }
         sb.append(" ORDER BY h.RQSHPD DESC, h.DISPATCH_NO");
 
-        var q = em.createNativeQuery(sb.toString());
+        // MariaDB tmsEm으로 실행
+        var q = tmsEm.createNativeQuery(sb.toString());
         for (int i = 0; i < params.size(); i++) q.setParameter(i + 1, params.get(i));
 
         @SuppressWarnings("unchecked")
@@ -433,29 +452,52 @@ public class PsDispatchService {
             double loadTon = toDouble(r[11]);
             Double loadKg  = loadTon > 0 ? Math.round(loadTon * 1000.0 * 10.0) / 10.0 : null;
 
-            // 아이템 조회
+            // ── Step 1: PS_DISPATCH_D → MariaDB tmsEm ──
             @SuppressWarnings("unchecked")
-            List<Object[]> details = em.createNativeQuery("""
+            List<Object[]> details = tmsEm.createNativeQuery("""
                 SELECT d.ITEM_ID, d.SEQ, d.SHPOKY, d.SHPOIT, d.SKUKEY, d.DESC01,
                        d.QTSHPO, d.UOMKEY, d.DPTNKY, d.DPTNM,
                        d.IS_SPLIT, d.ORG_SHPOKY, d.ORG_SHPOIT,
-                       COALESCE(d.GRSWGT,0), COALESCE(d.KG_WEIGHT,0),
-                       COALESCE(rd.QTYRCV,0)
+                       COALESCE(d.GRSWGT,0), COALESCE(d.KG_WEIGHT,0)
                 FROM PS_DISPATCH_D d
-                LEFT JOIN KNRAWMS.RECDI rd ON rd.SKUKEY = d.SKUKEY
                 WHERE d.DISPATCH_NO = ?
                 ORDER BY d.SEQ
                 """)
               .setParameter(1, dno)
               .getResultList();
 
+            // ── Step 2: SKUKEY 목록으로 Oracle KNRAWMS.RECDI 별도 조회 ──
+            Map<String, Double> recdiMap = new HashMap<>();
+            if (!details.isEmpty()) {
+                Set<String> skukeys = new LinkedHashSet<>();
+                for (Object[] d : details) {
+                    String sk = str(d[4]);
+                    if (!sk.isEmpty()) skukeys.add(sk);
+                }
+                if (!skukeys.isEmpty()) {
+                    String skPh = skukeys.stream().map(x -> "?").collect(Collectors.joining(","));
+                    var recdiQ = em.createNativeQuery(
+                        "SELECT SKUKEY, COALESCE(QTYRCV, 0) FROM KNRAWMS.RECDI WHERE SKUKEY IN (" + skPh + ")"
+                    );
+                    int pi = 1;
+                    for (String sk : skukeys) recdiQ.setParameter(pi++, sk);
+
+                    @SuppressWarnings("unchecked")
+                    List<Object[]> recdiRows = recdiQ.getResultList();
+                    for (Object[] rd : recdiRows) {
+                        recdiMap.put(str(rd[0]), toDouble(rd[1]));
+                    }
+                }
+            }
+
+            // ── Step 3: 결과 조립 ──
             int totalRoll = 0;
             List<PsDispatchListResponse.ItemDetail> items = new ArrayList<>();
             for (Object[] d : details) {
                 String sk  = str(d[4]);
                 String uom = str(d[7]).strip();
                 double kgW = toDouble(d[14]);
-                double unitW = toDouble(d[15]);
+                double unitW = recdiMap.getOrDefault(sk, 0.0);
 
                 if (psIsRoll(sk)) {
                     if ("R".equals(uom))        totalRoll += (int) toDouble(d[6]);
@@ -508,12 +550,13 @@ public class PsDispatchService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 배차 확정 (Flask api_ps_dispatch_confirm)
+    // PS_DISPATCH_H.STATUS 업데이트 → MariaDB tmsEm
     // ──────────────────────────────────────────────────────────────────────────
-    @Transactional(transactionManager = "wmsTransactionManager")
+    @Transactional(transactionManager = "tmsTransactionManager")
     public int confirmDispatch(PsDispatchConfirmRequest req) {
         List<String> nos = req.getDispatchNos();
         String ph = nos.stream().map(x -> "?").collect(Collectors.joining(","));
-        var q = em.createNativeQuery(
+        var q = tmsEm.createNativeQuery(
             "UPDATE PS_DISPATCH_H SET STATUS='CONFIRMED' WHERE DISPATCH_NO IN (" + ph + ")"
         );
         for (int i = 0; i < nos.size(); i++) q.setParameter(i + 1, nos.get(i));

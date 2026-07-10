@@ -17,19 +17,25 @@ import java.util.Properties;
 /**
  * TMS DB (MariaDB) 전용 JPA 설정
  *
- * 관리 패키지:
- *   - com.company.module.dispatchconfig  (PS제약조건관리)
- *   - com.company.module.document        (서류관리 — JdbcTemplate 사용, JPA 없음)
+ * ■ MariaDB 테이블 Repository (모두 MariaDB integration DB)
+ *   - com.company.module.dispatchconfig.repository  (PS제약조건관리)
+ *   - com.company.module.dispatch.repository        (PS_DISPATCH_H/D — MariaDB)
+ *   - com.company.module.vehicle.repository         (DS_VEHICLE — MariaDB)
+ *                                                   ※ VhcmaRepository → WmsJpaConfig (vehicle.repository.wms)
+ *   - com.company.module.delivery.repository.tms    (ROUTE_COST — MariaDB)
  *
- * !! delivery 패키지 (BZPTN_DETAIL, ROUTE_COST, BZPTN) 는 Oracle WMS DB 에 있으므로
- *    WmsJpaConfig 에서 관리함.
+ * ■ Oracle WMS 전용 테이블은 WmsJpaConfig 에서 관리
+ *   shipment(SHPDH/SHPDI), delivery(BZPTN_DETAIL), vehicle.wms(VHCMA) — Oracle KNRAWMS
  *
- * 트랜잭션 한정자: @Transactional("tmsTransactionManager")
+ * 트랜잭션 한정자: @Transactional("tmsTransactionManager") 또는 @Transactional (기본)
  */
 @Configuration
 @EnableJpaRepositories(
     basePackages = {
-        "com.company.module.dispatchconfig.repository"
+        "com.company.module.dispatchconfig.repository",
+        "com.company.module.dispatch.repository",           // PS_DISPATCH_H/D — MariaDB
+        "com.company.module.vehicle.repository",            // DS_VEHICLE — MariaDB (VhcmaRepo는 wms 서브패키지로 분리)
+        "com.company.module.delivery.repository.tms"        // ROUTE_COST — MariaDB
     },
     entityManagerFactoryRef = "tmsEntityManagerFactory",
     transactionManagerRef   = "tmsTransactionManager"
@@ -44,7 +50,10 @@ public class TmsJpaConfig {
         LocalContainerEntityManagerFactoryBean em = new LocalContainerEntityManagerFactoryBean();
         em.setDataSource(dataSource);
         em.setPackagesToScan(
-            "com.company.module.dispatchconfig.entity"
+            "com.company.module.dispatchconfig.entity",
+            "com.company.module.dispatch.entity",       // PsDispatchH, PsDispatchI — MariaDB
+            "com.company.module.vehicle.entity",         // DsVehicle — MariaDB (Vhcma는 entity.wms 서브패키지로 분리)
+            "com.company.module.delivery.entity.tms"     // RouteCost — MariaDB
         );
         em.setPersistenceUnitName("tmsPU");
 
@@ -55,6 +64,7 @@ public class TmsJpaConfig {
         Properties props = new Properties();
         props.setProperty("hibernate.dialect",
             "org.hibernate.dialect.MariaDBDialect");
+        // MariaDB: CONCAT('%', ?, '%') 정상 지원, LIMIT/OFFSET 정상 지원
         props.setProperty("hibernate.physical_naming_strategy",
             "org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl");
         props.setProperty("hibernate.hbm2ddl.auto", "none");

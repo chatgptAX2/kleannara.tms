@@ -171,7 +171,7 @@ public class ShipmentService {
             LEFT  JOIN KNRAWMS.SKUMA M  ON SI.SKUKEY=M.SKUKEY AND SH.OWNRKY=M.OWNRKY
             WHERE """ + whereSQL + """
             ORDER BY SI.SVBELN, SI.SHPOKY, SI.SHPOIT
-            LIMIT ? OFFSET ?
+            OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
             """;
 
         int size   = Math.max(1, Math.min(req.getSize(), 500));
@@ -179,8 +179,8 @@ public class ShipmentService {
 
         var dataQuery = em.createNativeQuery(baseSQL);
         for (int i = 0; i < params.size(); i++) dataQuery.setParameter(i + 1, params.get(i));
-        dataQuery.setParameter(params.size() + 1, size);
-        dataQuery.setParameter(params.size() + 2, offset);
+        dataQuery.setParameter(params.size() + 1, offset);  // OFFSET ? ROWS
+        dataQuery.setParameter(params.size() + 2, size);    // FETCH NEXT ? ROWS ONLY
 
         @SuppressWarnings("unchecked")
         List<Object[]> rows = dataQuery.getResultList();
