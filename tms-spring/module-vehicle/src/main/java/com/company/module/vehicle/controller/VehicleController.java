@@ -2,7 +2,7 @@ package com.company.module.vehicle.controller;
 
 import com.company.core.common.response.ApiResponse;
 import com.company.module.vehicle.dto.*;
-import com.company.module.vehicle.entity.Vhcma;
+import com.company.module.vehicle.entity.wms.Vhcma;
 import com.company.module.vehicle.service.VehicleService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
