@@ -208,14 +208,86 @@ public class WmsViewService {
                 rows = tmsJdbc.queryForList(sql.toString(), size, offset);
             }
 
-            return Map.of(
-                "ok",    true,
-                "table", tbl,
-                "total", total != null ? total : 0,
-                "page",  page,
-                "size",  size,
-                "rows",  rows
-            );
+            // ── 스키마 메타데이터 조회 (columns / pk_cols / labels / search_cols) ──
+            List<String> columns    = new ArrayList<>();
+            List<String> pkCols     = new ArrayList<>();
+            Map<String, String> labels = new LinkedHashMap<>();
+            List<String> searchCols = new ArrayList<>();
+
+            try (Connection conn = ds(upper).getConnection()) {
+                DatabaseMetaData meta = conn.getMetaData();
+                String schemaParam   = isOracle ? "KNRAWMS" : null;
+
+                // PK 컬럼 수집
+                Set<String> pkSet = new LinkedHashSet<>();
+                try (ResultSet pk = meta.getPrimaryKeys(null, schemaParam, upper)) {
+                    while (pk.next()) pkSet.add(pk.getString("COLUMN_NAME"));
+                }
+
+                // 컬럼 목록 수집
+                try (ResultSet rs = meta.getColumns(null, schemaParam, upper, null)) {
+                    while (rs.next()) {
+                        String colName  = rs.getString("COLUMN_NAME");
+                        String typeName = rs.getString("TYPE_NAME");
+                        String remark   = rs.getString("REMARKS");
+
+                        columns.add(colName);
+                        // remark 가 있으면 한글 라벨, 없으면 컬럼명 그대로 사용
+                        labels.put(colName, (remark != null && !remark.isBlank()) ? remark : colName);
+                        // VARCHAR/CHAR 계열 컬럼을 검색 대상으로 지정
+                        if (typeName != null) {
+                            String t = typeName.toUpperCase();
+                            if (t.contains("VARCHAR") || t.contains("CHAR") || t.contains("TEXT")) {
+                                searchCols.add(colName);
+                            }
+                        }
+                    }
+                }
+                // MariaDB 폴백: schema 파라미터로 빈 결과가 나오면 null 로 재시도
+                if (columns.isEmpty() && !isOracle) {
+                    try (ResultSet rs = meta.getColumns(null, null, upper, null)) {
+                        while (rs.next()) {
+                            String colName  = rs.getString("COLUMN_NAME");
+                            String typeName = rs.getString("TYPE_NAME");
+                            String remark   = rs.getString("REMARKS");
+
+                            columns.add(colName);
+                            labels.put(colName, (remark != null && !remark.isBlank()) ? remark : colName);
+                            if (typeName != null) {
+                                String t = typeName.toUpperCase();
+                                if (t.contains("VARCHAR") || t.contains("CHAR") || t.contains("TEXT")) {
+                                    searchCols.add(colName);
+                                }
+                            }
+                        }
+                    }
+                    // PK 폴백 재시도
+                    if (pkSet.isEmpty()) {
+                        try (ResultSet pk = meta.getPrimaryKeys(null, null, upper)) {
+                            while (pk.next()) pkSet.add(pk.getString("COLUMN_NAME"));
+                        }
+                    }
+                }
+                pkCols.addAll(pkSet);
+
+            } catch (Exception metaEx) {
+                // 스키마 조회 실패 시 데이터는 그대로 반환, 메타 필드는 빈 값
+                log.warn("getData schema meta error [{}]: {}", tbl, metaEx.getMessage());
+            }
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("ok",          true);
+            result.put("table",       tbl);
+            result.put("total",       total != null ? total : 0);
+            result.put("page",        page);
+            result.put("size",        size);
+            result.put("rows",        rows);
+            result.put("columns",     columns);
+            result.put("pk_cols",     pkCols);
+            result.put("labels",      labels);
+            result.put("search_cols", searchCols);
+            return result;
+
         } catch (Exception e) {
             log.error("getData error [{}]: {}", tbl, e.getMessage());
             return Map.of("ok", false, "error", e.getMessage());
