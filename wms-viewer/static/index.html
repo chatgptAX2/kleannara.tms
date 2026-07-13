@@ -19384,6 +19384,10 @@ async function dconLoadSets() {
     if (!d.ok) return;
     DCON.sets = d.rows || [];
     _dconRenderSetList();
+    /* 세트가 있고 아직 선택된 세트가 없으면 첫 번째 세트 자동 선택 */
+    if (DCON.sets.length > 0 && !DCON.selSetId) {
+      await dconSelectSet(DCON.sets[0].SET_ID);
+    }
   } catch(e) { console.error('dconLoadSets', e); }
 }
 
