@@ -18397,8 +18397,22 @@ async function renderDispatchConstraint() {
 </div>`;
 
   document.getElementById('dcon-run-date').value = new Date().toISOString().slice(0,10);
+  /* 화면 재진입 시 세트 선택 상태 초기화 → dconLoadSets()가 첫 번째 세트를 자동 선택하도록 */
+  DCON.selSetId   = null;
+  DCON._spRows    = [];
+  DCON._vehicles  = null;   // DS_VEHICLE 캐시 초기화 → dconSelectSet에서 재로드
+  DCON._entryTonPartners  = null;
+  DCON._forkliftPartners  = null;
+  DCON._dynamicPartners   = null;
+  DCON._regionData        = null;
   await dconLoadMeta();
-  await Promise.all([dconLoadObjectives(), dconLoadProfiles(), dconLoadSets(), _dconLoadBzptnData()]);
+  /* 초기화 순서 보장:
+     ① dconLoadSets() 완료 → dconSelectSet() → _spRows 채워짐
+     ② _dconLoadBzptnData() 완료 → selSetId 있으면 _dconSpRenderTabs() 재호출
+     Promise.all로 동시 실행하면 _dconLoadBzptnData가 먼저 끝나
+     _spRows=[] 상태에서 탭을 렌더링해 3개(BZPTN 탭)만 보이는 Race Condition 발생. */
+  await Promise.all([dconLoadObjectives(), dconLoadProfiles(), dconLoadSets()]);
+  await _dconLoadBzptnData();
 }
 
 /* ── 목적식 로드 ─────────────────────────────────────────── */
@@ -19248,6 +19262,8 @@ function dconClearResult() {
 async function dconRefresh() {
   await dconLoadMeta();
   await Promise.all([dconLoadObjectives(), dconLoadProfiles(), dconLoadSets()]);
+  /* BZPTN 탭 데이터(지게차여부/동적구역/입고톤수 등)도 새로고침 */
+  await _dconLoadBzptnData();
   showToast('새로고침 완료');
 }
 
@@ -19644,8 +19660,11 @@ async function _dconLoadBzptnData() {
       });
       DCON._regionDirty = false;
     }
-    /* 탭 바 갱신 (세트 미선택 상태에서도 탭 표시) */
-    _dconSpRenderTabs();
+    /* 탭 바 갱신 — 세트가 선택된 상태(selSetId 있음)에서만 전체 탭 재렌더링.
+       세트 미선택 상태에서 호출되면 _spRows=[]이라 BZPTN 탭 3개만 보이는 버그 발생. */
+    if (DCON.selSetId) {
+      _dconSpRenderTabs();
+    }
   } catch(e) { console.error('_dconLoadBzptnData', e); }
 }
 
