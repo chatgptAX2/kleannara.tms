@@ -4,6 +4,8 @@ import jakarta.persistence.EntityManagerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.ComponentScan.Filter;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.orm.jpa.JpaTransactionManager;
@@ -37,6 +39,10 @@ import java.util.Properties;
         "com.company.module.delivery.repository",       // BZPTN_DETAIL — Oracle KNRAWMS
         "com.company.module.vehicle.repository.wms"     // VHCMA — Oracle KNRAWMS
     },
+    excludeFilters = @Filter(
+        type = FilterType.REGEX,
+        pattern = "com\.company\.module\.delivery\.repository\.tms\..*"  // TmsJpaConfig 전담 패키지 제외
+    ),
     entityManagerFactoryRef = "wmsEntityManagerFactory",
     transactionManagerRef   = "wmsTransactionManager"
 )
