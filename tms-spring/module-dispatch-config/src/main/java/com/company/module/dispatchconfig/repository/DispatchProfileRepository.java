@@ -14,10 +14,10 @@ public interface DispatchProfileRepository extends JpaRepository<DispatchProfile
 
     Optional<DispatchProfile> findByProfileIdAndActiveYn(Long profileId, String activeYn);
 
-    @Query(value = "SELECT COALESCE(MAX(SORT_SEQ),0)+1 FROM ds_dispatch_profile", nativeQuery = true)
+    @Query(value = "SELECT COALESCE(MAX(SORT_SEQ),0)+1 FROM DS_DISPATCH_PROFILE", nativeQuery = true)
     int nextSortSeq();
 
     @Modifying
-    @Query(value = "UPDATE ds_dispatch_profile SET SORT_SEQ=:seq WHERE PROFILE_ID=:id", nativeQuery = true)
+    @Query(value = "UPDATE DS_DISPATCH_PROFILE SET SORT_SEQ=:seq WHERE PROFILE_ID=:id", nativeQuery = true)
     void updateSortSeq(@Param("id") Long id, @Param("seq") int seq);
 }

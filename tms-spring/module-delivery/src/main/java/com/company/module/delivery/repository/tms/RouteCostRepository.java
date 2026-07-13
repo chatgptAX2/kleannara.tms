@@ -21,7 +21,7 @@ public interface RouteCostRepository extends JpaRepository<RouteCost, Long> {
     List<RouteCost> findByWarekyAndPtnrky(String wareky, String ptnrky);
 
     @Query(value = """
-        SELECT * FROM route_cost
+        SELECT * FROM ROUTE_COST
         WHERE (:wareky IS NULL OR WAREKY = :wareky)
           AND (:ptnrky IS NULL OR PTNRKY LIKE CONCAT('%',:ptnrky,'%'))
           AND (:cartype IS NULL OR CARTYPE LIKE CONCAT('%',:cartype,'%'))

@@ -8,7 +8,7 @@ import lombok.*;
  * Flask: api_obj_list / api_obj_save / api_obj_delete / api_obj_activate / api_obj_active
  */
 @Entity
-@Table(name = "ds_dispatch_objective")
+@Table(name = "DS_DISPATCH_OBJECTIVE")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Builder

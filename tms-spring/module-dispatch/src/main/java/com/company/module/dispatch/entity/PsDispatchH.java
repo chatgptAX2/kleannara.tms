@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
  * Flask: PS_DISPATCH_H 테이블 대응
  */
 @Entity
-@Table(name = "ps_dispatch_h")
+@Table(name = "PS_DISPATCH_H")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Builder

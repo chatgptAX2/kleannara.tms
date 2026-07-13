@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
  *    → tms/wms 서브패키지를 완전히 분리하여 각 Config가 겹치지 않도록 구조화.
  */
 @Entity
-@Table(name = "ds_vehicle")
+@Table(name = "DS_VEHICLE")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Builder

@@ -15,7 +15,7 @@ public interface PsDispatchHRepository extends JpaRepository<PsDispatchH, String
     /** 배차번호 PREFIX 기반 당일 최대번호 조회 (채번용) */
     @Query(value = """
         SELECT MAX(DISPATCH_NO)
-        FROM ps_dispatch_h
+        FROM PS_DISPATCH_H
         WHERE DISPATCH_NO LIKE CONCAT(:prefix, '%')
         """, nativeQuery = true)
     Optional<String> findMaxDispatchNoByPrefix(@Param("prefix") String prefix);
@@ -23,8 +23,8 @@ public interface PsDispatchHRepository extends JpaRepository<PsDispatchH, String
     /** 검색 조건 기반 목록 조회 */
     @Query(value = """
         SELECT h.*, COALESCE(v.LOAD_TON, 0) AS LOAD_TON
-        FROM ps_dispatch_h h
-        LEFT JOIN ds_vehicle v ON v.CARTYPE = h.CARTYPE
+        FROM PS_DISPATCH_H h
+        LEFT JOIN DS_VEHICLE v ON v.CARTYPE = h.CARTYPE
         WHERE (:dateFrom IS NULL OR h.RQSHPD >= :dateFrom)
           AND (:dateTo   IS NULL OR h.RQSHPD <= :dateTo)
           AND (:dptnky   IS NULL OR h.DPTNKY LIKE CONCAT('%',:dptnky,'%')

@@ -10,7 +10,7 @@ import lombok.*;
  * 배차헤더(PsDispatchH)와 1:N 관계
  */
 @Entity
-@Table(name = "ps_dispatch_d",
+@Table(name = "PS_DISPATCH_D",
        uniqueConstraints = @UniqueConstraint(
            name = "UK_PS_DISPATCH_D",
            columnNames = {"DISPATCH_NO", "SHPOKY", "SHPOIT"}))
