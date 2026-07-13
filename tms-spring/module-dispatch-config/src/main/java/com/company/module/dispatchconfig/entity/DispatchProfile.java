@@ -8,7 +8,7 @@ import lombok.*;
  * Flask: api_dcon_profiles / api_dcon_profile_save / api_dcon_profile_delete
  */
 @Entity
-@Table(name = "ds_dispatch_profile")
+@Table(name = "DS_DISPATCH_PROFILE")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Builder
