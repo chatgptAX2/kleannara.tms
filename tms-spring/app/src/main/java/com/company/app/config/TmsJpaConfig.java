@@ -5,6 +5,8 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.context.annotation.ComponentScan.Filter;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
@@ -37,6 +39,10 @@ import java.util.Properties;
         "com.company.module.vehicle.repository",            // DS_VEHICLE — MariaDB (VhcmaRepo는 wms 서브패키지로 분리)
         "com.company.module.delivery.repository.tms"        // ROUTE_COST — MariaDB
     },
+    excludeFilters = @Filter(
+        type = FilterType.REGEX,
+        pattern = "com\\.company\\.module\\.vehicle\\.repository\\.wms\\..*"  // WmsJpaConfig 전담 패키지 제외
+    ),
     entityManagerFactoryRef = "tmsEntityManagerFactory",
     transactionManagerRef   = "tmsTransactionManager"
 )
@@ -51,8 +57,8 @@ public class TmsJpaConfig {
         em.setDataSource(dataSource);
         em.setPackagesToScan(
             "com.company.module.dispatchconfig.entity",
-            "com.company.module.dispatch.entity",       // PsDispatchH, PsDispatchI — MariaDB
-            "com.company.module.vehicle.entity",         // DsVehicle — MariaDB (Vhcma는 entity.wms 서브패키지로 분리)
+            "com.company.module.dispatch.entity",        // PsDispatchH, PsDispatchI — MariaDB
+            "com.company.module.vehicle.entity",         // DsVehicle — MariaDB (Vhcma는 entity.wms 서브패키지 — WmsJpaConfig 전담)
             "com.company.module.delivery.entity.tms"     // RouteCost — MariaDB
         );
         em.setPersistenceUnitName("tmsPU");
