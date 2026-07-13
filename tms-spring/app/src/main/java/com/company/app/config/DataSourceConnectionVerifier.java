@@ -68,6 +68,9 @@ public class DataSourceConnectionVerifier {
             log.info("[TMS-DB]   서버시각 : {}", currentTime);
             log.info("[TMS-DB]   Pool     : {}", getPoolName(tmsDataSource));
 
+            // MariaDB integration 스키마 핵심 테이블 접근 확인
+            verifyTmsTableAccess(conn);
+
         } catch (Exception e) {
             log.warn("[TMS-DB] ❌ 접속 실패 — {}: {}", e.getClass().getSimpleName(), e.getMessage());
         }
@@ -97,11 +100,31 @@ public class DataSourceConnectionVerifier {
         }
     }
 
-    // ── WMS 핵심 테이블 접근 가능 여부 확인 ─────────────────────────────────
+    // ── TMS 핵심 테이블 접근 가능 여부 확인 (MariaDB integration) ────────────
+    private void verifyTmsTableAccess(Connection conn) {
+        // MariaDB integration 스키마 테이블 — 스키마 접두어 불필요
+        String[] checkTables = {"PS_DISPATCH_H", "VHCMA", "DS_VEHICLE", "ROUTE_COST"};
+        StringBuilder ok  = new StringBuilder();
+        StringBuilder err = new StringBuilder();
+
+        for (String tbl : checkTables) {
+            try (var stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM " + tbl)) {
+                if (rs.next()) {
+                    ok.append(tbl).append("(").append(rs.getLong(1)).append(") ");
+                }
+            } catch (SQLException e) {
+                err.append(tbl).append(" ");
+            }
+        }
+        if (ok.length() > 0)  log.info("[TMS-DB]   핵심테이블 ✅ : {}", ok.toString().trim());
+        if (err.length() > 0) log.warn("[TMS-DB]   핵심테이블 ❌ : {} — 접근 불가 (권한 또는 테이블 미존재)", err.toString().trim());
+    }
+
+    // ── WMS 핵심 테이블 접근 가능 여부 확인 (Oracle KNRAWMS) ─────────────────
     private void verifyWmsTableAccess(Connection conn) {
-        // Oracle WMS(KNRAWMS) 테이블은 스키마명 접두어 필수
-        // 자체 KNRATMS 테이블(PS_DISPATCH_H, VHCMA)은 스키마명 불필요
-        String[] checkTables = {"KNRAWMS.CMCDM", "KNRAWMS.BZPTN", "KNRAWMS.SHPDH", "PS_DISPATCH_H", "VHCMA"};
+        // Oracle KNRAWMS 스키마 테이블 — 스키마명 접두어 필수
+        String[] checkTables = {"KNRAWMS.CMCDM", "KNRAWMS.BZPTN", "KNRAWMS.SHPDH", "KNRAWMS.VHCMA", "KNRAWMS.BZPTN_DETAIL"};
         StringBuilder ok  = new StringBuilder();
         StringBuilder err = new StringBuilder();
 
