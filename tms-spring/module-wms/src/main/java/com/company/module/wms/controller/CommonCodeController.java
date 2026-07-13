@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -21,7 +22,7 @@ public class CommonCodeController {
     // ── 공통코드 ──────────────────────────────────────────────────
 
     @GetMapping("/codes/{cmcdky}")
-    public ResponseEntity<Map<String, Object>> getCodes(@PathVariable String cmcdky) {
+    public ResponseEntity<List<Map<String, Object>>> getCodes(@PathVariable String cmcdky) {
         return ResponseEntity.ok(commonCodeService.getCodes(cmcdky));
     }
 

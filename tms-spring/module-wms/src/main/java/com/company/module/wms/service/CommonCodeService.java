@@ -25,15 +25,44 @@ public class CommonCodeService {
     private static final DateTimeFormatter YMDFORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     // ── 공통코드 조회 ──────────────────────────────────────────────
-    public Map<String, Object> getCodes(String cmcdky) {
+    /**
+     * 프론트엔드가 기대하는 배열 형식으로 반환.
+     * <pre>
+     *   CMCDVL  → value
+     *   CDESC1  → label
+     *   CDESC2  → desc2
+     *   USARG1  → arg1
+     *   USARG2  → arg2
+     *   USARG3  → arg3
+     *   USARG4  → arg4
+     *   USARG5  → arg5
+     *   SORTNO  → sortno
+     * </pre>
+     */
+    public List<Map<String, Object>> getCodes(String cmcdky) {
         try {
             List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT CMCDVL, CDESC1, CDESC2, USARG1, USARG2, USARG3, USARG4, USARG5, SORTNO " +
                 "FROM KNRAWMS.CMCDV WHERE CMCDKY = ? ORDER BY SORTNO, CMCDVL", cmcdky
             );
-            return Map.of("ok", true, "rows", rows);
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (Map<String, Object> r : rows) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("value",  r.get("CMCDVL"));
+                item.put("label",  r.get("CDESC1"));
+                item.put("desc2",  r.get("CDESC2"));
+                item.put("arg1",   r.get("USARG1"));
+                item.put("arg2",   r.get("USARG2"));
+                item.put("arg3",   r.get("USARG3"));
+                item.put("arg4",   r.get("USARG4"));
+                item.put("arg5",   r.get("USARG5"));
+                item.put("sortno", r.get("SORTNO"));
+                result.add(item);
+            }
+            return result;
         } catch (Exception e) {
-            return Map.of("ok", false, "error", e.getMessage());
+            log.error("getCodes error [{}]: {}", cmcdky, e.getMessage());
+            return Collections.emptyList();
         }
     }
 
