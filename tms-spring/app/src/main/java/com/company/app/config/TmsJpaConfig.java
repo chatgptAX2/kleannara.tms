@@ -21,7 +21,7 @@ import java.util.Properties;
  *   (basePackages 재귀 스캔 시 wms 서브패키지 Repository 중복 등록 방지)
  *   - DispatchObjectiveRepository : PS제약조건관리 — MariaDB
  *   - PsDispatchHRepository       : PS_DISPATCH_H  — MariaDB
- *   - DsVehicleRepository         : DS_VEHICLE     — MariaDB
+ *   - DsVehicleRepository         : DS_VEHICLE     — MariaDB (vehicle.repository.tms)
  *   - RouteCostRepository         : ROUTE_COST     — MariaDB
  *
  * ■ Oracle WMS 전용 테이블은 WmsJpaConfig 에서 관리
@@ -34,7 +34,7 @@ import java.util.Properties;
     basePackageClasses = {
         com.company.module.dispatchconfig.repository.DispatchObjectiveRepository.class, // PS제약조건관리 — MariaDB
         com.company.module.dispatch.repository.PsDispatchHRepository.class,             // PS_DISPATCH_H  — MariaDB
-        com.company.module.vehicle.repository.DsVehicleRepository.class,               // DS_VEHICLE     — MariaDB
+        com.company.module.vehicle.repository.tms.DsVehicleRepository.class,           // DS_VEHICLE     — MariaDB
         com.company.module.delivery.repository.tms.RouteCostRepository.class           // ROUTE_COST     — MariaDB
     },
     entityManagerFactoryRef = "tmsEntityManagerFactory",
@@ -51,9 +51,9 @@ public class TmsJpaConfig {
         em.setDataSource(dataSource);
         em.setPackagesToScan(
             "com.company.module.dispatchconfig.entity",
-            "com.company.module.dispatch.entity",        // PsDispatchH, PsDispatchI — MariaDB
-            "com.company.module.vehicle.entity",         // DsVehicle — MariaDB (Vhcma는 entity.wms 서브패키지 — WmsJpaConfig 전담)
-            "com.company.module.delivery.entity.tms"     // RouteCost — MariaDB
+            "com.company.module.dispatch.entity",            // PsDispatchH, PsDispatchI — MariaDB
+            "com.company.module.vehicle.entity.tms",         // DsVehicle — MariaDB
+            "com.company.module.delivery.entity.tms"         // RouteCost — MariaDB
         );
         em.setPersistenceUnitName("tmsPU");
 

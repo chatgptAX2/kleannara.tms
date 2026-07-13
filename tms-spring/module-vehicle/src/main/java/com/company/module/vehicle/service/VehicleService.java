@@ -1,9 +1,9 @@
 package com.company.module.vehicle.service;
 
 import com.company.module.vehicle.dto.*;
-import com.company.module.vehicle.entity.DsVehicle;
+import com.company.module.vehicle.entity.tms.DsVehicle;
 import com.company.module.vehicle.entity.wms.Vhcma;
-import com.company.module.vehicle.repository.DsVehicleRepository;
+import com.company.module.vehicle.repository.tms.DsVehicleRepository;
 import com.company.module.vehicle.repository.wms.VhcmaRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;

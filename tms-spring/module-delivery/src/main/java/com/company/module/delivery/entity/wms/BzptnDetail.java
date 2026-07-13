@@ -1,10 +1,19 @@
-package com.company.module.delivery.entity;
+package com.company.module.delivery.entity.wms;
 
 import jakarta.persistence.*;
 import lombok.*;
 
 /**
- * 납품처 TMS 상세 (BZPTN_DETAIL)
+ * 납품처 TMS 상세 (BZPTN_DETAIL) — Oracle WMS DB (wmsPU)
+ *
+ * ■ DataSource: WmsJpaConfig (Oracle KNRAWMS)
+ *   WmsJpaConfig.setPackagesToScan → com.company.module.delivery.entity.wms
+ *
+ * ※ delivery.entity.wms 서브패키지로 분리한 이유:
+ *    delivery.entity (상위) 에 두면 TmsJpaConfig가 delivery.entity.tms 를 스캔할 때
+ *    setPackagesToScan 재귀 스캔으로 이 클래스까지 tmsPU에 포함되어 충돌 발생.
+ *    → tms/wms 서브패키지를 완전히 분리하여 각 Config가 겹치지 않도록 구조화.
+ *
  * 납품처 기본 정보는 BZPTN 테이블 (읽기 전용)
  * Flask: api_delivery_list / api_delivery_save / api_delivery_delete 대응
  */
