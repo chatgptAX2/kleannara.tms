@@ -606,7 +606,7 @@ public class DispatchConfigApiService {
             );
             // ROUTE_COST: MariaDB / BZPTN: Oracle → 2-step
             List<Map<String, Object>> rcRows = tmsJdbc.queryForList(
-                "SELECT DISTINCT PTNRKY FROM ROUTE_COST ORDER BY PTNRKY FETCH FIRST 300 ROWS ONLY"
+                "SELECT DISTINCT PTNRKY FROM ROUTE_COST ORDER BY PTNRKY LIMIT 300"
             );
             List<String> ptnrkyList = new ArrayList<>();
             for (Map<String, Object> r : rcRows) ptnrkyList.add(str(r.get("PTNRKY")));

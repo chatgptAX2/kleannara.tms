@@ -37,9 +37,10 @@ public class StrategyService {
 
     private static final DateTimeFormatter YMDFORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
 
-    // ── 배차전략 조회 (DS_INCH12 + DS_INCH3 + DS_VEHICLE) — MariaDB ─
+    // ── 배차전략 조회 (DS_INCH12 + DS_INCH3 + DS_VEHICLE + CMCDV) ────
     public Map<String, Object> getStrategy() {
         try {
+            // MariaDB: DS_VEHICLE, DS_INCH12, DS_INCH3
             List<Map<String, Object>> vehicles = tmsJdbc.queryForList(
                 "SELECT * FROM DS_VEHICLE ORDER BY SORT_SEQ"
             );
@@ -49,14 +50,50 @@ public class StrategyService {
             List<Map<String, Object>> inch3 = tmsJdbc.queryForList(
                 "SELECT * FROM DS_INCH3 ORDER BY GRM_COND, CARTYPE"
             );
-            return Map.of(
-                "ok", true,
-                "vehicles", vehicles,
-                "inch12", inch12,
-                "inch3", inch3
-            );
+
+            // Oracle KNRAWMS: TMS_CARCLASS10(PS), TMS_CARCLASS20(HL)
+            // 프론트가 기대하는 형식: [{code, label, use_yn}]
+            List<Map<String, Object>> carclassPs = buildCarclassList("TMS_CARCLASS10");
+            List<Map<String, Object>> carclassHl = buildCarclassList("TMS_CARCLASS20");
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("ok",          true);
+            result.put("vehicle",     vehicles);   // 프론트: data.vehicle
+            result.put("vehicles",    vehicles);   // 일부 코드에서 data.vehicles 참조
+            result.put("inch12",      inch12);
+            result.put("inch3",       inch3);
+            result.put("carclass_ps", carclassPs); // 프론트: data.carclass_ps
+            result.put("carclass_hl", carclassHl); // 프론트: data.carclass_hl
+            result.put("carclass_options", carclassPs); // 하위호환: data.carclass_options
+            return result;
+
         } catch (Exception e) {
             return Map.of("ok", false, "error", e.getMessage());
+        }
+    }
+
+    /**
+     * Oracle KNRAWMS.CMCDV에서 차량클래스 목록 조회
+     * 반환 형식: [{code:CMCDVL, label:CDESC1, use_yn:USARG1}]
+     */
+    private List<Map<String, Object>> buildCarclassList(String cmcdky) {
+        try {
+            List<Map<String, Object>> rows = wmsJdbc.queryForList(
+                "SELECT CMCDVL, CDESC1, USARG1 FROM KNRAWMS.CMCDV " +
+                "WHERE CMCDKY=? ORDER BY SORTNO, CMCDVL", cmcdky
+            );
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (Map<String, Object> r : rows) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("code",   r.get("CMCDVL"));
+                item.put("label",  r.get("CDESC1"));
+                item.put("use_yn", r.getOrDefault("USARG1", "Y"));
+                result.add(item);
+            }
+            return result;
+        } catch (Exception e) {
+            log.warn("buildCarclassList [{}] error: {}", cmcdky, e.getMessage());
+            return Collections.emptyList();
         }
     }
 
