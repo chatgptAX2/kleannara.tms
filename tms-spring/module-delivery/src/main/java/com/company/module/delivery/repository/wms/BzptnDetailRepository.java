@@ -1,6 +1,6 @@
-package com.company.module.delivery.repository;
+package com.company.module.delivery.repository.wms;
 
-import com.company.module.delivery.entity.BzptnDetail;
+import com.company.module.delivery.entity.wms.BzptnDetail;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -9,7 +9,15 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 
 /**
- * 납품처 Repository — Oracle WMS DB (wmsPU) 로 실행됨
+ * 납품처 Repository — Oracle WMS DB (wmsPU)
+ *
+ * ■ DataSource: WmsJpaConfig (Oracle KNRAWMS)
+ *   WmsJpaConfig.basePackageClasses → BzptnDetailRepository.class
+ *
+ * ※ delivery.repository.wms 서브패키지로 분리한 이유:
+ *    delivery.repository (상위) 에 두면 TmsJpaConfig가 delivery.repository.tms 를 스캔할 때
+ *    basePackageClasses 재귀 스캔으로 이 클래스까지 포함되어 빈 중복 등록 오류 발생.
+ *    → tms/wms 서브패키지를 완전히 분리하여 각 Config가 겹치지 않도록 구조화.
  *
  * ■ Oracle 문법 주의사항
  *   - 페이징: LIMIT/OFFSET(MySQL) → OFFSET ? ROWS FETCH NEXT ? ROWS ONLY (Oracle 12c+)

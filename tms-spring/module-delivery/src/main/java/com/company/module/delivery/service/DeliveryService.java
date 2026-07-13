@@ -1,9 +1,9 @@
 package com.company.module.delivery.service;
 
 import com.company.module.delivery.dto.*;
-import com.company.module.delivery.entity.BzptnDetail;
+import com.company.module.delivery.entity.wms.BzptnDetail;
 import com.company.module.delivery.entity.tms.RouteCost;
-import com.company.module.delivery.repository.BzptnDetailRepository;
+import com.company.module.delivery.repository.wms.BzptnDetailRepository;
 import com.company.module.delivery.repository.tms.RouteCostRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

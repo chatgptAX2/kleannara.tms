@@ -20,7 +20,7 @@ import java.util.Properties;
  * ■ Oracle 전용 Repository — basePackageClasses 로 정확한 클래스만 지정
  *   (basePackages 재귀 스캔 시 tms 서브패키지 Repository 중복 등록 방지)
  *   - ShpdHRepository       : SHPDH  — Oracle KNRAWMS
- *   - BzptnDetailRepository : BZPTN_DETAIL — Oracle KNRAWMS
+ *   - BzptnDetailRepository : BZPTN_DETAIL — Oracle KNRAWMS (delivery.repository.wms)
  *   - VhcmaRepository       : VHCMA  — Oracle KNRAWMS
  *
  * ■ MariaDB 테이블은 TmsJpaConfig 에서 관리
@@ -34,9 +34,9 @@ import java.util.Properties;
 @Configuration
 @EnableJpaRepositories(
     basePackageClasses = {
-        com.company.module.shipment.repository.ShpdHRepository.class,           // SHPDH  — Oracle KNRAWMS
-        com.company.module.delivery.repository.BzptnDetailRepository.class,     // BZPTN_DETAIL — Oracle KNRAWMS
-        com.company.module.vehicle.repository.wms.VhcmaRepository.class         // VHCMA  — Oracle KNRAWMS
+        com.company.module.shipment.repository.ShpdHRepository.class,               // SHPDH  — Oracle KNRAWMS
+        com.company.module.delivery.repository.wms.BzptnDetailRepository.class,     // BZPTN_DETAIL — Oracle KNRAWMS
+        com.company.module.vehicle.repository.wms.VhcmaRepository.class             // VHCMA  — Oracle KNRAWMS
     },
     entityManagerFactoryRef = "wmsEntityManagerFactory",
     transactionManagerRef   = "wmsTransactionManager"
@@ -50,9 +50,9 @@ public class WmsJpaConfig {
         LocalContainerEntityManagerFactoryBean em = new LocalContainerEntityManagerFactoryBean();
         em.setDataSource(dataSource);
         em.setPackagesToScan(
-            "com.company.module.shipment.entity",       // ShpdH, ShpdI — Oracle KNRAWMS
-            "com.company.module.delivery.entity",       // BzptnDetail — Oracle KNRAWMS (RouteCost는 entity.tms 로 분리됨)
-            "com.company.module.vehicle.entity.wms"     // Vhcma — Oracle KNRAWMS
+            "com.company.module.shipment.entity",           // ShpdH, ShpdI — Oracle KNRAWMS
+            "com.company.module.delivery.entity.wms",       // BzptnDetail — Oracle KNRAWMS
+            "com.company.module.vehicle.entity.wms"         // Vhcma — Oracle KNRAWMS
         );
         em.setPersistenceUnitName("wmsPU");
 

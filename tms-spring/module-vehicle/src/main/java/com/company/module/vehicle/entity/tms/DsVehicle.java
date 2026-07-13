@@ -1,12 +1,19 @@
-package com.company.module.vehicle.entity;
+package com.company.module.vehicle.entity.tms;
 
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
 
 /**
- * 차량 제원 마스터 (DS_VEHICLE)
- * Flask: DS_VEHICLE 테이블 대응
+ * 차량 제원 마스터 (DS_VEHICLE) — MariaDB (tmsPU)
+ *
+ * ■ DataSource: TmsJpaConfig (MariaDB integration DB)
+ *   TmsJpaConfig.setPackagesToScan → com.company.module.vehicle.entity.tms
+ *
+ * ※ vehicle.entity.tms 서브패키지로 분리한 이유:
+ *    vehicle.entity (상위) 에 두면 WmsJpaConfig가 vehicle.entity.wms 를 스캔할 때
+ *    setPackagesToScan 재귀 스캔으로 이 클래스까지 wmsPU에 포함되어 충돌 발생.
+ *    → tms/wms 서브패키지를 완전히 분리하여 각 Config가 겹치지 않도록 구조화.
  */
 @Entity
 @Table(name = "ds_vehicle")
