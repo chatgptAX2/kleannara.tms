@@ -38,10 +38,10 @@ public class WmsViewController {
             @PathVariable String table,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size,
-            @RequestParam(required = false) String search,
-            @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String order) {
-        return ResponseEntity.ok(wmsViewService.getData(table, page, size, search, sort, order));
+            @RequestParam(name = "q", required = false) String search,
+            @RequestParam(required = false) String sort_col,
+            @RequestParam(required = false) String sort_dir) {
+        return ResponseEntity.ok(wmsViewService.getData(table, page, size, search, sort_col, sort_dir));
     }
 
     /** 단건 상세 조회 */
