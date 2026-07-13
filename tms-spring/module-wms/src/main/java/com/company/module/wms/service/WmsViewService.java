@@ -166,113 +166,107 @@ public class WmsViewService {
         return Map.of("ok", true, "table", qualifiedTbl, "columns", cols);
     }
 
-    // ── 테이블 데이터 조회 (페이징, 정렬) ─────────────────────────
+    // ── 테이블 데이터 조회 (페이징, 검색, 정렬) ──────────────────────
     public Map<String, Object> getData(String table, int page, int size,
-                                       String search, String sort, String order) {
+                                       String search, String sortCol, String sortDir) {
         String upper = table.toUpperCase();
         if (!ALLOWED_TABLES.contains(upper))
             throw new IllegalArgumentException("허용되지 않는 테이블: " + table);
 
-        boolean isOracle = ORACLE_WMS_TABLES.contains(upper);
-        String tbl       = isOracle ? "KNRAWMS." + upper : upper;
-        int offset        = Math.max(0, (page - 1)) * size;
-        String safeOrder  = "ASC".equalsIgnoreCase(order) ? "ASC" : "DESC";
-        String safeSort   = (sort != null && sort.matches("[A-Za-z0-9_]+")) ? sort : null;
+        boolean isOracle  = ORACLE_WMS_TABLES.contains(upper);
+        String tbl        = isOracle ? "KNRAWMS." + upper : upper;
+        int offset         = Math.max(0, (page - 1)) * size;
+        String safeOrder   = "ASC".equalsIgnoreCase(sortDir) ? "ASC" : "DESC";
+        String safeSort    = (sortCol != null && sortCol.matches("[A-Za-z0-9_]+")) ? sortCol : null;
+        boolean hasSearch  = (search != null && !search.isBlank());
 
+        // ── ① 스키마 메타 먼저 조회 (검색 컬럼 목록 필요) ──────────────
+        List<String> columns    = new ArrayList<>();
+        List<String> pkCols     = new ArrayList<>();
+        Map<String, String> labels = new LinkedHashMap<>();
+        List<String> searchCols = new ArrayList<>();
+
+        try (Connection conn = ds(upper).getConnection()) {
+            DatabaseMetaData meta  = conn.getMetaData();
+            String schemaParam     = isOracle ? "KNRAWMS" : null;
+
+            Set<String> pkSet = new LinkedHashSet<>();
+            try (ResultSet pk = meta.getPrimaryKeys(null, schemaParam, upper)) {
+                while (pk.next()) pkSet.add(pk.getString("COLUMN_NAME"));
+            }
+
+            try (ResultSet rs = meta.getColumns(null, schemaParam, upper, null)) {
+                collectColMeta(rs, columns, labels, searchCols);
+            }
+
+            // MariaDB 폴백
+            if (columns.isEmpty() && !isOracle) {
+                try (ResultSet rs = meta.getColumns(null, null, upper, null)) {
+                    collectColMeta(rs, columns, labels, searchCols);
+                }
+                if (pkSet.isEmpty()) {
+                    try (ResultSet pk = meta.getPrimaryKeys(null, null, upper)) {
+                        while (pk.next()) pkSet.add(pk.getString("COLUMN_NAME"));
+                    }
+                }
+            }
+            pkCols.addAll(pkSet);
+
+        } catch (Exception metaEx) {
+            log.warn("getData schema meta error [{}]: {}", tbl, metaEx.getMessage());
+        }
+
+        // ── ② WHERE LIKE 절 조립 (검색어 + 검색 가능 컬럼 존재 시) ───────
+        // 검색 대상: searchCols 우선, 없으면 columns 전체 대상
+        List<String> targetCols = !searchCols.isEmpty() ? searchCols : columns;
+        String whereSql  = "";
+        String likeParam = hasSearch ? "%" + search.trim() + "%" : "";
+        List<Object> searchArgs = new ArrayList<>();
+
+        if (hasSearch && !targetCols.isEmpty()) {
+            List<String> likeClauses = new ArrayList<>();
+            for (String col : targetCols) {
+                likeClauses.add(col + " LIKE ?");
+                searchArgs.add(likeParam);
+            }
+            whereSql = " WHERE (" + String.join(" OR ", likeClauses) + ")";
+        }
+
+        // ── ③ 데이터 조회 ────────────────────────────────────────────────
         try {
-            Long total = jdbc(upper).queryForObject("SELECT COUNT(*) FROM " + tbl, Long.class);
+            // total COUNT
+            String countSql = "SELECT COUNT(*) FROM " + tbl + whereSql;
+            Long total = jdbc(upper).queryForObject(countSql, Long.class, searchArgs.toArray());
 
             List<Map<String, Object>> rows;
             if (isOracle) {
-                // ── Oracle 페이징 ────────────────────────────────────
-                // Oracle 12c+: OFFSET ? ROWS FETCH NEXT ? ROWS ONLY (ORDER BY 필수)
-                // ORDER BY 없을 때: ROWNUM 서브쿼리 폴백
+                // Oracle: ROWNUM 서브쿼리 페이징 (WHERE 절 포함)
                 if (safeSort != null) {
-                    String sql = "SELECT * FROM " + tbl
+                    String sql = "SELECT * FROM " + tbl + whereSql
                         + " ORDER BY " + safeSort + " " + safeOrder
                         + " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
-                    rows = wmsJdbc.queryForList(sql, offset, size);
+                    List<Object> args = new ArrayList<>(searchArgs);
+                    args.add(offset); args.add(size);
+                    rows = wmsJdbc.queryForList(sql, args.toArray());
                 } else {
-                    String sql = "SELECT * FROM (SELECT a.*, ROWNUM rn FROM"
-                        + " (SELECT * FROM " + tbl + ") a WHERE ROWNUM <= ?) WHERE rn > ?";
-                    rows = wmsJdbc.queryForList(sql, offset + size, offset);
+                    // ORDER BY 없으면 ROWNUM 서브쿼리
+                    String inner = "SELECT * FROM " + tbl + whereSql;
+                    String sql   = "SELECT * FROM (SELECT a.*, ROWNUM rn FROM"
+                        + " (" + inner + ") a WHERE ROWNUM <= ?) WHERE rn > ?";
+                    List<Object> args = new ArrayList<>(searchArgs);
+                    args.add(offset + size); args.add(offset);
+                    rows = wmsJdbc.queryForList(sql, args.toArray());
                 }
             } else {
-                // ── MariaDB 페이징 ───────────────────────────────────
-                // MariaDB/MySQL: LIMIT ? OFFSET ?
-                StringBuilder sql = new StringBuilder("SELECT * FROM ").append(tbl);
+                // MariaDB: LIMIT ? OFFSET ?
+                StringBuilder sql = new StringBuilder("SELECT * FROM ").append(tbl).append(whereSql);
                 if (safeSort != null) {
                     sql.append(" ORDER BY ").append(safeSort).append(" ").append(safeOrder);
                 }
                 sql.append(" LIMIT ? OFFSET ?");
-                rows = tmsJdbc.queryForList(sql.toString(), size, offset);
-            }
-
-            // ── 스키마 메타데이터 조회 (columns / pk_cols / labels / search_cols) ──
-            List<String> columns    = new ArrayList<>();
-            List<String> pkCols     = new ArrayList<>();
-            Map<String, String> labels = new LinkedHashMap<>();
-            List<String> searchCols = new ArrayList<>();
-
-            try (Connection conn = ds(upper).getConnection()) {
-                DatabaseMetaData meta = conn.getMetaData();
-                String schemaParam   = isOracle ? "KNRAWMS" : null;
-
-                // PK 컬럼 수집
-                Set<String> pkSet = new LinkedHashSet<>();
-                try (ResultSet pk = meta.getPrimaryKeys(null, schemaParam, upper)) {
-                    while (pk.next()) pkSet.add(pk.getString("COLUMN_NAME"));
-                }
-
-                // 컬럼 목록 수집
-                try (ResultSet rs = meta.getColumns(null, schemaParam, upper, null)) {
-                    while (rs.next()) {
-                        String colName  = rs.getString("COLUMN_NAME");
-                        String typeName = rs.getString("TYPE_NAME");
-                        String remark   = rs.getString("REMARKS");
-
-                        columns.add(colName);
-                        // remark 가 있으면 한글 라벨, 없으면 컬럼명 그대로 사용
-                        labels.put(colName, (remark != null && !remark.isBlank()) ? remark : colName);
-                        // VARCHAR/CHAR 계열 컬럼을 검색 대상으로 지정
-                        if (typeName != null) {
-                            String t = typeName.toUpperCase();
-                            if (t.contains("VARCHAR") || t.contains("CHAR") || t.contains("TEXT")) {
-                                searchCols.add(colName);
-                            }
-                        }
-                    }
-                }
-                // MariaDB 폴백: schema 파라미터로 빈 결과가 나오면 null 로 재시도
-                if (columns.isEmpty() && !isOracle) {
-                    try (ResultSet rs = meta.getColumns(null, null, upper, null)) {
-                        while (rs.next()) {
-                            String colName  = rs.getString("COLUMN_NAME");
-                            String typeName = rs.getString("TYPE_NAME");
-                            String remark   = rs.getString("REMARKS");
-
-                            columns.add(colName);
-                            labels.put(colName, (remark != null && !remark.isBlank()) ? remark : colName);
-                            if (typeName != null) {
-                                String t = typeName.toUpperCase();
-                                if (t.contains("VARCHAR") || t.contains("CHAR") || t.contains("TEXT")) {
-                                    searchCols.add(colName);
-                                }
-                            }
-                        }
-                    }
-                    // PK 폴백 재시도
-                    if (pkSet.isEmpty()) {
-                        try (ResultSet pk = meta.getPrimaryKeys(null, null, upper)) {
-                            while (pk.next()) pkSet.add(pk.getString("COLUMN_NAME"));
-                        }
-                    }
-                }
-                pkCols.addAll(pkSet);
-
-            } catch (Exception metaEx) {
-                // 스키마 조회 실패 시 데이터는 그대로 반환, 메타 필드는 빈 값
-                log.warn("getData schema meta error [{}]: {}", tbl, metaEx.getMessage());
+                List<Object> args = new ArrayList<>(searchArgs);
+                args.add(size); args.add(offset);
+                rows = tmsJdbc.queryForList(sql.toString(), args.toArray());
             }
 
             Map<String, Object> result = new LinkedHashMap<>();
@@ -291,6 +285,27 @@ public class WmsViewService {
         } catch (Exception e) {
             log.error("getData error [{}]: {}", tbl, e.getMessage());
             return Map.of("ok", false, "error", e.getMessage());
+        }
+    }
+
+    /** ResultSet → columns / labels / searchCols 수집 헬퍼 */
+    private void collectColMeta(ResultSet rs,
+                                 List<String> columns,
+                                 Map<String, String> labels,
+                                 List<String> searchCols) throws SQLException {
+        while (rs.next()) {
+            String colName  = rs.getString("COLUMN_NAME");
+            String typeName = rs.getString("TYPE_NAME");
+            String remark   = rs.getString("REMARKS");
+
+            columns.add(colName);
+            labels.put(colName, (remark != null && !remark.isBlank()) ? remark : colName);
+            if (typeName != null) {
+                String t = typeName.toUpperCase();
+                if (t.contains("VARCHAR") || t.contains("CHAR") || t.contains("TEXT")) {
+                    searchCols.add(colName);
+                }
+            }
         }
     }
 
