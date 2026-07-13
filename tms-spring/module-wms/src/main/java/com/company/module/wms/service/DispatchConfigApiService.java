@@ -309,10 +309,11 @@ public class DispatchConfigApiService {
             List<Map<String, Object>> tmsRegions = wmsJdbc.queryForList(
                 "SELECT CMCDVL, CDESC1, CDESC2, USARG3, USARG4 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_REGION' ORDER BY CMCDVL"
             );
+            // REGION_YN은 BZPTN_DETAIL에 없음 → '' 리터럴로 대체 (TMS 측 관리 예정)
             List<Map<String, Object>> partners = wmsJdbc.queryForList(
                 "SELECT DISTINCT h.DPTNKY AS PTNRKY, COALESCE(b.NAME01,h.DPTNKY) AS NAME01, " +
                 "       COALESCE(b.POSTCD,'') AS POSTCD, COALESCE(d.AREA_CD,'') AS AREA_CD, " +
-                "       COALESCE(d.REGION_YN,'') AS REGION_YN " +
+                "       '' AS REGION_YN " +
                 "FROM KNRAWMS.SHPDH h LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT' " +
                 "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=h.DPTNKY AND d.PTNRTY='CT' " +
                 "     AND (d.DEL_YN IS NULL OR d.DEL_YN <> 'Y') " +
@@ -357,16 +358,23 @@ public class DispatchConfigApiService {
 
     @Transactional(transactionManager = "wmsTransactionManager")
     public Map<String, Object> setRegionSave(Map<String, Object> body) {
-        return bzptnDetailBatchSave(body, "REGION_YN");
+        // REGION_YN 컬럼이 Oracle KNRAWMS.BZPTN_DETAIL에 미존재 — 저장 비지원
+        // (조회는 '' 리터럴로 정상 응답, 저장은 DB DDL 컬럼 추가 후 활성화 예정)
+        return Map.of("ok", false, "error", "REGION_YN 저장은 현재 지원되지 않습니다. DB 스키마 확인 후 활성화 예정입니다.");
     }
 
     public Map<String, Object> setEntryTonList() {
         try {
-            // BZPTN_DETAIL, CMCDV: Oracle KNRAWMS → wmsJdbc
+            // BZPTN (NAME01) LEFT JOIN BZPTN_DETAIL (MAX_TON, AUTO_ALLOC_YN): Oracle KNRAWMS → wmsJdbc
+            // NAME01은 BZPTN 테이블에만 존재 → BZPTN을 드라이빙으로 LEFT JOIN
             List<Map<String, Object>> partners = wmsJdbc.queryForList(
-                "SELECT PTNRKY,'CT' AS PTNRTY,COALESCE(OWNRKY,'KN') AS OWNRKY,COALESCE(WAREKY,'W001') AS WAREKY," +
-                "COALESCE(NAME01,PTNRKY) AS NAME01,AREA_CD,MAX_TON,AUTO_ALLOC_YN " +
-                "FROM KNRAWMS.BZPTN_DETAIL WHERE (DEL_YN IS NULL OR DEL_YN <> 'Y') ORDER BY AREA_CD, PTNRKY"
+                "SELECT b.PTNRKY, 'CT' AS PTNRTY, COALESCE(d.OWNRKY,'KN') AS OWNRKY, " +
+                "COALESCE(d.WAREKY,'W001') AS WAREKY, COALESCE(b.NAME01,b.PTNRKY) AS NAME01, " +
+                "d.AREA_CD, d.MAX_TON, d.AUTO_ALLOC_YN " +
+                "FROM KNRAWMS.BZPTN b " +
+                "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=b.PTNRKY AND d.PTNRTY=b.PTNRTY AND d.OWNRKY=b.OWNRKY " +
+                "WHERE b.PTNRTY='CT' AND (d.DEL_YN IS NULL OR d.DEL_YN <> 'Y') " +
+                "ORDER BY d.AREA_CD, b.PTNRKY"
             );
             List<Map<String, Object>> carclasses = wmsJdbc.queryForList(
                 "SELECT CMCDVL AS value, CDESC1 AS label FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10' ORDER BY CMCDVL"
@@ -382,10 +390,15 @@ public class DispatchConfigApiService {
 
     public Map<String, Object> setForkliftList() {
         try {
+            // BZPTN (NAME01) LEFT JOIN BZPTN_DETAIL (FORKLIFT_YN, AUTO_ALLOC_YN): Oracle KNRAWMS → wmsJdbc
             List<Map<String, Object>> rows = wmsJdbc.queryForList(
-                "SELECT PTNRKY,'CT' AS PTNRTY,COALESCE(OWNRKY,'KN') AS OWNRKY,COALESCE(WAREKY,'W001') AS WAREKY," +
-                "COALESCE(NAME01,PTNRKY) AS NAME01,AREA_CD,FORKLIFT_YN,AUTO_ALLOC_YN " +
-                "FROM KNRAWMS.BZPTN_DETAIL WHERE (DEL_YN IS NULL OR DEL_YN <> 'Y') ORDER BY AREA_CD, PTNRKY"
+                "SELECT b.PTNRKY, 'CT' AS PTNRTY, COALESCE(d.OWNRKY,'KN') AS OWNRKY, " +
+                "COALESCE(d.WAREKY,'W001') AS WAREKY, COALESCE(b.NAME01,b.PTNRKY) AS NAME01, " +
+                "d.AREA_CD, d.FORKLIFT_YN, d.AUTO_ALLOC_YN " +
+                "FROM KNRAWMS.BZPTN b " +
+                "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=b.PTNRKY AND d.PTNRTY=b.PTNRTY AND d.OWNRKY=b.OWNRKY " +
+                "WHERE b.PTNRTY='CT' AND (d.DEL_YN IS NULL OR d.DEL_YN <> 'Y') " +
+                "ORDER BY d.AREA_CD, b.PTNRKY"
             );
             return Map.of("ok", true, "partners", rows);
         } catch (Exception e) { return errMap(e); }
@@ -398,10 +411,15 @@ public class DispatchConfigApiService {
 
     public Map<String, Object> setDynamicList() {
         try {
+            // BZPTN (NAME01) LEFT JOIN BZPTN_DETAIL (DYNAMIC_YN, AUTO_ALLOC_YN): Oracle KNRAWMS → wmsJdbc
             List<Map<String, Object>> rows = wmsJdbc.queryForList(
-                "SELECT PTNRKY,'CT' AS PTNRTY,COALESCE(OWNRKY,'KN') AS OWNRKY,COALESCE(WAREKY,'W001') AS WAREKY," +
-                "COALESCE(NAME01,PTNRKY) AS NAME01,AREA_CD,DYNAMIC_YN,AUTO_ALLOC_YN " +
-                "FROM KNRAWMS.BZPTN_DETAIL WHERE (DEL_YN IS NULL OR DEL_YN <> 'Y') ORDER BY AREA_CD, PTNRKY"
+                "SELECT b.PTNRKY, 'CT' AS PTNRTY, COALESCE(d.OWNRKY,'KN') AS OWNRKY, " +
+                "COALESCE(d.WAREKY,'W001') AS WAREKY, COALESCE(b.NAME01,b.PTNRKY) AS NAME01, " +
+                "d.AREA_CD, d.DYNAMIC_YN, d.AUTO_ALLOC_YN " +
+                "FROM KNRAWMS.BZPTN b " +
+                "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=b.PTNRKY AND d.PTNRTY=b.PTNRTY AND d.OWNRKY=b.OWNRKY " +
+                "WHERE b.PTNRTY='CT' AND (d.DEL_YN IS NULL OR d.DEL_YN <> 'Y') " +
+                "ORDER BY d.AREA_CD, b.PTNRKY"
             );
             return Map.of("ok", true, "partners", rows);
         } catch (Exception e) { return errMap(e); }
