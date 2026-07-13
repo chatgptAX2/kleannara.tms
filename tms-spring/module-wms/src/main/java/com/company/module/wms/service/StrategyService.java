@@ -44,10 +44,10 @@ public class StrategyService {
                 "SELECT * FROM DS_VEHICLE ORDER BY SORT_SEQ"
             );
             List<Map<String, Object>> inch12 = tmsJdbc.queryForList(
-                "SELECT * FROM DS_INCH12 ORDER BY GRM, CARTYPE"
+                "SELECT * FROM DS_INCH12 ORDER BY GRM_COND, CARTYPE"
             );
             List<Map<String, Object>> inch3 = tmsJdbc.queryForList(
-                "SELECT * FROM DS_INCH3 ORDER BY GRM, CARTYPE"
+                "SELECT * FROM DS_INCH3 ORDER BY GRM_COND, CARTYPE"
             );
             return Map.of(
                 "ok", true,
@@ -71,13 +71,13 @@ public class StrategyService {
             if (inch12List != null) {
                 for (Map<String, Object> row : inch12List) {
                     String cartype = (String) row.get("CARTYPE");
-                    Object grm = row.get("GRM");
-                    Object maxRolls = row.get("MAX_ROLLS");
+                    Object grm = row.get("GRM_COND");
+                    Object maxCount = row.get("MAX_COUNT");
                     if (cartype == null || grm == null) continue;
                     tmsJdbc.update(
-                        "INSERT INTO DS_INCH12 (CARTYPE, GRM, MAX_ROLLS, CREDAT, LMODAT) " +
-                        "VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE MAX_ROLLS=?, LMODAT=?",
-                        cartype, grm, maxRolls, today, today, maxRolls, today
+                        "INSERT INTO DS_INCH12 (CARTYPE, GRM_COND, MAX_COUNT, CREDAT, LMODAT) " +
+                        "VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE MAX_COUNT=?, LMODAT=?",
+                        cartype, grm, maxCount, today, today, maxCount, today
                     );
                 }
             }
@@ -87,13 +87,13 @@ public class StrategyService {
             if (inch3List != null) {
                 for (Map<String, Object> row : inch3List) {
                     String cartype = (String) row.get("CARTYPE");
-                    Object grm = row.get("GRM");
-                    Object maxRolls = row.get("MAX_ROLLS");
+                    Object grm = row.get("GRM_COND");
+                    Object maxCount = row.get("MAX_COUNT");
                     if (cartype == null || grm == null) continue;
                     tmsJdbc.update(
-                        "INSERT INTO DS_INCH3 (CARTYPE, GRM, MAX_ROLLS, CREDAT, LMODAT) " +
-                        "VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE MAX_ROLLS=?, LMODAT=?",
-                        cartype, grm, maxRolls, today, today, maxRolls, today
+                        "INSERT INTO DS_INCH3 (CARTYPE, GRM_COND, MAX_COUNT, CREDAT, LMODAT) " +
+                        "VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE MAX_COUNT=?, LMODAT=?",
+                        cartype, grm, maxCount, today, today, maxCount, today
                     );
                 }
             }
@@ -162,11 +162,11 @@ public class StrategyService {
         try {
             List<Map<String, Object>> vehicles = tmsJdbc.queryForList(
                 "SELECT v.*, " +
-                "       COALESCE(i12.MAX_ROLLS, 0) AS MAX_ROLLS_12, " +
-                "       COALESCE(i3.MAX_ROLLS, 0)  AS MAX_ROLLS_3 " +
+                "       COALESCE(i12.MAX_COUNT, 0) AS MAX_ROLLS_12, " +
+                "       COALESCE(i3.MAX_COUNT, 0)  AS MAX_ROLLS_3 " +
                 "FROM DS_VEHICLE v " +
-                "LEFT JOIN DS_INCH12 i12 ON i12.CARTYPE=v.CARTYPE AND i12.GRM=60 " +
-                "LEFT JOIN DS_INCH3  i3  ON i3.CARTYPE=v.CARTYPE  AND i3.GRM=60 " +
+                "LEFT JOIN DS_INCH12 i12 ON i12.CARTYPE=v.CARTYPE AND i12.GRM_COND=60 " +
+                "LEFT JOIN DS_INCH3  i3  ON i3.CARTYPE=v.CARTYPE  AND i3.GRM_COND=60 " +
                 "ORDER BY v.SORT_SEQ"
             );
             return Map.of("ok", true, "vehicles", vehicles, "skukey", skukey != null ? skukey : "");
