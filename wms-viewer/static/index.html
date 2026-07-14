@@ -1006,11 +1006,57 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .dcon-set-pane-body::-webkit-scrollbar-thumb{background:var(--primary);border-radius:3px}
 /* 세트 제약조건 패널 내 탭 */
 .dcon-set-tabs{display:flex;gap:0;border-bottom:2px solid var(--border);flex-shrink:0;overflow-x:auto;background:var(--surface)}
-.dcon-set-tab{padding:7px 12px;font-size:11px;font-weight:600;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap;display:flex;align-items:center;gap:4px;transition:color .12s}
+.dcon-set-tab{padding:7px 12px;font-size:11px;font-weight:600;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap;display:flex;align-items:center;gap:4px;transition:color .12s;position:relative}
 .dcon-set-tab:hover{color:var(--text);background:var(--hover-bg)}
 .dcon-set-tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+.dcon-set-tab.tab-excluded{color:var(--text3);opacity:.45;text-decoration:line-through}
 .dcon-set-tab-cnt{font-size:9px;padding:1px 5px;border-radius:8px;background:var(--border);color:var(--text3)}
 .dcon-set-tab.active .dcon-set-tab-cnt{background:var(--primary);color:#fff}
+/* 탭 관리 사이드 드로어 */
+.dcon-tab-mgr-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:3000;display:none}
+.dcon-tab-mgr-overlay.open{display:block}
+.dcon-tab-mgr-drawer{position:fixed;top:0;right:0;width:340px;height:100%;background:var(--surface);box-shadow:-4px 0 24px rgba(0,0,0,.18);z-index:3001;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .22s cubic-bezier(.4,0,.2,1)}
+.dcon-tab-mgr-drawer.open{transform:translateX(0)}
+.dcon-tab-mgr-hdr{padding:14px 16px;background:var(--th-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0}
+.dcon-tab-mgr-hdr h3{font-size:13px;font-weight:700;color:var(--text);margin:0;flex:1}
+.dcon-tab-mgr-body{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.dcon-tab-mgr-body::-webkit-scrollbar{width:5px}
+.dcon-tab-mgr-body::-webkit-scrollbar-thumb{background:var(--primary);border-radius:3px}
+.dcon-tab-mgr-group{border:1.5px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface2)}
+.dcon-tab-mgr-group-nm{padding:7px 12px;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;background:var(--th-bg);border-bottom:1px solid var(--border)}
+.dcon-tab-mgr-row{display:flex;align-items:center;gap:9px;padding:8px 12px;border-bottom:1px solid var(--border);transition:background .1s;cursor:pointer}
+.dcon-tab-mgr-row:last-child{border-bottom:none}
+.dcon-tab-mgr-row:hover{background:var(--hover-bg)}
+.dcon-tab-mgr-row.included{background:rgba(var(--primary-rgb,99,130,255),.06)}
+.dcon-tab-mgr-chk{width:16px;height:16px;accent-color:var(--primary);cursor:pointer;flex-shrink:0}
+.dcon-tab-mgr-icon{font-size:15px;flex-shrink:0;width:20px;text-align:center}
+.dcon-tab-mgr-info{flex:1;min-width:0}
+.dcon-tab-mgr-nm{font-size:11px;font-weight:700;color:var(--text)}
+.dcon-tab-mgr-desc{font-size:10px;color:var(--text3);margin-top:1px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dcon-tab-mgr-cnt{font-size:10px;font-weight:700;color:var(--primary);flex-shrink:0;min-width:24px;text-align:right}
+.dcon-tab-mgr-footer{padding:10px 14px;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0;display:flex;gap:8px;align-items:center}
+/* 탭 body 헤더 (탭명 + 미포함 토글 버튼) */
+.dcon-tab-body-hdr{padding:7px 12px;background:var(--bg2,var(--surface));border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0}
+.dcon-tab-body-hdr-title{font-size:12px;font-weight:700;color:var(--text);flex:1;display:flex;align-items:center;gap:6px}
+.dcon-tab-incl-badge{font-size:9px;padding:2px 7px;border-radius:8px;display:inline-flex;align-items:center;gap:3px}
+.dcon-tab-incl-badge.in{background:#dcfce7;color:#166534}
+.dcon-tab-incl-badge.out{background:#fee2e2;color:#991b1b}
+/* 세부 설정 폼 카드 (힌트+스마트 입력) */
+.dcon-param-card{border:1px solid var(--border);border-radius:8px;margin:0 12px 8px;overflow:hidden;background:var(--surface2)}
+.dcon-param-card-hdr{padding:6px 10px;background:var(--th-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px}
+.dcon-param-card-key{font-size:10px;font-weight:700;color:var(--text);flex:1}
+.dcon-param-card-unit{font-size:9px;color:var(--text3);background:var(--border);padding:1px 5px;border-radius:5px}
+.dcon-param-card-body{padding:8px 10px;display:flex;flex-direction:column;gap:5px}
+.dcon-param-card-hint{font-size:10px;color:var(--text3);line-height:1.4}
+.dcon-param-inp-row{display:flex;align-items:center;gap:6px}
+.dcon-param-inp-label{font-size:10px;color:var(--text3);min-width:28px;font-weight:600}
+.dcon-param-inp{flex:1;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;background:var(--input-bg);color:var(--text);transition:border-color .15s}
+.dcon-param-inp:focus{border-color:var(--primary);outline:none}
+.dcon-param-inp.override{border-color:var(--primary);background:rgba(var(--primary-rgb,99,130,255),.06);font-weight:700;color:var(--primary)}
+.dcon-param-sel{flex:1;border:1px solid var(--border);border-radius:5px;padding:5px 7px;font-size:11px;background:var(--input-bg);color:var(--text)}
+.dcon-param-sel:focus{border-color:var(--primary);outline:none}
+.dcon-param-del-btn{padding:3px 8px;font-size:10px;border-radius:5px;border:1px solid #ef5350;color:#ef5350;background:transparent;cursor:pointer}
+.dcon-param-del-btn:hover{background:#ef5350;color:#fff}
 /* 세트 제약조건 테이블 */
 .dcon-set-ctbl-wrap{flex:1;overflow:auto;min-height:0}
 .dcon-set-ctbl-wrap::-webkit-scrollbar{width:5px;height:5px}
@@ -18343,11 +18389,18 @@ async function renderDispatchConstraint() {
             </div>
           </div>
 
-          <!-- 타입 탭 (초기 로드 후 항상 표시) -->
-          <div class="dcon-set-tabs" id="dcon-sp-tabs"></div>
+          <!-- 타입 탭 (초기 로드 후 항상 표시) + 탭 관리 버튼 -->
+          <div style="display:flex;align-items:stretch;border-bottom:2px solid var(--border);flex-shrink:0;background:var(--surface)">
+            <div class="dcon-set-tabs" id="dcon-sp-tabs" style="border-bottom:none;flex:1;min-width:0"></div>
+            <button onclick="dconOpenTabMgr()" title="탭(제약조건 그룹) 추가/제거"
+              style="padding:0 12px;font-size:12px;border:none;border-left:1px solid var(--border);background:var(--surface);color:var(--text3);cursor:pointer;flex-shrink:0;white-space:nowrap;transition:background .12s"
+              onmouseover="this.style.background='var(--hover-bg)'" onmouseout="this.style.background='var(--surface)'">
+              ⚙️ 탭 관리
+            </button>
+          </div>
 
           <!-- 제약조건 테이블 / VEHICLE 매트릭스 -->
-          <div class="dcon-set-pane-body" id="dcon-sp-body">
+          <div class="dcon-set-pane-body" id="dcon-sp-body" style="display:flex;flex-direction:column">
             <div class="dcon-empty" style="font-size:20px;padding:40px 0">🗂️<br><span style="font-size:12px;color:var(--text3)">← 제약조건 세트를 선택하세요</span></div>
           </div>
 
@@ -18360,6 +18413,22 @@ async function renderDispatchConstraint() {
         </div>
 
       </div>
+    </div>
+  </div>
+
+  <!-- ══ 탭 관리 드로어 (탭 추가/제거) ══ -->
+  <div class="dcon-tab-mgr-overlay" id="dcon-tab-mgr-overlay" onclick="dconCloseTabMgr()"></div>
+  <div class="dcon-tab-mgr-drawer" id="dcon-tab-mgr-drawer">
+    <div class="dcon-tab-mgr-hdr">
+      <h3>⚙️ 탭(제약조건 그룹) 관리</h3>
+      <button class="dcon-run-btn secondary" onclick="dconCloseTabMgr()" style="padding:3px 10px;font-size:11px">✕ 닫기</button>
+    </div>
+    <div class="dcon-tab-mgr-body" id="dcon-tab-mgr-body">
+      <div class="dcon-empty" style="font-size:12px;padding:20px">세트를 선택하면 탭 목록이 표시됩니다</div>
+    </div>
+    <div class="dcon-tab-mgr-footer">
+      <span style="font-size:10px;color:var(--text3);flex:1">체크 ON=세트에 포함 / OFF=세트에서 제거</span>
+      <button class="dcon-run-btn primary" onclick="dconTabMgrApply()" style="padding:5px 16px;font-size:11px">💾 적용 및 저장</button>
     </div>
   </div>
 
@@ -19710,6 +19779,28 @@ function _dconSpUpdateCntBadge() {
   if (rgBadge) rgBadge.textContent = rgCnt;
 }
 
+/* ── 탭 body 공통 헤더 (VEHICLE/CARTYPE용) ── */
+function _dconSpTabBodyHdr(tab) {
+  const gm = DCON_GRP_META[tab] || { icon:'⚙️', label:tab, desc:'' };
+  const tabInSet = DCON.selSetId
+    ? (tab === 'VEHICLE'
+        ? (DCON._setFullRows||[]).some(r => r.CONST_TYPE==='VEHICLE' && r.IN_SET)
+        : (Object.keys(DCON._cartypeState||{}).length > 0))
+    : false;
+  const inclBadge = DCON.selSetId
+    ? (tabInSet
+        ? `<span class="dcon-tab-incl-badge in">✅ 세트 포함</span>`
+        : `<span class="dcon-tab-incl-badge out">⊘ 세트 미포함</span>`)
+    : '';
+  const descLine = gm.desc
+    ? `<div style="padding:5px 12px;background:var(--bg2,var(--surface));border-bottom:1px solid var(--border);font-size:10px;color:var(--text3)">${gm.desc}</div>`
+    : '';
+  return `<div class="dcon-tab-body-hdr">
+    <span class="dcon-tab-body-hdr-title">${gm.icon} <strong>${gm.label}</strong>${inclBadge}</span>
+    <span style="font-size:9px;color:var(--text3)">체크박스로 차종/유형 개별 제어</span>
+  </div>${descLine}`;
+}
+
 /* ── 본문 렌더 (탭 선택 기준) ── */
 function _dconSpRender() {
   const body = document.getElementById('dcon-sp-body');
@@ -19743,16 +19834,16 @@ function _dconSpRender() {
     body.innerHTML = `<div class="dcon-empty" style="font-size:20px;padding:40px 0">🗂️<br>
       <span style="font-size:12px;color:var(--text3)">← 제약조건 세트를 선택하세요</span></div>`;
   } else if (tab === 'VEHICLE') {
-    body.innerHTML = _dconSpRenderVehicle(rows, ft);
+    body.innerHTML = _dconSpTabBodyHdr(tab) + _dconSpRenderVehicle(rows, ft);
   } else if (tab === 'CARTYPE') {
-    body.innerHTML = _dconSpRenderCartype(ft);
+    body.innerHTML = _dconSpTabBodyHdr(tab) + _dconSpRenderCartype(ft);
   } else {
     body.innerHTML = _dconSpRenderTable(rows, ft, tab);
   }
   _dconSpUpdateCntBadge();
 }
 
-/* ── 일반 탭 테이블 렌더 ── */
+/* ── 일반 탭 테이블 렌더 (카드형 세부설정 + 탭 포함/제외 헤더) ── */
 function _dconSpRenderTable(rows, ft, tab) {
   const filtered = rows.filter(r => {
     if (!ft) return true;
@@ -19761,105 +19852,144 @@ function _dconSpRenderTable(rows, ft, tab) {
   });
 
   const gm = DCON_GRP_META[tab] || {};
-  /* 탭 설명 헤더 (신규 탭 포함 — desc 있는 경우만) */
-  const descBar = gm.desc ? `<div style="padding:6px 12px;background:var(--bg2);border-bottom:1px solid var(--border);font-size:11px;color:var(--text3);line-height:1.5">
-    ${gm.icon||'⚙️'} <strong>${gm.label||tab}</strong> — ${gm.desc}
-  </div>` : '';
 
-  const hasRows = filtered.length > 0 || (DCON._spNewRows||[]).filter(r=>r.CONST_TYPE===tab).length > 0;
-  if (!hasRows) {
-    return descBar + `<div class="dcon-empty" style="font-size:11px;padding:24px">이 탭의 제약조건이 없습니다<br><small style="color:var(--text3)">＋ 추가 버튼으로 새 제약조건을 추가하세요</small></div>`;
+  /* ── 탭 포함 여부 확인 ── */
+  const tabInSet = DCON.selSetId
+    ? (DCON._setFullRows||[]).some(r => r.CONST_TYPE === tab && r.IN_SET)
+    : false;
+  const isExcluded = DCON.selSetId && !tabInSet && tab !== 'VEHICLE' && tab !== 'CARTYPE';
+
+  /* ── 탭 헤더 바 ── */
+  const inclBadge = DCON.selSetId
+    ? (tabInSet
+        ? `<span class="dcon-tab-incl-badge in">✅ 세트 포함</span>`
+        : `<span class="dcon-tab-incl-badge out">⊘ 세트 미포함</span>`)
+    : '';
+  const toggleBtn = DCON.selSetId
+    ? (tabInSet
+        ? `<button class="dcon-run-btn danger" onclick="_dconSpToggleTab('${tab}',false)" style="padding:3px 10px;font-size:10px">− 세트에서 제거</button>`
+        : `<button class="dcon-run-btn primary" onclick="_dconSpToggleTab('${tab}',true)" style="padding:3px 10px;font-size:10px">＋ 세트에 추가</button>`)
+    : '';
+
+  let headerHtml = `<div class="dcon-tab-body-hdr">
+    <span class="dcon-tab-body-hdr-title">
+      ${gm.icon||'⚙️'} <strong>${gm.label||tab}</strong>
+      ${inclBadge}
+    </span>
+    ${toggleBtn}
+  </div>`;
+  if (gm.desc) {
+    headerHtml += `<div style="padding:5px 12px;background:var(--bg2,var(--surface));border-bottom:1px solid var(--border);font-size:10px;color:var(--text3);line-height:1.5">${gm.desc}</div>`;
   }
 
-  let html = descBar + `<div class="dcon-set-ctbl-wrap"><table class="dcon-set-ctbl">
-  <thead><tr>
-    <th style="min-width:140px">제약조건 항목</th>
-    <th style="width:60px">연산</th>
-    <th style="min-width:100px">값 (임계치)</th>
-    <th style="min-width:80px">단위</th>
-    <th style="min-width:80px">대상 ID</th>
-    <th style="min-width:90px">활성</th>
-    <th style="min-width:60px">비고</th>
-    <th style="width:50px">삭제</th>
-  </tr></thead><tbody>`;
+  const newRows = (DCON._spNewRows||[]).filter(r=>r.CONST_TYPE===tab);
+  const hasRows  = filtered.length > 0 || newRows.length > 0;
 
-  /* 기존 행 */
+  if (!hasRows) {
+    return headerHtml + `<div class="dcon-empty" style="font-size:11px;padding:24px">
+      이 탭의 제약조건이 없습니다<br>
+      <small style="color:var(--text3)">${isExcluded ? '위 ＋ 버튼으로 세트에 추가한 뒤 항목을 설정하세요' : '＋ 추가 버튼으로 새 제약조건을 추가하세요'}</small>
+    </div>`;
+  }
+
+  /* ── 카드형 항목 렌더 ── */
+  let cardsHtml = `<div style="padding:10px 0;display:flex;flex-direction:column;gap:0">`;
+
   filtered.forEach(r => {
     const pm = DCON_PARAM_META[r.CONST_KEY] || {};
-    const lbl = pm.label || r.CONST_KEY;
-    const unit = pm.unit || '';
+    const lbl  = pm.label || r.CONST_KEY;
+    const unit = pm.unit  || '';
+    const hint = pm.hint  || '';
     const isOverride = r._pval !== String(r.CONST_VALUE ?? '');
-    html += `<tr>
-      <td>
-        <div class="dcon-set-ckey-badge">${_esc(lbl)}</div>
-        <div class="dcon-set-ckey-lbl">${_esc(r.CONST_KEY)}</div>
-      </td>
-      <td><span style="font-size:11px;font-weight:700;color:var(--text3)">${_esc(r.CONST_OP||'=')}</span></td>
-      <td><input class="dcon-set-cinp${isOverride?' override':''}" type="text"
-        id="dcon-sp-val-${r.CONST_ID}"
-        value="${_esc(r._pval)}"
-        placeholder="${_esc(String(r.CONST_VALUE??''))}"
-        title="원본값: ${_esc(String(r.CONST_VALUE??''))}${isOverride?' | 오버라이드':''}"
-        oninput="_dconSpValChange(${r.CONST_ID},this.value)"/></td>
-      <td style="font-size:10px;color:var(--text3)">${_esc(unit)}</td>
-      <td style="font-size:10px;color:var(--text3)">${_esc(r.TARGET_ID||'—')}</td>
-      <td>
+    const activeYn = r.ITEM_ACTIVE || 'Y';
+
+    /* Y/N 타입 여부 판별 */
+    const isYN   = unit === 'Y/N';
+    /* 숫자 타입 여부 */
+    const isNum  = ['%','ton','대','건','m','m³','kg','단','순위','롤','x','w','개'].includes(unit);
+
+    const valCtrl = isYN
+      ? `<select class="dcon-param-sel" id="dcon-sp-val-${r.CONST_ID}"
+           onchange="_dconSpValChange(${r.CONST_ID},this.value)">
+           <option value="Y" ${r._pval==='Y'?'selected':''}>Y — 허용/활성</option>
+           <option value="N" ${r._pval==='N'?'selected':''}>N — 불허/비활성</option>
+         </select>`
+      : `<input class="dcon-param-inp${isOverride?' override':''}" type="${isNum?'number':'text'}"
+           id="dcon-sp-val-${r.CONST_ID}"
+           value="${_esc(r._pval)}"
+           placeholder="${_esc(String(r.CONST_VALUE??''))}"
+           title="원본값: ${_esc(String(r.CONST_VALUE??''))}${isOverride?' | 오버라이드':''}"
+           oninput="_dconSpValChange(${r.CONST_ID},this.value)"/>`;
+
+    const targetBadge = r.TARGET_ID
+      ? `<span style="font-size:9px;padding:1px 5px;border-radius:5px;background:var(--border);color:var(--text3);margin-left:4px">${_esc(r.TARGET_ID)}</span>`
+      : '';
+
+    cardsHtml += `<div class="dcon-param-card" style="margin:4px 10px">
+      <div class="dcon-param-card-hdr">
+        <span class="dcon-param-card-key">${_esc(lbl)}${targetBadge}</span>
+        <span style="font-size:9px;color:var(--text3)">${_esc(r.CONST_KEY)}</span>
+        ${unit ? `<span class="dcon-param-card-unit">${_esc(unit)}</span>` : ''}
         <select class="dcon-set-csel" id="dcon-sp-yn-${r.CONST_ID}"
-          onchange="_dconSpDirty()">
-          <option value="Y" ${(r.ITEM_ACTIVE||'Y')==='Y'?'selected':''}>✅ 활성</option>
-          <option value="N" ${(r.ITEM_ACTIVE||'Y')==='N'?'selected':''}>⏸ 비활성</option>
+          onchange="_dconSpDirty()" style="margin-left:6px">
+          <option value="Y" ${activeYn==='Y'?'selected':''}>✅ 활성</option>
+          <option value="N" ${activeYn==='N'?'selected':''}>⏸ 비활성</option>
         </select>
-      </td>
-      <td style="font-size:10px;color:var(--text3);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(r.NOTE||'')}">
-        ${_esc(r.NOTE||'')}
-      </td>
-      <td style="text-align:center">
-        <button class="dcon-run-btn danger" onclick="_dconSpDeleteRow(${r.CONST_ID})"
-          style="padding:2px 6px;font-size:10px" title="이 세트에서 제거">✕</button>
-      </td>
-    </tr>`;
+        <button class="dcon-param-del-btn" onclick="_dconSpDeleteRow(${r.CONST_ID})" title="세트에서 제거">✕</button>
+      </div>
+      <div class="dcon-param-card-body">
+        ${hint ? `<div class="dcon-param-card-hint">💡 ${_esc(hint)}</div>` : ''}
+        <div class="dcon-param-inp-row">
+          <span class="dcon-param-inp-label">${_esc(r.CONST_OP||'=')}</span>
+          ${valCtrl}
+        </div>
+        ${isOverride ? `<div style="font-size:9px;color:var(--primary)">⚡ 세트 오버라이드 값 (원본: ${_esc(String(r.CONST_VALUE??''))})</div>` : ''}
+      </div>
+    </div>`;
   });
 
   /* 신규 추가 행 */
-  (DCON._spNewRows||[]).filter(r=>r.CONST_TYPE===tab).forEach((r,i) => {
-    html += `<tr class="new-row">
-      <td>
-        <select class="dcon-set-csel" id="dcon-sp-new-key-${r._tmpId}"
-          onchange="_dconSpNewKeyChange('${r._tmpId}',this.value)" style="width:100%;font-size:10px">
-          <option value="">— 항목 선택 —</option>
-          ${Object.entries(DCON_PARAM_META).map(([k,v])=>`<option value="${k}" ${r.CONST_KEY===k?'selected':''}>${v.label} (${k})</option>`).join('')}
-        </select>
-      </td>
-      <td>
-        <select class="dcon-set-csel" id="dcon-sp-new-op-${r._tmpId}" style="width:100%">
-          ${['<=','>=','=','<','>'].map(op=>`<option ${r.CONST_OP===op?'selected':''}>${op}</option>`).join('')}
-        </select>
-      </td>
-      <td><input class="dcon-set-cinp" type="text" id="dcon-sp-new-val-${r._tmpId}"
-        value="${_esc(r._pval||'')}" placeholder="값 입력"
-        oninput="_dconSpDirty()"/></td>
-      <td style="font-size:10px;color:var(--text3)">${_esc((DCON_PARAM_META[r.CONST_KEY]||{}).unit||'')}</td>
-      <td><input class="dcon-set-cinp" type="text" id="dcon-sp-new-tid-${r._tmpId}"
-        value="${_esc(r.TARGET_ID||'')}" placeholder="TARGET_ID"
-        style="font-size:10px" oninput="_dconSpDirty()"/></td>
-      <td>
-        <select class="dcon-set-csel" id="dcon-sp-new-yn-${r._tmpId}">
-          <option value="Y" selected>✅ 활성</option>
-          <option value="N">⏸ 비활성</option>
-        </select>
-      </td>
-      <td><input class="dcon-set-cinp" type="text" id="dcon-sp-new-note-${r._tmpId}"
-        value="" placeholder="비고" style="font-size:10px"
-        oninput="_dconSpDirty()"/></td>
-      <td style="text-align:center">
-        <button class="dcon-run-btn danger" onclick="_dconSpDeleteNewRow('${r._tmpId}')"
-          style="padding:2px 6px;font-size:10px">✕</button>
-      </td>
-    </tr>`;
+  newRows.forEach(r => {
+    const selOpts = Object.entries(DCON_PARAM_META)
+      .map(([k,v])=>`<option value="${k}" ${r.CONST_KEY===k?'selected':''}>${v.label} (${k})</option>`)
+      .join('');
+    cardsHtml += `<div class="dcon-param-card new-row" style="margin:4px 10px">
+      <div class="dcon-param-card-hdr">
+        <span class="dcon-param-card-key" style="color:var(--primary)">＋ 신규 항목</span>
+        <button class="dcon-param-del-btn" onclick="_dconSpDeleteNewRow('${r._tmpId}')">✕</button>
+      </div>
+      <div class="dcon-param-card-body">
+        <div class="dcon-param-inp-row">
+          <span class="dcon-param-inp-label">항목</span>
+          <select class="dcon-param-sel" id="dcon-sp-new-key-${r._tmpId}"
+            onchange="_dconSpNewKeyChange('${r._tmpId}',this.value)">
+            <option value="">— 항목 선택 —</option>${selOpts}
+          </select>
+        </div>
+        <div class="dcon-param-inp-row">
+          <span class="dcon-param-inp-label">연산</span>
+          <select class="dcon-param-sel" id="dcon-sp-new-op-${r._tmpId}" style="width:80px">
+            ${['<=','>=','=','<','>'].map(op=>`<option ${r.CONST_OP===op?'selected':''}>${op}</option>`).join('')}
+          </select>
+          <input class="dcon-param-inp" type="text" id="dcon-sp-new-val-${r._tmpId}"
+            value="${_esc(r._pval||'')}" placeholder="값" oninput="_dconSpDirty()"/>
+          <span class="dcon-param-card-unit" id="dcon-sp-new-unit-${r._tmpId}">${_esc((DCON_PARAM_META[r.CONST_KEY]||{}).unit||'')}</span>
+        </div>
+        <div class="dcon-param-inp-row">
+          <span class="dcon-param-inp-label">대상</span>
+          <input class="dcon-param-inp" type="text" id="dcon-sp-new-tid-${r._tmpId}"
+            value="${_esc(r.TARGET_ID||'')}" placeholder="TARGET_ID (없으면 빈칸)" oninput="_dconSpDirty()"/>
+          <select class="dcon-param-sel" id="dcon-sp-new-yn-${r._tmpId}" style="width:90px">
+            <option value="Y" selected>✅ 활성</option>
+            <option value="N">⏸ 비활성</option>
+          </select>
+        </div>
+      </div>
+    </div>`;
   });
 
-  html += `</tbody></table></div>`;
-  return html;
+  cardsHtml += `</div>`;
+  return headerHtml + cardsHtml;
 }
 
 /* ── VEHICLE 탭 매트릭스 렌더 ── */
@@ -20926,7 +21056,9 @@ function _dconSpAddRow() {
 function _dconSpNewKeyChange(tmpId, key) {
   const r = (DCON._spNewRows||[]).find(r=>r._tmpId===tmpId);
   if (r) r.CONST_KEY = key;
-  /* 단위 힌트 셀 갱신 */
+  /* 단위 표시 갱신 (카드형 & 테이블형 공통) */
+  const unitEl = document.getElementById(`dcon-sp-new-unit-${tmpId}`);
+  if (unitEl) unitEl.textContent = (DCON_PARAM_META[key]||{}).unit || '';
   const unitCell = document.querySelector(`#dcon-sp-new-val-${tmpId}`)?.closest('tr')?.cells[3];
   if (unitCell) unitCell.textContent = (DCON_PARAM_META[key]||{}).unit || '';
 }
@@ -20954,6 +21086,192 @@ function _dconSpDirty() {
 /* ── 필터 ── */
 function _dconSpFilterChange() {
   _dconSpRender();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   탭(CONST_TYPE 그룹) 세트 포함/제외 토글
+══════════════════════════════════════════════════════════════ */
+async function _dconSpToggleTab(tabType, include) {
+  if (!DCON.selSetId) return showToast('세트를 선택하세요', 'warn');
+
+  const allOfType = (DCON._setFullRows||[]).filter(r => r.CONST_TYPE === tabType);
+  if (!allOfType.length) {
+    showToast(`"${tabType}" 타입 제약조건 데이터가 없습니다`, 'warn');
+    return;
+  }
+
+  if (include) {
+    /* 세트에 추가: _spRows에 없는 것만 추가 */
+    allOfType.forEach(r => {
+      const exists = (DCON._spRows||[]).find(sr => sr.CONST_ID === r.CONST_ID && !sr._deleted);
+      if (!exists) {
+        DCON._spRows = DCON._spRows || [];
+        DCON._spRows.push({
+          ...r,
+          _pval: r.PARAM_VALUE != null ? String(r.PARAM_VALUE) : String(r.CONST_VALUE ?? ''),
+          _isNew: false,
+          _deleted: false,
+        });
+      }
+    });
+    showToast(`✅ "${DCON_GRP_META[tabType]?.label || tabType}" 탭을 세트에 추가했습니다. 💾 저장을 눌러주세요`);
+  } else {
+    /* 세트에서 제거: 해당 타입 rows를 _deleted로 표시 */
+    if (!confirm(`"${DCON_GRP_META[tabType]?.label || tabType}" 탭 전체를 세트에서 제거하시겠습니까?`)) return;
+    (DCON._spRows||[]).forEach(r => {
+      if (r.CONST_TYPE === tabType) r._deleted = true;
+    });
+    showToast(`⊘ "${DCON_GRP_META[tabType]?.label || tabType}" 탭을 세트에서 제거했습니다. 💾 저장을 눌러주세요`);
+  }
+
+  _dconSpRenderTabs();
+  _dconSpRender();
+  _dconSpDirty();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   탭 관리 드로어 (사이드 패널)
+══════════════════════════════════════════════════════════════ */
+function dconOpenTabMgr() {
+  const overlay = document.getElementById('dcon-tab-mgr-overlay');
+  const drawer  = document.getElementById('dcon-tab-mgr-drawer');
+  if (overlay) overlay.classList.add('open');
+  if (drawer)  drawer.classList.add('open');
+  _dconTabMgrRender();
+}
+
+function dconCloseTabMgr() {
+  const overlay = document.getElementById('dcon-tab-mgr-overlay');
+  const drawer  = document.getElementById('dcon-tab-mgr-drawer');
+  if (overlay) overlay.classList.remove('open');
+  if (drawer)  drawer.classList.remove('open');
+}
+
+function _dconTabMgrRender() {
+  const body = document.getElementById('dcon-tab-mgr-body');
+  if (!body) return;
+
+  if (!DCON.selSetId) {
+    body.innerHTML = '<div class="dcon-empty" style="font-size:12px;padding:20px">세트를 선택하면 탭 목록이 표시됩니다</div>';
+    return;
+  }
+
+  /* 탭 순서와 그룹핑 */
+  const tabGroups = [
+    { groupNm: '📌 기본', tabs: ['GLOBAL','VEHICLE','CARTYPE','CARGO','COST'] },
+    { groupNm: '🏢 납품처', tabs: ['PARTNER','ENTRY_TON','FORKLIFT','DYNAMIC','DYNAMIC_ZONE','REGION'] },
+    { groupNm: '📜 원지(Roll)', tabs: ['ROLL_UNIT','ROLL_STACK','ROLL_INCH_MIX','ROLL_3D_VERIFY'] },
+    { groupNm: '📦 판지(Board)', tabs: ['BOARD_CBM_WEIGHT','BOARD_BULK_SPLIT','BOARD_FLEX_SPLIT','BOARD_3D_VERIFY'] },
+    { groupNm: '🔀 혼합적재', tabs: ['MIX_Z_AXIS','MIX_Y_LIFO','MIX_DUAL_VERIFY'] },
+  ];
+
+  /* 현재 세트에 포함된 CONST_TYPE 집합 */
+  const includedTypes = new Set(
+    (DCON._spRows||[]).filter(r => !r._deleted).map(r => r.CONST_TYPE)
+  );
+  /* BZPTN 탭은 별도 상태로 포함 여부 판단 */
+  if ((DCON._entryTonPartners||[]).length > 0) includedTypes.add('ENTRY_TON');
+  if ((DCON._forkliftPartners||[]).length > 0) includedTypes.add('FORKLIFT');
+  if ((DCON._dynamicPartners||[]).length > 0)  includedTypes.add('DYNAMIC');
+  if (DCON._regionData?.regions?.length > 0)   includedTypes.add('REGION');
+  /* VEHICLE은 _setFullRows에서 IN_SET 기준 */
+  const vehInSet = (DCON._setFullRows||[]).some(r => r.CONST_TYPE==='VEHICLE' && r.IN_SET);
+  if (vehInSet) includedTypes.add('VEHICLE');
+  /* CARTYPE은 _cartypeState 기준 */
+  const ctCnt = Object.keys(DCON._cartypeState||{}).length;
+  if (ctCnt > 0) includedTypes.add('CARTYPE');
+
+  /* 현재 _setFullRows에 아예 없는 탭(데이터 자체 없음) */
+  const existingTypes = new Set((DCON._setFullRows||[]).map(r => r.CONST_TYPE));
+  /* BZPTN 탭은 항상 존재로 간주 */
+  ['ENTRY_TON','FORKLIFT','DYNAMIC','REGION'].forEach(t => existingTypes.add(t));
+  /* VEHICLE도 항상 존재 */
+  existingTypes.add('VEHICLE');
+  existingTypes.add('CARTYPE');
+
+  let html = '';
+  tabGroups.forEach(grp => {
+    const rowsHtml = grp.tabs.map(tabKey => {
+      const gm = DCON_GRP_META[tabKey] || { icon:'⚙️', label:tabKey, desc:'' };
+      const inSet    = includedTypes.has(tabKey);
+      const hasData  = existingTypes.has(tabKey);
+      /* 이 탭의 현재 아이템 수 */
+      const cnt = (DCON._spRows||[]).filter(r=>r.CONST_TYPE===tabKey&&!r._deleted).length;
+      const isBzptn = ['ENTRY_TON','FORKLIFT','DYNAMIC','REGION'].includes(tabKey);
+      const isSpecial = ['VEHICLE','CARTYPE'].includes(tabKey);
+
+      return `<div class="dcon-tab-mgr-row${inSet?' included':''}" id="dcon-tmgr-row-${tabKey}"
+        onclick="_dconTabMgrToggle('${tabKey}',${!inSet})">
+        <input type="checkbox" class="dcon-tab-mgr-chk" id="dcon-tmgr-chk-${tabKey}"
+          ${inSet?'checked':''} ${(!hasData&&!isBzptn&&!isSpecial)?'disabled':''}
+          onclick="event.stopPropagation();_dconTabMgrToggle('${tabKey}',this.checked)"/>
+        <span class="dcon-tab-mgr-icon">${gm.icon}</span>
+        <span class="dcon-tab-mgr-info">
+          <span class="dcon-tab-mgr-nm">${gm.label}</span>
+          <span class="dcon-tab-mgr-desc">${gm.desc||tabKey}</span>
+        </span>
+        <span class="dcon-tab-mgr-cnt">${isBzptn||isSpecial ? '—' : cnt}</span>
+      </div>`;
+    }).join('');
+
+    html += `<div class="dcon-tab-mgr-group">
+      <div class="dcon-tab-mgr-group-nm">${grp.groupNm}</div>
+      ${rowsHtml}
+    </div>`;
+  });
+
+  body.innerHTML = html;
+}
+
+function _dconTabMgrToggle(tabKey, include) {
+  /* 체크박스/행 클릭 → 로컬 상태만 업데이트, 실제 저장은 "적용 및 저장"에서 */
+  const chk = document.getElementById(`dcon-tmgr-chk-${tabKey}`);
+  const row = document.getElementById(`dcon-tmgr-row-${tabKey}`);
+  if (chk) chk.checked = include;
+  if (row) row.classList.toggle('included', include);
+
+  /* BZPTN/SPECIAL 탭은 드로어 내 표시만 갱신 (실제 데이터 변경 없음) */
+  const isBzptn = ['ENTRY_TON','FORKLIFT','DYNAMIC','REGION'].includes(tabKey);
+  const isSpecial = ['VEHICLE','CARTYPE'].includes(tabKey);
+  if (isBzptn || isSpecial) {
+    showToast(`"${DCON_GRP_META[tabKey]?.label||tabKey}" 탭은 납품처/차량 데이터 기반으로 자동 표시됩니다`, 'info');
+    if (chk) chk.checked = true; /* 항상 체크로 복원 */
+    if (row) row.classList.add('included');
+    return;
+  }
+
+  /* 일반 탭: _spRows 업데이트 */
+  const allOfType = (DCON._setFullRows||[]).filter(r => r.CONST_TYPE === tabKey);
+  if (include) {
+    allOfType.forEach(r => {
+      const exists = (DCON._spRows||[]).find(sr => sr.CONST_ID === r.CONST_ID);
+      if (!exists) {
+        DCON._spRows.push({
+          ...r,
+          _pval: r.PARAM_VALUE != null ? String(r.PARAM_VALUE) : String(r.CONST_VALUE ?? ''),
+          _isNew: false, _deleted: false,
+        });
+      } else {
+        exists._deleted = false;
+      }
+    });
+  } else {
+    (DCON._spRows||[]).forEach(r => {
+      if (r.CONST_TYPE === tabKey) r._deleted = true;
+    });
+  }
+  _dconSpDirty();
+}
+
+async function dconTabMgrApply() {
+  /* 드로어에서 변경된 내용을 반영한 뒤 저장 */
+  dconCloseTabMgr();
+  _dconSpRenderTabs();
+  _dconSpRender();
+  /* 자동 저장 */
+  await _dconSpSave();
+  /* 저장 후 세트 새로고침 */
+  await dconSelectSet(DCON.selSetId);
 }
 
 /* ══════════════════════════════════════════════════════════════
