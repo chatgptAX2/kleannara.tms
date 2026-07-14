@@ -15937,7 +15937,12 @@ async function renderShipSchedule() {
           <button onclick="resetShipScheduleSearch()" style="padding:6px 12px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px;">
             초기화
           </button>
-          <input type="hidden" id="ss-page-size" value="99999">
+          <select id="ss-page-size" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;cursor:pointer;">
+            <option value="500" selected>500건</option>
+            <option value="1000">1,000건</option>
+            <option value="3000">3,000건</option>
+            <option value="99999">전체</option>
+          </select>
         </div>
       </div><!-- /우 -->
 
@@ -16505,14 +16510,13 @@ function _ssBuildTable(area, cols, rows, total, page, totalPages, size) {
   const tbodyHtml = _ssBuildTbody(orderedCols, rows);
 
   /* 페이지네이션 */
-  /* 페이지네이션 제거 — 전체 한 페이지 표시 */
-  // const paginHtml = _buildShipPagination(page, totalPages, total, size);
+  const paginHtml = totalPages > 1 ? _buildShipPagination(page, totalPages, total, size) : '';
 
   area.innerHTML = `
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;flex-shrink:0;">
       <span style="font-size:12px;color:var(--text2);">
         총 <strong style="color:var(--primary);font-size:14px;">${total.toLocaleString()}</strong>건
-        <span style="font-size:11px;color:var(--text3);margin-left:6px;">(전체 표시)</span>
+        ${totalPages > 1 ? `<span style="font-size:11px;color:var(--text3);margin-left:6px;">(${page}/${totalPages} 페이지 · ${rows.length.toLocaleString()}건 표시)</span>` : '<span style="font-size:11px;color:var(--text3);margin-left:6px;">(전체 표시)</span>'}
       </span>
     </div>
     <div class="ss-table-wrap">
@@ -16521,6 +16525,7 @@ function _ssBuildTable(area, cols, rows, total, page, totalPages, size) {
         <tbody id="ss-tbody">${tbodyHtml}</tbody>
       </table>
     </div>
+    ${paginHtml}
   `;
   /* area 자신도 flex column으로 전환 */
   area.style.display = 'flex';
