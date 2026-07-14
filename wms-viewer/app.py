@@ -267,9 +267,13 @@ def api_tables():
     conn = get_conn()
     result = {}
     for tbl, meta in TABLE_META.items():
-        cnt = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
-        col_count = len(get_table_cols(tbl))
-        result[tbl] = {**meta, "count": cnt, "col_count": col_count}
+        try:
+            cnt = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
+            col_count = len(get_table_cols(tbl))
+            result[tbl] = {**meta, "count": cnt, "col_count": col_count}
+        except Exception:
+            # DB에 테이블이 없는 경우 count=0으로 처리 (500 방지)
+            result[tbl] = {**meta, "count": 0, "col_count": 0}
     conn.close()
     return jsonify(result)
 
@@ -1933,22 +1937,103 @@ def api_shipment_schedule():
         conn.close()
         return jsonify({"error": str(e)}), 400
 
-    # ── Python 환산단위 계산 (SZF_GET_CONVERT_QTY 완전 동일 로직) ──
+    # ── MEASI bulk 로드 (N+1 방지) ──────────────────────────────────
+    # 조회된 row의 (WAREKY, MEASKY) 쌍을 수집 → 한 번에 MEASI 전체 로드
+    wk_mk_pairs = set()
+    for r in rows:
+        wk = r['WAREKY'] if 'WAREKY' in r.keys() else '1100'
+        mk = r['MEASKY'] or ''
+        if mk:
+            wk_mk_pairs.add((str(wk), str(mk)))
+
+    # measi_bulk: { (wareky, measky): { uomkey: (qtpuom, qtauom, inddfu) } }
+    measi_bulk = {}
+    if wk_mk_pairs:
+        # IN 절로 한 번에 조회
+        measky_list = list({mk for _, mk in wk_mk_pairs})
+        ph_m = ','.join('?' * len(measky_list))
+        measi_rows = conn.execute(
+            f"SELECT WAREKY, MEASKY, UOMKEY, QTPUOM, QTAUOM, INDDFU "
+            f"FROM MEASI WHERE MEASKY IN ({ph_m})",
+            measky_list
+        ).fetchall()
+        for mr in measi_rows:
+            key = (str(mr['WAREKY']), str(mr['MEASKY']))
+            uom = str(mr['UOMKEY'] or '').strip()
+            if not uom:
+                continue
+            if key not in measi_bulk:
+                measi_bulk[key] = {}
+            measi_bulk[key][uom] = (
+                float(mr['QTPUOM'] or 0),
+                float(mr['QTAUOM'] or 0),
+                str(mr['INDDFU'] or '').strip()
+            )
+
+    # ── in-memory 환산 함수 (SZF_GET_CONVERT_QTY 동일 로직) ─────────
     def _fmt(v):
         """None → 빈문자열, 0.0 → '0', 소수점 유효자리만 표시"""
         if v is None:
             return ''
         if v == 0:
             return 0
-        # 소수점 5자리 반올림 후 불필요한 0 제거
         return round(v, 5)
 
+    def _conv_mem(uom_map, qty, from_uom, to_uom, skug05_s):
+        """메모리 uom_map으로 환산 (DB 쿼리 없음)"""
+        if qty is None:
+            return None
+        try:
+            qty = float(qty)
+        except (ValueError, TypeError):
+            return None
+        if from_uom == to_uom:
+            return round(qty, 5)
+        skug05_s = str(skug05_s or '').strip()
+        if skug05_s == '20' and to_uom in ('R', 'SOK'):
+            return None
+        if not uom_map:
+            return None
+        # SKUG05='10' + to_uom='EA' 예외
+        if skug05_s == '10' and to_uom == 'EA':
+            try:
+                ea_sum  = sum(v[1] for k, v in uom_map.items() if k == 'EA')
+                sok_sum = sum(v[1] for k, v in uom_map.items() if k == 'SOK')
+                if sok_sum and sok_sum != 0:
+                    return round(ea_sum / sok_sum, 5)
+            except Exception:
+                pass
+            return None
+        # 기준단위 탐색
+        d_uomkey = next((uk for uk, v in uom_map.items() if v[2] == 'V'), None)
+        if to_uom not in uom_map:
+            return None
+        c_qtpuom, c_qtauom, _ = uom_map[to_uom]
+        if c_qtpuom == 0 or c_qtauom == 0:
+            return None
+        ratio = c_qtpuom / c_qtauom
+        try:
+            if d_uomkey == from_uom:
+                result_v = qty / ratio
+            else:
+                if from_uom not in uom_map:
+                    return None
+                f_qtp, f_qta, _ = uom_map[from_uom]
+                if f_qta == 0:
+                    return None
+                default_qty = qty * (f_qtp / f_qta)
+                result_v = default_qty / ratio
+            return round(result_v, 5)
+        except (ZeroDivisionError, TypeError):
+            return None
+
     result = []
+    _PLT_CAP_KG = 1200.0
     for r in rows:
         d = dict(r)
-        wareky_r = d.get('WAREKY', '1100')
-        measky   = d.get('MEASKY', '')
-        duomky   = d.get('DUOMKY', '')
+        wareky_r = str(d.get('WAREKY') or '1100')
+        measky   = str(d.get('MEASKY') or '')
+        duomky   = str(d.get('DUOMKY') or '').strip()
         skug05   = str(d.get('SKUG05') or '').strip()
         qtshpo   = float(d.get('QTSHPO') or 0)
         qtaloc   = float(d.get('QTALOC') or 0)
@@ -1956,14 +2041,15 @@ def api_shipment_schedule():
         qtshpd   = float(d.get('QTSHPD') or 0)
         qtualo   = qtshpo - qtaloc
 
-        # ── 환산 기준수량 결정 (원본 오라클 쿼리 CASE WHEN 동일) ──
-        # STATIT='NEW' 이고 미할당(qtualo==qtshpo) → qtualo 기준
-        # 그 외(할당됨) → qtaloc 기준
+        # 환산 기준수량 결정
         is_new_unalloc = (qtualo == qtshpo and d.get('STATIT') == 'NEW')
         qty_for_calc   = qtualo if is_new_unalloc else qtaloc
 
-        def conv(qty_v, to_uom):
-            return _convert_qty(conn, wareky_r, measky, qty_v, duomky, to_uom, skug05)
+        # bulk 로드된 uom_map 참조
+        uom_map = measi_bulk.get((wareky_r, measky), {})
+
+        def conv(qty_v, to_uom, _umap=uom_map, _from=duomky, _g5=skug05):
+            return _conv_mem(_umap, qty_v, _from, to_uom, _g5)
 
         bag_val = conv(qty_for_calc, 'BAG')
         box_val = conv(qty_for_calc, 'BOX')
@@ -1972,18 +2058,18 @@ def api_shipment_schedule():
         ea_val  = conv(qty_for_calc, 'EA')
         kg_val  = conv(qty_for_calc, 'KG')
 
-        # BOXBAG: 원본 쿼리 동일 — BAG / BOX 비율 (0이면 0)
+        # BOXBAG: BAG / BOX 비율
         if (bag_val is None or bag_val == 0 or
                 box_val is None or box_val == 0):
             boxbag = 0
         else:
             boxbag = round(bag_val / box_val, 4)
 
-        # QTUALOBOX / QTALOCBOX 등: BAG 기준 수량을 BOX로 환산
-        def box_conv(qty_v):
-            if duomky != 'BAG' or not qty_v:
+        # BOX 환산 헬퍼
+        def box_conv(qty_v, _umap=uom_map, _from=duomky, _g5=skug05):
+            if _from != 'BAG' or not qty_v:
                 return 0
-            bx = conv(qty_v, 'BOX')
+            bx = _conv_mem(_umap, qty_v, _from, 'BOX', _g5)
             if not bx or bx == 0:
                 return 0
             return round(qty_v / bx, 4)
@@ -2000,27 +2086,20 @@ def api_shipment_schedule():
         d['QTALOCBOX']  = box_conv(qtaloc)
         d['QTJCMPBOX']  = box_conv(qtjcmp)
         d['QTSHPDBOX']  = box_conv(qtshpd)
-        # PLT개수(원지/판지): SKUMA.GRSWGT 기반 계산 (파렛트 적재 기준 1,200 kg)
-        # - 판지(F/S prefix): QTSHPO(속,R) × GRSWGT(kg/속) / 1200 → 올림
-        # - 원지(H prefix):   QTSHPO(kg)                   / 1200 → 올림
-        #   (원지 SKUMA.GRSWGT = 1.0 kg/장 → QTSHPO가 이미 kg 단위)
-        import math as _math
-        _PLT_CAP_KG = 1200.0
-        pltkg = float(d.get('PLTKG') or 0)   # GRSWGT(kg/속) or NULL
+        # PLT개수(원지/판지): SKUMA.GRSWGT 기반 계산
+        pltkg = float(d.get('PLTKG') or 0)
         if skug05 == '10' and qtshpo and qtshpo > 0:
             sk_prefix = (d.get('SKUKEY') or '')[:1].upper()
             if sk_prefix == 'H':
-                # 원지: QTSHPO 자체가 kg
-                d['PLT_CNT'] = _math.ceil(qtshpo / _PLT_CAP_KG)
+                d['PLT_CNT'] = math.ceil(qtshpo / _PLT_CAP_KG)
             elif pltkg > 0:
-                # 판지/기타: QTSHPO(속) × GRSWGT(kg/속) / 파렛트용량
                 total_kg = qtshpo * pltkg
-                d['PLT_CNT'] = _math.ceil(total_kg / _PLT_CAP_KG)
+                d['PLT_CNT'] = math.ceil(total_kg / _PLT_CAP_KG)
             else:
-                d['PLT_CNT'] = ''   # GRSWGT 미등록 → 계산 불가
+                d['PLT_CNT'] = ''
         else:
             d['PLT_CNT'] = ''
-        # SOK_PER_R: 1R당 SOK 수 (판지 높이 계산용) — None이면 빈문자열
+        # SOK_PER_R: 1R당 SOK 수
         sok_per_r = d.get('SOK_PER_R')
         d['SOK_PER_R'] = float(sok_per_r) if sok_per_r is not None else ''
         # 내부 처리용 키 제거
