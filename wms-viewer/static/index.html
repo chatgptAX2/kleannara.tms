@@ -1015,26 +1015,37 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 /* 탭 관리 사이드 드로어 */
 .dcon-tab-mgr-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:3000;display:none}
 .dcon-tab-mgr-overlay.open{display:block}
-.dcon-tab-mgr-drawer{position:fixed;top:0;right:0;width:340px;height:100%;background:var(--surface);box-shadow:-4px 0 24px rgba(0,0,0,.18);z-index:3001;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .22s cubic-bezier(.4,0,.2,1)}
+.dcon-tab-mgr-drawer{position:fixed;top:0;right:0;width:360px;height:100vh;background:var(--surface);box-shadow:-4px 0 24px rgba(0,0,0,.18);z-index:3001;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);overflow:hidden}
 .dcon-tab-mgr-drawer.open{transform:translateX(0)}
-.dcon-tab-mgr-hdr{padding:14px 16px;background:var(--th-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0}
+.dcon-tab-mgr-hdr{padding:12px 16px;background:var(--th-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0}
 .dcon-tab-mgr-hdr h3{font-size:13px;font-weight:700;color:var(--text);margin:0;flex:1}
-.dcon-tab-mgr-body{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.dcon-tab-mgr-body{flex:1;overflow-y:auto;min-height:0;padding:8px 10px;display:flex;flex-direction:column;gap:6px}
 .dcon-tab-mgr-body::-webkit-scrollbar{width:5px}
 .dcon-tab-mgr-body::-webkit-scrollbar-thumb{background:var(--primary);border-radius:3px}
-.dcon-tab-mgr-group{border:1.5px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface2)}
-.dcon-tab-mgr-group-nm{padding:7px 12px;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;background:var(--th-bg);border-bottom:1px solid var(--border)}
-.dcon-tab-mgr-row{display:flex;align-items:center;gap:9px;padding:8px 12px;border-bottom:1px solid var(--border);transition:background .1s;cursor:pointer}
-.dcon-tab-mgr-row:last-child{border-bottom:none}
-.dcon-tab-mgr-row:hover{background:var(--hover-bg)}
-.dcon-tab-mgr-row.included{background:rgba(var(--primary-rgb,99,130,255),.06)}
-.dcon-tab-mgr-chk{width:16px;height:16px;accent-color:var(--primary);cursor:pointer;flex-shrink:0}
-.dcon-tab-mgr-icon{font-size:15px;flex-shrink:0;width:20px;text-align:center}
-.dcon-tab-mgr-info{flex:1;min-width:0}
-.dcon-tab-mgr-nm{font-size:11px;font-weight:700;color:var(--text)}
-.dcon-tab-mgr-desc{font-size:10px;color:var(--text3);margin-top:1px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dcon-tab-mgr-cnt{font-size:10px;font-weight:700;color:var(--primary);flex-shrink:0;min-width:24px;text-align:right}
-.dcon-tab-mgr-footer{padding:10px 14px;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0;display:flex;gap:8px;align-items:center}
+/* 그룹 컨테이너 */
+.dcon-tab-mgr-group{border:1.5px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface2);flex-shrink:0}
+.dcon-tab-mgr-group-hdr{padding:7px 10px;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;background:var(--th-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none}
+.dcon-tab-mgr-group-hdr:hover{background:var(--hover-bg)}
+.dcon-tab-mgr-group-hdr .tmgr-grp-icon{font-size:12px;flex-shrink:0}
+.dcon-tab-mgr-group-hdr .tmgr-grp-label{flex:1}
+.dcon-tab-mgr-group-hdr .tmgr-grp-cnt{font-size:9px;font-weight:600;color:var(--primary);background:rgba(var(--primary-rgb,99,130,255),.12);padding:1px 6px;border-radius:8px}
+/* 탭 그룹 서브헤더 (그룹 안에서 탭을 구분) */
+.dcon-tab-mgr-tab-hdr{padding:5px 10px 3px;font-size:9.5px;font-weight:700;color:var(--text2);background:rgba(var(--primary-rgb,99,130,255),.04);border-bottom:1px dashed var(--border);display:flex;align-items:center;gap:5px}
+.dcon-tab-mgr-tab-hdr .tmgr-tab-icon{font-size:11px}
+.dcon-tab-mgr-tab-hdr .tmgr-tab-nm{flex:1}
+/* 개별 CONST_KEY 항목 행 */
+.dcon-tab-mgr-item{display:flex;align-items:center;gap:8px;padding:6px 10px 6px 20px;border-bottom:1px solid var(--border);transition:background .1s;cursor:pointer}
+.dcon-tab-mgr-item:last-child{border-bottom:none}
+.dcon-tab-mgr-item:hover{background:var(--hover-bg)}
+.dcon-tab-mgr-item.included{background:rgba(var(--primary-rgb,99,130,255),.06)}
+.dcon-tab-mgr-chk{width:15px;height:15px;accent-color:var(--primary);cursor:pointer;flex-shrink:0}
+.dcon-tab-mgr-item-key{font-size:10px;font-weight:700;color:var(--text);flex:0 0 auto;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace}
+.dcon-tab-mgr-item-desc{font-size:9.5px;color:var(--text3);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dcon-tab-mgr-item-val{font-size:9px;font-weight:600;color:var(--primary);flex-shrink:0;min-width:28px;text-align:right}
+/* 특수 탭(BZPTN/VEHICLE/CARTYPE) 전체 행 */
+.dcon-tab-mgr-special{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border);background:rgba(0,0,0,.02);cursor:default}
+.dcon-tab-mgr-special .sp-badge{font-size:9px;padding:1px 6px;border-radius:8px;background:var(--th-bg);color:var(--text3);border:1px solid var(--border);white-space:nowrap}
+.dcon-tab-mgr-footer{padding:9px 14px;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0;display:flex;gap:8px;align-items:center}
 /* 탭 body 헤더 (탭명 + 미포함 토글 버튼) */
 .dcon-tab-body-hdr{padding:7px 12px;background:var(--bg2,var(--surface));border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0}
 .dcon-tab-body-hdr-title{font-size:12px;font-weight:700;color:var(--text);flex:1;display:flex;align-items:center;gap:6px}
@@ -18420,14 +18431,14 @@ async function renderDispatchConstraint() {
   <div class="dcon-tab-mgr-overlay" id="dcon-tab-mgr-overlay" onclick="dconCloseTabMgr()"></div>
   <div class="dcon-tab-mgr-drawer" id="dcon-tab-mgr-drawer">
     <div class="dcon-tab-mgr-hdr">
-      <h3>⚙️ 탭(제약조건 그룹) 관리</h3>
+      <h3>⚙️ 제약조건 항목 관리</h3>
       <button class="dcon-run-btn secondary" onclick="dconCloseTabMgr()" style="padding:3px 10px;font-size:11px">✕ 닫기</button>
     </div>
     <div class="dcon-tab-mgr-body" id="dcon-tab-mgr-body">
-      <div class="dcon-empty" style="font-size:12px;padding:20px">세트를 선택하면 탭 목록이 표시됩니다</div>
+      <div class="dcon-empty" style="font-size:12px;padding:20px">세트를 선택하면 항목 목록이 표시됩니다</div>
     </div>
     <div class="dcon-tab-mgr-footer">
-      <span style="font-size:10px;color:var(--text3);flex:1">체크 ON=세트에 포함 / OFF=세트에서 제거</span>
+      <span style="font-size:10px;color:var(--text3);flex:1">☑ 체크=세트 포함 / □ 해제=세트 제거</span>
       <button class="dcon-run-btn primary" onclick="dconTabMgrApply()" style="padding:5px 16px;font-size:11px">💾 적용 및 저장</button>
     </div>
   </div>
@@ -21156,122 +21167,242 @@ function _dconTabMgrRender() {
     return;
   }
 
-  /* 탭 순서와 그룹핑 */
+  /* ── 그룹 / 탭 구조 정의 ── */
   const tabGroups = [
-    { groupNm: '📌 기본', tabs: ['GLOBAL','VEHICLE','CARTYPE','CARGO','COST'] },
-    { groupNm: '🏢 납품처', tabs: ['PARTNER','ENTRY_TON','FORKLIFT','DYNAMIC','DYNAMIC_ZONE','REGION'] },
-    { groupNm: '📜 원지(Roll)', tabs: ['ROLL_UNIT','ROLL_STACK','ROLL_INCH_MIX','ROLL_3D_VERIFY'] },
-    { groupNm: '📦 판지(Board)', tabs: ['BOARD_CBM_WEIGHT','BOARD_BULK_SPLIT','BOARD_FLEX_SPLIT','BOARD_3D_VERIFY'] },
-    { groupNm: '🔀 혼합적재', tabs: ['MIX_Z_AXIS','MIX_Y_LIFO','MIX_DUAL_VERIFY'] },
+    { groupNm:'📌 기본', groupKey:'BASIC', tabs:[
+        { key:'GLOBAL',  special:false },
+        { key:'CARGO',   special:false },
+        { key:'COST',    special:false },
+        { key:'VEHICLE', special:'vehicle' },
+        { key:'CARTYPE', special:'cartype' },
+    ]},
+    { groupNm:'🏢 납품처', groupKey:'PARTNER_GRP', tabs:[
+        { key:'PARTNER',      special:false },
+        { key:'ENTRY_TON',    special:'bzptn' },
+        { key:'FORKLIFT',     special:'bzptn' },
+        { key:'DYNAMIC',      special:'bzptn' },
+        { key:'DYNAMIC_ZONE', special:false },
+        { key:'REGION',       special:'bzptn' },
+    ]},
+    { groupNm:'📜 원지(Roll)', groupKey:'ROLL', tabs:[
+        { key:'ROLL_UNIT',      special:false },
+        { key:'ROLL_STACK',     special:false },
+        { key:'ROLL_INCH_MIX',  special:false },
+        { key:'ROLL_3D_VERIFY', special:false },
+    ]},
+    { groupNm:'📦 판지(Board)', groupKey:'BOARD', tabs:[
+        { key:'BOARD_CBM_WEIGHT', special:false },
+        { key:'BOARD_BULK_SPLIT', special:false },
+        { key:'BOARD_FLEX_SPLIT', special:false },
+        { key:'BOARD_3D_VERIFY',  special:false },
+    ]},
+    { groupNm:'🔀 혼합적재', groupKey:'MIX', tabs:[
+        { key:'MIX_Z_AXIS',     special:false },
+        { key:'MIX_Y_LIFO',     special:false },
+        { key:'MIX_DUAL_VERIFY',special:false },
+    ]},
   ];
 
-  /* 현재 세트에 포함된 CONST_TYPE 집합 */
-  const includedTypes = new Set(
-    (DCON._spRows||[]).filter(r => !r._deleted).map(r => r.CONST_TYPE)
+  /* ── 현재 _spRows에서 CONST_ID별 포함 여부 맵 ── */
+  const includedIds = new Set(
+    (DCON._spRows||[]).filter(r => !r._deleted).map(r => r.CONST_ID)
   );
-  /* BZPTN 탭은 별도 상태로 포함 여부 판단 */
-  if ((DCON._entryTonPartners||[]).length > 0) includedTypes.add('ENTRY_TON');
-  if ((DCON._forkliftPartners||[]).length > 0) includedTypes.add('FORKLIFT');
-  if ((DCON._dynamicPartners||[]).length > 0)  includedTypes.add('DYNAMIC');
-  if (DCON._regionData?.regions?.length > 0)   includedTypes.add('REGION');
-  /* VEHICLE은 _setFullRows에서 IN_SET 기준 */
-  const vehInSet = (DCON._setFullRows||[]).some(r => r.CONST_TYPE==='VEHICLE' && r.IN_SET);
-  if (vehInSet) includedTypes.add('VEHICLE');
-  /* CARTYPE은 _cartypeState 기준 */
-  const ctCnt = Object.keys(DCON._cartypeState||{}).length;
-  if (ctCnt > 0) includedTypes.add('CARTYPE');
 
-  /* 현재 _setFullRows에 아예 없는 탭(데이터 자체 없음) */
-  const existingTypes = new Set((DCON._setFullRows||[]).map(r => r.CONST_TYPE));
-  /* BZPTN 탭은 항상 존재로 간주 */
-  ['ENTRY_TON','FORKLIFT','DYNAMIC','REGION'].forEach(t => existingTypes.add(t));
-  /* VEHICLE도 항상 존재 */
-  existingTypes.add('VEHICLE');
-  existingTypes.add('CARTYPE');
+  /* ── _setFullRows를 CONST_TYPE → rows[] 맵으로 인덱싱 ── */
+  const fullByType = {};
+  (DCON._setFullRows||[]).forEach(r => {
+    if (!fullByType[r.CONST_TYPE]) fullByType[r.CONST_TYPE] = [];
+    fullByType[r.CONST_TYPE].push(r);
+  });
+
+  /* 특수 탭 포함 여부 */
+  const bzptnActive = {
+    ENTRY_TON: (DCON._entryTonPartners||[]).length > 0,
+    FORKLIFT:  (DCON._forkliftPartners||[]).length > 0,
+    DYNAMIC:   (DCON._dynamicPartners||[]).length > 0,
+    REGION:    (DCON._regionData?.regions?.length > 0),
+  };
 
   let html = '';
   tabGroups.forEach(grp => {
-    const rowsHtml = grp.tabs.map(tabKey => {
-      const gm = DCON_GRP_META[tabKey] || { icon:'⚙️', label:tabKey, desc:'' };
-      const inSet    = includedTypes.has(tabKey);
-      const hasData  = existingTypes.has(tabKey);
-      /* 이 탭의 현재 아이템 수 */
-      const cnt = (DCON._spRows||[]).filter(r=>r.CONST_TYPE===tabKey&&!r._deleted).length;
-      const isBzptn = ['ENTRY_TON','FORKLIFT','DYNAMIC','REGION'].includes(tabKey);
-      const isSpecial = ['VEHICLE','CARTYPE'].includes(tabKey);
+    let itemsHtml = '';
+    let grpTotal = 0, grpIncluded = 0;
 
-      return `<div class="dcon-tab-mgr-row${inSet?' included':''}" id="dcon-tmgr-row-${tabKey}"
-        onclick="_dconTabMgrToggle('${tabKey}',${!inSet})">
-        <input type="checkbox" class="dcon-tab-mgr-chk" id="dcon-tmgr-chk-${tabKey}"
-          ${inSet?'checked':''} ${(!hasData&&!isBzptn&&!isSpecial)?'disabled':''}
-          onclick="event.stopPropagation();_dconTabMgrToggle('${tabKey}',this.checked)"/>
-        <span class="dcon-tab-mgr-icon">${gm.icon}</span>
-        <span class="dcon-tab-mgr-info">
-          <span class="dcon-tab-mgr-nm">${gm.label}</span>
-          <span class="dcon-tab-mgr-desc">${gm.desc||tabKey}</span>
-        </span>
-        <span class="dcon-tab-mgr-cnt">${isBzptn||isSpecial ? '—' : cnt}</span>
+    grp.tabs.forEach(tabDef => {
+      const tabKey   = tabDef.key;
+      const gm       = DCON_GRP_META[tabKey] || { icon:'⚙️', label:tabKey, desc:'' };
+      const special  = tabDef.special;
+      const tabRows  = fullByType[tabKey] || [];
+
+      /* ── 탭 서브헤더 ── */
+      const tabHdrExtra = special === 'bzptn'
+        ? `<span class="sp-badge" style="margin-left:4px">납품처 자동</span>`
+        : special === 'vehicle' || special === 'cartype'
+          ? `<span class="sp-badge" style="margin-left:4px">차량 자동</span>`
+          : '';
+      itemsHtml += `<div class="dcon-tab-mgr-tab-hdr">
+        <span class="tmgr-tab-icon">${gm.icon}</span>
+        <span class="tmgr-tab-nm">${gm.label}</span>
+        ${tabHdrExtra}
       </div>`;
-    }).join('');
+
+      /* ── 특수 탭(bzptn/vehicle/cartype): 전체 행 하나로 표시, 체크 불가 ── */
+      if (special === 'bzptn') {
+        const active = bzptnActive[tabKey] || false;
+        itemsHtml += `<div class="dcon-tab-mgr-special">
+          <input type="checkbox" class="dcon-tab-mgr-chk" ${active?'checked':''} disabled title="납품처 마스터 데이터 기반 자동 표시"/>
+          <span style="font-size:10px;color:var(--text3);flex:1">${active ? '데이터 있음 — 자동 표시' : '데이터 없음 — 미표시'}</span>
+          <span class="sp-badge">${active ? '✅ 활성' : '⬜ 비활성'}</span>
+        </div>`;
+        grpTotal++;
+        if (active) grpIncluded++;
+        return;
+      }
+      if (special === 'vehicle') {
+        const vehCnt = (DCON._setFullRows||[]).filter(r=>r.CONST_TYPE==='VEHICLE'&&r.IN_SET).length;
+        itemsHtml += `<div class="dcon-tab-mgr-special">
+          <input type="checkbox" class="dcon-tab-mgr-chk" ${vehCnt>0?'checked':''} disabled title="차량 마스터 기반 자동 표시"/>
+          <span style="font-size:10px;color:var(--text3);flex:1">차종 ${vehCnt}개 포함 — 자동 표시</span>
+          <span class="sp-badge">${vehCnt>0 ? '✅ 활성' : '⬜ 비활성'}</span>
+        </div>`;
+        grpTotal++;
+        if (vehCnt > 0) grpIncluded++;
+        return;
+      }
+      if (special === 'cartype') {
+        const ctCnt = Object.keys(DCON._cartypeState||{}).length;
+        itemsHtml += `<div class="dcon-tab-mgr-special">
+          <input type="checkbox" class="dcon-tab-mgr-chk" ${ctCnt>0?'checked':''} disabled title="차량유형관리 기반 자동 표시"/>
+          <span style="font-size:10px;color:var(--text3);flex:1">차량유형 ${ctCnt}개 — 자동 표시</span>
+          <span class="sp-badge">${ctCnt>0 ? '✅ 활성' : '⬜ 비활성'}</span>
+        </div>`;
+        grpTotal++;
+        if (ctCnt > 0) grpIncluded++;
+        return;
+      }
+
+      /* ── 일반 탭: CONST_KEY 개별 항목마다 체크박스 ── */
+      if (tabRows.length === 0) {
+        itemsHtml += `<div class="dcon-tab-mgr-item" style="opacity:.5;cursor:default">
+          <input type="checkbox" class="dcon-tab-mgr-chk" disabled/>
+          <span class="dcon-tab-mgr-item-key" style="color:var(--text3)">데이터 없음</span>
+          <span class="dcon-tab-mgr-item-desc">마스터 DB에 항목 미등록</span>
+        </div>`;
+      } else {
+        tabRows.forEach(r => {
+          const isIn = includedIds.has(r.CONST_ID);
+          const pm = DCON_PARAM_META[r.CONST_KEY] || {};
+          const label = pm.label || r.CONST_KEY;
+          const unit  = pm.unit  ? `(${pm.unit})` : '';
+          const curVal = isIn
+            ? ((DCON._spRows||[]).find(sr=>sr.CONST_ID===r.CONST_ID&&!sr._deleted)?._pval ?? r.PARAM_VALUE ?? r.CONST_VALUE ?? '')
+            : (r.PARAM_VALUE ?? r.CONST_VALUE ?? '');
+          const valDisp = String(curVal).length > 8 ? String(curVal).slice(0,8)+'…' : String(curVal);
+          grpTotal++;
+          if (isIn) grpIncluded++;
+          itemsHtml += `<div class="dcon-tab-mgr-item${isIn?' included':''}" id="dcon-tmgr-item-${r.CONST_ID}"
+            onclick="_dconTabMgrToggleId(${r.CONST_ID},${!isIn},'${tabKey}')">
+            <input type="checkbox" class="dcon-tab-mgr-chk" id="dcon-tmgr-chk-${r.CONST_ID}"
+              ${isIn?'checked':''}
+              onclick="event.stopPropagation();_dconTabMgrToggleId(${r.CONST_ID},this.checked,'${tabKey}')"/>
+            <span class="dcon-tab-mgr-item-key" title="${r.CONST_KEY}">${r.CONST_KEY}</span>
+            <span class="dcon-tab-mgr-item-desc" title="${label} ${unit}">${label}${unit?'&nbsp;<small>'+unit+'</small>':''}</span>
+            <span class="dcon-tab-mgr-item-val">${isIn ? valDisp : ''}</span>
+          </div>`;
+        });
+      }
+    });
 
     html += `<div class="dcon-tab-mgr-group">
-      <div class="dcon-tab-mgr-group-nm">${grp.groupNm}</div>
-      ${rowsHtml}
+      <div class="dcon-tab-mgr-group-hdr">
+        <span class="tmgr-grp-icon">⊞</span>
+        <span class="tmgr-grp-label">${grp.groupNm}</span>
+        <span class="tmgr-grp-cnt">${grpIncluded}/${grpTotal}</span>
+      </div>
+      ${itemsHtml}
     </div>`;
   });
 
   body.innerHTML = html;
 }
 
-function _dconTabMgrToggle(tabKey, include) {
-  /* 체크박스/행 클릭 → 로컬 상태만 업데이트, 실제 저장은 "적용 및 저장"에서 */
-  const chk = document.getElementById(`dcon-tmgr-chk-${tabKey}`);
-  const row = document.getElementById(`dcon-tmgr-row-${tabKey}`);
-  if (chk) chk.checked = include;
-  if (row) row.classList.toggle('included', include);
+/* 개별 CONST_ID 단위 토글 (버그1+2 핵심 수정) */
+function _dconTabMgrToggleId(constId, include, tabKey) {
+  const chk  = document.getElementById(`dcon-tmgr-chk-${constId}`);
+  const item = document.getElementById(`dcon-tmgr-item-${constId}`);
+  if (chk)  chk.checked = include;
+  if (item) item.classList.toggle('included', include);
 
-  /* BZPTN/SPECIAL 탭은 드로어 내 표시만 갱신 (실제 데이터 변경 없음) */
-  const isBzptn = ['ENTRY_TON','FORKLIFT','DYNAMIC','REGION'].includes(tabKey);
-  const isSpecial = ['VEHICLE','CARTYPE'].includes(tabKey);
-  if (isBzptn || isSpecial) {
-    showToast(`"${DCON_GRP_META[tabKey]?.label||tabKey}" 탭은 납품처/차량 데이터 기반으로 자동 표시됩니다`, 'info');
-    if (chk) chk.checked = true; /* 항상 체크로 복원 */
-    if (row) row.classList.add('included');
-    return;
-  }
+  DCON._spRows = DCON._spRows || [];
 
-  /* 일반 탭: _spRows 업데이트 */
-  const allOfType = (DCON._setFullRows||[]).filter(r => r.CONST_TYPE === tabKey);
   if (include) {
-    allOfType.forEach(r => {
-      const exists = (DCON._spRows||[]).find(sr => sr.CONST_ID === r.CONST_ID);
-      if (!exists) {
-        DCON._spRows.push({
-          ...r,
-          _pval: r.PARAM_VALUE != null ? String(r.PARAM_VALUE) : String(r.CONST_VALUE ?? ''),
-          _isNew: false, _deleted: false,
-        });
-      } else {
-        exists._deleted = false;
-      }
-    });
+    /* _setFullRows에서 해당 CONST_ID 찾기 */
+    const fullRow = (DCON._setFullRows||[]).find(r => r.CONST_ID === constId);
+    if (!fullRow) {
+      showToast('해당 항목을 마스터 DB에서 찾을 수 없습니다', 'warn');
+      if (chk) chk.checked = false;
+      if (item) item.classList.remove('included');
+      return;
+    }
+    /* 이미 _spRows에 있으면 _deleted 해제, 없으면 push */
+    const existIdx = DCON._spRows.findIndex(sr => sr.CONST_ID === constId);
+    if (existIdx >= 0) {
+      DCON._spRows[existIdx]._deleted = false;
+    } else {
+      DCON._spRows.push({
+        ...fullRow,
+        _pval: fullRow.PARAM_VALUE != null ? String(fullRow.PARAM_VALUE) : String(fullRow.CONST_VALUE ?? ''),
+        _isNew: false, _deleted: false,
+      });
+    }
   } else {
-    (DCON._spRows||[]).forEach(r => {
-      if (r.CONST_TYPE === tabKey) r._deleted = true;
-    });
+    /* _spRows에서 해당 CONST_ID를 _deleted=true로 마킹 */
+    const existIdx = DCON._spRows.findIndex(sr => sr.CONST_ID === constId);
+    if (existIdx >= 0) {
+      DCON._spRows[existIdx]._deleted = true;
+    }
   }
+  /* 그룹 카운터 갱신 */
+  _dconTabMgrUpdateGroupCnt();
   _dconSpDirty();
 }
 
+/* 그룹 헤더 카운터만 빠르게 갱신 */
+function _dconTabMgrUpdateGroupCnt() {
+  const includedIds = new Set(
+    (DCON._spRows||[]).filter(r=>!r._deleted).map(r=>r.CONST_ID)
+  );
+  /* 그룹 카운터: data-가 없으므로 DOM 전체를 재계산보단 단순히 체크박스 수로 계산 */
+  document.querySelectorAll('.dcon-tab-mgr-group').forEach(grpEl => {
+    const cntEl = grpEl.querySelector('.tmgr-grp-cnt');
+    if (!cntEl) return;
+    const chks = grpEl.querySelectorAll('.dcon-tab-mgr-chk:not([disabled])');
+    let total = 0, incl = 0;
+    chks.forEach(c => { total++; if (c.checked) incl++; });
+    cntEl.textContent = `${incl}/${total}`;
+  });
+}
+
+/* 기존 탭 단위 toggle (하위호환 — VEHICLE 탭 헤더 등에서 사용) */
+function _dconTabMgrToggle(tabKey, include) {
+  const isBzptn  = ['ENTRY_TON','FORKLIFT','DYNAMIC','REGION'].includes(tabKey);
+  const isSpecial = ['VEHICLE','CARTYPE'].includes(tabKey);
+  if (isBzptn || isSpecial) {
+    showToast(`"${DCON_GRP_META[tabKey]?.label||tabKey}" 탭은 납품처/차량 데이터 기반으로 자동 표시됩니다`, 'info');
+    return;
+  }
+  /* 탭 전체 항목을 개별 토글 */
+  const tabRows = (DCON._setFullRows||[]).filter(r => r.CONST_TYPE === tabKey);
+  tabRows.forEach(r => _dconTabMgrToggleId(r.CONST_ID, include, tabKey));
+}
+
 async function dconTabMgrApply() {
-  /* 드로어에서 변경된 내용을 반영한 뒤 저장 */
+  if (!DCON.selSetId) { showToast('세트를 선택하세요', 'warn'); return; }
   dconCloseTabMgr();
+  /* 탭/렌더 갱신 후 저장 — _dconSpSave 내부에서 toast/세트갱신까지 처리 */
   _dconSpRenderTabs();
   _dconSpRender();
-  /* 자동 저장 */
   await _dconSpSave();
-  /* 저장 후 세트 새로고침 */
-  await dconSelectSet(DCON.selSetId);
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -21281,7 +21412,7 @@ async function _dconSpSave() {
   const tab = DCON._spActiveTab;
   const isBzptnTab = (tab === 'ENTRY_TON' || tab === 'FORKLIFT' || tab === 'DYNAMIC' || tab === 'DYNAMIC_ZONE' || tab === 'REGION');
   /* 세트 미선택 상태: BZPTN 탭(납품처 마스터)은 세트 없이 저장 가능, 나머지는 경고 */
-  if (!DCON.selSetId && !isBzptnTab) return showToast('세트를 선택하세요', 'warn');
+  if (!DCON.selSetId && !isBzptnTab) { showToast('세트를 선택하세요', 'warn'); return false; }
 
   /* 기존 rows 수집 (VEHICLE/GLOBAL/CARGO/PARTNER/COST — CARTYPE 제외) */
   const existing = (DCON._spRows||[]).filter(r=>!r._deleted).map(r => {
@@ -21489,7 +21620,8 @@ async function _dconSpSave() {
     if (savedTab && savedTab !== DCON._spActiveTab) {
       _dconSpSwitchTab(savedTab);
     }
-  } catch(e) { showToast(`❌ 저장 실패: ${e.message}`, 'error'); }
+    return true;
+  } catch(e) { showToast(`❌ 저장 실패: ${e.message}`, 'error'); return false; }
 }
 
 /* ── HTML 이스케이프 ── */
