@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
  *
  * ■ DataSource 라우팅
  *   - em     (wmsPU, Oracle KNRAWMS): SHPDI, SHPDH, BZPTN, CMCDV, SKUMA, RECDI
- *   - tmsEm  (tmsPU, MariaDB TMS):   PS_DISPATCH_H, PS_DISPATCH_D, ds_vehicle
+ *   - tmsEm  (tmsPU, Oracle KNRAWMS): PS_DISPATCH_H, PS_DISPATCH_D, DS_VEHICLE
  */
 @Service
 @RequiredArgsConstructor
@@ -37,7 +37,7 @@ public class PsDispatchService {
     @PersistenceContext(unitName = "wmsPU")
     private EntityManager em;
 
-    /** MariaDB TMS — PS_DISPATCH_H / PS_DISPATCH_D / ds_vehicle */
+    /** Oracle KNRAWMS TMS — PS_DISPATCH_H / PS_DISPATCH_D / DS_VEHICLE */
     @PersistenceContext(unitName = "tmsPU")
     private EntityManager tmsEm;
 
@@ -315,7 +315,7 @@ public class PsDispatchService {
 
             // PS_DISPATCH_H INSERT → MariaDB tmsEm
             tmsEm.createNativeQuery("""
-                INSERT INTO PS_DISPATCH_H
+                INSERT INTO KNRAWMS.PS_DISPATCH_H
                   (DISPATCH_NO, DISPATCH_DT, RQSHPD, DPTNKY, DPTNM,
                    CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR)
                 VALUES (?,?,?,?,?,?,'DRAFT',?,?,?,?)
@@ -341,7 +341,7 @@ public class PsDispatchService {
                 for (PsDispatchSaveRequest.ItemBlock it : items) {
                     // PS_DISPATCH_D INSERT → MariaDB tmsEm
                     tmsEm.createNativeQuery("""
-                        INSERT INTO PS_DISPATCH_D
+                        INSERT INTO KNRAWMS.PS_DISPATCH_D
                           (DISPATCH_NO,SEQ,SHPOKY,SHPOIT,SKUKEY,DESC01,
                            QTSHPO,UOMKEY,DPTNKY,DPTNM,IS_SPLIT,ORG_SHPOKY,ORG_SHPOIT,
                            GRSWGT,KG_WEIGHT)
@@ -423,8 +423,8 @@ public class PsDispatchService {
                    h.DPTNKY, h.DPTNM, h.CARTYPE, h.STATUS,
                    h.TOTAL_KG, h.TOTAL_CNT, h.NOTE, h.CREDAT,
                    COALESCE(v.LOAD_TON, 0) AS LOAD_TON
-            FROM PS_DISPATCH_H h
-            LEFT JOIN ds_vehicle v ON v.CARTYPE = h.CARTYPE
+            FROM KNRAWMS.PS_DISPATCH_H h
+            LEFT JOIN KNRAWMS.DS_VEHICLE v ON v.CARTYPE = h.CARTYPE
             WHERE 1=1
             """);
         List<Object> params = new ArrayList<>();
@@ -459,7 +459,7 @@ public class PsDispatchService {
                        d.QTSHPO, d.UOMKEY, d.DPTNKY, d.DPTNM,
                        d.IS_SPLIT, d.ORG_SHPOKY, d.ORG_SHPOIT,
                        COALESCE(d.GRSWGT,0), COALESCE(d.KG_WEIGHT,0)
-                FROM PS_DISPATCH_D d
+                FROM KNRAWMS.PS_DISPATCH_D d
                 WHERE d.DISPATCH_NO = ?
                 ORDER BY d.SEQ
                 """)
@@ -557,7 +557,7 @@ public class PsDispatchService {
         List<String> nos = req.getDispatchNos();
         String ph = nos.stream().map(x -> "?").collect(Collectors.joining(","));
         var q = tmsEm.createNativeQuery(
-            "UPDATE PS_DISPATCH_H SET STATUS='CONFIRMED' WHERE DISPATCH_NO IN (" + ph + ")"
+            "UPDATE KNRAWMS.PS_DISPATCH_H SET STATUS='CONFIRMED' WHERE DISPATCH_NO IN (" + ph + ")"
         );
         for (int i = 0; i < nos.size(); i++) q.setParameter(i + 1, nos.get(i));
         return q.executeUpdate();

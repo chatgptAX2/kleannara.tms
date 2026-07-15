@@ -60,7 +60,7 @@ public class ConvertQtyUtil {
         List<Map<String, Object>> rows;
         try {
             rows = jdbc.queryForList(
-                "SELECT UOMKEY, QTPUOM, QTAUOM, INDDFU FROM MEASI WHERE WAREKY=? AND MEASKY=?",
+                "SELECT UOMKEY, QTPUOM, QTAUOM, INDDFU FROM KNRAWMS.MEASI WHERE WAREKY=? AND MEASKY=?",
                 wareky, measky
             );
         } catch (Exception e) {

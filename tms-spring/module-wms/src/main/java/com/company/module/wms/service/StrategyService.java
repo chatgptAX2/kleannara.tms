@@ -202,8 +202,8 @@ public class StrategyService {
                 "       COALESCE(i12.MAX_COUNT, 0) AS MAX_ROLLS_12, " +
                 "       COALESCE(i3.MAX_COUNT, 0)  AS MAX_ROLLS_3 " +
                 "FROM KNRAWMS.DS_VEHICLE v " +
-                "LEFT JOIN DS_INCH12 i12 ON i12.CARTYPE=v.CARTYPE AND i12.GRM_COND=60 " +
-                "LEFT JOIN DS_INCH3  i3  ON i3.CARTYPE=v.CARTYPE  AND i3.GRM_COND=60 " +
+                "LEFT JOIN KNRAWMS.DS_INCH12 i12 ON i12.CARTYPE=v.CARTYPE AND i12.GRM_COND=60 " +
+                "LEFT JOIN KNRAWMS.DS_INCH3  i3  ON i3.CARTYPE=v.CARTYPE  AND i3.GRM_COND=60 " +
                 "ORDER BY v.SORT_SEQ"
             );
             return Map.of("ok", true, "vehicles", vehicles, "skukey", skukey != null ? skukey : "");
