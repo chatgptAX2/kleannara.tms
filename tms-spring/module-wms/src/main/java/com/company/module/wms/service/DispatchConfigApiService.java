@@ -14,10 +14,15 @@ import java.util.*;
  * 배차설정 API Service
  *
  * ■ DataSource 라우팅
- *   - wmsJdbc (Oracle KNRAWMS): CMCDV, BZPTN, BZPTN_DETAIL, SHPDH
+ *   - wmsJdbc (Oracle KNRAWMS): CMCDV, BZPTN, SHPDH
  *   - tmsJdbc (Oracle KNRAWMS): DS_VEHICLE, DS_DISPATCH_PROFILE, DS_DISPATCH_CONST,
  *                               DS_DISPATCH_CONST_SET, DS_DISPATCH_CONST_SET_ITEM,
- *                               DS_DISPATCH_CONSTRAINT, ROUTE_COST
+ *                               DS_DISPATCH_CONSTRAINT, ROUTE_COST, BZPTN_DETAIL
+ *
+ * ■ BZPTN_DETAIL 위치 주의
+ *   BZPTN_DETAIL 은 TMS Oracle KNRAWMS (tmsJdbc) 소속.
+ *   WMS Oracle KNRAWMS (wmsJdbc)의 BZPTN 과 Cross-DB 조인 불가.
+ *   → 2-step: wmsJdbc로 BZPTN 조회 후, tmsJdbc로 BZPTN_DETAIL 조회 및 머지
  */
 @Slf4j
 @Service
@@ -355,7 +360,7 @@ public class DispatchConfigApiService {
         } catch (Exception e) { return errMap(e); }
     }
 
-    @Transactional(transactionManager = "wmsTransactionManager")
+    @Transactional(transactionManager = "tmsTransactionManager")
     public Map<String, Object> setRegionSave(Map<String, Object> body) {
         // REGION_YN 컬럼이 Oracle KNRAWMS.BZPTN_DETAIL에 미존재 — 저장 비지원
         // (조회는 '' 리터럴로 정상 응답, 저장은 DB DDL 컬럼 추가 후 활성화 예정)
@@ -364,17 +369,33 @@ public class DispatchConfigApiService {
 
     public Map<String, Object> setEntryTonList() {
         try {
-            // BZPTN (NAME01) LEFT JOIN BZPTN_DETAIL (MAX_TON, AUTO_ALLOC_YN): Oracle KNRAWMS → wmsJdbc
-            // NAME01은 BZPTN 테이블에만 존재 → BZPTN을 드라이빙으로 LEFT JOIN
-            List<Map<String, Object>> partners = wmsJdbc.queryForList(
-                "SELECT b.PTNRKY, 'CT' AS PTNRTY, COALESCE(d.OWNRKY,'KN') AS OWNRKY, " +
-                "COALESCE(d.WAREKY,'W001') AS WAREKY, COALESCE(b.NAME01,b.PTNRKY) AS NAME01, " +
-                "d.AREA_CD, d.MAX_TON, d.AUTO_ALLOC_YN " +
-                "FROM KNRAWMS.BZPTN b " +
-                "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=b.PTNRKY AND d.PTNRTY=b.PTNRTY AND d.OWNRKY=b.OWNRKY " +
-                "WHERE b.PTNRTY='CT' " +
-                "ORDER BY d.AREA_CD, b.PTNRKY"
+            // Step 1: wmsJdbc — BZPTN (NAME01) 조회
+            List<Map<String, Object>> bzptnRows = wmsJdbc.queryForList(
+                "SELECT PTNRKY, NAME01 FROM KNRAWMS.BZPTN WHERE PTNRTY='CT' ORDER BY PTNRKY"
             );
+            // Step 2: tmsJdbc — BZPTN_DETAIL (MAX_TON, AREA_CD, WAREKY, OWNRKY, AUTO_ALLOC_YN)
+            List<Map<String, Object>> detailRows = tmsJdbc.queryForList(
+                "SELECT PTNRKY, OWNRKY, WAREKY, AREA_CD, MAX_TON, AUTO_ALLOC_YN " +
+                "FROM KNRAWMS.BZPTN_DETAIL WHERE PTNRTY='CT'"
+            );
+            // 2-step 머지: PTNRKY 기준으로 결합
+            Map<String, Map<String, Object>> detailMap = new LinkedHashMap<>();
+            for (Map<String, Object> d : detailRows) detailMap.put(str(d.get("PTNRKY")), d);
+            List<Map<String, Object>> partners = new ArrayList<>();
+            for (Map<String, Object> b : bzptnRows) {
+                String ptnrky = str(b.get("PTNRKY"));
+                Map<String, Object> d = detailMap.getOrDefault(ptnrky, Collections.emptyMap());
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("PTNRKY",       ptnrky);
+                row.put("PTNRTY",       "CT");
+                row.put("OWNRKY",       d.getOrDefault("OWNRKY",       "KN"));
+                row.put("WAREKY",       d.getOrDefault("WAREKY",       "W001"));
+                row.put("NAME01",       b.getOrDefault("NAME01",       ptnrky));
+                row.put("AREA_CD",      d.get("AREA_CD"));
+                row.put("MAX_TON",      d.get("MAX_TON"));
+                row.put("AUTO_ALLOC_YN",d.get("AUTO_ALLOC_YN"));
+                partners.add(row);
+            }
             List<Map<String, Object>> carclasses = wmsJdbc.queryForList(
                 "SELECT CMCDVL AS value, CDESC1 AS label FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10' ORDER BY CMCDVL"
             );
@@ -382,49 +403,81 @@ public class DispatchConfigApiService {
         } catch (Exception e) { return errMap(e); }
     }
 
-    @Transactional(transactionManager = "wmsTransactionManager")
+    @Transactional(transactionManager = "tmsTransactionManager")
     public Map<String, Object> setEntryTonSave(Map<String, Object> body) {
         return bzptnDetailBatchSave(body, "MAX_TON");
     }
 
     public Map<String, Object> setForkliftList() {
         try {
-            // BZPTN (NAME01) LEFT JOIN BZPTN_DETAIL (FORKLIFT_YN, AUTO_ALLOC_YN): Oracle KNRAWMS → wmsJdbc
-            List<Map<String, Object>> rows = wmsJdbc.queryForList(
-                "SELECT b.PTNRKY, 'CT' AS PTNRTY, COALESCE(d.OWNRKY,'KN') AS OWNRKY, " +
-                "COALESCE(d.WAREKY,'W001') AS WAREKY, COALESCE(b.NAME01,b.PTNRKY) AS NAME01, " +
-                "d.AREA_CD, d.FORKLIFT_YN, d.AUTO_ALLOC_YN " +
-                "FROM KNRAWMS.BZPTN b " +
-                "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=b.PTNRKY AND d.PTNRTY=b.PTNRTY AND d.OWNRKY=b.OWNRKY " +
-                "WHERE b.PTNRTY='CT' " +
-                "ORDER BY d.AREA_CD, b.PTNRKY"
+            // Step 1: wmsJdbc — BZPTN 조회
+            List<Map<String, Object>> bzptnRows = wmsJdbc.queryForList(
+                "SELECT PTNRKY, NAME01 FROM KNRAWMS.BZPTN WHERE PTNRTY='CT' ORDER BY PTNRKY"
             );
+            // Step 2: tmsJdbc — BZPTN_DETAIL (FORKLIFT_YN, AREA_CD, AUTO_ALLOC_YN)
+            List<Map<String, Object>> detailRows = tmsJdbc.queryForList(
+                "SELECT PTNRKY, OWNRKY, WAREKY, AREA_CD, FORKLIFT_YN, AUTO_ALLOC_YN " +
+                "FROM KNRAWMS.BZPTN_DETAIL WHERE PTNRTY='CT'"
+            );
+            Map<String, Map<String, Object>> detailMap = new LinkedHashMap<>();
+            for (Map<String, Object> d : detailRows) detailMap.put(str(d.get("PTNRKY")), d);
+            List<Map<String, Object>> rows = new ArrayList<>();
+            for (Map<String, Object> b : bzptnRows) {
+                String ptnrky = str(b.get("PTNRKY"));
+                Map<String, Object> d = detailMap.getOrDefault(ptnrky, Collections.emptyMap());
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("PTNRKY",        ptnrky);
+                row.put("PTNRTY",        "CT");
+                row.put("OWNRKY",        d.getOrDefault("OWNRKY",  "KN"));
+                row.put("WAREKY",        d.getOrDefault("WAREKY",  "W001"));
+                row.put("NAME01",        b.getOrDefault("NAME01",  ptnrky));
+                row.put("AREA_CD",       d.get("AREA_CD"));
+                row.put("FORKLIFT_YN",   d.get("FORKLIFT_YN"));
+                row.put("AUTO_ALLOC_YN", d.get("AUTO_ALLOC_YN"));
+                rows.add(row);
+            }
             return Map.of("ok", true, "partners", rows);
         } catch (Exception e) { return errMap(e); }
     }
 
-    @Transactional(transactionManager = "wmsTransactionManager")
+    @Transactional(transactionManager = "tmsTransactionManager")
     public Map<String, Object> setForkliftSave(Map<String, Object> body) {
         return bzptnDetailBatchSave(body, "FORKLIFT_YN");
     }
 
     public Map<String, Object> setDynamicList() {
         try {
-            // BZPTN (NAME01) LEFT JOIN BZPTN_DETAIL (DYNAMIC_YN, AUTO_ALLOC_YN): Oracle KNRAWMS → wmsJdbc
-            List<Map<String, Object>> rows = wmsJdbc.queryForList(
-                "SELECT b.PTNRKY, 'CT' AS PTNRTY, COALESCE(d.OWNRKY,'KN') AS OWNRKY, " +
-                "COALESCE(d.WAREKY,'W001') AS WAREKY, COALESCE(b.NAME01,b.PTNRKY) AS NAME01, " +
-                "d.AREA_CD, d.DYNAMIC_YN, d.AUTO_ALLOC_YN " +
-                "FROM KNRAWMS.BZPTN b " +
-                "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=b.PTNRKY AND d.PTNRTY=b.PTNRTY AND d.OWNRKY=b.OWNRKY " +
-                "WHERE b.PTNRTY='CT' " +
-                "ORDER BY d.AREA_CD, b.PTNRKY"
+            // Step 1: wmsJdbc — BZPTN 조회
+            List<Map<String, Object>> bzptnRows = wmsJdbc.queryForList(
+                "SELECT PTNRKY, NAME01 FROM KNRAWMS.BZPTN WHERE PTNRTY='CT' ORDER BY PTNRKY"
             );
+            // Step 2: tmsJdbc — BZPTN_DETAIL (DYNAMIC_YN, AREA_CD, AUTO_ALLOC_YN)
+            List<Map<String, Object>> detailRows = tmsJdbc.queryForList(
+                "SELECT PTNRKY, OWNRKY, WAREKY, AREA_CD, DYNAMIC_YN, AUTO_ALLOC_YN " +
+                "FROM KNRAWMS.BZPTN_DETAIL WHERE PTNRTY='CT'"
+            );
+            Map<String, Map<String, Object>> detailMap = new LinkedHashMap<>();
+            for (Map<String, Object> d : detailRows) detailMap.put(str(d.get("PTNRKY")), d);
+            List<Map<String, Object>> rows = new ArrayList<>();
+            for (Map<String, Object> b : bzptnRows) {
+                String ptnrky = str(b.get("PTNRKY"));
+                Map<String, Object> d = detailMap.getOrDefault(ptnrky, Collections.emptyMap());
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("PTNRKY",        ptnrky);
+                row.put("PTNRTY",        "CT");
+                row.put("OWNRKY",        d.getOrDefault("OWNRKY",  "KN"));
+                row.put("WAREKY",        d.getOrDefault("WAREKY",  "W001"));
+                row.put("NAME01",        b.getOrDefault("NAME01",  ptnrky));
+                row.put("AREA_CD",       d.get("AREA_CD"));
+                row.put("DYNAMIC_YN",    d.get("DYNAMIC_YN"));
+                row.put("AUTO_ALLOC_YN", d.get("AUTO_ALLOC_YN"));
+                rows.add(row);
+            }
             return Map.of("ok", true, "partners", rows);
         } catch (Exception e) { return errMap(e); }
     }
 
-    @Transactional(transactionManager = "wmsTransactionManager")
+    @Transactional(transactionManager = "tmsTransactionManager")
     public Map<String, Object> setDynamicSave(Map<String, Object> body) {
         return bzptnDetailBatchSave(body, "DYNAMIC_YN");
     }
@@ -659,10 +712,11 @@ public class DispatchConfigApiService {
     // ── 헬퍼 ──────────────────────────────────────────────────────
 
     /**
-     * BZPTN_DETAIL 배치 저장 — Oracle KNRAWMS → wmsJdbc
+     * BZPTN_DETAIL 배치 저장 — TMS Oracle KNRAWMS → tmsJdbc
+     * BZPTN_DETAIL 은 WMS Oracle(wmsJdbc) 소속이 아닌 TMS Oracle(tmsJdbc) 소속.
      * Oracle에서는 ON DUPLICATE KEY UPDATE 미지원 → MERGE INTO 사용
      */
-    @Transactional(transactionManager = "wmsTransactionManager")
+    @Transactional(transactionManager = "tmsTransactionManager")
     private Map<String, Object> bzptnDetailBatchSave(Map<String, Object> body, String columnName) {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> items = (List<Map<String, Object>>) body.get("items");
@@ -679,8 +733,8 @@ public class DispatchConfigApiService {
                 Object colVal = it.get(columnName.toLowerCase());
                 if (colVal == null) colVal = it.get(columnName);
                 if (ptnrky.isBlank()) continue;
-                // Oracle MERGE INTO (ON DUPLICATE KEY UPDATE 대체)
-                wmsJdbc.update(
+                // Oracle MERGE INTO (ON DUPLICATE KEY UPDATE 대체) — tmsJdbc (TMS DB)
+                tmsJdbc.update(
                     "MERGE INTO KNRAWMS.BZPTN_DETAIL t " +
                     "USING (SELECT ? AS PTNRKY, ? AS PTNRTY, ? AS OWNRKY, ? AS WAREKY FROM DUAL) s " +
                     "ON (t.PTNRKY=s.PTNRKY AND t.PTNRTY=s.PTNRTY AND t.OWNRKY=s.OWNRKY AND t.WAREKY=s.WAREKY) " +
