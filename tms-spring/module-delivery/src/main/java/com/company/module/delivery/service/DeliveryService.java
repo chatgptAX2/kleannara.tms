@@ -21,16 +21,8 @@ import java.util.*;
  *        api_route_cost_search / api_route_cost_pivot 대응
  *
  * ─ DB 라우팅 ───────────────────────────────────────────────────
- *   tmsEm  (tmsPU / Oracle TMS) :
- *     - BzptnDetailRepository (KNRAWMS.BZPTN_DETAIL)  -- TMS Oracle 테이블
- *     - em.createNativeQuery  KNRAWMS.BZPTN_DETAIL UPDATE/INSERT
- *   wmsEm  (wmsPU / Oracle WMS) :
- *     - KNRAWMS.BZPTN 원장 조회 (NAME01, ADDR01, REGN01, TELN01 등)
- *
- * ■ 2-step 패턴 (Cross-DB JOIN 불가)
- *   Step 1: wmsEm  → KNRAWMS.BZPTN  (WMS DB) 조회
- *   Step 2: tmsEm  → KNRAWMS.BZPTN_DETAIL (TMS DB) 조회
- *   Java에서 PTNRKY 기준으로 merge
+ *   TMS/WMS DataSource 는 동일 Oracle DB (KNMESWMS) / 동일 계정 (KNRATMS).
+ *   tmsEm (tmsPU) 단독으로 BZPTN JOIN BZPTN_DETAIL 직접 수행 가능.
  * ───────────────────────────────────────────────────────────────
  */
 @Service
@@ -40,13 +32,9 @@ public class DeliveryService {
     private final BzptnDetailRepository bzptnDetailRepo;
     private final RouteCostRepository   routeCostRepo;
 
-    /** TMS DB (Oracle) — KNRAWMS.BZPTN_DETAIL 읽기/쓰기용 */
+    /** TMS DB (Oracle KNRATMS) — BZPTN / BZPTN_DETAIL 읽기·쓰기용 */
     @PersistenceContext(unitName = "tmsPU")
     private EntityManager tmsEm;
-
-    /** WMS DB (Oracle) — KNRAWMS.BZPTN 원장 읽기용 */
-    @PersistenceContext(unitName = "wmsPU")
-    private EntityManager wmsEm;
 
     public DeliveryService(
             BzptnDetailRepository bzptnDetailRepo,
@@ -57,7 +45,7 @@ public class DeliveryService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 납품처 목록 (Flask api_delivery_list)
-    // 2-step: tmsEm(BZPTN_DETAIL) + wmsEm(BZPTN) → Java merge
+    // BZPTN JOIN BZPTN_DETAIL — 동일 DB이므로 단일 쿼리로 처리
     // ──────────────────────────────────────────────────────────────────────────
     public Map<String, Object> getList(DeliverySearchRequest req) {
         int page   = req.getPage() == null ? 1 : req.getPage();
@@ -69,80 +57,41 @@ public class DeliveryService {
         String ptnrky    = nullIfBlank(req.getPtnrky());
         String q         = nullIfBlank(req.getQ());
 
-        // Step 1: tmsEm — BZPTN_DETAIL 조회 (wareky, itemGroup 필터)
-        long total = bzptnDetailRepo.searchCount(wareky, itemGroup);
-        List<Object[]> detailRows = bzptnDetailRepo.searchList(wareky, itemGroup, size, offset);
+        // JOIN 쿼리 단일 호출 (BZPTN + BZPTN_DETAIL)
+        long total = bzptnDetailRepo.searchCount(wareky, itemGroup, ptnrky, q);
+        List<Object[]> rows = bzptnDetailRepo.searchList(wareky, itemGroup, ptnrky, q, size, offset);
 
-        // Step 2: wmsEm — BZPTN 일괄 조회 (NAME01, ADDR01, REGN01, TELN01)
-        List<String> ptnrkyList = new ArrayList<>();
-        for (Object[] r : detailRows) ptnrkyList.add(str(r[0]));
-
-        Map<String, Object[]> bzptnMap = new LinkedHashMap<>();
-        if (!ptnrkyList.isEmpty()) {
-            String inClause = String.join(",", Collections.nCopies(ptnrkyList.size(), "?"));
-            @SuppressWarnings("unchecked")
-            List<Object[]> bzptnRows = wmsEm.createNativeQuery(
-                "SELECT PTNRKY, NAME01, PTNRTY, OWNRKY, ADDR01, ADDR02, REGN01, TELN01 " +
-                "FROM KNRAWMS.BZPTN WHERE PTNRKY IN (" + inClause + ") AND PTNRTY='CT'")
-                .getResultList();
-            // positional parameter 방식으로 설정
-            // ※ JPA nativeQuery에서 IN절 바인딩은 직접 처리
-            bzptnRows = new ArrayList<>();
-            for (int i = 0; i < ptnrkyList.size(); i++) {
-                String pk = ptnrkyList.get(i);
-                @SuppressWarnings("unchecked")
-                List<Object[]> single = wmsEm.createNativeQuery(
-                    "SELECT PTNRKY, NAME01, PTNRTY, OWNRKY, ADDR01, ADDR02, REGN01, TELN01 " +
-                    "FROM KNRAWMS.BZPTN WHERE PTNRKY=? AND PTNRTY='CT'")
-                    .setParameter(1, pk)
-                    .getResultList();
-                bzptnRows.addAll(single);
-            }
-            for (Object[] b : bzptnRows) bzptnMap.put(str(b[0]), b);
-        }
-
-        // ptnrky/q 검색 필터 (Java 레벨)
+        // row → Map 변환
+        // index: 0=PTNRKY, 1=NAME01, 2=PTNRTY, 3=OWNRKY, 4=ADDR01, 5=ADDR02,
+        //        6=REGN01, 7=TELN01, 8=WAREKY, 9=ROUTE_CD, 10=ITEM_GROUP, 11=AREA_CD,
+        //        12=UNLOAD_TIME, 13=MAX_HEIGHT, 14=AUTO_ALLOC_YN, 15=FORKLIFT_YN,
+        //        16=INB_TIME_FROM1, 17=INB_TIME_TO1, 18=MAX_BOX_QTY, 19=DEADLINE_TIME,
+        //        20=MAX_TON, 21=HAS_DETAIL
         List<Map<String, Object>> result = new ArrayList<>();
-        for (Object[] r : detailRows) {
-            String pk    = str(r[0]);
-            Object[] bz  = bzptnMap.get(pk);
-            String name01 = bz != null ? str(bz[1]) : "";
-            String addr01 = bz != null ? str(bz[4]) : "";
-            String regn01 = bz != null ? str(bz[6]) : "";
-
-            // ptnrky / q 검색 필터 (BZPTN 컬럼 대상)
-            if (ptnrky != null && !pk.contains(ptnrky) && !name01.contains(ptnrky)) continue;
-            if (q != null && !pk.contains(q) && !name01.contains(q)
-                          && !addr01.contains(q) && !regn01.contains(q)) continue;
-
+        for (Object[] r : rows) {
             Map<String, Object> m = new LinkedHashMap<>();
-            // BZPTN 원장 컬럼
-            m.put("PTNRKY",   pk);
-            m.put("NAME01",   name01);
-            m.put("PTNRTY",   bz != null ? str(bz[2]) : "CT");
-            m.put("OWNRKY",   bz != null ? str(bz[3]) : "");
-            m.put("ADDR01",   addr01);
-            m.put("ADDR02",   bz != null ? str(bz[5]) : "");
-            m.put("REGN01",   regn01);
-            m.put("TELN01",   bz != null ? str(bz[7]) : "");
-            // BZPTN_DETAIL 컬럼 (index: 0=PTNRKY,1=PTNRTY,2=OWNRKY,3=WAREKY,4=ROUTE_CD,
-            //                           5=ITEM_GROUP,6=AREA_CD,7=UNLOAD_TIME,8=MAX_HEIGHT,
-            //                           9=AUTO_ALLOC_YN,10=FORKLIFT_YN,11=INB_TIME_FROM1,
-            //                           12=INB_TIME_TO1,13=MAX_BOX_QTY,14=DEADLINE_TIME,15=MAX_TON)
-            m.put("WAREKY",         str(r[3]));
-            m.put("ROUTE_CD",       str(r[4]));
-            m.put("ITEM_GROUP",     str(r[5]));
-            m.put("AREA_CD",        str(r[6]));
-            m.put("UNLOAD_TIME",    r[7]);
-            m.put("MAX_HEIGHT",     r[8]);
-            m.put("AUTO_ALLOC_YN",  str(r[9]));
-            m.put("FORKLIFT_YN",    str(r[10]));
-            m.put("INB_TIME_FROM1", str(r[11]));
-            m.put("INB_TIME_TO1",   str(r[12]));
-            m.put("MAX_BOX_QTY",    r[13]);
-            m.put("DEADLINE_TIME",  str(r[14]));
-            m.put("MAX_TON",        r[15]);
-            m.put("HAS_DETAIL",     "Y");
+            m.put("PTNRKY",         str(r[0]));
+            m.put("NAME01",         str(r[1]));
+            m.put("PTNRTY",         str(r[2]));
+            m.put("OWNRKY",         str(r[3]));
+            m.put("ADDR01",         str(r[4]));
+            m.put("ADDR02",         str(r[5]));
+            m.put("REGN01",         str(r[6]));
+            m.put("TELN01",         str(r[7]));
+            m.put("WAREKY",         str(r[8]));
+            m.put("ROUTE_CD",       str(r[9]));
+            m.put("ITEM_GROUP",     str(r[10]));
+            m.put("AREA_CD",        str(r[11]));
+            m.put("UNLOAD_TIME",    r[12]);
+            m.put("MAX_HEIGHT",     r[13]);
+            m.put("AUTO_ALLOC_YN",  str(r[14]));
+            m.put("FORKLIFT_YN",    str(r[15]));
+            m.put("INB_TIME_FROM1", str(r[16]));
+            m.put("INB_TIME_TO1",   str(r[17]));
+            m.put("MAX_BOX_QTY",    r[18]);
+            m.put("DEADLINE_TIME",  str(r[19]));
+            m.put("MAX_TON",        r[20]);
+            m.put("HAS_DETAIL",     str(r[21]));
             result.add(m);
         }
 
@@ -156,12 +105,11 @@ public class DeliveryService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 납품처 상세 (Flask api_delivery_detail)
-    // KNRAWMS.BZPTN 원장 → wmsEm (WMS Oracle)
-    // KNRAWMS.BZPTN_DETAIL  → bzptnDetailRepo / tmsEm (TMS Oracle)
+    // KNRAWMS.BZPTN + KNRAWMS.BZPTN_DETAIL → tmsEm 단독 (동일 DB)
     // ──────────────────────────────────────────────────────────────────────────
     public Map<String, Object> getDetail(String ptnrky, String ptnrty, String ownrky) {
         @SuppressWarnings("unchecked")
-        List<Object[]> bRows = wmsEm.createNativeQuery(
+        List<Object[]> bRows = tmsEm.createNativeQuery(
             "SELECT * FROM KNRAWMS.BZPTN WHERE PTNRKY=? AND PTNRTY=? AND OWNRKY=?")
             .setParameter(1, ptnrky).setParameter(2, ptnrty).setParameter(3, ownrky)
             .getResultList();

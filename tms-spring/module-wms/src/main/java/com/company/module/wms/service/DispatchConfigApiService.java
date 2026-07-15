@@ -14,15 +14,13 @@ import java.util.*;
  * 배차설정 API Service
  *
  * ■ DataSource 라우팅
- *   - wmsJdbc (Oracle KNRAWMS): CMCDV, BZPTN, SHPDH
- *   - tmsJdbc (Oracle KNRAWMS): DS_VEHICLE, DS_DISPATCH_PROFILE, DS_DISPATCH_CONST,
- *                               DS_DISPATCH_CONST_SET, DS_DISPATCH_CONST_SET_ITEM,
- *                               DS_DISPATCH_CONSTRAINT, ROUTE_COST, BZPTN_DETAIL
+ *   TMS/WMS DataSource 는 동일 Oracle DB (KNMESWMS) / 동일 계정 (KNRATMS).
+ *   tmsJdbc 단독으로 BZPTN JOIN BZPTN_DETAIL 직접 수행 가능.
  *
- * ■ BZPTN_DETAIL 위치 주의
- *   BZPTN_DETAIL 은 TMS Oracle KNRAWMS (tmsJdbc) 소속.
- *   WMS Oracle KNRAWMS (wmsJdbc)의 BZPTN 과 Cross-DB 조인 불가.
- *   → 2-step: wmsJdbc로 BZPTN 조회 후, tmsJdbc로 BZPTN_DETAIL 조회 및 머지
+ *   - tmsJdbc: DS_VEHICLE, DS_DISPATCH_PROFILE, DS_DISPATCH_CONST,
+ *              DS_DISPATCH_CONST_SET, DS_DISPATCH_CONST_SET_ITEM,
+ *              DS_DISPATCH_CONSTRAINT, ROUTE_COST, BZPTN, BZPTN_DETAIL
+ *   - wmsJdbc: CMCDV, SHPDH (기존 호출 유지)
  */
 @Slf4j
 @Service
@@ -224,7 +222,7 @@ public class DispatchConfigApiService {
 
     public Map<String, Object> setVehicleTypes() {
         try {
-            // DS_VEHICLE: MariaDB / KNRAWMS.CMCDV: Oracle → Cross-DB 조인 불가 → 2-step
+            // DS_VEHICLE: tmsJdbc
             List<Map<String, Object>> vehicles = tmsJdbc.queryForList(
                 "SELECT v.CARCLASS_CD, v.CARTYPE, v.LENGTH_M, v.WIDTH_M, v.HEIGHT_M, " +
                 "       v.LOAD_TON, v.PALLET_HEIGHT_M, v.SORT_SEQ, " +
@@ -310,12 +308,13 @@ public class DispatchConfigApiService {
 
     public Map<String, Object> setRegionList() {
         try {
-            // CMCDV, SHPDH, BZPTN, BZPTN_DETAIL: Oracle KNRAWMS → wmsJdbc
+            // CMCDV: wmsJdbc (기존 유지)
             List<Map<String, Object>> tmsRegions = wmsJdbc.queryForList(
                 "SELECT CMCDVL, CDESC1, CDESC2, USARG3, USARG4 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_REGION' ORDER BY CMCDVL"
             );
+            // SHPDH JOIN BZPTN JOIN BZPTN_DETAIL — tmsJdbc 단독 (동일 DB이므로 JOIN 가능)
             // REGION_YN은 BZPTN_DETAIL에 없음 → '' 리터럴로 대체 (TMS 측 관리 예정)
-            List<Map<String, Object>> partners = wmsJdbc.queryForList(
+            List<Map<String, Object>> partners = tmsJdbc.queryForList(
                 "SELECT DISTINCT h.DPTNKY AS PTNRKY, COALESCE(b.NAME01,h.DPTNKY) AS NAME01, " +
                 "       COALESCE(b.POSTCD,'') AS POSTCD, COALESCE(d.AREA_CD,'') AS AREA_CD, " +
                 "       '' AS REGION_YN " +
@@ -369,33 +368,17 @@ public class DispatchConfigApiService {
 
     public Map<String, Object> setEntryTonList() {
         try {
-            // Step 1: wmsJdbc — BZPTN (NAME01) 조회
-            List<Map<String, Object>> bzptnRows = wmsJdbc.queryForList(
-                "SELECT PTNRKY, NAME01 FROM KNRAWMS.BZPTN WHERE PTNRTY='CT' ORDER BY PTNRKY"
+            // tmsJdbc 단독 — BZPTN JOIN BZPTN_DETAIL (동일 DB/계정이므로 JOIN 가능)
+            List<Map<String, Object>> partners = tmsJdbc.queryForList(
+                "SELECT b.PTNRKY, 'CT' AS PTNRTY, " +
+                "       COALESCE(d.OWNRKY,'KN') AS OWNRKY, " +
+                "       COALESCE(d.WAREKY,'W001') AS WAREKY, " +
+                "       COALESCE(b.NAME01,b.PTNRKY) AS NAME01, " +
+                "       d.AREA_CD, d.MAX_TON, d.AUTO_ALLOC_YN " +
+                "FROM KNRAWMS.BZPTN b " +
+                "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=b.PTNRKY AND d.PTNRTY=b.PTNRTY AND d.OWNRKY=b.OWNRKY " +
+                "WHERE b.PTNRTY='CT' ORDER BY d.AREA_CD, b.PTNRKY"
             );
-            // Step 2: tmsJdbc — BZPTN_DETAIL (MAX_TON, AREA_CD, WAREKY, OWNRKY, AUTO_ALLOC_YN)
-            List<Map<String, Object>> detailRows = tmsJdbc.queryForList(
-                "SELECT PTNRKY, OWNRKY, WAREKY, AREA_CD, MAX_TON, AUTO_ALLOC_YN " +
-                "FROM KNRAWMS.BZPTN_DETAIL WHERE PTNRTY='CT'"
-            );
-            // 2-step 머지: PTNRKY 기준으로 결합
-            Map<String, Map<String, Object>> detailMap = new LinkedHashMap<>();
-            for (Map<String, Object> d : detailRows) detailMap.put(str(d.get("PTNRKY")), d);
-            List<Map<String, Object>> partners = new ArrayList<>();
-            for (Map<String, Object> b : bzptnRows) {
-                String ptnrky = str(b.get("PTNRKY"));
-                Map<String, Object> d = detailMap.getOrDefault(ptnrky, Collections.emptyMap());
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("PTNRKY",       ptnrky);
-                row.put("PTNRTY",       "CT");
-                row.put("OWNRKY",       d.getOrDefault("OWNRKY",       "KN"));
-                row.put("WAREKY",       d.getOrDefault("WAREKY",       "W001"));
-                row.put("NAME01",       b.getOrDefault("NAME01",       ptnrky));
-                row.put("AREA_CD",      d.get("AREA_CD"));
-                row.put("MAX_TON",      d.get("MAX_TON"));
-                row.put("AUTO_ALLOC_YN",d.get("AUTO_ALLOC_YN"));
-                partners.add(row);
-            }
             List<Map<String, Object>> carclasses = wmsJdbc.queryForList(
                 "SELECT CMCDVL AS value, CDESC1 AS label FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10' ORDER BY CMCDVL"
             );
@@ -410,32 +393,17 @@ public class DispatchConfigApiService {
 
     public Map<String, Object> setForkliftList() {
         try {
-            // Step 1: wmsJdbc — BZPTN 조회
-            List<Map<String, Object>> bzptnRows = wmsJdbc.queryForList(
-                "SELECT PTNRKY, NAME01 FROM KNRAWMS.BZPTN WHERE PTNRTY='CT' ORDER BY PTNRKY"
+            // tmsJdbc 단독 — BZPTN JOIN BZPTN_DETAIL (동일 DB/계정이므로 JOIN 가능)
+            List<Map<String, Object>> rows = tmsJdbc.queryForList(
+                "SELECT b.PTNRKY, 'CT' AS PTNRTY, " +
+                "       COALESCE(d.OWNRKY,'KN') AS OWNRKY, " +
+                "       COALESCE(d.WAREKY,'W001') AS WAREKY, " +
+                "       COALESCE(b.NAME01,b.PTNRKY) AS NAME01, " +
+                "       d.AREA_CD, d.FORKLIFT_YN, d.AUTO_ALLOC_YN " +
+                "FROM KNRAWMS.BZPTN b " +
+                "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=b.PTNRKY AND d.PTNRTY=b.PTNRTY AND d.OWNRKY=b.OWNRKY " +
+                "WHERE b.PTNRTY='CT' ORDER BY d.AREA_CD, b.PTNRKY"
             );
-            // Step 2: tmsJdbc — BZPTN_DETAIL (FORKLIFT_YN, AREA_CD, AUTO_ALLOC_YN)
-            List<Map<String, Object>> detailRows = tmsJdbc.queryForList(
-                "SELECT PTNRKY, OWNRKY, WAREKY, AREA_CD, FORKLIFT_YN, AUTO_ALLOC_YN " +
-                "FROM KNRAWMS.BZPTN_DETAIL WHERE PTNRTY='CT'"
-            );
-            Map<String, Map<String, Object>> detailMap = new LinkedHashMap<>();
-            for (Map<String, Object> d : detailRows) detailMap.put(str(d.get("PTNRKY")), d);
-            List<Map<String, Object>> rows = new ArrayList<>();
-            for (Map<String, Object> b : bzptnRows) {
-                String ptnrky = str(b.get("PTNRKY"));
-                Map<String, Object> d = detailMap.getOrDefault(ptnrky, Collections.emptyMap());
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("PTNRKY",        ptnrky);
-                row.put("PTNRTY",        "CT");
-                row.put("OWNRKY",        d.getOrDefault("OWNRKY",  "KN"));
-                row.put("WAREKY",        d.getOrDefault("WAREKY",  "W001"));
-                row.put("NAME01",        b.getOrDefault("NAME01",  ptnrky));
-                row.put("AREA_CD",       d.get("AREA_CD"));
-                row.put("FORKLIFT_YN",   d.get("FORKLIFT_YN"));
-                row.put("AUTO_ALLOC_YN", d.get("AUTO_ALLOC_YN"));
-                rows.add(row);
-            }
             return Map.of("ok", true, "partners", rows);
         } catch (Exception e) { return errMap(e); }
     }
@@ -447,32 +415,17 @@ public class DispatchConfigApiService {
 
     public Map<String, Object> setDynamicList() {
         try {
-            // Step 1: wmsJdbc — BZPTN 조회
-            List<Map<String, Object>> bzptnRows = wmsJdbc.queryForList(
-                "SELECT PTNRKY, NAME01 FROM KNRAWMS.BZPTN WHERE PTNRTY='CT' ORDER BY PTNRKY"
+            // tmsJdbc 단독 — BZPTN JOIN BZPTN_DETAIL (동일 DB/계정이므로 JOIN 가능)
+            List<Map<String, Object>> rows = tmsJdbc.queryForList(
+                "SELECT b.PTNRKY, 'CT' AS PTNRTY, " +
+                "       COALESCE(d.OWNRKY,'KN') AS OWNRKY, " +
+                "       COALESCE(d.WAREKY,'W001') AS WAREKY, " +
+                "       COALESCE(b.NAME01,b.PTNRKY) AS NAME01, " +
+                "       d.AREA_CD, d.DYNAMIC_YN, d.AUTO_ALLOC_YN " +
+                "FROM KNRAWMS.BZPTN b " +
+                "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=b.PTNRKY AND d.PTNRTY=b.PTNRTY AND d.OWNRKY=b.OWNRKY " +
+                "WHERE b.PTNRTY='CT' ORDER BY d.AREA_CD, b.PTNRKY"
             );
-            // Step 2: tmsJdbc — BZPTN_DETAIL (DYNAMIC_YN, AREA_CD, AUTO_ALLOC_YN)
-            List<Map<String, Object>> detailRows = tmsJdbc.queryForList(
-                "SELECT PTNRKY, OWNRKY, WAREKY, AREA_CD, DYNAMIC_YN, AUTO_ALLOC_YN " +
-                "FROM KNRAWMS.BZPTN_DETAIL WHERE PTNRTY='CT'"
-            );
-            Map<String, Map<String, Object>> detailMap = new LinkedHashMap<>();
-            for (Map<String, Object> d : detailRows) detailMap.put(str(d.get("PTNRKY")), d);
-            List<Map<String, Object>> rows = new ArrayList<>();
-            for (Map<String, Object> b : bzptnRows) {
-                String ptnrky = str(b.get("PTNRKY"));
-                Map<String, Object> d = detailMap.getOrDefault(ptnrky, Collections.emptyMap());
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("PTNRKY",        ptnrky);
-                row.put("PTNRTY",        "CT");
-                row.put("OWNRKY",        d.getOrDefault("OWNRKY",  "KN"));
-                row.put("WAREKY",        d.getOrDefault("WAREKY",  "W001"));
-                row.put("NAME01",        b.getOrDefault("NAME01",  ptnrky));
-                row.put("AREA_CD",       d.get("AREA_CD"));
-                row.put("DYNAMIC_YN",    d.get("DYNAMIC_YN"));
-                row.put("AUTO_ALLOC_YN", d.get("AUTO_ALLOC_YN"));
-                rows.add(row);
-            }
             return Map.of("ok", true, "partners", rows);
         } catch (Exception e) { return errMap(e); }
     }
@@ -675,29 +628,13 @@ public class DispatchConfigApiService {
             List<Map<String, Object>> carclasses = wmsJdbc.queryForList(
                 "SELECT CMCDVL, CDESC1 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10' ORDER BY CMCDVL"
             );
-            // ROUTE_COST: MariaDB / BZPTN: Oracle → 2-step
-            List<Map<String, Object>> rcRows = tmsJdbc.queryForList(
-                "SELECT DISTINCT PTNRKY FROM KNRAWMS.ROUTE_COST ORDER BY PTNRKY FETCH FIRST 300 ROWS ONLY"
+            // ROUTE_COST JOIN BZPTN — tmsJdbc 단독 (동일 DB/계정이므로 JOIN 가능)
+            List<Map<String, Object>> partners = tmsJdbc.queryForList(
+                "SELECT DISTINCT r.PTNRKY, COALESCE(b.NAME01,r.PTNRKY) AS PTNRNM " +
+                "FROM KNRAWMS.ROUTE_COST r " +
+                "LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY=r.PTNRKY AND b.PTNRTY='CT' " +
+                "ORDER BY r.PTNRKY FETCH FIRST 300 ROWS ONLY"
             );
-            List<String> ptnrkyList = new ArrayList<>();
-            for (Map<String, Object> r : rcRows) ptnrkyList.add(str(r.get("PTNRKY")));
-
-            List<Map<String, Object>> partners = new ArrayList<>();
-            if (!ptnrkyList.isEmpty()) {
-                String ph = String.join(",", Collections.nCopies(ptnrkyList.size(), "?"));
-                List<Map<String, Object>> bzptnRows = wmsJdbc.queryForList(
-                    "SELECT PTNRKY, NAME01 FROM KNRAWMS.BZPTN WHERE PTNRKY IN (" + ph + ") AND PTNRTY='CT'",
-                    ptnrkyList.toArray()
-                );
-                Map<String, String> nameMap = new HashMap<>();
-                for (Map<String, Object> r : bzptnRows) nameMap.put(str(r.get("PTNRKY")), str(r.get("NAME01")));
-                for (String pk : ptnrkyList) {
-                    Map<String, Object> pm = new LinkedHashMap<>();
-                    pm.put("PTNRKY", pk);
-                    pm.put("PTNRNM", nameMap.getOrDefault(pk, pk));
-                    partners.add(pm);
-                }
-            }
 
             List<Map<String, Object>> constKeyDefs = buildConstKeyDefs();
             return Map.of("ok", true, "vehicles", vehicles, "carclasses", carclasses,
