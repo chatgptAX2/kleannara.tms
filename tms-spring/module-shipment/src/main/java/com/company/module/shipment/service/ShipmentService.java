@@ -2,7 +2,6 @@ package com.company.module.shipment.service;
 
 import com.company.module.shipment.dto.*;
 import com.company.module.shipment.repository.ShpdHRepository;
-import com.company.module.shipment.repository.ShpdIRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +31,6 @@ public class ShipmentService {
     private static final double PLT_CAP_KG = 1200.0;
 
     private final ShpdHRepository shpdHRepository;
-    private final ShpdIRepository shpdIRepository;
 
     @PersistenceContext(unitName = "wmsPU")
     private EntityManager em;
@@ -203,8 +201,17 @@ public class ShipmentService {
     // ──────────────────────────────────────────────────────────────────────────
 
     public ShipmentFilterOptsResponse getFilterOpts() {
-        // 창고 목록
-        List<String> warekyList = shpdHRepository.findDistinctWareky();
+        // 창고 목록 — WAHMA 테이블 기준 (WAREKY→value, NAME01→label), 삭제 제외(DELMAK 없는 경우 전체)
+        @SuppressWarnings("unchecked")
+        List<Object[]> wahmaRows = em.createNativeQuery(
+            "SELECT WAREKY, NAME01 FROM KNRAWMS.WAHMA" +
+            " WHERE WAREKY IS NOT NULL AND TRIM(WAREKY) != ''" +
+            " ORDER BY WAREKY"
+        ).getResultList();
+        List<ShipmentFilterOptsResponse.CodeLabel> warekyList = wahmaRows.stream()
+            .map(row -> ShipmentFilterOptsResponse.CodeLabel.builder()
+                .value(str(row[0])).label(str(row[1])).build())
+            .collect(Collectors.toList());
 
         // 출고상태 목록
         @SuppressWarnings("unchecked")
@@ -216,7 +223,7 @@ public class ShipmentService {
                 .value(str(row[0])).label(str(row[1])).build())
             .collect(Collectors.toList());
 
-        // SKUG05 목록
+        // SKUG05 목록 — CMCDV WHERE CMCDKY='SKUG05' (CMCDVL→value, CDESC1→label)
         @SuppressWarnings("unchecked")
         List<Object[]> skug05Rows = em.createNativeQuery(
             "SELECT CMCDVL AS value, CDESC1 AS label FROM KNRAWMS.CMCDV WHERE CMCDKY='SKUG05' ORDER BY CMCDVL"
@@ -226,8 +233,15 @@ public class ShipmentService {
                 .value(str(row[0])).label(str(row[1])).build())
             .collect(Collectors.toList());
 
-        // LOTA02(플랜트) 목록 — 공백 제거
-        List<String> lota02List = shpdIRepository.findDistinctLota02();
+        // LOTA02(플랜트) 목록 — CMCDV WHERE CMCDKY='LOTA02' (CMCDVL→value, CDESC1→label)
+        @SuppressWarnings("unchecked")
+        List<Object[]> lota02Rows = em.createNativeQuery(
+            "SELECT CMCDVL AS value, CDESC1 AS label FROM KNRAWMS.CMCDV WHERE CMCDKY='LOTA02' ORDER BY CMCDVL"
+        ).getResultList();
+        List<ShipmentFilterOptsResponse.CodeLabel> lota02List = lota02Rows.stream()
+            .map(row -> ShipmentFilterOptsResponse.CodeLabel.builder()
+                .value(str(row[0])).label(str(row[1])).build())
+            .collect(Collectors.toList());
 
         // 최대 납품요청일
         String maxDate = shpdHRepository.findMaxRqshpd().orElse("");
