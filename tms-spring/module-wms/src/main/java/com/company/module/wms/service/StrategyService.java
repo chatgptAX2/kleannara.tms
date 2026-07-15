@@ -15,7 +15,7 @@ import java.util.*;
  *
  * ■ DataSource 라우팅
  *   - wmsJdbc (Oracle KNRAWMS): CMCDV
- *   - tmsJdbc (MariaDB integration): DS_VEHICLE, DS_INCH12, DS_INCH3
+ *   - tmsJdbc (Oracle KNRAWMS):      DS_VEHICLE, DS_INCH12, DS_INCH3
  *
  *   ※ Cross-DB 조인(KNRAWMS.CMCDV ↔ DS_VEHICLE) 불가 → 2-step 분리
  */
@@ -40,7 +40,7 @@ public class StrategyService {
     // ── 배차전략 조회 (DS_INCH12 + DS_INCH3 + DS_VEHICLE + CMCDV) ────
     public Map<String, Object> getStrategy() {
         try {
-            // MariaDB: DS_VEHICLE, DS_INCH12, DS_INCH3
+            // Oracle KNRAWMS: DS_VEHICLE, DS_INCH12, DS_INCH3
             List<Map<String, Object>> vehicles = tmsJdbc.queryForList(
                 "SELECT * FROM KNRAWMS.DS_VEHICLE ORDER BY SORT_SEQ"
             );
@@ -97,12 +97,12 @@ public class StrategyService {
         }
     }
 
-    // ── 배차전략 저장 — DS_INCH12/DS_INCH3: MariaDB ────────────────
+    // ── 배차전략 저장 — DS_INCH12/DS_INCH3: Oracle KNRAWMS (MERGE INTO) ──────────
     @Transactional(transactionManager = "tmsTransactionManager")
     public Map<String, Object> saveStrategy(Map<String, Object> body) {
         String today = LocalDate.now().format(YMDFORMAT);
         try {
-            // inch12 저장 (MariaDB: ON DUPLICATE KEY UPDATE 정상 지원)
+            // inch12 저장 (Oracle: MERGE INTO — ON DUPLICATE KEY UPDATE Oracle 미지원)
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> inch12List = (List<Map<String, Object>>) body.get("inch12");
             if (inch12List != null) {
@@ -112,9 +112,12 @@ public class StrategyService {
                     Object maxCount = row.get("MAX_COUNT");
                     if (cartype == null || grm == null) continue;
                     tmsJdbc.update(
-                        "INSERT INTO KNRAWMS.DS_INCH12 (CARTYPE, GRM_COND, MAX_COUNT, CREDAT, LMODAT) " +
-                        "VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE MAX_COUNT=?, LMODAT=?",
-                        cartype, grm, maxCount, today, today, maxCount, today
+                        "MERGE INTO KNRAWMS.DS_INCH12 t " +
+                        "USING (SELECT ? AS CARTYPE, ? AS GRM_COND FROM DUAL) s " +
+                        "ON (t.CARTYPE=s.CARTYPE AND t.GRM_COND=s.GRM_COND) " +
+                        "WHEN MATCHED THEN UPDATE SET t.MAX_COUNT=?, t.LMODAT=? " +
+                        "WHEN NOT MATCHED THEN INSERT (CARTYPE,GRM_COND,MAX_COUNT,CREDAT,LMODAT) VALUES (?,?,?,?,?)",
+                        cartype, grm, maxCount, today, cartype, grm, maxCount, today, today
                     );
                 }
             }
@@ -128,9 +131,12 @@ public class StrategyService {
                     Object maxCount = row.get("MAX_COUNT");
                     if (cartype == null || grm == null) continue;
                     tmsJdbc.update(
-                        "INSERT INTO KNRAWMS.DS_INCH3 (CARTYPE, GRM_COND, MAX_COUNT, CREDAT, LMODAT) " +
-                        "VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE MAX_COUNT=?, LMODAT=?",
-                        cartype, grm, maxCount, today, today, maxCount, today
+                        "MERGE INTO KNRAWMS.DS_INCH3 t " +
+                        "USING (SELECT ? AS CARTYPE, ? AS GRM_COND FROM DUAL) s " +
+                        "ON (t.CARTYPE=s.CARTYPE AND t.GRM_COND=s.GRM_COND) " +
+                        "WHEN MATCHED THEN UPDATE SET t.MAX_COUNT=?, t.LMODAT=? " +
+                        "WHEN NOT MATCHED THEN INSERT (CARTYPE,GRM_COND,MAX_COUNT,CREDAT,LMODAT) VALUES (?,?,?,?,?)",
+                        cartype, grm, maxCount, today, cartype, grm, maxCount, today, today
                     );
                 }
             }
