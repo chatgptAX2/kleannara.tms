@@ -66,7 +66,7 @@ datasource:
   # ── TMS DB (Oracle 19C — 개발/운영 서버) ──────────────
   tms:
     jdbc-url: jdbc:oracle:thin:@10.2.14.190:1522:KNMESWMS
-    username: KNRAWMS
+    username: KNRATMS
     password: kleannara12#
     driver-class-name: oracle.jdbc.OracleDriver
     hikari:
@@ -81,7 +81,7 @@ datasource:
   # ── WMS DB (Oracle 19C — KNMESWMS — KNRAWMS 계정) ─────
   wms:
     jdbc-url: jdbc:oracle:thin:@10.2.14.190:1522:KNMESWMS
-    username: KNRAWMS
+    username: KNRATMS
     password: kleannara12#
     driver-class-name: oracle.jdbc.OracleDriver
     hikari:

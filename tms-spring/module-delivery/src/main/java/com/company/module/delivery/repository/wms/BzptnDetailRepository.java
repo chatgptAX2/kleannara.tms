@@ -11,15 +11,12 @@ import java.util.Optional;
 /**
  * 납품처 TMS 상세 Repository — TMS DB (tmsPU)
  *
- * ■ DataSource: TmsJpaConfig (Oracle KNRAWMS, tmsDataSource)
+ * ■ DataSource: TmsJpaConfig (Oracle KNRATMS, tmsDataSource)
  *   TmsJpaConfig.basePackageClasses → BzptnDetailRepository.class
  *
- * ■ BZPTN_DETAIL 위치
- *   BZPTN_DETAIL 은 WMS Oracle DB 가 아닌 TMS Oracle DB (KNRAWMS) 소속.
- *   WMS DB 의 BZPTN 과 Cross-DB JOIN 불가 → 2-step 분리:
- *     Step 1: wmsEm  → KNRAWMS.BZPTN  (NAME01, ADDR01, REGN01, TELN01 등)
- *     Step 2: tmsEm  → KNRAWMS.BZPTN_DETAIL (나머지 TMS 상세 정보)
- *   Java에서 PTNRKY 기준으로 merge.
+ * ■ TMS/WMS 동일 DB/계정 (KNRATMS)
+ *   BZPTN, BZPTN_DETAIL 모두 동일 Oracle DB (KNMESWMS) 소속.
+ *   tmsDataSource(KNRATMS 계정)로 BZPTN JOIN BZPTN_DETAIL 직접 가능.
  *
  * ■ Oracle 문법 주의사항
  *   - 페이징: LIMIT/OFFSET(MySQL) → OFFSET ? ROWS FETCH NEXT ? ROWS ONLY (Oracle 12c+)
@@ -38,50 +35,60 @@ public interface BzptnDetailRepository extends JpaRepository<BzptnDetail, Long> 
     );
 
     /**
-     * BZPTN_DETAIL 목록 조회 — TMS DB 단독 (BZPTN JOIN 제거)
-     * BZPTN(WMS DB) 와 Cross-DB JOIN 불가 → DeliveryService 에서 2-step merge
+     * 납품처 목록 조회 — BZPTN JOIN BZPTN_DETAIL (동일 DB/계정이므로 JOIN 가능)
+     * wareky, itemGroup, ptnrky, q 필터 포함
      */
     @Query(value = """
-        SELECT d.PTNRKY, d.PTNRTY, d.OWNRKY,
+        SELECT b.PTNRKY, b.NAME01, b.PTNRTY, b.OWNRKY,
+               b.ADDR01, b.ADDR02, b.REGN01, b.TELN01,
                d.WAREKY, d.ROUTE_CD, d.ITEM_GROUP, d.AREA_CD,
                d.UNLOAD_TIME, d.MAX_HEIGHT, d.AUTO_ALLOC_YN, d.FORKLIFT_YN,
-               d.INB_TIME_FROM1, d.INB_TIME_TO1, d.MAX_BOX_QTY, d.DEADLINE_TIME, d.MAX_TON
-        FROM KNRAWMS.BZPTN_DETAIL d
-        WHERE d.PTNRTY = 'CT'
-          AND (:wareky    IS NULL OR d.WAREKY    = :wareky)
-          AND (:itemGroup IS NULL OR d.ITEM_GROUP = :itemGroup)
-        ORDER BY d.PTNRKY
+               d.INB_TIME_FROM1, d.INB_TIME_TO1, d.MAX_BOX_QTY, d.DEADLINE_TIME, d.MAX_TON,
+               CASE WHEN d.PTNRKY IS NOT NULL THEN 'Y' ELSE 'N' END AS HAS_DETAIL
+        FROM KNRAWMS.BZPTN b
+        LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON b.PTNRKY=d.PTNRKY AND b.PTNRTY=d.PTNRTY AND b.OWNRKY=d.OWNRKY
+        WHERE b.PTNRTY = 'CT'
+          AND (:wareky    IS NULL OR d.WAREKY     = :wareky)
+          AND (:itemGroup IS NULL OR d.ITEM_GROUP  = :itemGroup)
+          AND (:ptnrky    IS NULL OR b.PTNRKY LIKE '%' || :ptnrky || '%'
+                                  OR b.NAME01  LIKE '%' || :ptnrky || '%')
+          AND (:q         IS NULL OR b.PTNRKY LIKE '%' || :q || '%'
+                                  OR b.NAME01  LIKE '%' || :q || '%'
+                                  OR b.ADDR01  LIKE '%' || :q || '%'
+                                  OR b.REGN01  LIKE '%' || :q || '%')
+        ORDER BY b.PTNRKY
         OFFSET :offset ROWS FETCH NEXT :size ROWS ONLY
         """, nativeQuery = true)
     java.util.List<Object[]> searchList(
         @Param("wareky")    String wareky,
         @Param("itemGroup") String itemGroup,
+        @Param("ptnrky")    String ptnrky,
+        @Param("q")         String q,
         @Param("size")      int size,
         @Param("offset")    int offset
     );
 
+    /**
+     * 납품처 건수 조회 — BZPTN JOIN BZPTN_DETAIL
+     */
     @Query(value = """
         SELECT COUNT(*)
-        FROM KNRAWMS.BZPTN_DETAIL d
-        WHERE d.PTNRTY = 'CT'
-          AND (:wareky    IS NULL OR d.WAREKY    = :wareky)
-          AND (:itemGroup IS NULL OR d.ITEM_GROUP = :itemGroup)
+        FROM KNRAWMS.BZPTN b
+        LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON b.PTNRKY=d.PTNRKY AND b.PTNRTY=d.PTNRTY AND b.OWNRKY=d.OWNRKY
+        WHERE b.PTNRTY = 'CT'
+          AND (:wareky    IS NULL OR d.WAREKY     = :wareky)
+          AND (:itemGroup IS NULL OR d.ITEM_GROUP  = :itemGroup)
+          AND (:ptnrky    IS NULL OR b.PTNRKY LIKE '%' || :ptnrky || '%'
+                                  OR b.NAME01  LIKE '%' || :ptnrky || '%')
+          AND (:q         IS NULL OR b.PTNRKY LIKE '%' || :q || '%'
+                                  OR b.NAME01  LIKE '%' || :q || '%'
+                                  OR b.ADDR01  LIKE '%' || :q || '%'
+                                  OR b.REGN01  LIKE '%' || :q || '%')
         """, nativeQuery = true)
     long searchCount(
         @Param("wareky")    String wareky,
-        @Param("itemGroup") String itemGroup
-    );
-
-    /** PTNRKY 목록으로 배치 조회 — DeliveryService 2-step merge 용 */
-    @Query(value = """
-        SELECT d.PTNRKY, d.PTNRTY, d.OWNRKY,
-               d.WAREKY, d.ROUTE_CD, d.ITEM_GROUP, d.AREA_CD,
-               d.UNLOAD_TIME, d.MAX_HEIGHT, d.AUTO_ALLOC_YN, d.FORKLIFT_YN,
-               d.INB_TIME_FROM1, d.INB_TIME_TO1, d.MAX_BOX_QTY, d.DEADLINE_TIME, d.MAX_TON
-        FROM KNRAWMS.BZPTN_DETAIL d
-        WHERE d.PTNRKY IN (:ptnrkyList) AND d.PTNRTY = 'CT'
-        """, nativeQuery = true)
-    java.util.List<Object[]> findByPtnrkyIn(
-        @Param("ptnrkyList") java.util.List<String> ptnrkyList
+        @Param("itemGroup") String itemGroup,
+        @Param("ptnrky")    String ptnrky,
+        @Param("q")         String q
     );
 }

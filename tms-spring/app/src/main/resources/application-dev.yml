@@ -17,7 +17,7 @@
 datasource:
   tms:
     jdbc-url: jdbc:oracle:thin:@10.2.14.190:1522:KNMESWMS
-    username: KNRAWMS
+    username: KNRATMS
     password: kleannara12#
     driver-class-name: oracle.jdbc.OracleDriver
     hikari:
@@ -32,7 +32,7 @@ datasource:
   # prefix: datasource.wms  ← WmsDataSourceConfig @ConfigurationProperties
   wms:
     jdbc-url: jdbc:oracle:thin:@10.2.14.190:1522:KNMESWMS
-    username: KNRAWMS
+    username: KNRATMS
     password: kleannara12#
     driver-class-name: oracle.jdbc.OracleDriver
     hikari:

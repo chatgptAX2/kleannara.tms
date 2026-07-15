@@ -52,22 +52,23 @@ server:
 datasource:
   tms:
     jdbc-url: jdbc:oracle:thin:@10.2.14.190:1522:KNMESWMS
-    username: KNRAWMS
+    username: KNRATMS
     password: kleannara12#
     driver-class-name: oracle.jdbc.OracleDriver
     hikari:
       pool-name: HikariPool-TMS
       maximum-pool-size: 20
       minimum-idle: 5
-      connection-timeout: 30000
-      idle-timeout: 600000
-      max-lifetime: 1800000
+      connection-timeout: 5000
+      validation-timeout: 3000
+      max-lifetime: 580000
+      keepalive-time: 300000
 
   # ── WMS DB (Oracle 19C — 개발서버) ───────────────────────
   # PS배차, 출고예정, 공통코드, 물류센터, 차량, 납품처(BZPTN), 출고오더(SHPDH/SHPDI) 등
   wms:
     jdbc-url: jdbc:oracle:thin:@10.2.14.190:1522:KNMESWMS
-    username: KNRAWMS
+    username: KNRATMS
     password: kleannara12#
     driver-class-name: oracle.jdbc.OracleDriver
     hikari:
