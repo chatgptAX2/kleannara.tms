@@ -7998,6 +7998,346 @@ def api_dcon_meta():
 
 
 # ══════════════════════════════════════════════════════════════════
+#  제약조건 항목 마스터 (DS_DISPATCH_CONST_ITEM)
+#  + 세트별 설정값 (DS_DISPATCH_CONST_SETTING)
+# ══════════════════════════════════════════════════════════════════
+
+def _init_const_item_tables():
+    """
+    DS_DISPATCH_CONST_ITEM  : 제약조건 항목 마스터 (엑셀 §1~§4 기반)
+    DS_DISPATCH_CONST_SETTING: 세트별 항목 선택/설정값 오버라이드
+    """
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS DS_DISPATCH_CONST_ITEM (
+                ITEM_CD      TEXT    PRIMARY KEY,        -- 항목 코드 (영문대문자_)
+                ITEM_NM      TEXT    NOT NULL,           -- 항목명 (한글)
+                ITEM_GRP     TEXT    NOT NULL,           -- 그룹: COMMON/ROLL/BOARD/MIX
+                ITEM_TYPE    TEXT    NOT NULL DEFAULT 'YN',
+                  -- YN: Y/N 선택   NUM: 숫자   TEXT: 문자열
+                  -- SELECT: 선택목록  CSV: 콤마구분 숫자열
+                DEFAULT_VAL  TEXT    DEFAULT 'Y',        -- 기본값
+                UNIT         TEXT    DEFAULT '',         -- 단위 표시 (%, m, ton 등)
+                CONST_OP     TEXT    DEFAULT '=',        -- 연산자 (<=,>=,=,IN)
+                SORT_SEQ     INTEGER DEFAULT 0,          -- 정렬 순서
+                DESCRIPTION  TEXT    DEFAULT '',         -- 상세 설명
+                SOURCE_REF   TEXT    DEFAULT '',         -- 엑셀 참조 (§1-1 등)
+                ACTIVE_YN    TEXT    DEFAULT 'Y',        -- 항목 활성 여부
+                SELECT_OPTS  TEXT    DEFAULT NULL,       -- ITEM_TYPE=SELECT 시 옵션 JSON
+                CREDAT       TEXT,
+                LMODAT       TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS DS_DISPATCH_CONST_SETTING (
+                SETTING_ID   INTEGER PRIMARY KEY AUTOINCREMENT,
+                SET_ID       INTEGER NOT NULL,           -- DS_DISPATCH_CONST_SET.SET_ID
+                ITEM_CD      TEXT    NOT NULL,           -- DS_DISPATCH_CONST_ITEM.ITEM_CD
+                USE_YN       TEXT    NOT NULL DEFAULT 'Y', -- 이 세트에서 항목 사용 여부
+                SETTING_VAL  TEXT    DEFAULT NULL,       -- 설정값 오버라이드 (NULL=기본값 사용)
+                NOTE         TEXT    DEFAULT '',
+                LMODAT       TEXT,
+                UNIQUE(SET_ID, ITEM_CD)
+            )
+        """)
+        conn.commit()
+
+        # ── 기본 데이터 삽입 (없을 때만) ─────────────────────────────
+        cnt = conn.execute("SELECT COUNT(*) FROM DS_DISPATCH_CONST_ITEM").fetchone()[0]
+        if cnt == 0:
+            today = __import__('datetime').date.today().strftime('%Y%m%d')
+            items = [
+                # ─── 공통 제약 (COMMON) §1 ───────────────────────────────────
+                ('ENTRY_TON_LIMIT',    '납품처 진입 허용 톤수 제한',  'COMMON','NUM',  '0',    'ton', '<=', 10,
+                 '납품처 마스터에 설정된 최대 진입 허용 톤수 초과 차량은 배차 후보 Pool에서 제외', '§1-1', 'Y', None),
+                ('PALLET_YN',          '납품처 파레트 유무 조건',      'COMMON','YN',   'Y',    'Y/N', '=',  20,
+                 '납품처 마스터의 파레트 필수 여부 확인 → 적재 높이 및 단수 계산 시 파레트 높이 반영', '§1-2', 'Y', None),
+                ('FIXED_VEH_PRIORITY', '고정차량 배차 최우선 반영',   'COMMON','YN',   'Y',    'Y/N', '=',  30,
+                 '배차 전략상 고정 차량 매핑 오더는 알고리즘 연산 전 최우선 사전 할당(Pre-assignment)', '§1-3', 'Y', None),
+                ('DYNAMIC_ALLOW_YN',   '동적 라우팅 허용 여부',        'COMMON','YN',   'Y',    'Y/N', '=',  40,
+                 '납품처 마스터의 동적 라우팅 허용 여부 → 고정 노선 전용 오더와 유연 배차 오더 분리', '§1-4', 'Y', None),
+                ('SPLIT_DELIVERY_YN',  '납품수량 초과 시 분할 선적',  'COMMON','YN',   'Y',    'Y/N', '=',  50,
+                 '주문 수량이 최대 차량 적재 능력 초과 시 최대 차량에 꽉 채운 후 잔여 수량 오더 분할', '§1-5', 'Y', None),
+                # ─── 원지 제약 (ROLL) §2 ─────────────────────────────────────
+                ('ROLL_INTEGER_ONLY',  '원지 정수 롤 단위 강제',       'ROLL', 'YN',   'Y',    'Y/N', '=',  100,
+                 '원지는 물리적 특성상 개체 내 분할 절대 불가 — 반드시 1롤(Roll) 단위 정수로만 배차', '§2-1', 'Y', None),
+                ('ROLL_SPLIT_BANNED',  '원지 분할 배차 금지',          'ROLL', 'YN',   'Y',    'Y/N', '=',  110,
+                 '원지 개체 내 분할 절대 금지 (ROLL_INTEGER_ONLY와 연동)', '§2-1', 'Y', None),
+                ('ROLL_MAX_TIER',      '원지 최대 적재 단수 (Hard Cap)','ROLL','NUM',  '3',    '단',  '<=', 120,
+                 '차량 안정성을 위해 최대 적재 단수 3단 Hard Cap — 절대 초과 불가', '§2-2', 'Y', None),
+                ('ROLL_PALLET_DEDUCT', '파레트 높이 차감값',            'ROLL', 'NUM',  '0.15', 'm',   '=',  130,
+                 '납품처가 파레트 적재 요구 시 차량 내부 가용 높이에서 0.15m 차감 후 적재 가능 단수 계산', '§2-2', 'Y', None),
+                ('ROLL_PALLET_APPLY',  '파레트 차감 적용 여부',         'ROLL', 'YN',   'Y',    'Y/N', '=',  140,
+                 'Y=파레트 높이 차감 적용 (납품처 마스터 파레트 필수 또는 원지 유형인 경우)', '§2-2', 'Y', None),
+                ('ROLL_INCH_MIX_ALLOW','인치/평량 혼합 오더 허용',     'ROLL', 'YN',   'Y',    'Y/N', '=',  150,
+                 '인치 및 평량이 혼합된 오더 허용 — 2D 패킹 연산으로 실제 가용 개수 산출', '§2-3', 'Y', None),
+                ('ROLL_2D_PACK_ENGINE','혼합 규격 2D 바닥 패킹 연산',  'ROLL', 'YN',   'Y',    'Y/N', '=',  160,
+                 '차량 적재함 실제 바닥 면적에 원지 지름을 배치하는 2D 패킹 연산 적용', '§2-3', 'Y', None),
+                ('ROLL_REF_12INCH_LT300','12인치/평량300미만 1단 기준수','ROLL','CSV', '2,3,4,6,8,8,8','롤','=',170,
+                 '1.4t~18t 차종별 12인치/300미만 1단 기준 적재 수량 (콤마 구분)', '§2-3', 'Y', None),
+                ('ROLL_REF_12INCH_GE300','12인치/평량300이상 1단 기준수','ROLL','CSV', '2,3,4,5,7,7,7','롤','=',180,
+                 '1.4t~18t 차종별 12인치/300이상 1단 기준 적재 수량 (콤마 구분)', '§2-3', 'Y', None),
+                ('ROLL_REF_3INCH_LT300','3인치/평량300미만 1단 기준수','ROLL', 'CSV', '3,5,10,12,14,14,15','롤','=',190,
+                 '1.4t~18t 차종별 3인치/300미만 1단 기준 적재 수량 (콤마 구분)', '§2-3', 'Y', None),
+                ('ROLL_REF_3INCH_GE300','3인치/평량300이상 1단 기준수','ROLL', 'CSV', '3,5,10,12,14,14,15','롤','=',200,
+                 '1.4t~18t 차종별 3인치/300이상 1단 기준 적재 수량 (콤마 구분)', '§2-3', 'Y', None),
+                ('ROLL_3D_CHECK_YN',   '원지 3D 블록 검증 활성',       'ROLL', 'YN',   'Y',    'Y/N', '=',  210,
+                 'Dead Space 포함 3D 블록 검증 — 차량 제원 초과 여부 판정', '§2-4', 'Y', None),
+                ('ROLL_3D_DEAD_SPACE', 'Dead Space 허용 비율',          'ROLL', 'NUM',  '0',    '%',   '<=', 220,
+                 '혼합 적재 시 Dead Space 최대 허용 비율 (0=허용안함)', '§2-4', 'Y', None),
+                ('ROLL_OVERSIZE_ACT',  '치수 초과 시 처리 방식',        'ROLL', 'SELECT','SPLIT','',   '=',  230,
+                 'SPLIT=분할 배차 / REJECT=배차 제외', '§2-4', 'Y',
+                 '["SPLIT","REJECT"]'),
+                # ─── 판지 제약 (BOARD) §3 ────────────────────────────────────
+                ('BOARD_CBM_CHECK',    '판지 CBM 자동계산+이중 검증',  'BOARD','YN',   'Y',    'Y/N', '=',  300,
+                 '화물 총 CBM 자동 계산 + 중량/CBM 동시 초과 Double-Threshold Check 수행', '§3-1', 'Y', None),
+                ('BOARD_MAX_CBM_RATIO','가용 CBM 상한율',               'BOARD','NUM',  '100',  '%',   '<=', 310,
+                 '가용 적재함 CBM 대비 사용 상한 비율', '§3-1', 'Y', None),
+                ('BOARD_MAX_TON_RATIO','중량 상한율 (Double-Threshold)','BOARD','NUM',  '100',  '%',   '<=', 320,
+                 '최대 허용 중량 대비 사용 상한 비율 — CBM과 동시 검증', '§3-1', 'Y', None),
+                ('BOARD_BULK_INT_ONLY','벌크 1PLT 단위 강제',           'BOARD','YN',   'Y',    'Y/N', '=',  330,
+                 '벌크는 물리적 특성상 개체 내 분할 불가 — 반드시 1PLT 단위로만 배차', '§3-2', 'Y', None),
+                ('BOARD_INNER_SPLIT',  '속포장 속 단위 분할 허용',      'BOARD','YN',   'Y',    'Y/N', '=',  340,
+                 '속포장은 속(낱개) 단위 분할 가능 — 분할된 속은 판지 위 추가 적재 또는 차량 초과 시 다른 차량', '§3-2', 'Y', None),
+                ('BOARD_INNER_STACK',  '분할속 판지 위 추가 적재',      'BOARD','YN',   'Y',    'Y/N', '=',  350,
+                 '분할된 속의 경우 판지 위 추가 적재 허용', '§3-2', 'Y', None),
+                ('BOARD_FLEX_SPLIT',   '유연 분할 선적 활성',           'BOARD','YN',   'Y',    'Y/N', '=',  360,
+                 '판지 속포장: 차량 한계 도달 시 초과분(속단위)만 정확히 분할하여 후속 차량 배정', '§3-3', 'Y', None),
+                ('BOARD_SPLIT_UNIT',   '분할 단위',                     'BOARD','SELECT','EA',  '',    '=',  370,
+                 'EA=낱개속 단위 분할 / PLT=파레트 단위 분할', '§3-3', 'Y',
+                 '["EA","PLT"]'),
+                ('BOARD_3D_CHECK',     '판지 3D 블록 검증 활성',        'BOARD','YN',   'Y',    'Y/N', '=',  380,
+                 'Dead Space 포함 3D 블록 검증 — 차량 제원 초과 여부 판정', '§3-4', 'Y', None),
+                ('BOARD_3D_DEAD_SPACE','판지 Dead Space 허용 비율',     'BOARD','NUM',  '0',    '%',   '<=', 390,
+                 '판지 혼합 적재 시 Dead Space 최대 허용 비율 (%)', '§3-4', 'Y', None),
+                ('BOARD_HEIGHT_MAX',   '판지 최대 적재 높이',           'BOARD','NUM',  '2.4',  'm',   '<=', 400,
+                 '판지 스택 최대 허용 높이 (차량 내부 높이 기준, 기본 2.4m)', '§3-4', 'Y', None),
+                # ─── 혼합적재 제약 (MIX) §4 ──────────────────────────────────
+                ('MIX_ROLL_BOTTOM',    '원지 하단·판지 상단 강제 고정', 'MIX',  'YN',   'Y',    'Y/N', '=',  500,
+                 '동일 수직 축 혼적 시 원지가 하단(바닥면), 판지가 상단 — 물리적 압착으로 인한 판지 파손 방지', '§4-1', 'Y', None),
+                ('MIX_LIFO_ENABLE',    'LIFO 배치 활성',                'MIX',  'YN',   'Y',    'Y/N', '=',  510,
+                 '복수 납품처 경유(다중 드롭): 나중 하차 물품→차량 안쪽, 먼저 하차 물품→문 쪽 배치', '§4-2', 'Y', None),
+                ('MIX_ZONE_SPLIT',     '전후 Zone 분할 적재 자동 전환', 'MIX',  'YN',   'Y',    'Y/N', '=',  520,
+                 '원지·판지 배송처 상이하여 상하 적재 불가 시 전후 구역(Zone) 분할 적재 방식 자동 전환', '§4-2', 'Y', None),
+                ('MIX_WEIGHT_CHECK',   '혼적 총중량 검증',              'MIX',  'YN',   'Y',    'Y/N', '=',  530,
+                 '(원지 총중량 + 판지 총중량) ≤ 배차 차량 최대 적재 중량 검증', '§4-3', 'Y', None),
+                ('MIX_HEIGHT_CHECK',   '혼적 높이 검증',                'MIX',  'YN',   'Y',    'Y/N', '=',  540,
+                 '(파렛트 고) + (원지 다단 높이) + (판지 총 높이) ≤ 차량 최대 적재 높이 검증', '§4-3', 'Y', None),
+                ('MIX_3D_CHECK',       '혼적 Dead Space 3D 종합 검증', 'MIX',  'YN',   'Y',    'Y/N', '=',  550,
+                 'Dead Space 포함 3D 블록 종합 검증 — CBM 단순 합산이 아닌 실제 입체 배치 검증', '§4-3', 'Y', None),
+            ]
+            for row in items:
+                (item_cd, item_nm, item_grp, item_type, default_val,
+                 unit, const_op, sort_seq, description, source_ref, active_yn, select_opts) = row
+                conn.execute(
+                    "INSERT OR IGNORE INTO DS_DISPATCH_CONST_ITEM"
+                    " (ITEM_CD,ITEM_NM,ITEM_GRP,ITEM_TYPE,DEFAULT_VAL,UNIT,CONST_OP,"
+                    "  SORT_SEQ,DESCRIPTION,SOURCE_REF,ACTIVE_YN,SELECT_OPTS,CREDAT,LMODAT)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (item_cd, item_nm, item_grp, item_type, default_val,
+                     unit, const_op, sort_seq, description, source_ref,
+                     active_yn, select_opts, today, today)
+                )
+            conn.commit()
+            print(f"[init_const_item] DS_DISPATCH_CONST_ITEM 기본 데이터 {len(items)}건 삽입 완료")
+        conn.close()
+    except Exception as e:
+        print(f"[init_const_item] 오류: {e}")
+
+_init_const_item_tables()
+
+
+# ── 제약조건 항목 마스터 목록 조회 ────────────────────────────────
+@app.route('/api/const-item/list', methods=['GET'])
+def api_const_item_list():
+    """DS_DISPATCH_CONST_ITEM 전체 목록 반환
+    query: ?set_id=N  → 해당 세트의 USE_YN/SETTING_VAL 포함
+    """
+    set_id = request.args.get('set_id', type=int)
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM DS_DISPATCH_CONST_ITEM ORDER BY SORT_SEQ, ITEM_CD"
+        ).fetchall()
+        result = [dict(r) for r in rows]
+        if set_id:
+            settings = conn.execute(
+                "SELECT ITEM_CD, USE_YN, SETTING_VAL, NOTE"
+                " FROM DS_DISPATCH_CONST_SETTING WHERE SET_ID=?",
+                (set_id,)
+            ).fetchall()
+            smap = {s['ITEM_CD']: dict(s) for s in settings}
+            for r in result:
+                s = smap.get(r['ITEM_CD'])
+                r['USE_YN']     = s['USE_YN']     if s else 'N'
+                r['SETTING_VAL']= s['SETTING_VAL'] if s else None
+                r['SET_NOTE']   = s['NOTE']         if s else ''
+        return jsonify({"ok": True, "rows": result})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+# ── 제약조건 항목 마스터 저장 (CRUD) ─────────────────────────────
+@app.route('/api/const-item/save', methods=['POST'])
+def api_const_item_save():
+    """단일 항목 추가/수정
+    body: { item_cd, item_nm, item_grp, item_type, default_val,
+            unit, const_op, sort_seq, description, source_ref,
+            active_yn, select_opts }
+    """
+    data = request.json or {}
+    today = __import__('datetime').date.today().strftime('%Y%m%d')
+    conn = get_conn()
+    try:
+        exists = conn.execute(
+            "SELECT ITEM_CD FROM DS_DISPATCH_CONST_ITEM WHERE ITEM_CD=?",
+            (data.get('item_cd',''),)
+        ).fetchone()
+        if exists:
+            conn.execute(
+                "UPDATE DS_DISPATCH_CONST_ITEM SET"
+                " ITEM_NM=?,ITEM_GRP=?,ITEM_TYPE=?,DEFAULT_VAL=?,UNIT=?,"
+                " CONST_OP=?,SORT_SEQ=?,DESCRIPTION=?,SOURCE_REF=?,"
+                " ACTIVE_YN=?,SELECT_OPTS=?,LMODAT=?"
+                " WHERE ITEM_CD=?",
+                (data.get('item_nm',''), data.get('item_grp','COMMON'),
+                 data.get('item_type','YN'), data.get('default_val',''),
+                 data.get('unit',''), data.get('const_op','='),
+                 data.get('sort_seq',0), data.get('description',''),
+                 data.get('source_ref',''), data.get('active_yn','Y'),
+                 data.get('select_opts'), today, data['item_cd'])
+            )
+        else:
+            conn.execute(
+                "INSERT INTO DS_DISPATCH_CONST_ITEM"
+                " (ITEM_CD,ITEM_NM,ITEM_GRP,ITEM_TYPE,DEFAULT_VAL,UNIT,CONST_OP,"
+                "  SORT_SEQ,DESCRIPTION,SOURCE_REF,ACTIVE_YN,SELECT_OPTS,CREDAT,LMODAT)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (data.get('item_cd','').upper(),
+                 data.get('item_nm',''), data.get('item_grp','COMMON'),
+                 data.get('item_type','YN'), data.get('default_val',''),
+                 data.get('unit',''), data.get('const_op','='),
+                 data.get('sort_seq',0), data.get('description',''),
+                 data.get('source_ref',''), data.get('active_yn','Y'),
+                 data.get('select_opts'), today, today)
+            )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM DS_DISPATCH_CONST_ITEM WHERE ITEM_CD=?",
+            (data.get('item_cd','').upper(),)
+        ).fetchone()
+        return jsonify({"ok": True, "row": dict(row) if row else None})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+# ── 제약조건 항목 마스터 삭제 ─────────────────────────────────────
+@app.route('/api/const-item/delete', methods=['POST'])
+def api_const_item_delete():
+    data = request.json or {}
+    item_cd = data.get('item_cd','')
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM DS_DISPATCH_CONST_SETTING WHERE ITEM_CD=?", (item_cd,))
+        conn.execute("DELETE FROM DS_DISPATCH_CONST_ITEM WHERE ITEM_CD=?", (item_cd,))
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+# ── 세트별 제약조건 항목 설정값 저장 ─────────────────────────────
+@app.route('/api/const-item/setting/save', methods=['POST'])
+def api_const_setting_save():
+    """세트에 대한 제약조건 항목 선택/설정값 일괄 저장
+    body: {
+      set_id: int,
+      settings: [{ item_cd, use_yn, setting_val, note }]
+    }
+    """
+    data = request.json or {}
+    set_id   = data.get('set_id')
+    settings = data.get('settings', [])
+    today = __import__('datetime').date.today().strftime('%Y%m%d')
+    conn = get_conn()
+    try:
+        for s in settings:
+            item_cd     = s.get('item_cd','')
+            use_yn      = s.get('use_yn', 'N')
+            setting_val = s.get('setting_val', None)
+            note        = s.get('note', '')
+            # 아이템 코드가 CONST_ITEM에 존재하는지 확인
+            exists_item = conn.execute(
+                "SELECT 1 FROM DS_DISPATCH_CONST_ITEM WHERE ITEM_CD=?", (item_cd,)
+            ).fetchone()
+            if not exists_item:
+                continue
+            conn.execute(
+                "INSERT INTO DS_DISPATCH_CONST_SETTING"
+                " (SET_ID,ITEM_CD,USE_YN,SETTING_VAL,NOTE,LMODAT)"
+                " VALUES (?,?,?,?,?,?)"
+                " ON CONFLICT(SET_ID,ITEM_CD) DO UPDATE SET"
+                " USE_YN=excluded.USE_YN, SETTING_VAL=excluded.SETTING_VAL,"
+                " NOTE=excluded.NOTE, LMODAT=excluded.LMODAT",
+                (set_id, item_cd, use_yn, setting_val, note, today)
+            )
+        conn.commit()
+        # 저장 후 전체 반환
+        rows = conn.execute(
+            "SELECT s.*, i.ITEM_NM, i.ITEM_GRP, i.ITEM_TYPE, i.DEFAULT_VAL,"
+            "       i.UNIT, i.CONST_OP, i.DESCRIPTION, i.SOURCE_REF, i.SORT_SEQ, i.SELECT_OPTS"
+            " FROM DS_DISPATCH_CONST_SETTING s"
+            " JOIN DS_DISPATCH_CONST_ITEM i ON i.ITEM_CD=s.ITEM_CD"
+            " WHERE s.SET_ID=? ORDER BY i.SORT_SEQ",
+            (set_id,)
+        ).fetchall()
+        return jsonify({"ok": True, "rows": [dict(r) for r in rows]})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+# ── 세트별 제약조건 설정 전체 조회 ────────────────────────────────
+@app.route('/api/const-item/setting/list', methods=['GET'])
+def api_const_setting_list():
+    """set_id에 대한 전체 항목 + 설정값 반환 (미설정 항목도 포함)"""
+    set_id = request.args.get('set_id', type=int)
+    conn = get_conn()
+    try:
+        items = conn.execute(
+            "SELECT * FROM DS_DISPATCH_CONST_ITEM WHERE ACTIVE_YN='Y' ORDER BY SORT_SEQ"
+        ).fetchall()
+        smap = {}
+        if set_id:
+            settings = conn.execute(
+                "SELECT * FROM DS_DISPATCH_CONST_SETTING WHERE SET_ID=?", (set_id,)
+            ).fetchall()
+            smap = {s['ITEM_CD']: dict(s) for s in settings}
+        result = []
+        for item in items:
+            d = dict(item)
+            s = smap.get(d['ITEM_CD'])
+            d['USE_YN']      = s['USE_YN']      if s else 'N'
+            d['SETTING_VAL'] = s['SETTING_VAL'] if s else None
+            d['SET_NOTE']    = s['NOTE']         if s else ''
+            d['SETTING_ID']  = s['SETTING_ID']  if s else None
+            result.append(d)
+        return jsonify({"ok": True, "rows": result, "set_id": set_id})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+# ══════════════════════════════════════════════════════════════════
 #  목적식 기반 자동배차  /api/dispatch-constraint/auto
 # ══════════════════════════════════════════════════════════════════
 @app.route('/api/dispatch-constraint/auto', methods=['POST'])
