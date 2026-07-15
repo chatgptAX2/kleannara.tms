@@ -26,9 +26,6 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
 
-    // MariaDB 드라이버 (TMS DB)
-    runtimeOnly 'org.mariadb.jdbc:mariadb-java-client:3.3.3'
-
-    // Oracle JDBC 드라이버 (WMS DB: 10.2.14.190:1522/KNMESWMS)
+    // Oracle JDBC 드라이버 (TMS DB + WMS DB: 10.2.14.190:1522/KNMESWMS)
     runtimeOnly 'com.oracle.database.jdbc:ojdbc11:23.4.0.24.05'
 }
