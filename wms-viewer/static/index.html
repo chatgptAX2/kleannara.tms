@@ -21311,11 +21311,31 @@ async function _dconSpToggleTab(tabType, include) {
 /* ══════════════════════════════════════════════════════════════
    탭 관리 드로어 (사이드 패널)
 ══════════════════════════════════════════════════════════════ */
-function dconOpenTabMgr() {
+async function dconOpenTabMgr() {
   const overlay = document.getElementById('dcon-tab-mgr-overlay');
   const drawer  = document.getElementById('dcon-tab-mgr-drawer');
   if (overlay) overlay.classList.add('open');
   if (drawer)  drawer.classList.add('open');
+
+  /* _setFullRows가 없으면 API 먼저 로드 후 렌더 */
+  if (DCON.selSetId && (!DCON._setFullRows || DCON._setFullRows.length === 0)) {
+    const body = document.getElementById('dcon-tab-mgr-body');
+    if (body) body.innerHTML = '<div class="dcon-empty"><span class="dcon-spinner"></span> 로딩 중…</div>';
+    try {
+      const rd = await fetch(`/api/dispatch-const-set/full?set_id=${DCON.selSetId}`).then(r => r.json());
+      if (rd.ok) {
+        DCON._setFullRows = rd.rows || [];
+        DCON._spRows = (rd.rows || []).filter(row => row.IN_SET && row.CONST_TYPE !== 'CARTYPE').map(row => ({
+          ...row,
+          _pval: row.PARAM_VALUE != null ? String(row.PARAM_VALUE) : String(row.CONST_VALUE ?? ''),
+          _isNew: false,
+          _deleted: false,
+        }));
+      }
+    } catch(e) {
+      console.error('[TabMgr] _setFullRows 로드 실패:', e);
+    }
+  }
   _dconTabMgrRender();
 }
 
