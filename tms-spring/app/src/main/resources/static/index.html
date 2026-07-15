@@ -15750,22 +15750,22 @@ async function renderShipSchedule() {
   /* filterOpts null-safe fallback: fetch 실패나 로딩 전에도 안전하게 처리 */
   const opts = shipScheduleState.filterOpts || { wareky:[], statit:[], skug05:[], lota02:[] };
 
-  /* wareky 옵션 — 첫 번째 "전체" 옵션은 HTML에 고정, 나머지 실제값 */
-  const warekyOpts = (opts.wareky || []).map(v =>
-    `<option value="${v}">${v}</option>`).join('');
+  /* wareky 옵션 — WAHMA 기준 {value:WAREKY, label:NAME01}, 전체 옵션은 HTML에 고정 */
+  const warekyOpts = (opts.wareky || []).map(o =>
+    `<option value="${o.value}">${o.value} ${o.label ? '— '+o.label : ''}</option>`).join('');
 
   /* statit 옵션 */
   const statitOpts = (opts.statit || []).map(o =>
     `<option value="${o.value}">${o.label}</option>`).join('');
 
-  /* skug05 옵션 — 첫 번째 "전체" 옵션은 HTML에 고정, 나머지 실제값 */
+  /* skug05 옵션 — CMCDV SKUG05 기준 {value:CMCDVL, label:CDESC1}, 전체 옵션은 HTML에 고정 */
   const skug05Opts = (opts.skug05 || []).map(o =>
-    `<option value="${o.value}">${o.label}</option>`).join('');
+    `<option value="${o.value}">${o.label || o.value}</option>`).join('');
 
-  /* lota02 멀티 체크박스 — 기본 전체 checked */
-  const lota02Checks = (opts.lota02 || []).map(v =>
+  /* lota02 멀티 체크박스 — CMCDV LOTA02 기준 {value:CMCDVL, label:CDESC1}, 기본 전체 checked */
+  const lota02Checks = (opts.lota02 || []).map(o =>
     `<label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer;white-space:nowrap;">
-       <input type="checkbox" class="ss-lota02" value="${v}" checked>${v}
+       <input type="checkbox" class="ss-lota02" value="${o.value}" checked>${o.label || o.value}
      </label>`).join('');
 
   /* shpmty 체크박스 — 명칭 변경 + 전체선택 */

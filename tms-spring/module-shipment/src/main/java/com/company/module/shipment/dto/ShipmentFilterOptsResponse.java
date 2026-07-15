@@ -13,10 +13,10 @@ import java.util.List;
 @Builder
 public class ShipmentFilterOptsResponse {
 
-    private List<String> warekyList;                // 창고코드 목록
+    private List<CodeLabel> warekyList;             // 창고 목록 (WAHMA: WAREKY→value, NAME01→label)
     private List<CodeLabel> statitList;             // 출고상태 목록
-    private List<CodeLabel> skug05List;             // 품목그룹05 목록
-    private List<String> lota02List;                // 플랜트(LOTA02) 목록
+    private List<CodeLabel> skug05List;             // 품목그룹05 목록 (CMCDV SKUG05)
+    private List<CodeLabel> lota02List;             // 플랜트(LOTA02) 목록 (CMCDV LOTA02: CMCDVL→value, CDESC1→label)
     private String maxDate;                         // 조회 가능한 최대 납품요청일
 
     @Getter
