@@ -9,7 +9,18 @@
 # systemd ExecStart 에서 아래 옵션으로 외부 파일을 로드:
 #   --spring.config.location=file:/data/tms/config/application.yml
 #
-# ★ 아래 내용을 그대로 운영서버 파일에 복붙하세요 ★
+# ★★★ 서버 파일 업데이트 방법 ★★★
+#
+#   아래 내용을 서버의 /data/tms/config/application.yml 에 덮어쓰세요.
+#   (vi 또는 cp 명령어 사용)
+#
+#   cp 사용 시:
+#     scp application-prod.yml knaraadm@10.2.14.190:/data/tms/config/application.yml
+#
+#   수동 확인:
+#     grep "driver-class-name" /data/tms/config/application.yml
+#     → oracle.jdbc.OracleDriver 가 나와야 정상
+#
 # ======================================================
 
 # ■ 다중 DataSource 패턴: @ConfigurationProperties + DataSourceBuilder
@@ -60,7 +71,7 @@ server:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 datasource:
 
-  # ── TMS DB (Oracle 19C — 운영서버) ────────────────────
+  # ── TMS DB (Oracle 19C — 개발/운영 서버) ──────────────
   tms:
     jdbc-url: jdbc:oracle:thin:@10.2.14.190:1522:KNMESWMS
     username: KNRAWMS
