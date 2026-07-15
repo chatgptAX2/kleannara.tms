@@ -79,8 +79,9 @@ public class StrategyService {
     private List<Map<String, Object>> buildCarclassList(String cmcdky) {
         try {
             List<Map<String, Object>> rows = wmsJdbc.queryForList(
+                // Oracle CMCDV: SORTNO 컬럼 미존재 → ORDER BY CMCDVL
                 "SELECT CMCDVL, CDESC1, USARG1 FROM KNRAWMS.CMCDV " +
-                "WHERE CMCDKY=? ORDER BY SORTNO, CMCDVL", cmcdky
+                "WHERE CMCDKY=? ORDER BY CMCDVL", cmcdky
             );
             List<Map<String, Object>> result = new ArrayList<>();
             for (Map<String, Object> r : rows) {

@@ -36,14 +36,15 @@ public class CommonCodeService {
      *   USARG3  → arg3
      *   USARG4  → arg4
      *   USARG5  → arg5
-     *   SORTNO  → sortno
+     *   SORTNO  → sortno (Oracle CMCDV에 미존재 — CMCDVL 정렬로 대체)
      * </pre>
      */
     public List<Map<String, Object>> getCodes(String cmcdky) {
         try {
+            // Oracle KNRAWMS.CMCDV: SORTNO 컬럼 미존재 → SELECT/ORDER BY 제외
             List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT CMCDVL, CDESC1, CDESC2, USARG1, USARG2, USARG3, USARG4, USARG5, SORTNO " +
-                "FROM KNRAWMS.CMCDV WHERE CMCDKY = ? ORDER BY SORTNO, CMCDVL", cmcdky
+                "SELECT CMCDVL, CDESC1, CDESC2, USARG1, USARG2, USARG3, USARG4, USARG5 " +
+                "FROM KNRAWMS.CMCDV WHERE CMCDKY = ? ORDER BY CMCDVL", cmcdky
             );
             List<Map<String, Object>> result = new ArrayList<>();
             for (Map<String, Object> r : rows) {
@@ -56,7 +57,7 @@ public class CommonCodeService {
                 item.put("arg3",   r.get("USARG3"));
                 item.put("arg4",   r.get("USARG4"));
                 item.put("arg5",   r.get("USARG5"));
-                item.put("sortno", r.get("SORTNO"));
+                item.put("sortno", null); // Oracle CMCDV SORTNO 컬럼 없음 — null 반환
                 result.add(item);
             }
             return result;
