@@ -14,13 +14,13 @@ import java.util.Map;
 /**
  * 출고진행현황 REST Controller
  *
- * URL prefix: /shipment-api
+ * URL prefix: /api/shipment (JS fetch URL 기준)
  * Flask 대응:
- *   POST /api/shipment/schedule          → POST /shipment-api/schedule
- *   GET  /api/shipment/schedule/filter-opts → GET /shipment-api/schedule/filter-opts
+ *   POST /api/shipment/schedule
+ *   GET  /api/shipment/schedule/filter-opts
  */
 @RestController
-@RequestMapping({"/shipment-api", "/api"})
+@RequestMapping({"/shipment-api", "/api/shipment"})
 @RequiredArgsConstructor
 public class ShipmentController {
 
