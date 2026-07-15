@@ -115,7 +115,7 @@ public class SapRfcService {
         // 4) DB 업데이트 (MariaDB PS_DISPATCH_H → tmsJdbc)
         String today = LocalDate.now().format(YMDFORMAT);
         tmsJdbc.update(
-            "UPDATE PS_DISPATCH_H SET STATUS='SAP_CREATED', TKNUM=?, LMODAT=? WHERE DISP_H_ID=?",
+            "UPDATE KNRAWMS.PS_DISPATCH_H SET STATUS='SAP_CREATED', TKNUM=?, LMODAT=? WHERE DISP_H_ID=?",
             tknum, today, dispHId
         );
         log.info("선적 생성 완료: dispHId={}, tknum={}, mock={}", dispHId, tknum, isMock);
@@ -147,7 +147,7 @@ public class SapRfcService {
         String dispatchNo = str(head.get("DISPATCH_NO"));
 
         if (tknum.isEmpty()) {
-            tmsJdbc.update("UPDATE PS_DISPATCH_H SET STATUS='CONFIRMED', LMODAT=? WHERE DISP_H_ID=?",
+            tmsJdbc.update("UPDATE KNRAWMS.PS_DISPATCH_H SET STATUS='CONFIRMED', LMODAT=? WHERE DISP_H_ID=?",
                 LocalDate.now().format(YMDFORMAT), dispHId);
             return Map.of("ok", true, "message", "TKNUM 없음 — 상태만 CONFIRMED로 복원", "mock", false);
         }
@@ -166,7 +166,7 @@ public class SapRfcService {
 
         String today = LocalDate.now().format(YMDFORMAT);
         tmsJdbc.update(
-            "UPDATE PS_DISPATCH_H SET STATUS='CONFIRMED', TKNUM=NULL, SVBELN=NULL, LMODAT=? WHERE DISP_H_ID=?",
+            "UPDATE KNRAWMS.PS_DISPATCH_H SET STATUS='CONFIRMED', TKNUM=NULL, SVBELN=NULL, LMODAT=? WHERE DISP_H_ID=?",
             today, dispHId
         );
         log.info("선적 삭제 완료: dispHId={}, tknum={}, mock={}", dispHId, tknum, isMock);
@@ -372,7 +372,7 @@ public class SapRfcService {
         try {
             // PS_DISPATCH_H → MariaDB tmsJdbc
             tmsJdbc.update(
-                "UPDATE PS_DISPATCH_H SET VHCLNO=?, DRIVER_NM=?, DRIVER_TEL=?, LMODAT=? WHERE DISP_H_ID=?",
+                "UPDATE KNRAWMS.PS_DISPATCH_H SET VHCLNO=?, DRIVER_NM=?, DRIVER_TEL=?, LMODAT=? WHERE DISP_H_ID=?",
                 str(body.get("vhclno")), str(body.get("driver_nm")), str(body.get("driver_tel")),
                 LocalDate.now().format(YMDFORMAT), dispHId
             );

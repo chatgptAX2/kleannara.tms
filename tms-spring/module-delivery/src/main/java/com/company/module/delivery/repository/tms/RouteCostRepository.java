@@ -9,11 +9,11 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 /**
- * 경로별 운송비 Repository (MariaDB TMS — route_cost 테이블)
+ * 경로별 운송비 Repository (Oracle KNRAWMS — ROUTE_COST 테이블)
  *
- * ■ TmsJpaConfig 에서 관리 (MariaDB)
- *   - CONCAT('%', :param, '%') MariaDB 정상 지원
- *   - LIMIT/OFFSET 페이징 MariaDB 정상 지원
+ * ■ TmsJpaConfig 에서 관리 (Oracle KNRAWMS)
+ *   - CONCAT('%', :param, '%') Oracle 정상 지원
+ *   - OFFSET/FETCH NEXT 페이징 Oracle 정상 지원
  */
 @Repository
 public interface RouteCostRepository extends JpaRepository<RouteCost, Long> {
@@ -21,7 +21,7 @@ public interface RouteCostRepository extends JpaRepository<RouteCost, Long> {
     List<RouteCost> findByWarekyAndPtnrky(String wareky, String ptnrky);
 
     @Query(value = """
-        SELECT * FROM ROUTE_COST
+        SELECT * FROM KNRAWMS.ROUTE_COST
         WHERE (:wareky IS NULL OR WAREKY = :wareky)
           AND (:ptnrky IS NULL OR PTNRKY LIKE CONCAT('%',:ptnrky,'%'))
           AND (:cartype IS NULL OR CARTYPE LIKE CONCAT('%',:cartype,'%'))
