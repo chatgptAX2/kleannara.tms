@@ -60,12 +60,12 @@ server:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 datasource:
 
-  # ── TMS DB (MariaDB — Primary) ────────────────────────
+  # ── TMS DB (Oracle 19C — 운영서버) ────────────────────
   tms:
-    jdbc-url: jdbc:mariadb://10.2.14.247:3306/integration?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Seoul&useSSL=false&allowPublicKeyRetrieval=true
-    username: appuser
-    password: Kleannara12#
-    driver-class-name: org.mariadb.jdbc.Driver
+    jdbc-url: jdbc:oracle:thin:@10.2.14.190:1522:KNMESWMS
+    username: KNRAWMS
+    password: kleannara12#
+    driver-class-name: oracle.jdbc.OracleDriver
     hikari:
       pool-name: HikariPool-TMS
       maximum-pool-size: 20
@@ -74,12 +74,11 @@ datasource:
       validation-timeout: 3000
       max-lifetime: 580000
       keepalive-time: 300000
-      connection-test-query: SELECT 1
 
-  # ── WMS DB (Oracle KNMESWMS — KNRATMS 계정) ───────────
+  # ── WMS DB (Oracle 19C — KNMESWMS — KNRAWMS 계정) ─────
   wms:
     jdbc-url: jdbc:oracle:thin:@10.2.14.190:1522:KNMESWMS
-    username: KNRATMS
+    username: KNRAWMS
     password: kleannara12#
     driver-class-name: oracle.jdbc.OracleDriver
     hikari:
