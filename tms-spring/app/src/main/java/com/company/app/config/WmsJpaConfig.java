@@ -24,7 +24,7 @@ import java.util.Properties;
  *   - VhcmaRepository       : VHCMA  — Oracle KNRAWMS
  *
  * ■ MariaDB 테이블은 TmsJpaConfig 에서 관리
- *   dispatch(PS_DISPATCH_H/D), vehicle(DS_VEHICLE), delivery.RouteCost(ROUTE_COST)
+ *   dispatch(PS_DISPATCH_H/D), vehicle(DS_VEHICLE), delivery.RouteCost(ROUTE_COST) — Oracle KNRAWMS
  *
  * WMS JdbcTemplate 빈:
  *   @Qualifier("wmsJdbcTemplate") 로 주입
@@ -68,9 +68,8 @@ public class WmsJpaConfig {
         props.setProperty("hibernate.hbm2ddl.auto", "none");
         props.setProperty("hibernate.show_sql",  "false");
         props.setProperty("hibernate.format_sql", "true");
-        // Oracle 기본 스키마: KNRATMS 계정으로 접속
-        // KNRAWMS 스키마 테이블은 엔티티/쿼리에서 명시적 스키마 접두어 사용
-        props.setProperty("hibernate.default_schema", "KNRATMS");
+        // Oracle 기본 스키마: KNRAWMS 계정 (TMS/WMS 테이블 모두 포함)
+        props.setProperty("hibernate.default_schema", "KNRAWMS");
         em.setJpaProperties(props);
 
         return em;

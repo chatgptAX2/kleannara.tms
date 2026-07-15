@@ -47,16 +47,16 @@ public class DocumentService {
             if (parentId != null) {
                 rows = jdbc.queryForList(
                     "SELECT f.*, " +
-                    "       (SELECT COUNT(*) FROM DOC_FILE df WHERE df.FOLDER_ID=f.FOLDER_ID AND df.DEL_YN='N') AS FILE_CNT " +
-                    "FROM DOC_FOLDER f WHERE f.PARENT_ID=? AND f.DEL_YN='N' ORDER BY f.SORT_SEQ, f.FOLDER_NM",
+                    "       (SELECT COUNT(*) FROM KNRAWMS.DOC_FILE df WHERE df.FOLDER_ID=f.FOLDER_ID AND df.DEL_YN='N') AS FILE_CNT " +
+                    "FROM KNRAWMS.DOC_FOLDER f WHERE f.PARENT_ID=? AND f.DEL_YN='N' ORDER BY f.SORT_SEQ, f.FOLDER_NM",
                     parentId
                 );
             } else {
                 // 전체 트리 반환
                 rows = jdbc.queryForList(
                     "SELECT f.*, " +
-                    "       (SELECT COUNT(*) FROM DOC_FILE df WHERE df.FOLDER_ID=f.FOLDER_ID AND df.DEL_YN='N') AS FILE_CNT " +
-                    "FROM DOC_FOLDER f WHERE f.DEL_YN='N' ORDER BY f.PARENT_ID, f.SORT_SEQ, f.FOLDER_NM"
+                    "       (SELECT COUNT(*) FROM KNRAWMS.DOC_FILE df WHERE df.FOLDER_ID=f.FOLDER_ID AND df.DEL_YN='N') AS FILE_CNT " +
+                    "FROM KNRAWMS.DOC_FOLDER f WHERE f.DEL_YN='N' ORDER BY f.PARENT_ID, f.SORT_SEQ, f.FOLDER_NM"
                 );
             }
             return Map.of("ok", true, "folders", rows);
@@ -79,11 +79,11 @@ public class DocumentService {
 
         try {
             jdbc.update(
-                "INSERT INTO DOC_FOLDER (FOLDER_NM, PARENT_ID, SORT_SEQ, CREDAT, CRETIM, LMODAT, DEL_YN) " +
-                "VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO KNRAWMS.DOC_FOLDER (FOLDER_ID, FOLDER_NM, PARENT_ID, SORT_SEQ, CREDAT, CRETIM, LMODAT, DEL_YN) " +
+                "VALUES (SEQ_DOC_FOLDER.NEXTVAL,?,?,?,?,?,?,?)",
                 folderNm.trim(), parentId, 0, today, now, today, "N"
             );
-            Long newId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+            Long newId = jdbc.queryForObject("SELECT SEQ_DOC_FOLDER.CURRVAL FROM DUAL", Long.class);
             return Map.of("ok", true, "folder_id", newId);
         } catch (Exception e) {
             return Map.of("ok", false, "error", e.getMessage());
@@ -101,7 +101,7 @@ public class DocumentService {
 
         String today = LocalDate.now().format(YMDFORMAT);
         try {
-            jdbc.update("UPDATE DOC_FOLDER SET FOLDER_NM=?, LMODAT=? WHERE FOLDER_ID=?",
+            jdbc.update("UPDATE KNRAWMS.DOC_FOLDER SET FOLDER_NM=?, LMODAT=? WHERE FOLDER_ID=?",
                         newNm.trim(), today, folderId);
             return Map.of("ok", true);
         } catch (Exception e) {
@@ -115,9 +115,9 @@ public class DocumentService {
         String today = LocalDate.now().format(YMDFORMAT);
         try {
             // 하위 파일 소프트 삭제
-            jdbc.update("UPDATE DOC_FILE SET DEL_YN='Y', LMODAT=? WHERE FOLDER_ID=?", today, folderId);
+            jdbc.update("UPDATE KNRAWMS.DOC_FILE SET DEL_YN='Y', LMODAT=? WHERE FOLDER_ID=?", today, folderId);
             // 폴더 소프트 삭제
-            jdbc.update("UPDATE DOC_FOLDER SET DEL_YN='Y', LMODAT=? WHERE FOLDER_ID=?", today, folderId);
+            jdbc.update("UPDATE KNRAWMS.DOC_FOLDER SET DEL_YN='Y', LMODAT=? WHERE FOLDER_ID=?", today, folderId);
             return Map.of("ok", true);
         } catch (Exception e) {
             return Map.of("ok", false, "error", e.getMessage());
@@ -130,12 +130,12 @@ public class DocumentService {
             List<Map<String, Object>> rows;
             if (folderId != null) {
                 rows = jdbc.queryForList(
-                    "SELECT * FROM DOC_FILE WHERE FOLDER_ID=? AND DEL_YN='N' ORDER BY CREDAT DESC, FILE_ID DESC",
+                    "SELECT * FROM KNRAWMS.DOC_FILE WHERE FOLDER_ID=? AND DEL_YN='N' ORDER BY CREDAT DESC, FILE_ID DESC",
                     folderId
                 );
             } else {
                 rows = jdbc.queryForList(
-                    "SELECT * FROM DOC_FILE WHERE DEL_YN='N' ORDER BY CREDAT DESC, FILE_ID DESC"
+                    "SELECT * FROM KNRAWMS.DOC_FILE WHERE DEL_YN='N' ORDER BY CREDAT DESC, FILE_ID DESC"
                 );
             }
             return Map.of("ok", true, "files", rows);
@@ -167,14 +167,14 @@ public class DocumentService {
             file.transferTo(filePath.toFile());
 
             jdbc.update(
-                "INSERT INTO DOC_FILE (FOLDER_ID, FILE_NM, FILE_PATH, FILE_SIZE, FILE_TYPE, FILE_EXT, " +
+                "INSERT INTO KNRAWMS.DOC_FILE (FILE_ID, FOLDER_ID, FILE_NM, FILE_PATH, FILE_SIZE, FILE_TYPE, FILE_EXT, " +
                 "NOTE, CREDAT, CRETIM, CREUSR, LMODAT, DEL_YN, DOWNLOAD_CNT) " +
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "VALUES (SEQ_DOC_FILE.NEXTVAL,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 folderId, origName, filePath.toString(), file.getSize(),
                 file.getContentType(), ext,
                 note, today, now, "SYSTEM", today, "N", 0
             );
-            Long newId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+            Long newId = jdbc.queryForObject("SELECT SEQ_DOC_FILE.CURRVAL FROM DUAL", Long.class);
             return Map.of("ok", true, "file_id", newId, "file_nm", origName);
         } catch (Exception e) {
             log.error("upload error: {}", e.getMessage());
@@ -186,7 +186,7 @@ public class DocumentService {
     public FileResult getFile(Long fileId, boolean inline) {
         try {
             List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT * FROM DOC_FILE WHERE FILE_ID=? AND DEL_YN='N'", fileId
+                "SELECT * FROM KNRAWMS.DOC_FILE WHERE FILE_ID=? AND DEL_YN='N'", fileId
             );
             if (rows.isEmpty()) return FileResult.notFound();
 
@@ -200,7 +200,7 @@ public class DocumentService {
 
             // 다운로드 카운트 증가
             if (!inline) {
-                jdbc.update("UPDATE DOC_FILE SET DOWNLOAD_CNT=DOWNLOAD_CNT+1 WHERE FILE_ID=?", fileId);
+                jdbc.update("UPDATE KNRAWMS.DOC_FILE SET DOWNLOAD_CNT=DOWNLOAD_CNT+1 WHERE FILE_ID=?", fileId);
             }
 
             String encoded = URLEncoder.encode(fileNm, StandardCharsets.UTF_8).replace("+", "%20");
@@ -217,13 +217,13 @@ public class DocumentService {
         String today = LocalDate.now().format(YMDFORMAT);
         try {
             List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT FILE_PATH FROM DOC_FILE WHERE FILE_ID=?", fileId
+                "SELECT FILE_PATH FROM KNRAWMS.DOC_FILE WHERE FILE_ID=?", fileId
             );
             if (!rows.isEmpty()) {
                 String filePath = (String) rows.get(0).get("FILE_PATH");
                 try { Files.deleteIfExists(Paths.get(filePath)); } catch (Exception ignored) {}
             }
-            jdbc.update("UPDATE DOC_FILE SET DEL_YN='Y', LMODAT=? WHERE FILE_ID=?", today, fileId);
+            jdbc.update("UPDATE KNRAWMS.DOC_FILE SET DEL_YN='Y', LMODAT=? WHERE FILE_ID=?", today, fileId);
             return Map.of("ok", true);
         } catch (Exception e) {
             return Map.of("ok", false, "error", e.getMessage());
@@ -245,11 +245,11 @@ public class DocumentService {
                 ? Long.valueOf(body.get("folder_id").toString()) : null;
 
             if (fileNm != null)
-                jdbc.update("UPDATE DOC_FILE SET FILE_NM=?, LMODAT=? WHERE FILE_ID=?", fileNm.trim(), today, fileId);
+                jdbc.update("UPDATE KNRAWMS.DOC_FILE SET FILE_NM=?, LMODAT=? WHERE FILE_ID=?", fileNm.trim(), today, fileId);
             if (note != null)
-                jdbc.update("UPDATE DOC_FILE SET NOTE=?, LMODAT=? WHERE FILE_ID=?", note.trim(), today, fileId);
+                jdbc.update("UPDATE KNRAWMS.DOC_FILE SET NOTE=?, LMODAT=? WHERE FILE_ID=?", note.trim(), today, fileId);
             if (folderId != null)
-                jdbc.update("UPDATE DOC_FILE SET FOLDER_ID=?, LMODAT=? WHERE FILE_ID=?", folderId, today, fileId);
+                jdbc.update("UPDATE KNRAWMS.DOC_FILE SET FOLDER_ID=?, LMODAT=? WHERE FILE_ID=?", folderId, today, fileId);
             return Map.of("ok", true);
         } catch (Exception e) {
             return Map.of("ok", false, "error", e.getMessage());

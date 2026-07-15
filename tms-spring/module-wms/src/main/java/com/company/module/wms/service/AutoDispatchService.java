@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
  *
  * ■ DataSource 라우팅
  *   - wmsJdbc (Oracle KNRAWMS): SKUMA, SHPDH, SHPDI, BZPTN, BZPTN_DETAIL, CMCDV
- *   - tmsJdbc (MariaDB integration): DS_VEHICLE, DS_INCH12, DS_INCH3,
+ *   - tmsJdbc (Oracle KNRAWMS): DS_VEHICLE, DS_INCH12, DS_INCH3,
  *                                    DS_DISPATCH_PROFILE, DS_DISPATCH_CONST, ROUTE_COST
  *
  *   ※ Cross-DB 조인(KNRAWMS.CMCDV ↔ DS_VEHICLE 등) 불가 → 2-step 분리
@@ -26,7 +26,7 @@ public class AutoDispatchService {
 
     /** Oracle KNRAWMS 전용 JdbcTemplate */
     private final JdbcTemplate wmsJdbc;
-    /** MariaDB integration 전용 JdbcTemplate */
+    /** Oracle KNRAWMS tmsJdbc — TMS 테이블 전용 JdbcTemplate */
     private final JdbcTemplate tmsJdbc;
 
     public AutoDispatchService(
@@ -80,7 +80,7 @@ public class AutoDispatchService {
 
         // 제약 조건 로드 (DS_DISPATCH_CONST: MariaDB)
         List<Map<String, Object>> constRows = tmsJdbc.queryForList(
-            "SELECT * FROM DS_DISPATCH_CONST WHERE PROFILE_ID=? AND ACTIVE_YN='Y' ORDER BY SORT_SEQ",
+            "SELECT * FROM KNRAWMS.DS_DISPATCH_CONST WHERE PROFILE_ID=? AND ACTIVE_YN='Y' ORDER BY SORT_SEQ",
             pid
         );
         // 전역 제약 맵
@@ -737,14 +737,14 @@ public class AutoDispatchService {
     //  DB 조회 헬퍼
     // ════════════════════════════════════════════════════════════════
 
-    /** DS_DISPATCH_PROFILE 로드 — MariaDB: LIMIT 정상 지원 */
+    /** DS_DISPATCH_PROFILE 로드 — Oracle: FETCH FIRST N ROWS ONLY */
     private Map<String, Object> loadProfile(Integer profileId) {
         List<Map<String, Object>> rows;
         if (profileId != null) {
-            rows = tmsJdbc.queryForList("SELECT * FROM DS_DISPATCH_PROFILE WHERE PROFILE_ID=?", profileId);
+            rows = tmsJdbc.queryForList("SELECT * FROM KNRAWMS.DS_DISPATCH_PROFILE WHERE PROFILE_ID=?", profileId);
         } else {
             rows = tmsJdbc.queryForList(
-                "SELECT * FROM DS_DISPATCH_PROFILE WHERE ACTIVE_YN='Y' ORDER BY PROFILE_ID LIMIT 1");
+                "SELECT * FROM KNRAWMS.DS_DISPATCH_PROFILE WHERE ACTIVE_YN='Y' ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY");
         }
         return rows.isEmpty() ? null : rows.get(0);
     }
@@ -766,13 +766,13 @@ public class AutoDispatchService {
     }
 
     /**
-     * 차량 순서 로드 — DS_VEHICLE: MariaDB / CMCDV: Oracle → 2-step
-     * Cross-DB 조인(MariaDB DS_VEHICLE ↔ Oracle KNRAWMS.CMCDV) 불가
+     * 차량 순서 로드 — DS_VEHICLE: Oracle KNRAWMS / CMCDV: Oracle KNRAWMS (2-step, Cross-Schema)
+     * Step 1: DS_VEHICLE, Step 2: KNRAWMS.CMCDV (2-step)
      */
     private List<Map<String, Object>> loadCarOrder() {
-        // Step 1: MariaDB DS_VEHICLE
+        // Step 1: Oracle KNRAWMS DS_VEHICLE
         List<Map<String, Object>> all = tmsJdbc.queryForList(
-            "SELECT v.CARTYPE, v.LOAD_TON, v.SORT_SEQ, v.CARCLASS_CD FROM DS_VEHICLE v ORDER BY v.SORT_SEQ DESC"
+            "SELECT v.CARTYPE, v.LOAD_TON, v.SORT_SEQ, v.CARCLASS_CD FROM KNRAWMS.DS_VEHICLE v ORDER BY v.SORT_SEQ DESC"
         );
         // Step 2: Oracle KNRAWMS.CMCDV — USE_YN 필터
         List<Map<String, Object>> ccRows = wmsJdbc.queryForList(
@@ -789,11 +789,11 @@ public class AutoDispatchService {
         return result;
     }
 
-    /** 차량 상세 정보 로드 — DS_VEHICLE: MariaDB / CMCDV USE_YN 필터: Oracle → 2-step */
+    /** 차량 상세 정보 로드 — DS_VEHICLE: Oracle KNRAWMS / CMCDV USE_YN 필터: Oracle KNRAWMS → 2-step */
     private Map<String, VehInfo> loadVehInfo() {
         List<Map<String, Object>> rows = tmsJdbc.queryForList(
             "SELECT v.CARTYPE, v.LENGTH_M, v.WIDTH_M, v.HEIGHT_M, v.LOAD_TON, " +
-            "       v.PALLET_HEIGHT_M, v.CARCLASS_CD FROM DS_VEHICLE v"
+            "       v.PALLET_HEIGHT_M, v.CARCLASS_CD FROM KNRAWMS.DS_VEHICLE v"
         );
         // CMCDV USE_YN 필터 (Oracle)
         List<Map<String, Object>> ccRows = wmsJdbc.queryForList(
@@ -819,11 +819,11 @@ public class AutoDispatchService {
         return result;
     }
 
-    /** DS_INCH12 / DS_INCH3 로드 — MariaDB */
+    /** DS_INCH12 / DS_INCH3 로드 — Oracle KNRAWMS */
     private InchMaps loadInchMaps() {
         InchMaps m = new InchMaps();
-        List<Map<String, Object>> i12 = tmsJdbc.queryForList("SELECT CARTYPE,GRM_COND,MAX_COUNT FROM DS_INCH12");
-        List<Map<String, Object>> i3  = tmsJdbc.queryForList("SELECT CARTYPE,GRM_COND,MAX_COUNT FROM DS_INCH3");
+        List<Map<String, Object>> i12 = tmsJdbc.queryForList("SELECT CARTYPE,GRM_COND,MAX_COUNT FROM KNRAWMS.DS_INCH12");
+        List<Map<String, Object>> i3  = tmsJdbc.queryForList("SELECT CARTYPE,GRM_COND,MAX_COUNT FROM KNRAWMS.DS_INCH3");
         for (Map<String, Object> r : i12)
             m.inch12.computeIfAbsent(str(r.get("CARTYPE")), k -> new HashMap<>())
                     .put(str(r.get("GRM_COND")), (int) dbl(r.get("MAX_COUNT")));
@@ -851,14 +851,14 @@ public class AutoDispatchService {
     }
 
     /**
-     * 운송비 로드 — ROUTE_COST: MariaDB / CMCDV: Oracle → 2-step
+     * 운송비 로드 — ROUTE_COST: Oracle KNRAWMS / CMCDV: Oracle KNRAWMS → 2-step
      * Cross-DB 조인 불가 → CARCLASS 코드명 별도 조회 후 매핑
      */
     private Map<String, Map<String, Double>> loadRouteCostMap(String costDate) {
-        // Step 1: MariaDB ROUTE_COST
+        // Step 1: Oracle KNRAWMS ROUTE_COST
         List<Map<String, Object>> rows = tmsJdbc.queryForList(
             "SELECT rc.PTNRKY, rc.CARCLASS, rc.COST " +
-            "FROM ROUTE_COST rc " +
+            "FROM KNRAWMS.ROUTE_COST rc " +
             "WHERE rc.DATE_START<=? AND rc.DATE_END>=?", costDate, costDate
         );
         // Step 2: Oracle KNRAWMS.CMCDV — CARCLASS 코드 → 차종명 매핑

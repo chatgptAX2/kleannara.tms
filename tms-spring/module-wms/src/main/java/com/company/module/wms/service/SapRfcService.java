@@ -77,7 +77,7 @@ public class SapRfcService {
 
         // 1) 배차 헤더 조회 (MariaDB PS_DISPATCH_H → tmsJdbc)
         List<Map<String, Object>> heads = tmsJdbc.queryForList(
-            "SELECT * FROM PS_DISPATCH_H WHERE DISP_H_ID=?", dispHId
+            "SELECT * FROM KNRAWMS.PS_DISPATCH_H WHERE DISP_H_ID=?", dispHId
         );
         if (heads.isEmpty()) return err("배차 문서 없음: disp_h_id=" + dispHId);
         Map<String, Object> head = heads.get(0);
@@ -92,7 +92,7 @@ public class SapRfcService {
 
         // 2) 납품문서 목록 수집 (MariaDB PS_DISPATCH_D → tmsJdbc)
         List<Map<String, Object>> details = tmsJdbc.queryForList(
-            "SELECT DISTINCT SHPOKY FROM PS_DISPATCH_D WHERE DISP_H_ID=?", dispHId
+            "SELECT DISTINCT SHPOKY FROM KNRAWMS.PS_DISPATCH_D WHERE DISP_H_ID=?", dispHId
         );
         List<String> vbelnList = details.stream()
             .map(r -> str(r.get("SHPOKY"))).filter(s -> !s.isEmpty())
@@ -138,7 +138,7 @@ public class SapRfcService {
         if (dispHId == null) return err("disp_h_id 필수");
 
         List<Map<String, Object>> heads = tmsJdbc.queryForList(
-            "SELECT * FROM PS_DISPATCH_H WHERE DISP_H_ID=?", dispHId
+            "SELECT * FROM KNRAWMS.PS_DISPATCH_H WHERE DISP_H_ID=?", dispHId
         );
         if (heads.isEmpty()) return err("배차 문서 없음: disp_h_id=" + dispHId);
         Map<String, Object> head = heads.get(0);
@@ -309,7 +309,7 @@ public class SapRfcService {
                 "SELECT h.DISP_H_ID, h.DISPATCH_NO, h.DPTNKY, h.DPTNM, h.DISP_DATE, " +
                 "       h.STATUS, h.CARTYPE, h.DRIVER_NM, h.DRIVER_TEL, h.TKNUM, h.SVBELN, " +
                 "       COUNT(d.DISP_D_ID) AS ITEM_CNT " +
-                "FROM PS_DISPATCH_H h LEFT JOIN PS_DISPATCH_D d ON d.DISP_H_ID=h.DISP_H_ID " +
+                "FROM KNRAWMS.PS_DISPATCH_H h LEFT JOIN KNRAWMS.PS_DISPATCH_D d ON d.DISP_H_ID=h.DISP_H_ID " +
                 "WHERE h.STATUS IN ('CONFIRMED','SAP_CREATED') "
             );
             List<Object> args = new ArrayList<>();
@@ -329,8 +329,8 @@ public class SapRfcService {
         try {
             // PS_DISPATCH_D / PS_DISPATCH_H → MariaDB tmsJdbc
             List<Map<String, Object>> rows = tmsJdbc.queryForList(
-                "SELECT d.*, h.CARTYPE, h.DISP_DATE FROM PS_DISPATCH_D d " +
-                "JOIN PS_DISPATCH_H h ON h.DISP_H_ID=d.DISP_H_ID " +
+                "SELECT d.*, h.CARTYPE, h.DISP_DATE FROM KNRAWMS.PS_DISPATCH_D d " +
+                "JOIN KNRAWMS.PS_DISPATCH_H h ON h.DISP_H_ID=d.DISP_H_ID " +
                 "WHERE d.DISP_H_ID=? ORDER BY d.ITEM_SEQ", dispHId
             );
             return Map.of("ok", true, "rows", rows);
@@ -343,7 +343,7 @@ public class SapRfcService {
         try {
             // DOC_FILE → MariaDB tmsJdbc
             List<Map<String, Object>> rows = tmsJdbc.queryForList(
-                "SELECT * FROM DOC_FILE WHERE DEL_YN='N' " +
+                "SELECT * FROM KNRAWMS.DOC_FILE WHERE DEL_YN='N' " +
                 "AND FILE_NM LIKE CONCAT('%',?,'%') ORDER BY CREDAT DESC, FILE_ID DESC",
                 dispHId.toString()
             );
@@ -355,9 +355,9 @@ public class SapRfcService {
         try {
             // VHCMA → MariaDB tmsJdbc
             String cartype = str(body.get("cartype"));
-            String sql = "SELECT * FROM VHCMA WHERE " +
+            String sql = "SELECT * FROM KNRAWMS.VHCMA WHERE " +
                 (cartype.isEmpty() ? "1=1" : "CARTYPE=?") +
-                " AND (USE_YN IS NULL OR USE_YN='Y') ORDER BY VHCLNO LIMIT 100";
+                " AND (USE_YN IS NULL OR USE_YN='Y') ORDER BY VHCLNO FETCH FIRST 100 ROWS ONLY";
             List<Map<String, Object>> rows = cartype.isEmpty()
                 ? tmsJdbc.queryForList(sql)
                 : tmsJdbc.queryForList(sql, cartype);
