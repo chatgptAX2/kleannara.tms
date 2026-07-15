@@ -15721,7 +15721,17 @@ async function renderShipSchedule() {
     try {
       const res = await fetch('/api/shipment/schedule/filter-opts');
       const d   = await res.json();
-      shipScheduleState.filterOpts = d;
+      /* ApiResponse 래퍼: { success, data: { warekyList, statitList, skug05List, lota02List, maxDate } }
+         JS에서 접근하는 키명으로 정규화 */
+      const raw = (d && d.data) ? d.data : d;
+      shipScheduleState.filterOpts = {
+        wareky:   raw.warekyList  || raw.wareky  || [],
+        statit:   raw.statitList  || raw.statit  || [],
+        skug05:   raw.skug05List  || raw.skug05  || [],
+        lota02:   raw.lota02List  || raw.lota02  || [],
+        max_date: raw.maxDate     || raw.max_date || '',
+        min_date: raw.minDate     || raw.min_date || '',
+      };
       shipScheduleState.optsLoaded = true;
     } catch(e) { console.warn('filter-opts 로드 실패', e); }
   }
@@ -16713,8 +16723,11 @@ async function loadSchema(tbl){
     fetch(`/api/schema/${tbl}`),
     fetch(`/api/data/${tbl}?page=1&size=1`)
   ]);
-  const cols    = await schRes.json();
+  const schData = await schRes.json();
   const cntData = await cntRes.json();
+  /* 서버 응답: { ok, table, columns: [...] } */
+  const cols = (schData && Array.isArray(schData.columns)) ? schData.columns
+             : (Array.isArray(schData) ? schData : []);
 
   let html = `<div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
     <div>
@@ -16753,34 +16766,34 @@ async function loadSchema(tbl){
    SQL CONSOLE
 ═══════════════════════════════════════════════════════════ */
 const SQL_EXAMPLES = [
-  {label:'출고문서 최근 50건',      sql:`SELECT *\nFROM SHPDH\nORDER BY DOCDAT DESC\nLIMIT 50`},
-  {label:'품목 마스터 검색',        sql:`SELECT *\nFROM SKUMA\nWHERE DELMAK = ' '\nORDER BY SKUKEY\nLIMIT 100`},
-  {label:'거래처 CT유형',           sql:`SELECT *\nFROM BZPTN\nWHERE PTNRTY = 'CT'\nORDER BY PTNRKY\nLIMIT 100`},
-  {label:'공통코드 목록',           sql:`SELECT m.CMCDKY, m.SHORTX, v.CMCDVL, v.CDESC1, v.USARG1\nFROM CMCDM m\nJOIN CMCDV v ON m.CMCDKY = v.CMCDKY\nORDER BY m.CMCDKY, v.CMCDVL\nLIMIT 200`},
-  {label:'ERP 오더 상태별 집계',    sql:`SELECT STATUS,\n  COUNT(*) as 건수,\n  SUM(QTSHP) as 총수량\nFROM IFWMS113\nGROUP BY STATUS\nORDER BY 건수 DESC`},
-  {label:'출고문서-아이템 조인',    sql:`SELECT h.SHPOKY, h.STATDO, h.DOCDAT, h.DPTNKY,\n  i.SHPOIT, i.SKUKEY, i.DESC01, i.QTSHPO, i.QTSHPD\nFROM SHPDH h\nJOIN SHPDI i ON h.SHPOKY = i.SHPOKY\nORDER BY h.DOCDAT DESC\nLIMIT 200`},
-  {label:'SKU 단위구성',            sql:`SELECT s.SKUKEY, s.DESC01, m.UOMKEY, m.QTPUOM, m.LENGTH, m.WIDTHW, m.HEIGHT, m.CUBICM\nFROM SKUMA s\nJOIN MEASI m ON s.SKUKEY = m.MEASKY\nWHERE s.DELMAK = ' '\nLIMIT 100`},
-  {label:'운송사별 집계',           sql:`SELECT TDLNR as 운송사, COUNT(*) as 출고건수,\n  SUM(QTSHPO) as 총출고수량\nFROM SHPDH\nWHERE TDLNR != ' '\nGROUP BY TDLNR\nORDER BY 출고건수 DESC`},
-  {label:'[TMS] 납품처 상세 전체',  sql:`SELECT *\nFROM BZPTN_DETAIL\nORDER BY PTNRKY\nLIMIT 50`},
-  {label:'[TMS] 차량 마스터 전체',  sql:`SELECT *\nFROM VHCMA\nORDER BY VEHICLE_NO\nLIMIT 50`},
-  {label:'[TMS] 권역별 납품처 집계',sql:`SELECT AREA_CD as 권역,\n  COUNT(*) as 납품처수,\n  AVG(UNLOAD_TIME) as 평균하차시간,\n  SUM(CASE WHEN AUTO_ALLOC_YN='Y' THEN 1 ELSE 0 END) as 자동배차수\nFROM BZPTN_DETAIL\nGROUP BY AREA_CD\nORDER BY 납품처수 DESC`},
-  {label:'[TMS] 운송사별 차량현황', sql:`SELECT CARRIER as 운송사,\n  VEHICLE_CLASS as 차형,\n  COUNT(*) as 차량수,\n  SUM(PALLET_QTY) as 총파렛트수\nFROM VHCMA\nGROUP BY CARRIER, VEHICLE_CLASS\nORDER BY 운송사, 차량수 DESC`},
-  {label:'[TMS] 납품처+거래처 조인',sql:`SELECT b.PTNRKY, bp.NAME01 as 거래처명, b.AREA_CD as 권역,\n  b.ROUTE_CD as 유통경로, b.UNLOAD_TIME as 하차시간,\n  b.MAX_BOX_QTY as 최대톤수, b.AUTO_ALLOC_YN as 자동배차,\n  b.LATITUDE as 위도, b.LONGITUDE as 경도\nFROM BZPTN_DETAIL b\nLEFT JOIN BZPTN bp ON b.PTNRKY=bp.PTNRKY AND bp.PTNRTY='CT'\nORDER BY b.AREA_CD, b.PTNRKY`},
-  {label:'[TMS] 경로별 비용 전체',sql:`SELECT SHPPT, ROUTE, PTNRKY, CARCLASS, COST, UNIT, DATE_START, DATE_END\nFROM ROUTE_COST\nORDER BY ROUTE, PTNRKY, CARCLASS\nLIMIT 200`},
-  {label:'[TMS] 경로별 평균비용',sql:`SELECT ROUTE,\n  COUNT(DISTINCT PTNRKY) as 납품처수,\n  ROUND(AVG(COST),0) as 평균비용,\n  MIN(COST) as 최저비용,\n  MAX(COST) as 최고비용\nFROM ROUTE_COST\nGROUP BY ROUTE\nORDER BY 평균비용 DESC`},
-  {label:'[TMS] 차량톤수별 비용통계',sql:`SELECT CARCLASS as 차량톤수,\n  COUNT(*) as 건수,\n  ROUND(AVG(COST),0) as 평균비용,\n  MIN(COST) as 최저비용,\n  MAX(COST) as 최고비용\nFROM ROUTE_COST\nGROUP BY CARCLASS\nORDER BY CARCLASS`},
-  {label:'[TMS] 경로+납품처 피벗(샘플)',sql:`SELECT ROUTE, PTNRKY,\n  MAX(CASE WHEN CARCLASS='Z010' THEN COST END) as Z010_1톤,\n  MAX(CASE WHEN CARCLASS='Z025' THEN COST END) as Z025_2p5톤,\n  MAX(CASE WHEN CARCLASS='Z050' THEN COST END) as Z050_5톤,\n  MAX(CASE WHEN CARCLASS='Z080' THEN COST END) as Z080_8톤,\n  MAX(CASE WHEN CARCLASS='Z110' THEN COST END) as Z110_11톤,\n  MAX(CASE WHEN CARCLASS='Z180' THEN COST END) as Z180_18톤,\n  MAX(CASE WHEN CARCLASS='Z250' THEN COST END) as Z250_25톤\nFROM ROUTE_COST\nGROUP BY ROUTE, PTNRKY\nORDER BY ROUTE, PTNRKY\nLIMIT 50`},
+  {label:'출고문서 최근 50건',      sql:`SELECT *\nFROM KNRAWMS.SHPDH\nORDER BY DOCDAT DESC\nFETCH FIRST 50 ROWS ONLY`},
+  {label:'품목 마스터 검색',        sql:`SELECT *\nFROM KNRAWMS.SKUMA\nWHERE DELMAK = ' '\nORDER BY SKUKEY\nFETCH FIRST 100 ROWS ONLY`},
+  {label:'거래처 CT유형',           sql:`SELECT *\nFROM KNRAWMS.BZPTN\nWHERE PTNRTY = 'CT'\nORDER BY PTNRKY\nFETCH FIRST 100 ROWS ONLY`},
+  {label:'공통코드 목록',           sql:`SELECT m.CMCDKY, m.SHORTX, v.CMCDVL, v.CDESC1, v.USARG1\nFROM KNRAWMS.CMCDM m\nJOIN KNRAWMS.CMCDV v ON m.CMCDKY = v.CMCDKY\nORDER BY m.CMCDKY, v.CMCDVL\nFETCH FIRST 200 ROWS ONLY`},
+  {label:'ERP 오더 상태별 집계',    sql:`SELECT STATUS,\n  COUNT(*) AS 건수,\n  SUM(QTSHP) AS 총수량\nFROM KNRAWMS.IFWMS113\nGROUP BY STATUS\nORDER BY 건수 DESC`},
+  {label:'출고문서-아이템 조인',    sql:`SELECT h.SHPOKY, h.STATDO, h.DOCDAT, h.DPTNKY,\n  i.SHPOIT, i.SKUKEY, i.DESC01, i.QTSHPO, i.QTSHPD\nFROM KNRAWMS.SHPDH h\nJOIN KNRAWMS.SHPDI i ON h.SHPOKY = i.SHPOKY\nORDER BY h.DOCDAT DESC\nFETCH FIRST 200 ROWS ONLY`},
+  {label:'SKU 단위구성',            sql:`SELECT s.SKUKEY, s.DESC01, m.UOMKEY, m.QTPUOM, m.LENGTH, m.WIDTHW, m.HEIGHT, m.CUBICM\nFROM KNRAWMS.SKUMA s\nJOIN KNRAWMS.MEASI m ON s.SKUKEY = m.MEASKY\nWHERE s.DELMAK = ' '\nFETCH FIRST 100 ROWS ONLY`},
+  {label:'운송사별 집계',           sql:`SELECT TDLNR AS 운송사, COUNT(*) AS 출고건수,\n  SUM(QTSHPO) AS 총출고수량\nFROM KNRAWMS.SHPDH\nWHERE TDLNR != ' '\nGROUP BY TDLNR\nORDER BY 출고건수 DESC`},
+  {label:'[TMS] 납품처 상세 전체',  sql:`SELECT *\nFROM KNRAWMS.BZPTN_DETAIL\nORDER BY PTNRKY\nFETCH FIRST 50 ROWS ONLY`},
+  {label:'[TMS] 차량 마스터 전체',  sql:`SELECT *\nFROM KNRAWMS.VHCMA\nORDER BY VEHICLE_NO\nFETCH FIRST 50 ROWS ONLY`},
+  {label:'[TMS] 권역별 납품처 집계',sql:`SELECT AREA_CD AS 권역,\n  COUNT(*) AS 납품처수,\n  AVG(UNLOAD_TIME) AS 평균하차시간,\n  SUM(CASE WHEN AUTO_ALLOC_YN='Y' THEN 1 ELSE 0 END) AS 자동배차수\nFROM KNRAWMS.BZPTN_DETAIL\nGROUP BY AREA_CD\nORDER BY 납품처수 DESC`},
+  {label:'[TMS] 운송사별 차량현황', sql:`SELECT CARRIER AS 운송사,\n  VEHICLE_CLASS AS 차형,\n  COUNT(*) AS 차량수\nFROM KNRAWMS.VHCMA\nGROUP BY CARRIER, VEHICLE_CLASS\nORDER BY 운송사, 차량수 DESC`},
+  {label:'[TMS] 납품처+거래처 조인',sql:`SELECT b.PTNRKY, bp.NAME01 AS 거래처명, b.AREA_CD AS 권역,\n  b.ROUTE_CD AS 유통경로, b.UNLOAD_TIME AS 하차시간,\n  b.MAX_BOX_QTY AS 최대박스수, b.AUTO_ALLOC_YN AS 자동배차,\n  b.LATITUDE AS 위도, b.LONGITUDE AS 경도\nFROM KNRAWMS.BZPTN_DETAIL b\nLEFT JOIN KNRAWMS.BZPTN bp ON b.PTNRKY=bp.PTNRKY AND bp.PTNRTY='CT'\nORDER BY b.AREA_CD, b.PTNRKY`},
+  {label:'[TMS] 경로별 비용 전체',sql:`SELECT SHPPT, ROUTE, PTNRKY, CARCLASS, COST, UNIT, DATE_START, DATE_END\nFROM KNRAWMS.ROUTE_COST\nORDER BY ROUTE, PTNRKY, CARCLASS\nFETCH FIRST 200 ROWS ONLY`},
+  {label:'[TMS] 경로별 평균비용',sql:`SELECT ROUTE,\n  COUNT(DISTINCT PTNRKY) AS 납품처수,\n  ROUND(AVG(COST),0) AS 평균비용,\n  MIN(COST) AS 최저비용,\n  MAX(COST) AS 최고비용\nFROM KNRAWMS.ROUTE_COST\nGROUP BY ROUTE\nORDER BY 평균비용 DESC`},
+  {label:'[TMS] 차량톤수별 비용통계',sql:`SELECT CARCLASS AS 차량톤수,\n  COUNT(*) AS 건수,\n  ROUND(AVG(COST),0) AS 평균비용,\n  MIN(COST) AS 최저비용,\n  MAX(COST) AS 최고비용\nFROM KNRAWMS.ROUTE_COST\nGROUP BY CARCLASS\nORDER BY CARCLASS`},
+  {label:'[TMS] 경로+납품처 피벗(샘플)',sql:`SELECT ROUTE, PTNRKY,\n  MAX(CASE WHEN CARCLASS='Z010' THEN COST END) AS Z010_1톤,\n  MAX(CASE WHEN CARCLASS='Z025' THEN COST END) AS Z025_2p5톤,\n  MAX(CASE WHEN CARCLASS='Z050' THEN COST END) AS Z050_5톤,\n  MAX(CASE WHEN CARCLASS='Z080' THEN COST END) AS Z080_8톤,\n  MAX(CASE WHEN CARCLASS='Z110' THEN COST END) AS Z110_11톤,\n  MAX(CASE WHEN CARCLASS='Z180' THEN COST END) AS Z180_18톤,\n  MAX(CASE WHEN CARCLASS='Z250' THEN COST END) AS Z250_25톤\nFROM KNRAWMS.ROUTE_COST\nGROUP BY ROUTE, PTNRKY\nORDER BY ROUTE, PTNRKY\nFETCH FIRST 50 ROWS ONLY`},
 ];
 
 /* SQL DML 예제 추가 */
 const SQL_DML_EXAMPLES = [
-  {label:'[INSERT] 공통코드 값 추가', sql:`INSERT INTO CMCDV (CMCDKY, CMCDVL, CDESC1, CREDAT, CRETIM, CREUSR, LMODAT, LMOTIM, LMOUSR)\nVALUES ('MY_CODE', '01', '신규코드값', '20260508', '120000', 'WEB', '20260508', '120000', 'WEB')`},
-  {label:'[INSERT] 공통코드 헤더 추가', sql:`INSERT INTO CMCDM (CMCDKY, SHORTX, CREDAT, CRETIM, CREUSR, LMODAT, LMOTIM, LMOUSR)\nVALUES ('MY_CODE', '신규코드그룹', '20260508', '120000', 'WEB', '20260508', '120000', 'WEB')`},
-  {label:'[UPDATE] 공통코드 값 수정', sql:`UPDATE CMCDV\nSET CDESC1 = '수정된설명', LMODAT = '20260508', LMOTIM = '120000', LMOUSR = 'WEB'\nWHERE CMCDKY = 'MY_CODE' AND CMCDVL = '01'`},
-  {label:'[UPDATE] 차량 기사명 수정', sql:`UPDATE VHCMA\nSET DRIVER_NAME = '홍길동', CONTACT_NO = '010-1234-5678',\n    LMODAT = '20260508', LMOTIM = '120000', LMOUSR = 'WEB'\nWHERE VEHICLE_NO = '12V6037' AND OWNRKY = 'KN'`},
-  {label:'[UPDATE] 납품처 배차정보 수정', sql:`UPDATE BZPTN_DETAIL\nSET AREA_CD = '서울', UNLOAD_TIME = 30, AUTO_ALLOC_YN = 'Y',\n    LMODAT = '20260508', LMOTIM = '120000', LMOUSR = 'WEB'\nWHERE PTNRKY = 'C001' AND PTNRTY = 'CT' AND OWNRKY = 'KN'`},
-  {label:'[DELETE] 공통코드 값 삭제', sql:`DELETE FROM CMCDV\nWHERE CMCDKY = 'MY_CODE' AND CMCDVL = '01'`},
-  {label:'[DELETE] 공통코드 헤더 삭제', sql:`DELETE FROM CMCDM\nWHERE CMCDKY = 'MY_CODE'`},
+  {label:'[INSERT] 공통코드 값 추가', sql:`INSERT INTO KNRAWMS.CMCDV (CMCDKY, CMCDVL, CDESC1, CREDAT, CRETIM, CREUSR, LMODAT, LMOTIM, LMOUSR)\nVALUES ('MY_CODE', '01', '신규코드값', '20260508', '120000', 'WEB', '20260508', '120000', 'WEB')`},
+  {label:'[INSERT] 공통코드 헤더 추가', sql:`INSERT INTO KNRAWMS.CMCDM (CMCDKY, SHORTX, CREDAT, CRETIM, CREUSR, LMODAT, LMOTIM, LMOUSR)\nVALUES ('MY_CODE', '신규코드그룹', '20260508', '120000', 'WEB', '20260508', '120000', 'WEB')`},
+  {label:'[UPDATE] 공통코드 값 수정', sql:`UPDATE KNRAWMS.CMCDV\nSET CDESC1 = '수정된설명', LMODAT = '20260508', LMOTIM = '120000', LMOUSR = 'WEB'\nWHERE CMCDKY = 'MY_CODE' AND CMCDVL = '01'`},
+  {label:'[UPDATE] 차량 기사명 수정', sql:`UPDATE KNRAWMS.VHCMA\nSET DRIVER_NAME = '홍길동', CONTACT_NO = '010-1234-5678',\n    LMODAT = '20260508', LMOTIM = '120000', LMOUSR = 'WEB'\nWHERE VEHICLE_NO = '12V6037' AND OWNRKY = 'KN'`},
+  {label:'[UPDATE] 납품처 배차정보 수정', sql:`UPDATE KNRAWMS.BZPTN_DETAIL\nSET AREA_CD = '서울', UNLOAD_TIME = 30, AUTO_ALLOC_YN = 'Y',\n    LMODAT = '20260508', LMOTIM = '120000', LMOUSR = 'WEB'\nWHERE PTNRKY = 'C001' AND PTNRTY = 'CT' AND OWNRKY = 'KN'`},
+  {label:'[DELETE] 공통코드 값 삭제', sql:`DELETE FROM KNRAWMS.CMCDV\nWHERE CMCDKY = 'MY_CODE' AND CMCDVL = '01'`},
+  {label:'[DELETE] 공통코드 헤더 삭제', sql:`DELETE FROM KNRAWMS.CMCDM\nWHERE CMCDKY = 'MY_CODE'`},
 ];
 
 function renderSQL(){

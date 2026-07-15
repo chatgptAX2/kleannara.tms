@@ -240,14 +240,14 @@ public class WmsViewService {
 
             List<Map<String, Object>> rows;
             if (isOracle) {
-                // Oracle: ROWNUM 서브쿼리 페이징 (WHERE 절 포함)
+                // Oracle: OFFSET ? ROWS FETCH NEXT ? ROWS ONLY (KNRAWMS 계정 통일)
                 if (safeSort != null) {
                     String sql = "SELECT * FROM " + tbl + whereSql
                         + " ORDER BY " + safeSort + " " + safeOrder
                         + " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
                     List<Object> args = new ArrayList<>(searchArgs);
                     args.add(offset); args.add(size);
-                    rows = wmsJdbc.queryForList(sql, args.toArray());
+                    rows = jdbc(upper).queryForList(sql, args.toArray());
                 } else {
                     // ORDER BY 없으면 ROWNUM 서브쿼리
                     String inner = "SELECT * FROM " + tbl + whereSql;
@@ -255,7 +255,7 @@ public class WmsViewService {
                         + " (" + inner + ") a WHERE ROWNUM <= ?) WHERE rn > ?";
                     List<Object> args = new ArrayList<>(searchArgs);
                     args.add(offset + size); args.add(offset);
-                    rows = wmsJdbc.queryForList(sql, args.toArray());
+                    rows = jdbc(upper).queryForList(sql, args.toArray());
                 }
             } else {
                 // Oracle TMS 테이블: OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
@@ -335,15 +335,19 @@ public class WmsViewService {
         }
     }
 
-    // ── 임의 SQL 실행 (SELECT 전용, Oracle wmsJdbc 사용) ───────────
+    // ── 임의 SQL 실행 (SELECT/INSERT/UPDATE/DELETE 허용, Oracle tmsJdbc 사용) ──
     public Map<String, Object> executeSql(String sql) {
         if (sql == null || sql.isBlank()) return Map.of("ok", false, "error", "SQL 필수");
-        if (!SELECT_ONLY.matcher(sql.trim()).matches()) {
-            return Map.of("ok", false, "error", "SELECT/WITH 문만 허용됩니다");
-        }
+        String trimmed = sql.trim();
+        boolean isSelect = SELECT_ONLY.matcher(trimmed).matches();
         try {
-            List<Map<String, Object>> rows = wmsJdbc.queryForList(sql);
-            return Map.of("ok", true, "rows", rows, "count", rows.size());
+            if (isSelect) {
+                List<Map<String, Object>> rows = tmsJdbc.queryForList(trimmed);
+                return Map.of("ok", true, "rows", rows, "count", rows.size());
+            } else {
+                int affected = tmsJdbc.update(trimmed);
+                return Map.of("ok", true, "rows", List.of(), "count", 0, "affected", affected);
+            }
         } catch (Exception e) {
             return Map.of("ok", false, "error", e.getMessage());
         }
