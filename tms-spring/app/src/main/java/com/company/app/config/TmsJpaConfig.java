@@ -15,14 +15,14 @@ import javax.sql.DataSource;
 import java.util.Properties;
 
 /**
- * TMS DB (MariaDB) 전용 JPA 설정
+ * TMS DB (Oracle 19C — KNRAWMS) 전용 JPA 설정
  *
- * ■ MariaDB 테이블 Repository — basePackageClasses 로 정확한 클래스만 지정
+ * ■ TMS 테이블 Repository — basePackageClasses 로 정확한 클래스만 지정
  *   (basePackages 재귀 스캔 시 wms 서브패키지 Repository 중복 등록 방지)
- *   - DispatchObjectiveRepository : PS제약조건관리 — MariaDB
- *   - PsDispatchHRepository       : PS_DISPATCH_H  — MariaDB
- *   - DsVehicleRepository         : DS_VEHICLE     — MariaDB (vehicle.repository.tms)
- *   - RouteCostRepository         : ROUTE_COST     — MariaDB
+ *   - DispatchObjectiveRepository : PS제약조건관리 — Oracle KNRAWMS
+ *   - PsDispatchHRepository       : PS_DISPATCH_H  — Oracle KNRAWMS
+ *   - DsVehicleRepository         : DS_VEHICLE     — Oracle KNRAWMS (vehicle.repository.tms)
+ *   - RouteCostRepository         : ROUTE_COST     — Oracle KNRAWMS
  *
  * ■ Oracle WMS 전용 테이블은 WmsJpaConfig 에서 관리
  *   shipment(SHPDH/SHPDI), delivery(BZPTN_DETAIL), vehicle.wms(VHCMA) — Oracle KNRAWMS
@@ -63,8 +63,8 @@ public class TmsJpaConfig {
 
         Properties props = new Properties();
         props.setProperty("hibernate.dialect",
-            "org.hibernate.dialect.MariaDBDialect");
-        // MariaDB: CONCAT('%', ?, '%') 정상 지원, LIMIT/OFFSET 정상 지원
+            "org.hibernate.dialect.OracleDialect");
+        // Oracle 19C: ROWNUM / FETCH FIRST N ROWS ONLY 페이징 지원
         props.setProperty("hibernate.physical_naming_strategy",
             "org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl");
         props.setProperty("hibernate.hbm2ddl.auto", "none");

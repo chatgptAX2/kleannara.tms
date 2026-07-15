@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Primary;
 import javax.sql.DataSource;
 
 /**
- * TMS 전용 DataSource (MariaDB)
+ * TMS 전용 DataSource (Oracle 19C KNRAWMS)
  *
  * ■ 패턴: @ConfigurationProperties + DataSourceBuilder (다중 DataSource 표준 패턴)
  *
@@ -28,10 +28,10 @@ import javax.sql.DataSource;
  *
  *   datasource:
  *     tms:
- *       jdbc-url: jdbc:mariadb://10.2.14.247:3306/integration?...
- *       username: appuser
- *       password: Kleannara12#
- *       driver-class-name: org.mariadb.jdbc.Driver
+ *       jdbc-url: jdbc:oracle:thin:@10.2.14.190:1522:KNMESWMS
+ *       username: KNRAWMS
+ *       password: kleannara12#
+ *       driver-class-name: oracle.jdbc.OracleDriver
  *       hikari:
  *         pool-name: HikariPool-TMS
  *         maximum-pool-size: 20

@@ -12,7 +12,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 /**
- * 애플리케이션 기동 시 TMS(MariaDB) / WMS(Oracle) DataSource 접속 상태를 로그로 출력.
+ * 애플리케이션 기동 시 TMS(Oracle KNRAWMS) / WMS(Oracle KNRAWMS) DataSource 접속 상태를 로그로 출력.
  *
  * ■ 출력 시점: Spring 컨텍스트 초기화 완료 직후 (@PostConstruct)
  *
@@ -20,8 +20,8 @@ import java.sql.SQLException;
  *   - DB 제품명 / 버전
  *   - JDBC URL
  *   - 접속 계정
- *   - 현재 스키마(Oracle = 계정명, MariaDB = DB명)
- *   - DB 서버 현재 시각 (SELECT NOW() / SYSDATE)
+ *   - 현재 스키마 (Oracle = 계정명)
+ *   - DB 서버 현재 시각 (SYSDATE)
  *   - HikariPool 이름
  *
  * ■ 출력 항목 (접속 실패 시)
@@ -52,13 +52,13 @@ public class DataSourceConnectionVerifier {
         log.info("─────────────────────────────────────────────────────────");
     }
 
-    // ── TMS DB (MariaDB) ─────────────────────────────────────────────────────
+    // ── TMS DB (Oracle 19C KNRAWMS) ─────────────────────────────────────────────────────
     private void verifyTms() {
-        log.info("[TMS-DB] 접속 확인 시작 — MariaDB (Primary)");
+        log.info("[TMS-DB] 접속 확인 시작 — Oracle 19C KNRAWMS (Primary)");
         try (Connection conn = tmsDataSource.getConnection()) {
             DatabaseMetaData meta = conn.getMetaData();
-            String currentTime    = queryScalar(conn, "SELECT NOW()");
-            String schema         = conn.getCatalog();
+            String currentTime    = queryScalar(conn, "SELECT TO_CHAR(SYSDATE,'YYYY-MM-DD HH24:MI:SS') FROM DUAL");
+            String schema         = conn.getSchema();
 
             log.info("[TMS-DB] ✅ 접속 성공");
             log.info("[TMS-DB]   DB 제품  : {} {}", meta.getDatabaseProductName(), meta.getDatabaseProductVersion());
@@ -68,7 +68,7 @@ public class DataSourceConnectionVerifier {
             log.info("[TMS-DB]   서버시각 : {}", currentTime);
             log.info("[TMS-DB]   Pool     : {}", getPoolName(tmsDataSource));
 
-            // MariaDB integration 스키마 핵심 테이블 접근 확인
+            // Oracle KNRAWMS 핵심 테이블 접근 확인
             verifyTmsTableAccess(conn);
 
         } catch (Exception e) {
@@ -100,9 +100,9 @@ public class DataSourceConnectionVerifier {
         }
     }
 
-    // ── TMS 핵심 테이블 접근 가능 여부 확인 (MariaDB integration) ────────────
+    // ── TMS 핵심 테이블 접근 가능 여부 확인 (Oracle KNRAWMS) ────────────
     private void verifyTmsTableAccess(Connection conn) {
-        // MariaDB integration 스키마 테이블 — 스키마 접두어 불필요
+        // Oracle KNRAWMS 계정 직소유 테이블 — 스키마 접두어 불필요
         String[] checkTables = {"PS_DISPATCH_H", "VHCMA", "DS_VEHICLE", "ROUTE_COST"};
         StringBuilder ok  = new StringBuilder();
         StringBuilder err = new StringBuilder();

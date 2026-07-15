@@ -16,7 +16,7 @@ import java.util.regex.Pattern;
  *
  * ■ DataSource 이중 라우팅
  *   - ORACLE_WMS_TABLES (KNRAWMS 스키마) → wmsJdbcTemplate / wmsDataSource (Oracle)
- *   - 나머지 MariaDB 자체 테이블          → tmsJdbcTemplate / tmsDataSource (MariaDB)
+ *   - 나머지 Oracle TMS 자체 테이블       → tmsJdbcTemplate / tmsDataSource (Oracle KNRAWMS)
  *
  * ■ Oracle 테이블 접근 규칙
  *   KNRATMS 계정으로 접속 → KNRAWMS 스키마 테이블은 반드시 "KNRAWMS.TABLE" 형식 사용
@@ -56,9 +56,9 @@ public class WmsViewService {
     ));
 
     /**
-     * MariaDB(TMS) 자체 테이블 — tmsJdbcTemplate / tmsDataSource 사용
+     * Oracle KNRAWMS TMS 자체 테이블 — tmsJdbcTemplate / tmsDataSource 사용
      */
-    private static final Set<String> MARIADB_TMS_TABLES = new HashSet<>(Arrays.asList(
+    private static final Set<String> ORACLE_TMS_TABLES = new HashSet<>(Arrays.asList(
         "VHCMA", "ROUTE_COST", "DS_VEHICLE",
         "PS_DISPATCH_H", "PS_DISPATCH_D", "PS_DISPATCH_SPLIT",
         "DS_INCH12", "DS_INCH3",
@@ -71,7 +71,7 @@ public class WmsViewService {
         // Oracle WMS (KNRAWMS 스키마)
         "CMCDM", "CMCDV", "WAHMA", "SKUMA", "BZPTN", "MEASI",
         "SHPDH", "SHPDI", "IFWMS113", "BZPTN_DETAIL", "RECDI",
-        // MariaDB TMS 자체 테이블
+        // Oracle KNRAWMS TMS 자체 테이블
         "VHCMA", "ROUTE_COST", "DS_VEHICLE",
         "PS_DISPATCH_H", "PS_DISPATCH_D", "PS_DISPATCH_SPLIT",
         "DS_INCH12", "DS_INCH3",
@@ -173,8 +173,8 @@ public class WmsViewService {
         if (!ALLOWED_TABLES.contains(upper))
             throw new IllegalArgumentException("허용되지 않는 테이블: " + table);
 
-        boolean isOracle  = ORACLE_WMS_TABLES.contains(upper);
-        String tbl        = isOracle ? "KNRAWMS." + upper : upper;
+        boolean isOracle  = true; // TMS/WMS 모두 Oracle KNRAWMS
+        String tbl        = "KNRAWMS." + upper;  // TMS/WMS 모두 Oracle KNRAWMS 동일 계정
         int offset         = Math.max(0, (page - 1)) * size;
         String safeOrder   = "ASC".equalsIgnoreCase(sortDir) ? "ASC" : "DESC";
         String safeSort    = (sortCol != null && sortCol.matches("[A-Za-z0-9_]+")) ? sortCol : null;
@@ -258,14 +258,14 @@ public class WmsViewService {
                     rows = wmsJdbc.queryForList(sql, args.toArray());
                 }
             } else {
-                // MariaDB: LIMIT ? OFFSET ?
+                // Oracle TMS 테이블: OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
                 StringBuilder sql = new StringBuilder("SELECT * FROM ").append(tbl).append(whereSql);
                 if (safeSort != null) {
                     sql.append(" ORDER BY ").append(safeSort).append(" ").append(safeOrder);
                 }
-                sql.append(" LIMIT ? OFFSET ?");
+                sql.append(" OFFSET ? ROWS FETCH NEXT ? ROWS ONLY");
                 List<Object> args = new ArrayList<>(searchArgs);
-                args.add(size); args.add(offset);
+                args.add(offset); args.add(size);
                 rows = tmsJdbc.queryForList(sql.toString(), args.toArray());
             }
 

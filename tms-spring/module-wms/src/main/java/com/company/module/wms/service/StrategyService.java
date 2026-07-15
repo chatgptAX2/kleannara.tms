@@ -42,13 +42,13 @@ public class StrategyService {
         try {
             // MariaDB: DS_VEHICLE, DS_INCH12, DS_INCH3
             List<Map<String, Object>> vehicles = tmsJdbc.queryForList(
-                "SELECT * FROM DS_VEHICLE ORDER BY SORT_SEQ"
+                "SELECT * FROM KNRAWMS.DS_VEHICLE ORDER BY SORT_SEQ"
             );
             List<Map<String, Object>> inch12 = tmsJdbc.queryForList(
-                "SELECT * FROM DS_INCH12 ORDER BY GRM_COND, CARTYPE"
+                "SELECT * FROM KNRAWMS.DS_INCH12 ORDER BY GRM_COND, CARTYPE"
             );
             List<Map<String, Object>> inch3 = tmsJdbc.queryForList(
-                "SELECT * FROM DS_INCH3 ORDER BY GRM_COND, CARTYPE"
+                "SELECT * FROM KNRAWMS.DS_INCH3 ORDER BY GRM_COND, CARTYPE"
             );
 
             // Oracle KNRAWMS: TMS_CARCLASS10(PS), TMS_CARCLASS20(HL)
@@ -112,7 +112,7 @@ public class StrategyService {
                     Object maxCount = row.get("MAX_COUNT");
                     if (cartype == null || grm == null) continue;
                     tmsJdbc.update(
-                        "INSERT INTO DS_INCH12 (CARTYPE, GRM_COND, MAX_COUNT, CREDAT, LMODAT) " +
+                        "INSERT INTO KNRAWMS.DS_INCH12 (CARTYPE, GRM_COND, MAX_COUNT, CREDAT, LMODAT) " +
                         "VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE MAX_COUNT=?, LMODAT=?",
                         cartype, grm, maxCount, today, today, maxCount, today
                     );
@@ -128,7 +128,7 @@ public class StrategyService {
                     Object maxCount = row.get("MAX_COUNT");
                     if (cartype == null || grm == null) continue;
                     tmsJdbc.update(
-                        "INSERT INTO DS_INCH3 (CARTYPE, GRM_COND, MAX_COUNT, CREDAT, LMODAT) " +
+                        "INSERT INTO KNRAWMS.DS_INCH3 (CARTYPE, GRM_COND, MAX_COUNT, CREDAT, LMODAT) " +
                         "VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE MAX_COUNT=?, LMODAT=?",
                         cartype, grm, maxCount, today, today, maxCount, today
                     );
@@ -152,7 +152,7 @@ public class StrategyService {
             // DS_VEHICLE: MariaDB
             List<Map<String, Object>> vehicles = tmsJdbc.queryForList(
                 "SELECT CARTYPE, LOAD_TON, LENGTH_M, WIDTH_M, HEIGHT_M, PALLET_HEIGHT_M, " +
-                "SORT_SEQ, PALLET_CNT, LONG_AXIS_YN FROM DS_VEHICLE WHERE USE_YN IS NULL OR USE_YN='Y' " +
+                "SORT_SEQ, PALLET_CNT, LONG_AXIS_YN FROM KNRAWMS.DS_VEHICLE WHERE USE_YN IS NULL OR USE_YN='Y' " +
                 "ORDER BY SORT_SEQ"
             );
             return Map.of("ok", true, "vehicles", vehicles,
@@ -173,7 +173,7 @@ public class StrategyService {
             );
             // Step 2: MariaDB DS_VEHICLE → tmsJdbc
             List<Map<String, Object>> vehRows = tmsJdbc.queryForList(
-                "SELECT CARTYPE, LOAD_TON, LENGTH_M, WIDTH_M, HEIGHT_M FROM DS_VEHICLE"
+                "SELECT CARTYPE, LOAD_TON, LENGTH_M, WIDTH_M, HEIGHT_M FROM KNRAWMS.DS_VEHICLE"
             );
             Map<String, Map<String, Object>> vehByCartype = new LinkedHashMap<>();
             for (Map<String, Object> v : vehRows) vehByCartype.put(str(v.get("CARTYPE")), v);
@@ -201,7 +201,7 @@ public class StrategyService {
                 "SELECT v.*, " +
                 "       COALESCE(i12.MAX_COUNT, 0) AS MAX_ROLLS_12, " +
                 "       COALESCE(i3.MAX_COUNT, 0)  AS MAX_ROLLS_3 " +
-                "FROM DS_VEHICLE v " +
+                "FROM KNRAWMS.DS_VEHICLE v " +
                 "LEFT JOIN DS_INCH12 i12 ON i12.CARTYPE=v.CARTYPE AND i12.GRM_COND=60 " +
                 "LEFT JOIN DS_INCH3  i3  ON i3.CARTYPE=v.CARTYPE  AND i3.GRM_COND=60 " +
                 "ORDER BY v.SORT_SEQ"
@@ -220,7 +220,7 @@ public class StrategyService {
                 "SELECT v.CARCLASS_CD, v.CARTYPE, v.LENGTH_M, v.WIDTH_M, v.HEIGHT_M, " +
                 "       v.LOAD_TON, v.PALLET_HEIGHT_M, v.SORT_SEQ, " +
                 "       v.PALLET_CNT, v.LONG_AXIS_YN, v.DEFAULT_VEH_CNT " +
-                "FROM DS_VEHICLE v ORDER BY v.SORT_SEQ"
+                "FROM KNRAWMS.DS_VEHICLE v ORDER BY v.SORT_SEQ"
             );
             // Step 2: Oracle KNRAWMS.CMCDV
             List<Map<String, Object>> cc10 = wmsJdbc.queryForList(
@@ -256,11 +256,11 @@ public class StrategyService {
             return Map.of("ok", false, "error", "CARCLASS_CD 필수");
         try {
             List<Map<String, Object>> exists = tmsJdbc.queryForList(
-                "SELECT CARCLASS_CD FROM DS_VEHICLE WHERE CARCLASS_CD=?", carclassCd
+                "SELECT CARCLASS_CD FROM KNRAWMS.DS_VEHICLE WHERE CARCLASS_CD=?", carclassCd
             );
             if (exists.isEmpty()) {
                 tmsJdbc.update(
-                    "INSERT INTO DS_VEHICLE (CARCLASS_CD, CARTYPE, LENGTH_M, WIDTH_M, HEIGHT_M, " +
+                    "INSERT INTO KNRAWMS.DS_VEHICLE (CARCLASS_CD, CARTYPE, LENGTH_M, WIDTH_M, HEIGHT_M, " +
                     "LOAD_TON, PALLET_HEIGHT_M, SORT_SEQ, PALLET_CNT, LONG_AXIS_YN, DEFAULT_VEH_CNT, CREDAT, LMODAT) " +
                     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     carclassCd, body.get("CARTYPE"), body.get("LENGTH_M"), body.get("WIDTH_M"),
@@ -271,7 +271,7 @@ public class StrategyService {
                 );
             } else {
                 tmsJdbc.update(
-                    "UPDATE DS_VEHICLE SET CARTYPE=?, LENGTH_M=?, WIDTH_M=?, HEIGHT_M=?, " +
+                    "UPDATE KNRAWMS.DS_VEHICLE SET CARTYPE=?, LENGTH_M=?, WIDTH_M=?, HEIGHT_M=?, " +
                     "LOAD_TON=?, PALLET_HEIGHT_M=?, SORT_SEQ=?, PALLET_CNT=?, LONG_AXIS_YN=?, " +
                     "DEFAULT_VEH_CNT=?, LMODAT=? WHERE CARCLASS_CD=?",
                     body.get("CARTYPE"), body.get("LENGTH_M"), body.get("WIDTH_M"),

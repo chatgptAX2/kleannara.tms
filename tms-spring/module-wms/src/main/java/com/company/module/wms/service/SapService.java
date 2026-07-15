@@ -140,10 +140,10 @@ public class SapService {
         try {
             // PS_DISPATCH_H / PS_DISPATCH_D → MariaDB tmsJdbc
             List<Map<String, Object>> heads = tmsJdbc.queryForList(
-                "SELECT * FROM PS_DISPATCH_H WHERE DISP_H_ID=?", dispHId
+                "SELECT * FROM KNRAWMS.PS_DISPATCH_H WHERE DISP_H_ID=?", dispHId
             );
             List<Map<String, Object>> details = tmsJdbc.queryForList(
-                "SELECT * FROM PS_DISPATCH_D WHERE DISP_H_ID=? ORDER BY ITEM_SEQ", dispHId
+                "SELECT * FROM KNRAWMS.PS_DISPATCH_D WHERE DISP_H_ID=? ORDER BY ITEM_SEQ", dispHId
             );
             return Map.of("ok", true, "header", heads.isEmpty() ? null : heads.get(0), "details", details);
         } catch (Exception e) { return errMap(e); }
@@ -155,8 +155,8 @@ public class SapService {
         if (dispHId == null) return Map.of("ok", false, "error", "disp_h_id 필수");
         try {
             // PS_DISPATCH_D / PS_DISPATCH_H → MariaDB tmsJdbc
-            tmsJdbc.update("DELETE FROM PS_DISPATCH_D WHERE DISP_H_ID=?", dispHId);
-            tmsJdbc.update("DELETE FROM PS_DISPATCH_H WHERE DISP_H_ID=?", dispHId);
+            tmsJdbc.update("DELETE FROM KNRAWMS.PS_DISPATCH_D WHERE DISP_H_ID=?", dispHId);
+            tmsJdbc.update("DELETE FROM KNRAWMS.PS_DISPATCH_H WHERE DISP_H_ID=?", dispHId);
             return Map.of("ok", true);
         } catch (Exception e) { return errMap(e); }
     }
@@ -175,7 +175,7 @@ public class SapService {
             for (Map<String, Object> it : splitItems) {
                 // PS_DISPATCH_SPLIT → MariaDB tmsJdbc
                 tmsJdbc.update(
-                    "INSERT INTO PS_DISPATCH_SPLIT (DISP_H_ID,ORIG_ITEM,SPLIT_SEQ,SKUKEY,QTSHPO,KG_WEIGHT,NOTE,CREDAT,CRETIM) VALUES (?,?,?,?,?,?,?,?,?)",
+                    "INSERT INTO KNRAWMS.PS_DISPATCH_SPLIT (DISP_H_ID,ORIG_ITEM,SPLIT_SEQ,SKUKEY,QTSHPO,KG_WEIGHT,NOTE,CREDAT,CRETIM) VALUES (?,?,?,?,?,?,?,?,?)",
                     dispHId, it.get("orig_item"), it.get("split_seq"), it.get("skukey"),
                     it.get("qtshpo"), it.get("kg_weight"), it.get("note"), today, now
                 );
@@ -203,7 +203,7 @@ public class SapService {
             if (sets.isEmpty()) return Map.of("ok", false, "error", "변경 필드 없음");
             sets.add("LMODAT=?"); args.add(today); args.add(dispDId);
             // PS_DISPATCH_D → MariaDB tmsJdbc
-            tmsJdbc.update("UPDATE PS_DISPATCH_D SET " + String.join(",", sets) + " WHERE DISP_D_ID=?", args.toArray());
+            tmsJdbc.update("UPDATE KNRAWMS.PS_DISPATCH_D SET " + String.join(",", sets) + " WHERE DISP_D_ID=?", args.toArray());
             return Map.of("ok", true);
         } catch (Exception e) { return errMap(e); }
     }
@@ -222,12 +222,12 @@ public class SapService {
             // PS_DISPATCH_H → MariaDB tmsJdbc
             String dispatchNo = "PS" + dispDate + now;
             tmsJdbc.update(
-                "INSERT INTO PS_DISPATCH_H (DISPATCH_NO,DPTNKY,DPTNM,DISP_DATE,STATUS,CARTYPE,NOTE,CREDAT,CRETIM,LMODAT) " +
+                "INSERT INTO KNRAWMS.PS_DISPATCH_H (DISPATCH_NO,DPTNKY,DPTNM,DISP_DATE,STATUS,CARTYPE,NOTE,CREDAT,CRETIM,LMODAT) " +
                 "VALUES (?,?,?,?,?,?,?,?,?,?)",
                 dispatchNo, dptnky, dptnm, dispDate, "DRAFT", cartype,
                 str(body.get("note")), today, now, today
             );
-            Long newId = tmsJdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+            Long newId = tmsJdbc.queryForObject("SELECT SEQ_PS_DISPATCH_H.CURRVAL FROM DUAL", Long.class);
 
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> items = (List<Map<String, Object>>) body.get("items");
@@ -236,7 +236,7 @@ public class SapService {
                 for (Map<String, Object> it : items) {
                     // PS_DISPATCH_D → MariaDB tmsJdbc
                     tmsJdbc.update(
-                        "INSERT INTO PS_DISPATCH_D (DISP_H_ID,SHPOKY,SHPOIT,SKUKEY,QTSHPO,KG_WEIGHT,ITEM_SEQ,CREDAT) VALUES (?,?,?,?,?,?,?,?)",
+                        "INSERT INTO KNRAWMS.PS_DISPATCH_D (DISP_H_ID,SHPOKY,SHPOIT,SKUKEY,QTSHPO,KG_WEIGHT,ITEM_SEQ,CREDAT) VALUES (?,?,?,?,?,?,?,?)",
                         newId, it.get("shpoky"), it.get("shpoit"), it.get("skukey"),
                         it.get("qtshpo"), it.get("kg_weight"), seq++, today
                     );
