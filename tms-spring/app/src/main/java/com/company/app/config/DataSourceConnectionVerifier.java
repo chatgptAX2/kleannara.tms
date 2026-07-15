@@ -103,7 +103,7 @@ public class DataSourceConnectionVerifier {
     // ── TMS 핵심 테이블 접근 가능 여부 확인 (Oracle KNRAWMS) ────────────
     private void verifyTmsTableAccess(Connection conn) {
         // Oracle KNRAWMS 계정 — 모든 테이블 KNRAWMS. prefix 필수
-        String[] checkTables = {"KNRAWMS.PS_DISPATCH_H", "KNRAWMS.VHCMA", "KNRAWMS.DS_VEHICLE", "KNRAWMS.ROUTE_COST"};
+        String[] checkTables = {"KNRAWMS.PS_DISPATCH_H", "KNRAWMS.VHCMA", "KNRAWMS.DS_VEHICLE", "KNRAWMS.ROUTE_COST", "KNRAWMS.BZPTN_DETAIL"};
         StringBuilder ok  = new StringBuilder();
         StringBuilder err = new StringBuilder();
 
@@ -124,7 +124,7 @@ public class DataSourceConnectionVerifier {
     // ── WMS 핵심 테이블 접근 가능 여부 확인 (Oracle KNRAWMS) ─────────────────
     private void verifyWmsTableAccess(Connection conn) {
         // Oracle KNRAWMS 스키마 테이블 — 스키마명 접두어 필수
-        String[] checkTables = {"KNRAWMS.CMCDM", "KNRAWMS.BZPTN", "KNRAWMS.SHPDH", "KNRAWMS.BZPTN_DETAIL"};
+        String[] checkTables = {"KNRAWMS.CMCDM", "KNRAWMS.BZPTN", "KNRAWMS.SHPDH"};
         StringBuilder ok  = new StringBuilder();
         StringBuilder err = new StringBuilder();
 

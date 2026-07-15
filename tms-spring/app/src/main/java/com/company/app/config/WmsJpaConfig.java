@@ -20,8 +20,10 @@ import java.util.Properties;
  * ■ Oracle 전용 Repository — basePackageClasses 로 정확한 클래스만 지정
  *   (basePackages 재귀 스캔 시 tms 서브패키지 Repository 중복 등록 방지)
  *   - ShpdHRepository       : SHPDH  — Oracle KNRAWMS
- *   - BzptnDetailRepository : BZPTN_DETAIL — Oracle KNRAWMS (delivery.repository.wms)
  *   - VhcmaRepository       : VHCMA  — Oracle KNRAWMS
+ *
+ * ■ BZPTN_DETAIL 은 TmsJpaConfig 에서 관리 (TMS DB 소속)
+ *   delivery(BZPTN_DETAIL) → TmsJpaConfig (tmsDataSource) 로 이동
  *
  * ■ MariaDB 테이블은 TmsJpaConfig 에서 관리
  *   dispatch(PS_DISPATCH_H/D), vehicle(DS_VEHICLE), delivery.RouteCost(ROUTE_COST) — Oracle KNRAWMS
@@ -35,7 +37,6 @@ import java.util.Properties;
 @EnableJpaRepositories(
     basePackageClasses = {
         com.company.module.shipment.repository.ShpdHRepository.class,               // SHPDH  — Oracle KNRAWMS
-        com.company.module.delivery.repository.wms.BzptnDetailRepository.class,     // BZPTN_DETAIL — Oracle KNRAWMS
         com.company.module.vehicle.repository.wms.VhcmaRepository.class             // VHCMA  — Oracle KNRAWMS
     },
     entityManagerFactoryRef = "wmsEntityManagerFactory",
@@ -51,7 +52,6 @@ public class WmsJpaConfig {
         em.setDataSource(dataSource);
         em.setPackagesToScan(
             "com.company.module.shipment.entity",           // ShpdH, ShpdI — Oracle KNRAWMS
-            "com.company.module.delivery.entity.wms",       // BzptnDetail — Oracle KNRAWMS
             "com.company.module.vehicle.entity.wms"         // Vhcma — Oracle KNRAWMS
         );
         em.setPersistenceUnitName("wmsPU");

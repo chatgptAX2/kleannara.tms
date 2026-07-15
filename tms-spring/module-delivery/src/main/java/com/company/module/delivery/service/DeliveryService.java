@@ -21,20 +21,30 @@ import java.util.*;
  *        api_route_cost_search / api_route_cost_pivot 대응
  *
  * ─ DB 라우팅 ───────────────────────────────────────────────────
- *   wmsEm  (wmsPU / Oracle WMS) :
- *     - BzptnDetailRepository (KNRAWMS.BZPTN_DETAIL, KNRAWMS.BZPTN)  -- Oracle WMS 테이블
- *     - RouteCostRepository   (ROUTE_COST)                             -- MariaDB TMS 테이블
+ *   tmsEm  (tmsPU / Oracle TMS) :
+ *     - BzptnDetailRepository (KNRAWMS.BZPTN_DETAIL)  -- TMS Oracle 테이블
  *     - em.createNativeQuery  KNRAWMS.BZPTN_DETAIL UPDATE/INSERT
+ *   wmsEm  (wmsPU / Oracle WMS) :
+ *     - KNRAWMS.BZPTN 원장 조회 (NAME01, ADDR01, REGN01, TELN01 등)
+ *
+ * ■ 2-step 패턴 (Cross-DB JOIN 불가)
+ *   Step 1: wmsEm  → KNRAWMS.BZPTN  (WMS DB) 조회
+ *   Step 2: tmsEm  → KNRAWMS.BZPTN_DETAIL (TMS DB) 조회
+ *   Java에서 PTNRKY 기준으로 merge
  * ───────────────────────────────────────────────────────────────
  */
 @Service
-@Transactional(readOnly = true, transactionManager = "wmsTransactionManager")
+@Transactional(readOnly = true, transactionManager = "tmsTransactionManager")
 public class DeliveryService {
 
     private final BzptnDetailRepository bzptnDetailRepo;
     private final RouteCostRepository   routeCostRepo;
 
-    /** WMS DB (Oracle) — KNRAWMS.BZPTN 원장 및 KNRAWMS.BZPTN_DETAIL 읽기/쓰기용 */
+    /** TMS DB (Oracle) — KNRAWMS.BZPTN_DETAIL 읽기/쓰기용 */
+    @PersistenceContext(unitName = "tmsPU")
+    private EntityManager tmsEm;
+
+    /** WMS DB (Oracle) — KNRAWMS.BZPTN 원장 읽기용 */
     @PersistenceContext(unitName = "wmsPU")
     private EntityManager wmsEm;
 
@@ -47,6 +57,7 @@ public class DeliveryService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 납품처 목록 (Flask api_delivery_list)
+    // 2-step: tmsEm(BZPTN_DETAIL) + wmsEm(BZPTN) → Java merge
     // ──────────────────────────────────────────────────────────────────────────
     public Map<String, Object> getList(DeliverySearchRequest req) {
         int page   = req.getPage() == null ? 1 : req.getPage();
@@ -58,23 +69,80 @@ public class DeliveryService {
         String ptnrky    = nullIfBlank(req.getPtnrky());
         String q         = nullIfBlank(req.getQ());
 
-        long total = bzptnDetailRepo.searchCount(wareky, itemGroup, ptnrky, q);
-        List<Object[]> rows = bzptnDetailRepo.searchList(wareky, itemGroup, ptnrky, q, size, offset);
+        // Step 1: tmsEm — BZPTN_DETAIL 조회 (wareky, itemGroup 필터)
+        long total = bzptnDetailRepo.searchCount(wareky, itemGroup);
+        List<Object[]> detailRows = bzptnDetailRepo.searchList(wareky, itemGroup, size, offset);
 
+        // Step 2: wmsEm — BZPTN 일괄 조회 (NAME01, ADDR01, REGN01, TELN01)
+        List<String> ptnrkyList = new ArrayList<>();
+        for (Object[] r : detailRows) ptnrkyList.add(str(r[0]));
+
+        Map<String, Object[]> bzptnMap = new LinkedHashMap<>();
+        if (!ptnrkyList.isEmpty()) {
+            String inClause = String.join(",", Collections.nCopies(ptnrkyList.size(), "?"));
+            @SuppressWarnings("unchecked")
+            List<Object[]> bzptnRows = wmsEm.createNativeQuery(
+                "SELECT PTNRKY, NAME01, PTNRTY, OWNRKY, ADDR01, ADDR02, REGN01, TELN01 " +
+                "FROM KNRAWMS.BZPTN WHERE PTNRKY IN (" + inClause + ") AND PTNRTY='CT'")
+                .getResultList();
+            // positional parameter 방식으로 설정
+            // ※ JPA nativeQuery에서 IN절 바인딩은 직접 처리
+            bzptnRows = new ArrayList<>();
+            for (int i = 0; i < ptnrkyList.size(); i++) {
+                String pk = ptnrkyList.get(i);
+                @SuppressWarnings("unchecked")
+                List<Object[]> single = wmsEm.createNativeQuery(
+                    "SELECT PTNRKY, NAME01, PTNRTY, OWNRKY, ADDR01, ADDR02, REGN01, TELN01 " +
+                    "FROM KNRAWMS.BZPTN WHERE PTNRKY=? AND PTNRTY='CT'")
+                    .setParameter(1, pk)
+                    .getResultList();
+                bzptnRows.addAll(single);
+            }
+            for (Object[] b : bzptnRows) bzptnMap.put(str(b[0]), b);
+        }
+
+        // ptnrky/q 검색 필터 (Java 레벨)
         List<Map<String, Object>> result = new ArrayList<>();
-        for (Object[] r : rows) {
+        for (Object[] r : detailRows) {
+            String pk    = str(r[0]);
+            Object[] bz  = bzptnMap.get(pk);
+            String name01 = bz != null ? str(bz[1]) : "";
+            String addr01 = bz != null ? str(bz[4]) : "";
+            String regn01 = bz != null ? str(bz[6]) : "";
+
+            // ptnrky / q 검색 필터 (BZPTN 컬럼 대상)
+            if (ptnrky != null && !pk.contains(ptnrky) && !name01.contains(ptnrky)) continue;
+            if (q != null && !pk.contains(q) && !name01.contains(q)
+                          && !addr01.contains(q) && !regn01.contains(q)) continue;
+
             Map<String, Object> m = new LinkedHashMap<>();
-            m.put("PTNRKY",      str(r[0]));  m.put("NAME01",    str(r[1]));
-            m.put("PTNRTY",      str(r[2]));  m.put("OWNRKY",    str(r[3]));
-            m.put("ADDR01",      str(r[4]));  m.put("ADDR02",    str(r[5]));
-            m.put("REGN01",      str(r[6]));  m.put("TELN01",    str(r[7]));
-            m.put("WAREKY",      str(r[8]));  m.put("ROUTE_CD",  str(r[9]));
-            m.put("ITEM_GROUP",  str(r[10])); m.put("AREA_CD",   str(r[11]));
-            m.put("UNLOAD_TIME", r[12]);      m.put("MAX_HEIGHT",r[13]);
-            m.put("AUTO_ALLOC_YN", str(r[14])); m.put("FORKLIFT_YN", str(r[15]));
-            m.put("INB_TIME_FROM1", str(r[16])); m.put("INB_TIME_TO1", str(r[17]));
-            m.put("MAX_BOX_QTY", r[18]); m.put("DEADLINE_TIME", str(r[19]));
-            m.put("MAX_TON", r[20]); m.put("HAS_DETAIL", str(r[21]));
+            // BZPTN 원장 컬럼
+            m.put("PTNRKY",   pk);
+            m.put("NAME01",   name01);
+            m.put("PTNRTY",   bz != null ? str(bz[2]) : "CT");
+            m.put("OWNRKY",   bz != null ? str(bz[3]) : "");
+            m.put("ADDR01",   addr01);
+            m.put("ADDR02",   bz != null ? str(bz[5]) : "");
+            m.put("REGN01",   regn01);
+            m.put("TELN01",   bz != null ? str(bz[7]) : "");
+            // BZPTN_DETAIL 컬럼 (index: 0=PTNRKY,1=PTNRTY,2=OWNRKY,3=WAREKY,4=ROUTE_CD,
+            //                           5=ITEM_GROUP,6=AREA_CD,7=UNLOAD_TIME,8=MAX_HEIGHT,
+            //                           9=AUTO_ALLOC_YN,10=FORKLIFT_YN,11=INB_TIME_FROM1,
+            //                           12=INB_TIME_TO1,13=MAX_BOX_QTY,14=DEADLINE_TIME,15=MAX_TON)
+            m.put("WAREKY",         str(r[3]));
+            m.put("ROUTE_CD",       str(r[4]));
+            m.put("ITEM_GROUP",     str(r[5]));
+            m.put("AREA_CD",        str(r[6]));
+            m.put("UNLOAD_TIME",    r[7]);
+            m.put("MAX_HEIGHT",     r[8]);
+            m.put("AUTO_ALLOC_YN",  str(r[9]));
+            m.put("FORKLIFT_YN",    str(r[10]));
+            m.put("INB_TIME_FROM1", str(r[11]));
+            m.put("INB_TIME_TO1",   str(r[12]));
+            m.put("MAX_BOX_QTY",    r[13]);
+            m.put("DEADLINE_TIME",  str(r[14]));
+            m.put("MAX_TON",        r[15]);
+            m.put("HAS_DETAIL",     "Y");
             result.add(m);
         }
 
@@ -88,7 +156,8 @@ public class DeliveryService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 납품처 상세 (Flask api_delivery_detail)
-    // KNRAWMS.BZPTN 원장 → wmsEm (Oracle), KNRAWMS.BZPTN_DETAIL 추가정보 → bzptnDetailRepo (Oracle)
+    // KNRAWMS.BZPTN 원장 → wmsEm (WMS Oracle)
+    // KNRAWMS.BZPTN_DETAIL  → bzptnDetailRepo / tmsEm (TMS Oracle)
     // ──────────────────────────────────────────────────────────────────────────
     public Map<String, Object> getDetail(String ptnrky, String ptnrty, String ownrky) {
         @SuppressWarnings("unchecked")
@@ -108,9 +177,9 @@ public class DeliveryService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 납품처 저장 (Flask api_delivery_save)
-    // KNRAWMS.BZPTN_DETAIL 쓰기 → wmsEm (Oracle)
+    // KNRAWMS.BZPTN_DETAIL 쓰기 → tmsEm (TMS Oracle)
     // ──────────────────────────────────────────────────────────────────────────
-    @Transactional(transactionManager = "wmsTransactionManager")
+    @Transactional(transactionManager = "tmsTransactionManager")
     public String saveDetail(DeliverySaveRequest req) {
         String ptnrky = req.getPtnrky() == null ? "" : req.getPtnrky().strip();
         String ptnrty = req.getPtnrty() == null ? "CT" : req.getPtnrty().strip();
@@ -121,7 +190,7 @@ public class DeliveryService {
         String nowtm = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
 
         if (bzptnDetailRepo.existsByPtnrkyAndPtnrtyAndOwnrky(ptnrky, ptnrty, ownrky)) {
-            wmsEm.createNativeQuery("""
+            tmsEm.createNativeQuery("""
                 UPDATE KNRAWMS.BZPTN_DETAIL SET
                   WAREKY=?,ROUTE_CD=?,ITEM_GROUP=?,UNLOAD_TIME=?,
                   INB_TIME_FROM1=?,INB_TIME_TO1=?,AREA_CD=?,MAX_HEIGHT=?,
@@ -162,7 +231,7 @@ public class DeliveryService {
               .executeUpdate();
             return "updated";
         } else {
-            wmsEm.createNativeQuery("""
+            tmsEm.createNativeQuery("""
                 INSERT INTO KNRAWMS.BZPTN_DETAIL
                 (PTNRKY,PTNRTY,OWNRKY,WAREKY,ROUTE_CD,ITEM_GROUP,UNLOAD_TIME,
                  INB_TIME_FROM1,INB_TIME_TO1,AREA_CD,MAX_HEIGHT,FORKLIFT_YN,HANDWORK_YN,
@@ -205,9 +274,9 @@ public class DeliveryService {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // 납품처 삭제 (Flask api_delivery_delete) — WMS Oracle DB
+    // 납품처 삭제 (Flask api_delivery_delete) — TMS Oracle DB
     // ──────────────────────────────────────────────────────────────────────────
-    @Transactional(transactionManager = "wmsTransactionManager")
+    @Transactional(transactionManager = "tmsTransactionManager")
     public void deleteDetail(String ptnrky, String ptnrty, String ownrky) {
         String nowdt = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
         String nowtm = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
@@ -232,7 +301,6 @@ public class DeliveryService {
     public Map<String, Object> pivotRouteCost(String wareky, String ptnrky) {
         List<Object[]> rows = routeCostRepo.searchList(nullIfBlank(wareky), nullIfBlank(ptnrky), null);
 
-        // CARTYPE 고유 목록 수집 (컬럼)
         List<String> cartypes = new ArrayList<>();
         Map<String, Map<String, Double>> pivotMap = new LinkedHashMap<>();
 
@@ -262,9 +330,8 @@ public class DeliveryService {
     private String nullIfBlank(String s) { return (s == null || s.isBlank()) ? null : s.strip(); }
 
     private Map<String, Object> toMap(Object o) {
-        // Object[] from BZPTN native query → 단순 Map 반환
         if (o == null) return Map.of();
-        return Map.of("raw", o.toString()); // 실제 배포 시 column 매핑 필요
+        return Map.of("raw", o.toString());
     }
 
     private Map<String, Object> detailToMap(BzptnDetail d) {

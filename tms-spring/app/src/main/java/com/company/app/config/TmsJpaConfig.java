@@ -32,10 +32,11 @@ import java.util.Properties;
 @Configuration
 @EnableJpaRepositories(
     basePackageClasses = {
-        com.company.module.dispatchconfig.repository.DispatchObjectiveRepository.class, // PS제약조건관리 — MariaDB
-        com.company.module.dispatch.repository.PsDispatchHRepository.class,             // PS_DISPATCH_H  — MariaDB
-        com.company.module.vehicle.repository.tms.DsVehicleRepository.class,           // DS_VEHICLE     — MariaDB
-        com.company.module.delivery.repository.tms.RouteCostRepository.class           // ROUTE_COST     — MariaDB
+        com.company.module.dispatchconfig.repository.DispatchObjectiveRepository.class, // PS제약조건관리 — Oracle KNRAWMS
+        com.company.module.dispatch.repository.PsDispatchHRepository.class,             // PS_DISPATCH_H  — Oracle KNRAWMS
+        com.company.module.vehicle.repository.tms.DsVehicleRepository.class,           // DS_VEHICLE     — Oracle KNRAWMS
+        com.company.module.delivery.repository.tms.RouteCostRepository.class,          // ROUTE_COST     — Oracle KNRAWMS
+        com.company.module.delivery.repository.wms.BzptnDetailRepository.class         // BZPTN_DETAIL   — TMS DB 소속
     },
     entityManagerFactoryRef = "tmsEntityManagerFactory",
     transactionManagerRef   = "tmsTransactionManager"
@@ -51,9 +52,10 @@ public class TmsJpaConfig {
         em.setDataSource(dataSource);
         em.setPackagesToScan(
             "com.company.module.dispatchconfig.entity",
-            "com.company.module.dispatch.entity",            // PsDispatchH, PsDispatchI — MariaDB
-            "com.company.module.vehicle.entity.tms",         // DsVehicle — MariaDB
-            "com.company.module.delivery.entity.tms"         // RouteCost — MariaDB
+            "com.company.module.dispatch.entity",            // PsDispatchH, PsDispatchI — Oracle KNRAWMS
+            "com.company.module.vehicle.entity.tms",         // DsVehicle — Oracle KNRAWMS
+            "com.company.module.delivery.entity.tms",        // RouteCost — Oracle KNRAWMS
+            "com.company.module.delivery.entity.wms"         // BzptnDetail — TMS DB 소속
         );
         em.setPersistenceUnitName("tmsPU");
 
