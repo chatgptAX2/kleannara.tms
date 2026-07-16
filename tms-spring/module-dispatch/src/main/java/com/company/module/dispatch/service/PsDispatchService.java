@@ -159,8 +159,9 @@ public class PsDispatchService {
         String warekyParam = req.getWareky();
         String skug05Param = req.getSkug05();
 
-        // RECDI: SKUKEY당 여러 입고 레코드가 존재할 수 있어 단순 LEFT JOIN 시 행 폭발(fan-out) 발생
-        // → SKUKEY별 최신 1건만 가져오는 서브쿼리로 처리하여 결과 건수 정확성 확보
+        // RECDI GROUP BY 서브쿼리를 FROM 절에서 SELECT 절 스칼라 서브쿼리로 변경
+        // → FROM 절 서브쿼리: RECDI 전체를 GROUP BY 후 드라이빙 → 대용량 테이블 Full Scan 발생
+        // → SELECT 절 스칼라 서브쿼리: 실제 조회되는 SHPDI 행 수만큼만 RECDI 접근 → 성능 대폭 개선
         StringBuilder sb = new StringBuilder("""
             SELECT i.SHPOKY, i.SHPOIT, i.SKUKEY, i.DESC01,
                    TRIM(COALESCE(i.SVBELN,'')) AS SVBELN,
@@ -172,17 +173,14 @@ public class PsDispatchService {
                    TRIM(COALESCE(c.CDESC1,'')) AS SHPMTY_NM,
                    COALESCE(m.GRSWGT, 0) AS GRSWGT,
                    TRIM(COALESCE(i.LOTA03,'')) AS LOTA03,
-                   COALESCE(rd.QTYRCV, 0) AS UNIT_WEIGHT
+                   (SELECT COALESCE(MAX(rd.QTYRCV), 0)
+                    FROM KNRAWMS.RECDI rd
+                    WHERE rd.SKUKEY = i.SKUKEY) AS UNIT_WEIGHT
             FROM KNRAWMS.SHPDI i
             JOIN KNRAWMS.SHPDH h ON i.SHPOKY = h.SHPOKY
             LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY = h.DPTNKY AND b.PTNRTY = 'CT'
             LEFT JOIN KNRAWMS.CMCDV c ON c.CMCDKY = 'TASOTY' AND c.CMCDVL = h.SHPMTY
             LEFT JOIN KNRAWMS.SKUMA m ON m.SKUKEY = i.SKUKEY
-            LEFT JOIN (
-                SELECT SKUKEY, MAX(QTYRCV) AS QTYRCV
-                FROM KNRAWMS.RECDI
-                GROUP BY SKUKEY
-            ) rd ON rd.SKUKEY = i.SKUKEY
             WHERE 1=1
             """);
 
