@@ -7,7 +7,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -70,13 +69,14 @@ public class DeliveryController {
         return ResponseEntity.ok(ApiResponse.success(Map.of("ok", true)));
     }
 
-    /** 운송비 검색 – Flask: GET /api/route_cost/search */
+    /** 운송비 검색 – Flask: GET /api/route_cost/search
+     *  반환: { rows, total, carclasses } */
     @GetMapping("/route_cost/search")
-    public ResponseEntity<ApiResponse<List<Object[]>>> searchRouteCost(
+    public ResponseEntity<ApiResponse<Map<String, Object>>> searchRouteCost(
             @RequestParam(required = false) String wareky,
             @RequestParam(required = false) String ptnrky,
-            @RequestParam(required = false) String cartype) {
-        return ResponseEntity.ok(ApiResponse.success(deliveryService.searchRouteCost(wareky, ptnrky, cartype)));
+            @RequestParam(required = false) String carclass) {
+        return ResponseEntity.ok(ApiResponse.success(deliveryService.searchRouteCost(wareky, ptnrky, carclass)));
     }
 
     /** 운송비 피벗 – Flask: GET /api/route_cost/pivot */

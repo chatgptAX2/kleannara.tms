@@ -5,6 +5,8 @@ import com.company.module.delivery.entity.wms.BzptnDetail;
 import com.company.module.delivery.entity.tms.RouteCost;
 import com.company.module.delivery.repository.wms.BzptnDetailRepository;
 import com.company.module.delivery.repository.tms.RouteCostRepository;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +33,8 @@ public class DeliveryService {
 
     private final BzptnDetailRepository bzptnDetailRepo;
     private final RouteCostRepository   routeCostRepo;
+    /** WMS Oracle — CMCDV 공통코드 조회용 (KNRAWMS.CMCDV) */
+    private final JdbcTemplate          wmsJdbc;
 
     /** TMS DB (Oracle KNRATMS) — BZPTN / BZPTN_DETAIL 읽기·쓰기용 */
     @PersistenceContext(unitName = "tmsPU")
@@ -38,9 +42,11 @@ public class DeliveryService {
 
     public DeliveryService(
             BzptnDetailRepository bzptnDetailRepo,
-            RouteCostRepository   routeCostRepo) {
+            RouteCostRepository   routeCostRepo,
+            @Qualifier("wmsJdbcTemplate") JdbcTemplate wmsJdbc) {
         this.bzptnDetailRepo = bzptnDetailRepo;
         this.routeCostRepo   = routeCostRepo;
+        this.wmsJdbc         = wmsJdbc;
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -236,38 +242,114 @@ public class DeliveryService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 운송비 검색 (Flask api_route_cost_search)
+    // 반환: { rows, total, carclasses }
+    //   carclasses: KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10'
+    //               → [{value:CMCDVL, label:CDESC1}, ...]
     // ──────────────────────────────────────────────────────────────────────────
-    public List<Object[]> searchRouteCost(String wareky, String ptnrky, String cartype) {
-        return routeCostRepo.searchList(
-            nullIfBlank(wareky), nullIfBlank(ptnrky), nullIfBlank(cartype)
+    public Map<String, Object> searchRouteCost(String wareky, String ptnrky, String carclass) {
+        // 1. ROUTE_COST 행 조회
+        List<Object[]> rawRows = routeCostRepo.searchList(
+            nullIfBlank(wareky), nullIfBlank(ptnrky), nullIfBlank(carclass)
         );
+
+        // 2. Object[] → Map (alias 컬럼명: SHPPT,PTNRKY,CARCLASS,COST,DIST_KM,DATE_START,DATE_END,UNIT)
+        //    nativeQuery Object[] 인덱스 순서: COST_ID(0),SHPPT(1),PTNRKY(2),CARCLASS(3),COST(4),DIST_KM(5),DATE_START(6),DATE_END(7),UNIT(8)
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Object[] r : rawRows) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("COST_ID",    r[0]);
+            m.put("SHPPT",      str(r[1]));
+            m.put("PTNRKY",     str(r[2]));
+            m.put("CARCLASS",   str(r[3]));
+            m.put("COST",       r[4]);
+            m.put("DIST_KM",    r[5]);
+            m.put("DATE_START", str(r[6]));
+            m.put("DATE_END",   str(r[7]));
+            m.put("UNIT",       str(r[8]));
+            rows.add(m);
+        }
+
+        // 3. CMCDV TMS_CARCLASS10 → 차량톤수 select 옵션
+        List<Map<String, Object>> carclasses = loadCarclasses();
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("rows",       rows);
+        result.put("total",      (long) rows.size());
+        result.put("carclasses", carclasses);
+        return result;
     }
 
     // ──────────────────────────────────────────────────────────────────────────
     // 운송비 피벗 (Flask api_route_cost_pivot)
+    // 반환: { carclasses, rows, total }
+    //   carclasses: ROUTE_COST의 실제 CARTYPE 목록 (CMCDV 기준)
     // ──────────────────────────────────────────────────────────────────────────
     public Map<String, Object> pivotRouteCost(String wareky, String ptnrky) {
-        List<Object[]> rows = routeCostRepo.searchList(nullIfBlank(wareky), nullIfBlank(ptnrky), null);
+        List<Object[]> rawRows = routeCostRepo.searchList(nullIfBlank(wareky), nullIfBlank(ptnrky), null);
 
-        List<String> cartypes = new ArrayList<>();
-        Map<String, Map<String, Double>> pivotMap = new LinkedHashMap<>();
+        // Object[] 인덱스: COST_ID(0),SHPPT(1),PTNRKY(2),CARCLASS(3),COST(4),DIST_KM(5),DATE_START(6),DATE_END(7),UNIT(8)
+        List<String> carclassesList = new ArrayList<>();
+        // pivotMap 키: PTNRKY → (CARCLASS → COST)
+        Map<String, Map<String, Object>> pivotMap = new LinkedHashMap<>();
+        // 행별 메타정보 보관 (SHPPT, DATE_START, DATE_END, UNIT)
+        Map<String, Map<String, String>> metaMap = new LinkedHashMap<>();
 
-        for (Object[] r : rows) {
-            String pt = str(r[1]);
-            String ct = str(r[2]);
-            double cost = toDouble(r[3]);
-            if (!cartypes.contains(ct)) cartypes.add(ct);
-            pivotMap.computeIfAbsent(pt, x -> new LinkedHashMap<>()).put(ct, cost);
+        for (Object[] r : rawRows) {
+            String shppt     = str(r[1]);
+            String ptnrkyVal = str(r[2]);
+            String cc        = str(r[3]);   // CARCLASS (= CARTYPE)
+            Object cost      = r[4];        // COST_AMT
+            String dateStart = str(r[6]);
+            String dateEnd   = str(r[7]);
+            String unit      = str(r[8]);
+
+            if (!carclassesList.contains(cc)) carclassesList.add(cc);
+
+            // 피벗 행 생성 (PTNRKY 기준)
+            pivotMap.computeIfAbsent(ptnrkyVal, k -> new LinkedHashMap<>()).put(cc, cost);
+            metaMap.computeIfAbsent(ptnrkyVal, k -> {
+                Map<String,String> m = new LinkedHashMap<>();
+                m.put("SHPPT", shppt); m.put("DATE_START", dateStart);
+                m.put("DATE_END", dateEnd); m.put("UNIT", unit);
+                return m;
+            });
         }
 
         List<Map<String, Object>> pivotRows = new ArrayList<>();
-        for (Map.Entry<String, Map<String, Double>> e : pivotMap.entrySet()) {
+        for (Map.Entry<String, Map<String, Object>> e : pivotMap.entrySet()) {
             Map<String, Object> row = new LinkedHashMap<>();
-            row.put("PTNRKY", e.getKey());
-            row.putAll(e.getValue());
+            Map<String, String> meta = metaMap.getOrDefault(e.getKey(), Map.of());
+            row.put("SHPPT",      meta.getOrDefault("SHPPT",      ""));
+            row.put("PTNRKY",     e.getKey());
+            row.put("DATE_START", meta.getOrDefault("DATE_START", ""));
+            row.put("DATE_END",   meta.getOrDefault("DATE_END",   ""));
+            row.put("UNIT",       meta.getOrDefault("UNIT",       "KRW"));
+            row.putAll(e.getValue()); // CARCLASS → COST 피벗 컬럼
             pivotRows.add(row);
         }
-        return Map.of("cartypes", cartypes, "rows", pivotRows);
+
+        // CMCDV carclasses (select 옵션용)
+        List<Map<String, Object>> carclassesOpts = loadCarclasses();
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("carclasses", carclassesList);   // 프론트 피벗 헤더용 (CARTYPE 값 목록)
+        result.put("carclassOpts", carclassesOpts); // 프론트 select 옵션용
+        result.put("rows",       pivotRows);
+        result.put("total",      (long) pivotRows.size());
+        return result;
+    }
+
+    // ── CMCDV TMS_CARCLASS10 → [{value, label}] ────────────────────────────
+    private List<Map<String, Object>> loadCarclasses() {
+        try {
+            List<Map<String, Object>> rows = wmsJdbc.queryForList(
+                "SELECT CMCDVL AS value, CDESC1 AS label " +
+                "FROM KNRAWMS.CMCDV WHERE CMCDKY = 'TMS_CARCLASS10' ORDER BY CMCDVL"
+            );
+            return rows;
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 
     // ──────────────────────────────────────────────────────────────────────────

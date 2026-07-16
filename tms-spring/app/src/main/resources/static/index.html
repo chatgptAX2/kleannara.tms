@@ -7343,8 +7343,11 @@ async function renderRouteCost(){
   c.style.overflowY = 'auto';
   c.innerHTML = `<div class="loading"><div class="spinner"></div>데이터 로딩 중...</div>`;
 
-  // 초기 데이터 (필터 옵션용)
-  const init = await fetch('/api/route_cost/search?page=1&size=1').then(r=>r.json());
+  // 초기 데이터 (필터 옵션용) — search API: { rows, total, carclasses:[{value,label}] }
+  const initRes = await fetch('/api/route_cost/search').then(r=>r.json());
+  // ApiResponse wrapper: data.data or data directly
+  const init = initRes.data ?? initRes;
+  // carclasses: [{value:CMCDVL, label:CDESC1}] from CMCDV TMS_CARCLASS10
   rcState.carclasses = init.carclasses || [];
   rcState.shppts     = init.shppts     || [];
 
@@ -7356,9 +7359,12 @@ function renderRouteCostUI(){
   const c = document.getElementById('content');
   c.style.overflowY = 'hidden';
 
-  const ccOpts = rcState.carclasses.map(cc =>
-    `<option value="${cc}">${cc} (${RC_CARCLASS_LABEL[cc]||cc})</option>`
-  ).join('');
+  // carclasses: [{value, label}] 형태 (CMCDV TMS_CARCLASS10)
+  const ccOpts = rcState.carclasses.map(cc => {
+    const v = cc.value ?? cc;
+    const l = cc.label ?? RC_CARCLASS_LABEL[v] ?? v;
+    return `<option value="${v}">${v} (${l})</option>`;
+  }).join('');
   const spOpts = rcState.shppts.map(s => `<option value="${s}">${s}</option>`).join('');
 
   c.innerHTML = `
@@ -7463,18 +7469,29 @@ async function loadRouteCostData(){
 
   try {
     if(rcState.mode === 'pivot'){
-      const params = new URLSearchParams({route, ptnrky, carclass});
-      const data   = await fetch(`/api/route_cost/pivot?${params}`).then(r=>r.json());
-      rcState.pivotCols = data.carclasses;
-      rcState.rows      = data.rows;
-      rcState.total     = data.total;
+      const params = new URLSearchParams({wareky:'', ptnrky, carclass});
+      const res    = await fetch(`/api/route_cost/pivot?${params}`).then(r=>r.json());
+      const data   = res.data ?? res;  // ApiResponse unwrap
+      rcState.pivotCols = data.carclasses || [];
+      rcState.rows      = data.rows      || [];
+      rcState.total     = data.total     || 0;
+      // pivot에서 반환된 carclassOpts로 select 갱신
+      if(data.carclassOpts?.length) {
+        rcState.carclasses = data.carclassOpts;
+        const sel = document.getElementById('rc-f-carclass');
+        if(sel) {
+          const cur = sel.value;
+          sel.innerHTML = '<option value="">전체</option>' +
+            data.carclassOpts.map(cc=>`<option value="${cc.value}"${cc.value===cur?' selected':''}>${cc.value} (${cc.label})</option>`).join('');
+        }
+      }
       renderRouteCostPivot(data);
     } else {
-      const params = new URLSearchParams({route, ptnrky, carclass,
-        page: rcState.page, size: rcState.size});
-      const data   = await fetch(`/api/route_cost/search?${params}`).then(r=>r.json());
-      rcState.rows  = data.rows;
-      rcState.total = data.total;
+      const params = new URLSearchParams({wareky:'', ptnrky, carclass});
+      const res    = await fetch(`/api/route_cost/search?${params}`).then(r=>r.json());
+      const data   = res.data ?? res;  // ApiResponse unwrap
+      rcState.rows  = data.rows  || [];
+      rcState.total = data.total || 0;
       renderRouteCostList(data);
     }
   } catch(e){
@@ -7487,39 +7504,42 @@ function renderRouteCostPivot(data){
   const pg   = document.getElementById('rc-pagination');
   if(pg) pg.style.display = 'none';
 
+  const total = data.total ?? (data.rows?.length ?? 0);
   const badge = document.getElementById('rc-total-badge');
-  if(badge) badge.textContent = `총 ${fmtNum(data.total)}건`;
+  if(badge) badge.textContent = `총 ${fmtNum(total)}건`;
 
-  const ccs = data.carclasses;   // ["Z010","Z025",...]
+  // carclasses: CARTYPE 실제 값 목록 (pivot 열 헤더용)
+  const ccs = data.carclasses || [];
+
   if(!data.rows?.length){
     area.innerHTML = `<div class="empty-state"><div class="icon">💰</div><div>조회 결과가 없습니다</div></div>`;
     return;
   }
 
-  // 헤더
+  // 헤더: 고정 컴럼 + CARCLASS 피벗 컴럼
   let thead = `<thead><tr>
-    <th style="${thBase()}min-width:60px">운송계획<br>지점</th>
-    <th style="${thBase()}min-width:90px">운송경로</th>
-    <th style="${thBase()}min-width:90px">납품처</th>
+    <th style="${thBase()}min-width:70px">전출창고<br>(운송지점)</th>
+    <th style="${thBase()}min-width:120px">납품처 코드</th>
     <th style="${thBase()}min-width:80px">효력시작일</th>
     <th style="${thBase()}min-width:80px">효력종료일</th>
     <th style="${thBase()}min-width:50px">단위</th>`;
   ccs.forEach(cc => {
-    thead += `<th style="${thBase()}min-width:90px;color:${RC_CC_COLORS[cc]||'#e2e8f0'}">
-      ${cc}<br><span style="font-size:9px;font-weight:400;opacity:.7">${RC_CARCLASS_LABEL[cc]||''}</span></th>`;
+    const lbl = rcState.carclasses.find?.(x=>(x.value??x)===cc)?.label ?? RC_CARCLASS_LABEL[cc] ?? cc;
+    thead += `<th style="${thBase()}min-width:100px;text-align:right;color:${RC_CC_COLORS[cc]||'#e2e8f0'}">
+      ${cc}<br><span style="font-size:9px;font-weight:400;opacity:.8">${lbl}</span></th>`;
   });
   thead += `</tr></thead>`;
 
   // 바디
   let tbody = '<tbody>';
   data.rows.forEach(row => {
-    tbody += `<tr style="border-bottom:1px solid var(--tr-border);cursor:pointer" onclick="(function(tr){tr.closest('table').querySelectorAll('tbody tr').forEach(r=>r.classList.remove('row-selected'));tr.classList.add('row-selected');})(this)">
-      <td style="${tdBase()}color:var(--text3)">${row.SHPPT||'-'}</td>
-      <td style="${tdBase()}font-weight:600;color:var(--td-num)">${row.ROUTE}</td>
-      <td style="${tdBase()}">${row.PTNRKY}</td>
+    tbody += `<tr style="border-bottom:1px solid var(--tr-border);cursor:pointer"
+      onclick="(function(tr){tr.closest('table').querySelectorAll('tbody tr').forEach(r=>r.classList.remove('row-selected'));tr.classList.add('row-selected');})(this)">
+      <td style="${tdBase()}color:var(--text3);font-size:11px">${row.SHPPT||'-'}</td>
+      <td style="${tdBase()}font-weight:600;color:var(--td-num)">${row.PTNRKY||'-'}</td>
       <td style="${tdBase()}color:var(--text3)">${fmtDate8(row.DATE_START)}</td>
       <td style="${tdBase()}color:var(--text3)">${fmtDate8(row.DATE_END)}</td>
-      <td style="${tdBase()}color:var(--text3)">${row.UNIT||'KRW'}</td>`;
+      <td style="${tdBase()}color:var(--text3);font-size:11px">${row.UNIT||'KRW'}</td>`;
     ccs.forEach(cc => {
       const v = row[cc];
       const s = v != null ? '₩' + Number(v).toLocaleString('ko-KR') : '-';
@@ -7531,17 +7551,19 @@ function renderRouteCostPivot(data){
   tbody += '</tbody>';
 
   area.innerHTML = `
-    <table style="border-collapse:collapse;font-size:12px;width:100%">
+    <div style="overflow:auto;max-height:100%">
+    <table style="border-collapse:collapse;font-size:12px;min-width:100%">
       ${thead}${tbody}
-    </table>`;
+    </table></div>`;
 }
 
 function renderRouteCostList(data){
   const area = document.getElementById('rc-data-area');
   const pgEl = document.getElementById('rc-pagination');
 
+  const total = data.total ?? (data.rows?.length ?? 0);
   const badge = document.getElementById('rc-total-badge');
-  if(badge) badge.textContent = `총 ${fmtNum(data.total)}건`;
+  if(badge) badge.textContent = `총 ${fmtNum(total)}건`;
 
   if(!data.rows?.length){
     area.innerHTML = `<div class="empty-state"><div class="icon">💰</div><div>조회 결과가 없습니다</div></div>`;
@@ -7549,14 +7571,16 @@ function renderRouteCostList(data){
     return;
   }
 
-  const cols = ['SHPPT','ROUTE','PTNRKY','CARCLASS','COST','UNIT','DATE_START','DATE_END'];
-  const labels= {SHPPT:'운송계획지점',ROUTE:'운송경로',PTNRKY:'납품처',
-    CARCLASS:'차량톤수',COST:'비용(KRW)',UNIT:'단위',DATE_START:'효력시작일',DATE_END:'효력종료일'};
+  // rows가 Map 형태 ({SHPPT,PTNRKY,CARCLASS,COST,...})이므로 직접 코럼 목록으로 헤더 생성
+  const cols   = ['SHPPT','PTNRKY','CARCLASS','COST','DIST_KM','UNIT','DATE_START','DATE_END'];
+  const labels = {
+    SHPPT:'전출창고(운송지점)', PTNRKY:'납품처 코드',
+    CARCLASS:'차량톤수', COST:'비용(KRW)', DIST_KM:'거리(km)',
+    UNIT:'단위', DATE_START:'효력시작일', DATE_END:'효력종료일'
+  };
 
   let thead = `<thead><tr>`;
-  cols.forEach(c => {
-    thead += `<th style="${thBase()}">${labels[c]||c}</th>`;
-  });
+  cols.forEach(c => { thead += `<th style="${thBase()}">${labels[c]||c}</th>`; });
   thead += '</tr></thead>';
 
   let tbody = '<tbody>';
@@ -7564,42 +7588,24 @@ function renderRouteCostList(data){
     tbody += '<tr style="border-bottom:1px solid var(--tr-border);cursor:pointer" onclick="(function(tr){tr.closest(\'table\').querySelectorAll(\'tbody tr\').forEach(r=>r.classList.remove(\'row-selected\'));tr.classList.add(\'row-selected\');})(this)">';
     cols.forEach(c => {
       let s = row[c];
-      if(c==='COST') s = s!=null ? '₩'+Number(s).toLocaleString('ko-KR') : '-';
+      if(c==='COST')     s = s!=null ? '₩'+Number(s).toLocaleString('ko-KR') : '-';
+      else if(c==='DIST_KM') s = s!=null ? Number(s).toFixed(1)+' km' : '-';
       else if(c==='DATE_START'||c==='DATE_END') s = fmtDate8(s);
-      else s = s||'-';
-      const isNum = c==='COST';
-      const color = c==='ROUTE'?'color:var(--td-num);font-weight:600;':''
-                  + (c==='CARCLASS'?`color:${RC_CC_COLORS[row.CARCLASS]||'var(--text)'};font-weight:600;`:'');
+      else s = s!=null && s!=='' ? s : '-';
+      const isNum  = c==='COST';
+      const color  = c==='CARCLASS' ? `color:${RC_CC_COLORS[row.CARCLASS]||'var(--text)'};font-weight:600;` : '';
       tbody += `<td style="${tdBase()}${isNum?'text-align:right;font-family:monospace;color:var(--success);':''}${color}">${s}</td>`;
     });
     tbody += '</tr>';
   });
   tbody += '</tbody>';
 
-  area.innerHTML = `<table style="border-collapse:collapse;font-size:12px;width:100%">${thead}${tbody}</table>`;
+  area.innerHTML = `<div style="overflow:auto;max-height:100%"><table style="border-collapse:collapse;font-size:12px;min-width:100%">${thead}${tbody}</table></div>`;
 
-  // 페이지네이션
+  // 페이지네이션 — 현재 search API는 전체 반환이므로 단순 총건수 표시
   if(pgEl){
     pgEl.style.display = 'flex';
-    const page  = data.page, pages = data.pages, total = data.total;
-    const size  = rcState.size;
-    const start = (page-1)*size+1, end = Math.min(page*size, total);
-    const from  = Math.max(1,page-3), to = Math.min(pages,page+3);
-    let btns = '';
-    if(from>1) btns += `<button class="btn btn-sm" onclick="rcGoPage(1)">1</button>`;
-    if(from>2) btns += `<span style="color:#64748b;padding:0 3px">…</span>`;
-    for(let i=from;i<=to;i++) btns+=`<button class="btn btn-sm ${i===page?'active':''}" onclick="rcGoPage(${i})">${i}</button>`;
-    if(to<pages-1) btns+=`<span style="color:#64748b;padding:0 3px">…</span>`;
-    if(to<pages) btns+=`<button class="btn btn-sm" onclick="rcGoPage(${pages})">${pages}</button>`;
-    pgEl.innerHTML = `
-      <div style="font-size:11px;color:var(--text3)">
-        총 <strong>${fmtNum(total)}</strong>건 &nbsp;|&nbsp; ${fmtNum(start)}–${fmtNum(end)}행
-      </div>
-      <div style="display:flex;gap:3px;flex-wrap:wrap">
-        <button class="btn btn-sm" onclick="rcGoPage(${page-1})" ${page<=1?'disabled':''}>◀</button>
-        ${btns}
-        <button class="btn btn-sm" onclick="rcGoPage(${page+1})" ${page>=pages?'disabled':''}>▶</button>
-      </div>`;
+    pgEl.innerHTML = `<div style="font-size:11px;color:var(--text3)">총 <strong>${fmtNum(total)}</strong>건</div>`;
   }
 }
 
