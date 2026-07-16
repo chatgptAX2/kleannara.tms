@@ -25,22 +25,29 @@ public class PsDispatchController {
     /**
      * 배차용 납품문서 조회
      * Flask: GET /api/ps-dispatch/search
+     * JS 파라미터: date_from / date_to (또는 dateFrom / dateTo)
      */
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<List<PsDispatchDocResponse>>> search(
-            @RequestParam(required = false) String dateFrom,
-            @RequestParam(required = false) String dateTo,
+            @RequestParam(name = "dateFrom",  required = false) String dateFrom,
+            @RequestParam(name = "date_from", required = false) String dateFromAlt,
+            @RequestParam(name = "dateTo",    required = false) String dateTo,
+            @RequestParam(name = "date_to",   required = false) String dateToAlt,
             @RequestParam(required = false) String dptnky,
             @RequestParam(required = false) String shpoky,
             @RequestParam(required = false) List<String> shpmty,
+            @RequestParam(required = false) String wareky,
+            @RequestParam(required = false) String skug05,
             @RequestParam(defaultValue = "all") String status) {
 
         PsDispatchSearchRequest req = new PsDispatchSearchRequest();
-        req.setDateFrom(dateFrom);
-        req.setDateTo(dateTo);
+        req.setDateFrom(dateFrom != null ? dateFrom : dateFromAlt);
+        req.setDateTo(dateTo   != null ? dateTo   : dateToAlt);
         req.setDptnky(dptnky);
         req.setShpoky(shpoky);
         req.setShpmty(shpmty);
+        req.setWareky(wareky);
+        req.setSkug05(skug05);
         req.setStatus(status);
 
         List<PsDispatchDocResponse> rows = psDispatchService.searchDocs(req);
