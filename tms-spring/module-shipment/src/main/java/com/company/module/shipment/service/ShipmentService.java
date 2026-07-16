@@ -76,104 +76,79 @@ public class ShipmentService {
         String whereSQL = whereSb.toString();
 
         // ── 전체 건수 ─────────────────────────────────────────────────────────
-        String countSQL = """
-            SELECT COUNT(*)
-            FROM KNRAWMS.SHPDI SI
-            INNER JOIN KNRAWMS.SHPDH SH ON SH.SHPOKY = SI.SHPOKY
-            LEFT  JOIN KNRAWMS.SKUMA M  ON SI.SKUKEY = M.SKUKEY AND SH.OWNRKY = M.OWNRKY
-            WHERE """ + whereSQL;
+        String countSQL =
+            "SELECT COUNT(*)" +
+            " FROM KNRAWMS.SHPDI SI" +
+            " INNER JOIN KNRAWMS.SHPDH SH ON SH.SHPOKY = SI.SHPOKY" +
+            " LEFT  JOIN KNRAWMS.SKUMA M  ON SI.SKUKEY = M.SKUKEY AND SH.OWNRKY = M.OWNRKY" +
+            " WHERE " + whereSQL;
 
         var countQuery = em.createNativeQuery(countSQL);
         for (int i = 0; i < params.size(); i++) countQuery.setParameter(i + 1, params.get(i));
         long total = ((Number) countQuery.getSingleResult()).longValue();
 
         // ── 본문 쿼리 ─────────────────────────────────────────────────────────
-        String baseSQL = """
-            SELECT
-                SI.SHPOKY, SI.SHPOIT, SI.SKUKEY, SI.DESC01,
-                TRIM(COALESCE(SI.SKUG05,''))  AS SKUG05,
-                CD.CDESC1                     AS SKUG05NM,
-                SI.UOMKEY,
-                CAST(COALESCE(SI.QTSHPO,0) AS DECIMAL(18,4)) AS QTSHPO,
-                CAST(COALESCE(SI.QTUALO,0) AS DECIMAL(18,4)) AS QTUALO,
-                CAST(COALESCE(SI.QTALOC,0) AS DECIMAL(18,4)) AS QTALOC,
-                CAST(COALESCE(SI.QTJCMP,0) AS DECIMAL(18,4)) AS QTJCMP,
-                CAST(COALESCE(SI.QTSHPD,0) AS DECIMAL(18,4)) AS QTSHPD,
-                TRIM(COALESCE(SI.STATIT,''))  AS STATIT,
-                TRIM(COALESCE(SI.STDLNR,''))  AS STDLNR,
-                TRIM(COALESCE(SI.SVBELN,''))  AS SVBELN,
-                TRIM(COALESCE(SI.LOTA01,''))  AS LOTA01,
-                TRIM(COALESCE(SI.LOTA02,''))  AS LOTA02,
-                TRIM(COALESCE(SI.LOTA03,''))  AS LOTA03,
-                TRIM(COALESCE(SI.TLOTA01,'')) AS TLOTA01,
-                TRIM(COALESCE(SI.TLOTA02,'')) AS TLOTA02,
-                COALESCE((SELECT CDESC1 FROM KNRAWMS.CMCDV WHERE CMCDKY='LOTA02' AND CMCDVL=SI.LOTA02),'')  AS LOTA02NM,
-                COALESCE((SELECT CDESC1 FROM KNRAWMS.CMCDV WHERE CMCDKY='LOTA02' AND CMCDVL=SI.TLOTA02),'') AS TLOTA02NM,
-                SI.CREDAT, SI.CRETIM, SI.CREUSR,
-                SI.LMODAT, SI.LMOTIM, SI.LMOUSR,
-                SI.ALSTKY,
-                SH.PRTCHK,
-                SH.WAREKY,
-                SH.OWNRKY,
-                SH.DPTNKY,
-                COALESCE((SELECT NAME01 FROM KNRAWMS.BZPTN WHERE OWNRKY=SH.OWNRKY AND PTNRTY='CT' AND PTNRKY=SH.DPTNKY),'') AS DPTNM,
-                COALESCE((SELECT NAME01 FROM KNRAWMS.BZPTN WHERE OWNRKY=SH.OWNRKY AND PTNRTY='VD' AND PTNRKY=SH.PTRCVR),'') AS PTRCVRNM,
-                SH.RQSHPD, SH.DOCDAT,
-                SH.STATDO,
-                COALESCE(ST.CDESC1,'')        AS STATDONM,
-                SH.SHPMTY,
-                COALESCE((SELECT CDESC1 FROM KNRAWMS.CMCDV WHERE CMCDKY='TASOTY' AND CMCDVL=SH.SHPMTY),'') AS SHPMTYNM,
-                SH.DOCUTY                     AS DOCUTYNM,
-                SH.VEHINO,
-                SI.MEASKY,
-                CASE WHEN TRIM(SI.SKUG05)='10' AND M.GRSWGT IS NOT NULL AND M.GRSWGT > 0
-                     THEN M.GRSWGT
-                     ELSE NULL
-                END                           AS PLTKG,
-                COALESCE(
-                    (SELECT ME.QTAUOM FROM KNRAWMS.MEASI ME
-                     WHERE ME.WAREKY=SH.WAREKY AND ME.MEASKY=SI.MEASKY
-                       AND TRIM(ME.UOMKEY)='SOK'
-                     FETCH FIRST 1 ROWS ONLY), NULL)          AS SOK_PER_R,
-                COALESCE(
-                    (SELECT ME2.QTAUOM FROM KNRAWMS.MEASI ME2
-                     WHERE ME2.WAREKY=SH.WAREKY AND ME2.MEASKY=SI.MEASKY
-                       AND TRIM(ME2.UOMKEY)='KG'
-                     FETCH FIRST 1 ROWS ONLY), 0)             AS KG_PER_UNIT,
-                COALESCE(
-                    (SELECT ME3.QTAUOM FROM KNRAWMS.MEASI ME3
-                     WHERE ME3.WAREKY=SH.WAREKY AND ME3.MEASKY=SI.MEASKY
-                       AND TRIM(ME3.UOMKEY)='BAG'
-                     FETCH FIRST 1 ROWS ONLY), 0)             AS BAG_PER_UNIT,
-                COALESCE(
-                    (SELECT ME4.QTAUOM FROM KNRAWMS.MEASI ME4
-                     WHERE ME4.WAREKY=SH.WAREKY AND ME4.MEASKY=SI.MEASKY
-                       AND TRIM(ME4.UOMKEY)='BOX'
-                     FETCH FIRST 1 ROWS ONLY), 0)             AS BOX_PER_UNIT,
-                COALESCE(
-                    (SELECT ME5.QTAUOM FROM KNRAWMS.MEASI ME5
-                     WHERE ME5.WAREKY=SH.WAREKY AND ME5.MEASKY=SI.MEASKY
-                       AND TRIM(ME5.UOMKEY)='PAL'
-                     FETCH FIRST 1 ROWS ONLY), 0)             AS PAL_PER_UNIT,
-                COALESCE(
-                    (SELECT ME6.QTAUOM FROM KNRAWMS.MEASI ME6
-                     WHERE ME6.WAREKY=SH.WAREKY AND ME6.MEASKY=SI.MEASKY
-                       AND TRIM(ME6.UOMKEY)='EA'
-                     FETCH FIRST 1 ROWS ONLY), 0)             AS EA_PER_UNIT
-            FROM KNRAWMS.SHPDI SI
-            INNER JOIN KNRAWMS.SHPDH SH ON SH.SHPOKY = SI.SHPOKY
-            LEFT  JOIN KNRAWMS.BZPTN CT ON CT.OWNRKY=SH.OWNRKY AND CT.PTNRTY='CT' AND CT.PTNRKY=SH.DPTNKY
-            LEFT  JOIN KNRAWMS.BZPTN VD ON VD.OWNRKY=SH.OWNRKY AND VD.PTNRTY='VD' AND VD.PTNRKY=SH.PTRCVR
-            LEFT  JOIN KNRAWMS.CMCDV ST ON ST.CMCDKY='STATDO' AND ST.CMCDVL=SH.STATDO
-            LEFT  JOIN KNRAWMS.CMCDV CD ON CD.CMCDKY='SKUG05' AND CD.CMCDVL=SI.SKUG05
-            LEFT  JOIN KNRAWMS.SKUMA M  ON SI.SKUKEY=M.SKUKEY AND SH.OWNRKY=M.OWNRKY
-            WHERE """ + whereSQL + """
-            ORDER BY SI.SVBELN, SI.SHPOKY, SI.SHPOIT
-            OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-            """;
+        String baseSQL =
+            "SELECT" +
+            "    SI.SHPOKY, SI.SHPOIT, SI.SKUKEY, SI.DESC01," +
+            "    TRIM(COALESCE(SI.SKUG05,''))  AS SKUG05," +
+            "    CD.CDESC1                     AS SKUG05NM," +
+            "    SI.UOMKEY," +
+            "    CAST(COALESCE(SI.QTSHPO,0) AS NUMBER(18,4)) AS QTSHPO," +
+            "    CAST(COALESCE(SI.QTUALO,0) AS NUMBER(18,4)) AS QTUALO," +
+            "    CAST(COALESCE(SI.QTALOC,0) AS NUMBER(18,4)) AS QTALOC," +
+            "    CAST(COALESCE(SI.QTJCMP,0) AS NUMBER(18,4)) AS QTJCMP," +
+            "    CAST(COALESCE(SI.QTSHPD,0) AS NUMBER(18,4)) AS QTSHPD," +
+            "    TRIM(COALESCE(SI.STATIT,''))  AS STATIT," +
+            "    TRIM(COALESCE(SI.STDLNR,''))  AS STDLNR," +
+            "    TRIM(COALESCE(SI.SVBELN,''))  AS SVBELN," +
+            "    TRIM(COALESCE(SI.LOTA01,''))  AS LOTA01," +
+            "    TRIM(COALESCE(SI.LOTA02,''))  AS LOTA02," +
+            "    TRIM(COALESCE(SI.LOTA03,''))  AS LOTA03," +
+            "    TRIM(COALESCE(SI.TLOTA01,'')) AS TLOTA01," +
+            "    TRIM(COALESCE(SI.TLOTA02,'')) AS TLOTA02," +
+            "    COALESCE((SELECT CDESC1 FROM KNRAWMS.CMCDV WHERE CMCDKY='LOTA02' AND CMCDVL=TRIM(SI.LOTA02)  AND ROWNUM=1),'')  AS LOTA02NM," +
+            "    COALESCE((SELECT CDESC1 FROM KNRAWMS.CMCDV WHERE CMCDKY='LOTA02' AND CMCDVL=TRIM(SI.TLOTA02) AND ROWNUM=1),'') AS TLOTA02NM," +
+            "    SI.CREDAT, SI.CRETIM, SI.CREUSR," +
+            "    SI.LMODAT, SI.LMOTIM, SI.LMOUSR," +
+            "    SI.ALSTKY," +
+            "    SH.PRTCHK," +
+            "    SH.WAREKY," +
+            "    SH.OWNRKY," +
+            "    SH.DPTNKY," +
+            "    COALESCE((SELECT NAME01 FROM KNRAWMS.BZPTN WHERE OWNRKY=SH.OWNRKY AND PTNRTY='CT' AND PTNRKY=SH.DPTNKY AND ROWNUM=1),'') AS DPTNM," +
+            "    COALESCE((SELECT NAME01 FROM KNRAWMS.BZPTN WHERE OWNRKY=SH.OWNRKY AND PTNRTY='VD' AND PTNRKY=SH.PTRCVR AND ROWNUM=1),'') AS PTRCVRNM," +
+            "    SH.RQSHPD, SH.DOCDAT," +
+            "    SH.STATDO," +
+            "    COALESCE(ST.CDESC1,'')        AS STATDONM," +
+            "    SH.SHPMTY," +
+            "    COALESCE((SELECT CDESC1 FROM KNRAWMS.CMCDV WHERE CMCDKY='TASOTY' AND CMCDVL=SH.SHPMTY AND ROWNUM=1),'') AS SHPMTYNM," +
+            "    SH.DOCUTY                     AS DOCUTYNM," +
+            "    SH.VEHINO," +
+            "    SI.MEASKY," +
+            "    CASE WHEN TRIM(SI.SKUG05)='10' AND M.GRSWGT IS NOT NULL AND M.GRSWGT > 0" +
+            "         THEN M.GRSWGT" +
+            "         ELSE NULL" +
+            "    END                           AS PLTKG," +
+            "    COALESCE((SELECT ME.QTAUOM  FROM KNRAWMS.MEASI ME  WHERE ME.WAREKY=SH.WAREKY AND ME.MEASKY=SI.MEASKY AND TRIM(ME.UOMKEY)='SOK' AND ROWNUM=1), NULL) AS SOK_PER_R," +
+            "    COALESCE((SELECT ME2.QTAUOM FROM KNRAWMS.MEASI ME2 WHERE ME2.WAREKY=SH.WAREKY AND ME2.MEASKY=SI.MEASKY AND TRIM(ME2.UOMKEY)='KG'  AND ROWNUM=1), 0)    AS KG_PER_UNIT," +
+            "    COALESCE((SELECT ME3.QTAUOM FROM KNRAWMS.MEASI ME3 WHERE ME3.WAREKY=SH.WAREKY AND ME3.MEASKY=SI.MEASKY AND TRIM(ME3.UOMKEY)='BAG' AND ROWNUM=1), 0)    AS BAG_PER_UNIT," +
+            "    COALESCE((SELECT ME4.QTAUOM FROM KNRAWMS.MEASI ME4 WHERE ME4.WAREKY=SH.WAREKY AND ME4.MEASKY=SI.MEASKY AND TRIM(ME4.UOMKEY)='BOX' AND ROWNUM=1), 0)    AS BOX_PER_UNIT," +
+            "    COALESCE((SELECT ME5.QTAUOM FROM KNRAWMS.MEASI ME5 WHERE ME5.WAREKY=SH.WAREKY AND ME5.MEASKY=SI.MEASKY AND TRIM(ME5.UOMKEY)='PAL' AND ROWNUM=1), 0)    AS PAL_PER_UNIT," +
+            "    COALESCE((SELECT ME6.QTAUOM FROM KNRAWMS.MEASI ME6 WHERE ME6.WAREKY=SH.WAREKY AND ME6.MEASKY=SI.MEASKY AND TRIM(ME6.UOMKEY)='EA'  AND ROWNUM=1), 0)    AS EA_PER_UNIT" +
+            " FROM KNRAWMS.SHPDI SI" +
+            " INNER JOIN KNRAWMS.SHPDH SH ON SH.SHPOKY = SI.SHPOKY" +
+            " LEFT  JOIN KNRAWMS.BZPTN CT ON CT.OWNRKY=SH.OWNRKY AND CT.PTNRTY='CT' AND CT.PTNRKY=SH.DPTNKY" +
+            " LEFT  JOIN KNRAWMS.BZPTN VD ON VD.OWNRKY=SH.OWNRKY AND VD.PTNRTY='VD' AND VD.PTNRKY=SH.PTRCVR" +
+            " LEFT  JOIN KNRAWMS.CMCDV ST ON ST.CMCDKY='STATDO' AND ST.CMCDVL=SH.STATDO" +
+            " LEFT  JOIN KNRAWMS.CMCDV CD ON CD.CMCDKY='SKUG05' AND CD.CMCDVL=TRIM(SI.SKUG05)" +
+            " LEFT  JOIN KNRAWMS.SKUMA M  ON SI.SKUKEY=M.SKUKEY AND SH.OWNRKY=M.OWNRKY" +
+            " WHERE " + whereSQL +
+            " ORDER BY SI.SVBELN, SI.SHPOKY, SI.SHPOIT" +
+            " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
 
-        int size   = Math.max(1, Math.min(req.getSize(), 500));
-        int offset = req.getPage() * size;
+        int size   = Math.max(1, Math.min(req.getSize(), 99999));
+        int offset = (req.getPage() - 1) * size;   // 1-based page → 0-based offset
 
         var dataQuery = em.createNativeQuery(baseSQL);
         for (int i = 0; i < params.size(); i++) dataQuery.setParameter(i + 1, params.get(i));
