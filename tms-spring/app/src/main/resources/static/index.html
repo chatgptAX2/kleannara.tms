@@ -15754,9 +15754,20 @@ async function renderShipSchedule() {
   /* filterOpts null-safe fallback: fetch 실패나 로딩 전에도 안전하게 처리 */
   const opts = shipScheduleState.filterOpts || { wareky:[], statit:[], skug05:[], lota02:[] };
 
-  /* wareky 옵션 — WAHMA 기준 {value:WAREKY, label:NAME01}, 전체 옵션은 HTML에 고정 */
-  const warekyOpts = (opts.wareky || []).map(o =>
-    `<option value="${o.value}">${o.value} ${o.label ? '— '+o.label : ''}</option>`).join('');
+  /* wareky 옵션 — 운영 창고 고정 목록 9개 (ShipmentService.getFilterOpts와 동일) */
+  const _WAREKY_LIST = [
+    {value:'1100', label:'청주공장창고'},
+    {value:'1500', label:'음성공장창고'},
+    {value:'4100', label:'용인물류센터'},
+    {value:'4400', label:'경북물류센터'},
+    {value:'4200', label:'경남물류센터'},
+    {value:'4300', label:'전라물류센터'},
+    {value:'4800', label:'제주물류센터'},
+    {value:'4000', label:'파주물류센터'},
+    {value:'6000', label:'임가공 거점'},
+  ];
+  const warekyOpts = _WAREKY_LIST.map(o =>
+    `<option value="${o.value}">${o.value} — ${o.label}</option>`).join('');
 
   /* statit 옵션 */
   const statitOpts = (opts.statit || []).map(o =>
