@@ -284,8 +284,8 @@ public class DeliveryService {
     // 반환: { carclasses, rows, total }
     //   carclasses: ROUTE_COST의 실제 CARTYPE 목록 (CMCDV 기준)
     // ──────────────────────────────────────────────────────────────────────────
-    public Map<String, Object> pivotRouteCost(String wareky, String ptnrky) {
-        List<Object[]> rawRows = routeCostRepo.searchList(nullIfBlank(wareky), nullIfBlank(ptnrky), null);
+    public Map<String, Object> pivotRouteCost(String wareky, String ptnrky, String carclass) {
+        List<Object[]> rawRows = routeCostRepo.searchList(nullIfBlank(wareky), nullIfBlank(ptnrky), nullIfBlank(carclass));
 
         // Object[] 인덱스: COST_ID(0),SHPPT(1),PTNRKY(2),CARCLASS(3),COST(4),DIST_KM(5),DATE_START(6),DATE_END(7),UNIT(8)
         List<String> carclassesList = new ArrayList<>();

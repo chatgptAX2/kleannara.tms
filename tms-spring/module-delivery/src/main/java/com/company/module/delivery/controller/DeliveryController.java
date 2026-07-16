@@ -83,7 +83,8 @@ public class DeliveryController {
     @GetMapping("/route_cost/pivot")
     public ResponseEntity<ApiResponse<Map<String, Object>>> pivotRouteCost(
             @RequestParam(required = false) String wareky,
-            @RequestParam(required = false) String ptnrky) {
-        return ResponseEntity.ok(ApiResponse.success(deliveryService.pivotRouteCost(wareky, ptnrky)));
+            @RequestParam(required = false) String ptnrky,
+            @RequestParam(required = false) String carclass) {
+        return ResponseEntity.ok(ApiResponse.success(deliveryService.pivotRouteCost(wareky, ptnrky, carclass)));
     }
 }
