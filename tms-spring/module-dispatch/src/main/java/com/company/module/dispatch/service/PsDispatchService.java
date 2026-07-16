@@ -132,6 +132,56 @@ public class PsDispatchService {
     // ──────────────────────────────────────────────────────────────────────────
     // 납품문서 검색 (Flask api_ps_dispatch_search)
     // Oracle WMS: SHPDI, SHPDH, BZPTN, CMCDV, SKUMA, RECDI → em(wmsPU)
+    //
+    // ■ 소프트파싱(Soft Parsing) 설계
+    //   Oracle은 SQL 텍스트가 byte 단위로 동일해야 Shared Pool에서 실행계획 재사용.
+    //   리터럴 임베딩(AND h.WAREKY = '1100') 또는 조건 유무에 따른 sb.append 분기는
+    //   SQL 텍스트를 매번 변경시켜 하드파싱(Hard Parsing)을 유발한다.
+    //
+    //   해결 전략:
+    //   1. wareky/skug05 기본값: else 리터럴 제거 → params에 기본값 추가, SQL은 항상 AND ... = ?
+    //   2. 선택 조건(날짜/dptnky/shpoky): AND (? IS NULL OR col >= ?) 패턴
+    //      → 파라미터가 null이면 Oracle이 조건을 항상 TRUE로 평가하여 필터 스킵
+    //   3. shpmty IN 절: 가변 개수 → INSTR(','||?||',', ','||h.SHPMTY||',') > 0 패턴
+    //      → 쉼표 구분 단일 문자열 바인드(? = ",A01,A02,") → SQL 텍스트 항상 고정
+    //   결과: 동일 파라미터 조합 재호출 시 Oracle Shared Pool 히트 → 소프트파싱
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * 납품문서 검색 — 고정 SQL 소프트파싱 구조
+     * SQL 텍스트가 항상 동일하므로 Oracle Shared Pool 재사용(소프트파싱) 가능
+     */
+    private static final String SEARCH_DOCS_SQL =
+        "SELECT i.SHPOKY, i.SHPOIT, i.SKUKEY, i.DESC01," +
+        "       TRIM(COALESCE(i.SVBELN,'')) AS SVBELN," +
+        "       i.UOMKEY, CAST(i.QTSHPO AS NUMBER(18,4)) AS QTSHPO," +
+        "       TRIM(COALESCE(i.SKUG05,'')) AS SKUG05," +
+        "       h.DPTNKY," +
+        "       TRIM(COALESCE(b.NAME01,'')) AS DPTNM," +
+        "       h.DOCDAT, h.RQSHPD, h.SHPMTY," +
+        "       TRIM(COALESCE(c.CDESC1,'')) AS SHPMTY_NM," +
+        "       COALESCE(m.GRSWGT, 0) AS GRSWGT," +
+        "       TRIM(COALESCE(i.LOTA03,'')) AS LOTA03," +
+        "       (SELECT COALESCE(MAX(rd.QTYRCV), 0)" +
+        "        FROM KNRAWMS.RECDI rd" +
+        "        WHERE rd.SKUKEY = i.SKUKEY) AS UNIT_WEIGHT" +
+        " FROM KNRAWMS.SHPDI i" +
+        " JOIN KNRAWMS.SHPDH h ON i.SHPOKY = h.SHPOKY" +
+        " LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY = h.DPTNKY AND b.PTNRTY = 'CT'" +
+        " LEFT JOIN KNRAWMS.CMCDV c ON c.CMCDKY = 'TASOTY' AND c.CMCDVL = h.SHPMTY" +
+        " LEFT JOIN KNRAWMS.SKUMA m ON m.SKUKEY = i.SKUKEY" +
+        " WHERE h.WAREKY = ?" +                                                      // p1: wareky (기본값 '1100')
+        "   AND TRIM(i.SKUG05) = ?" +                                                // p2: skug05 (기본값 '10')
+        "   AND (? IS NULL OR h.RQSHPD >= ?)" +                                      // p3,p4: dateFrom (null=전체)
+        "   AND (? IS NULL OR h.RQSHPD <= ?)" +                                      // p5,p6: dateTo   (null=전체)
+        "   AND (? IS NULL OR h.DPTNKY LIKE ? OR TRIM(COALESCE(b.NAME01,'')) LIKE ?)" + // p7,p8,p9: dptnky (null=전체)
+        "   AND (? IS NULL OR i.SHPOKY LIKE ? OR i.SVBELN LIKE ?)" +                 // p10,p11,p12: shpoky (null=전체)
+        "   AND (? IS NULL OR INSTR(',' || ? || ',', ',' || h.SHPMTY || ',') > 0)" + // p13,p14: shpmty 목록 (null=전체)
+        " ORDER BY h.RQSHPD, h.DPTNKY, i.SHPOKY, i.SHPOIT";
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 납품문서 검색 (Flask api_ps_dispatch_search)
+    // Oracle WMS: SHPDI, SHPDH, BZPTN, CMCDV, SKUMA, RECDI → em(wmsPU)
     // ──────────────────────────────────────────────────────────────────────────
     public List<PsDispatchDocResponse> searchDocs(PsDispatchSearchRequest req) {
         String dateFrom  = req.normalizedDateFrom();
@@ -141,8 +191,28 @@ public class PsDispatchService {
         List<String> shpmtyList = req.getShpmty();
         String dispStat  = req.getStatus() == null ? "all" : req.getStatus();
 
-        log.info("[PsDispatch] searchDocs 파라미터 — dateFrom={}, dateTo={}, wareky={}, skug05={}, dptnky={}, shpoky={}, status={}",
-            dateFrom, dateTo, req.getWareky(), req.getSkug05(), dptnky, shpoky, dispStat);
+        // ── 바인드 파라미터 결정 (null = Oracle에서 조건 스킵) ────────────────
+        // wareky/skug05: null 또는 blank → 기본값 사용 (SQL 텍스트는 항상 = ?)
+        String p1Wareky  = (req.getWareky()  != null && !req.getWareky().isBlank())
+                           ? req.getWareky().strip()  : "1100";
+        String p2Skug05  = (req.getSkug05()  != null && !req.getSkug05().isBlank())
+                           ? req.getSkug05().strip()  : "10";
+        // 날짜: blank → null로 정규화 (? IS NULL 조건 활성화)
+        String p3DateFrom = (dateFrom != null && !dateFrom.isEmpty()) ? dateFrom : null;
+        String p5DateTo   = (dateTo   != null && !dateTo.isEmpty())   ? dateTo   : null;
+        // dptnky LIKE: null이면 조건 스킵
+        String p7Dptnky  = (dptnky  != null && !dptnky.isEmpty())  ? "%" + dptnky + "%" : null;
+        // shpoky LIKE: null이면 조건 스킵
+        String p10Shpoky = (shpoky  != null && !shpoky.isEmpty())  ? "%" + shpoky + "%" : null;
+        // shpmty IN → 쉼표 구분 문자열: null이면 조건 스킵
+        // 예: ["A01","A02"] → ",A01,A02,"  (INSTR 패턴: ',' || ? || ',' 포함 여부 검사)
+        String p13Shpmty = (shpmtyList != null && !shpmtyList.isEmpty())
+                           ? "," + String.join(",", shpmtyList) + "," : null;
+
+        log.info("[PsDispatch] searchDocs — wareky={}, skug05={}, dateFrom={}, dateTo={}," +
+                 " dptnky={}, shpoky={}, shpmty={}, status={}",
+                 p1Wareky, p2Skug05, p3DateFrom, p5DateTo,
+                 dptnky, shpoky, shpmtyList, dispStat);
 
         // 배차완료 키 목록 (Oracle KNRAWMS.SHPDI → em)
         // Oracle CONCAT()은 인수 2개만 허용 → || 연산자 사용
@@ -154,85 +224,37 @@ public class PsDispatchService {
         ).getResultList();
         Set<String> dispatchedSet = new HashSet<>(dispatchedKeys);
 
-        // 동적 WHERE 구성 (Oracle KNRAWMS 테이블 → em)
-        // 검색조건 파라미터 우선 적용; 파라미터 없을 때만 기본값 사용
-        String warekyParam = req.getWareky();
-        String skug05Param = req.getSkug05();
+        // ── 고정 SQL 실행 (SQL 텍스트 항상 동일 → 소프트파싱) ────────────────
+        // SEARCH_DOCS_SQL 상수 사용: 조건 유무와 무관하게 SQL 텍스트 불변
+        // Oracle Shared Pool에서 동일 SQL 텍스트 → 실행계획 재사용
+        log.info("[PsDispatch] ==== SQL BEGIN ====\n{}", SEARCH_DOCS_SQL);
+        log.info("[PsDispatch] params: wareky={}, skug05={}, dateFrom={}, dateTo={}," +
+                 " dptnky={}, shpoky={}, shpmty={}",
+                 p1Wareky, p2Skug05, p3DateFrom, p5DateTo,
+                 p7Dptnky, p10Shpoky, p13Shpmty);
 
-        // RECDI GROUP BY 서브쿼리를 FROM 절에서 SELECT 절 스칼라 서브쿼리로 변경
-        // → FROM 절 서브쿼리: RECDI 전체를 GROUP BY 후 드라이빙 → 대용량 테이블 Full Scan 발생
-        // → SELECT 절 스칼라 서브쿼리: 실제 조회되는 SHPDI 행 수만큼만 RECDI 접근 → 성능 대폭 개선
-        StringBuilder sb = new StringBuilder("""
-            SELECT i.SHPOKY, i.SHPOIT, i.SKUKEY, i.DESC01,
-                   TRIM(COALESCE(i.SVBELN,'')) AS SVBELN,
-                   i.UOMKEY, CAST(i.QTSHPO AS NUMBER(18,4)) AS QTSHPO,
-                   TRIM(COALESCE(i.SKUG05,'')) AS SKUG05,
-                   h.DPTNKY,
-                   TRIM(COALESCE(b.NAME01,'')) AS DPTNM,
-                   h.DOCDAT, h.RQSHPD, h.SHPMTY,
-                   TRIM(COALESCE(c.CDESC1,'')) AS SHPMTY_NM,
-                   COALESCE(m.GRSWGT, 0) AS GRSWGT,
-                   TRIM(COALESCE(i.LOTA03,'')) AS LOTA03,
-                   (SELECT COALESCE(MAX(rd.QTYRCV), 0)
-                    FROM KNRAWMS.RECDI rd
-                    WHERE rd.SKUKEY = i.SKUKEY) AS UNIT_WEIGHT
-            FROM KNRAWMS.SHPDI i
-            JOIN KNRAWMS.SHPDH h ON i.SHPOKY = h.SHPOKY
-            LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY = h.DPTNKY AND b.PTNRTY = 'CT'
-            LEFT JOIN KNRAWMS.CMCDV c ON c.CMCDKY = 'TASOTY' AND c.CMCDVL = h.SHPMTY
-            LEFT JOIN KNRAWMS.SKUMA m ON m.SKUKEY = i.SKUKEY
-            WHERE 1=1
-            """);
-
-        List<Object> params = new ArrayList<>();
-
-        // 창고(WAREKY) — 파라미터 있으면 적용, 없으면 기본값 1100
-        if (warekyParam != null && !warekyParam.isBlank()) {
-            sb.append(" AND h.WAREKY = ?"); params.add(warekyParam.strip());
-        } else {
-            sb.append(" AND h.WAREKY = '1100'");
-        }
-        // 제품군(SKUG05) — 파라미터 있으면 적용, 없으면 기본값 10(지류)
-        if (skug05Param != null && !skug05Param.isBlank()) {
-            sb.append(" AND TRIM(i.SKUG05) = ?"); params.add(skug05Param.strip());
-        } else {
-            sb.append(" AND TRIM(i.SKUG05) = '10'");
-        }
-        // 납품요청일(RQSHPD) 날짜 범위 조건
-        // Oracle SHPDH.RQSHPD: VARCHAR2(8) 'yyyyMMdd' 형식
-        // JS → Controller: date_from=2026-06-30 → normalizedDateFrom() → '20260630'
-        if (dateFrom != null && !dateFrom.isEmpty()) {
-            sb.append(" AND h.RQSHPD >= ?"); params.add(dateFrom);
-        }
-        if (dateTo != null && !dateTo.isEmpty()) {
-            sb.append(" AND h.RQSHPD <= ?"); params.add(dateTo);
-        }
-        if (dptnky != null && !dptnky.isEmpty()) {
-            sb.append(" AND (h.DPTNKY LIKE ? OR TRIM(COALESCE(b.NAME01,'')) LIKE ?)");
-            params.add("%" + dptnky + "%");
-            params.add("%" + dptnky + "%");
-        }
-        if (shpoky != null && !shpoky.isEmpty()) {
-            sb.append(" AND (i.SHPOKY LIKE ? OR i.SVBELN LIKE ?)");
-            params.add("%" + shpoky + "%");
-            params.add("%" + shpoky + "%");
-        }
-        if (shpmtyList != null && !shpmtyList.isEmpty()) {
-            String ph = shpmtyList.stream().map(x -> "?").collect(Collectors.joining(","));
-            sb.append(" AND h.SHPMTY IN (").append(ph).append(")");
-            params.addAll(shpmtyList);
-        }
-        sb.append(" ORDER BY h.RQSHPD, h.DPTNKY, i.SHPOKY, i.SHPOIT");
-
-        // ── SQL 전체 쿼리 + params를 stdout.log에 기록 (성능 분석용) ──────────
-        log.info("[PsDispatch] ==== SQL BEGIN ====\n{}", sb.toString());
-        log.info("[PsDispatch] params({}개): {}", params.size(), params);
-
-        // Oracle em으로 실행
-        var query = em.createNativeQuery(sb.toString());
-        for (int i = 0; i < params.size(); i++) {
-            query.setParameter(i + 1, params.get(i));
-        }
+        var query = em.createNativeQuery(SEARCH_DOCS_SQL);
+        // p1: wareky (기본값 '1100')
+        query.setParameter(1,  p1Wareky);
+        // p2: skug05 (기본값 '10')
+        query.setParameter(2,  p2Skug05);
+        // p3,p4: dateFrom — (? IS NULL OR h.RQSHPD >= ?)
+        query.setParameter(3,  p3DateFrom);
+        query.setParameter(4,  p3DateFrom);
+        // p5,p6: dateTo — (? IS NULL OR h.RQSHPD <= ?)
+        query.setParameter(5,  p5DateTo);
+        query.setParameter(6,  p5DateTo);
+        // p7,p8,p9: dptnky — (? IS NULL OR h.DPTNKY LIKE ? OR NAME01 LIKE ?)
+        query.setParameter(7,  p7Dptnky);
+        query.setParameter(8,  p7Dptnky);
+        query.setParameter(9,  p7Dptnky);
+        // p10,p11,p12: shpoky — (? IS NULL OR i.SHPOKY LIKE ? OR i.SVBELN LIKE ?)
+        query.setParameter(10, p10Shpoky);
+        query.setParameter(11, p10Shpoky);
+        query.setParameter(12, p10Shpoky);
+        // p13,p14: shpmty — (? IS NULL OR INSTR(',' || ? || ',', ',' || h.SHPMTY || ',') > 0)
+        query.setParameter(13, p13Shpmty);
+        query.setParameter(14, p13Shpmty);
 
         @SuppressWarnings("unchecked")
         List<Object[]> rows = query.getResultList();
@@ -445,7 +467,32 @@ public class PsDispatchService {
     // 배차 목록 조회 (Flask api_ps_dispatch_list)
     // PS_DISPATCH_H + ds_vehicle → MariaDB tmsEm
     // PS_DISPATCH_D 조회 후 RECDI(Oracle) 별도 조회 → Cross-DB join 분리
+    //
+    // ■ 소프트파싱 설계: 고정 SQL + (? IS NULL OR col ...) 패턴
     // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * 배차 목록 고정 SQL — SQL 텍스트 불변 → 소프트파싱
+     * p1,p2: dateFrom  (? IS NULL OR h.RQSHPD >= ?)
+     * p3,p4: dateTo    (? IS NULL OR h.RQSHPD <= ?)
+     * p5,p6,p7: dptnky (? IS NULL OR h.DPTNKY LIKE ? OR h.DPTNM LIKE ?)
+     * p8,p9: status    (? IS NULL OR h.STATUS = ?)
+     * p10,p11: dispNo  (? IS NULL OR h.DISPATCH_NO LIKE ?)
+     */
+    private static final String GET_LIST_SQL =
+        "SELECT h.DISPATCH_NO, h.DISPATCH_DT, h.RQSHPD," +
+        "       h.DPTNKY, h.DPTNM, h.CARTYPE, h.STATUS," +
+        "       h.TOTAL_KG, h.TOTAL_CNT, h.NOTE, h.CREDAT," +
+        "       COALESCE(v.LOAD_TON, 0) AS LOAD_TON" +
+        " FROM KNRAWMS.PS_DISPATCH_H h" +
+        " LEFT JOIN KNRAWMS.DS_VEHICLE v ON v.CARTYPE = h.CARTYPE" +
+        " WHERE (? IS NULL OR h.RQSHPD >= ?)" +           // p1,p2: dateFrom
+        "   AND (? IS NULL OR h.RQSHPD <= ?)" +           // p3,p4: dateTo
+        "   AND (? IS NULL OR h.DPTNKY LIKE ? OR h.DPTNM LIKE ?)" + // p5,p6,p7: dptnky
+        "   AND (? IS NULL OR h.STATUS = ?)" +            // p8,p9: status
+        "   AND (? IS NULL OR h.DISPATCH_NO LIKE ?)" +    // p10,p11: dispatchNo
+        " ORDER BY h.RQSHPD DESC, h.DISPATCH_NO";
+
     public List<PsDispatchListResponse> getList(PsDispatchListRequest req) {
         String dateFrom   = req.normalizedDateFrom();
         String dateTo     = req.normalizedDateTo();
@@ -453,31 +500,26 @@ public class PsDispatchService {
         String status     = req.getStatus();
         String dispatchNo = req.getDispatchNo();
 
-        // PS_DISPATCH_H + ds_vehicle → MariaDB tmsEm
-        StringBuilder sb = new StringBuilder("""
-            SELECT h.DISPATCH_NO, h.DISPATCH_DT, h.RQSHPD,
-                   h.DPTNKY, h.DPTNM, h.CARTYPE, h.STATUS,
-                   h.TOTAL_KG, h.TOTAL_CNT, h.NOTE, h.CREDAT,
-                   COALESCE(v.LOAD_TON, 0) AS LOAD_TON
-            FROM KNRAWMS.PS_DISPATCH_H h
-            LEFT JOIN KNRAWMS.DS_VEHICLE v ON v.CARTYPE = h.CARTYPE
-            WHERE 1=1
-            """);
-        List<Object> params = new ArrayList<>();
+        // ── 바인드 파라미터 결정 (null = 조건 스킵) ──────────────────────────
+        String p1DateFrom  = (dateFrom   != null && !dateFrom.isEmpty())   ? dateFrom                   : null;
+        String p3DateTo    = (dateTo     != null && !dateTo.isEmpty())     ? dateTo                     : null;
+        String p5Dptnky    = (dptnky     != null && !dptnky.isEmpty())     ? "%" + dptnky + "%"         : null;
+        String p8Status    = (status     != null && !status.isEmpty())     ? status                     : null;
+        String p10DispNo   = (dispatchNo != null && !dispatchNo.isEmpty()) ? "%" + dispatchNo + "%"     : null;
 
-        if (dateFrom != null && !dateFrom.isEmpty()) { sb.append(" AND h.RQSHPD >= ?"); params.add(dateFrom); }
-        if (dateTo   != null && !dateTo.isEmpty())   { sb.append(" AND h.RQSHPD <= ?"); params.add(dateTo); }
-        if (dptnky   != null && !dptnky.isEmpty())   {
-            sb.append(" AND (h.DPTNKY LIKE ? OR h.DPTNM LIKE ?)");
-            params.add("%" + dptnky + "%"); params.add("%" + dptnky + "%");
-        }
-        if (status     != null && !status.isEmpty())     { sb.append(" AND h.STATUS=?");        params.add(status); }
-        if (dispatchNo != null && !dispatchNo.isEmpty()) { sb.append(" AND h.DISPATCH_NO LIKE ?"); params.add("%" + dispatchNo + "%"); }
-        sb.append(" ORDER BY h.RQSHPD DESC, h.DISPATCH_NO");
-
-        // MariaDB tmsEm으로 실행
-        var q = tmsEm.createNativeQuery(sb.toString());
-        for (int i = 0; i < params.size(); i++) q.setParameter(i + 1, params.get(i));
+        // MariaDB tmsEm으로 실행 (고정 SQL — 소프트파싱)
+        var q = tmsEm.createNativeQuery(GET_LIST_SQL);
+        q.setParameter(1,  p1DateFrom);
+        q.setParameter(2,  p1DateFrom);
+        q.setParameter(3,  p3DateTo);
+        q.setParameter(4,  p3DateTo);
+        q.setParameter(5,  p5Dptnky);
+        q.setParameter(6,  p5Dptnky);
+        q.setParameter(7,  p5Dptnky);
+        q.setParameter(8,  p8Status);
+        q.setParameter(9,  p8Status);
+        q.setParameter(10, p10DispNo);
+        q.setParameter(11, p10DispNo);
 
         @SuppressWarnings("unchecked")
         List<Object[]> rows = q.getResultList();

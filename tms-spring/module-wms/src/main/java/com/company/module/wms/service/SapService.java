@@ -44,21 +44,28 @@ public class SapService {
     private static final DateTimeFormatter HMSFORMAT = DateTimeFormatter.ofPattern("HHmmss");
 
     // ── 납품처 출고예정 포인트 조회 (Oracle KNRAWMS.SHPDH 기반) ───────────────
+    // ■ 소프트파싱: 고정 SQL + (? IS NULL OR col ...) 패턴
+    // p1,p2: wareky   (? IS NULL OR h.WAREKY=?)
+    // p3,p4: dateFrom (? IS NULL OR h.RQSHPD>=?)
+    // p5,p6: dateTo   (? IS NULL OR h.RQSHPD<=?)
+    private static final String SHPPOINT_SQL =
+        "SELECT DISTINCT h.DPTNKY AS PTNRKY, COALESCE(b.NAME01,h.DPTNKY) AS PTNRNM, " +
+        "       h.RQSHPD, COUNT(*) AS DOC_CNT " +
+        "FROM KNRAWMS.SHPDH h LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT' " +
+        "WHERE (? IS NULL OR h.WAREKY=?) " +
+        "  AND (? IS NULL OR h.RQSHPD>=?) " +
+        "  AND (? IS NULL OR h.RQSHPD<=?) " +
+        "GROUP BY h.DPTNKY, b.NAME01, h.RQSHPD ORDER BY h.RQSHPD, h.DPTNKY";
+
     public Map<String, Object> shppoint(String wareky, String dateFrom, String dateTo) {
         try {
-            StringBuilder sql = new StringBuilder(
-                "SELECT DISTINCT h.DPTNKY AS PTNRKY, COALESCE(b.NAME01,h.DPTNKY) AS PTNRNM, " +
-                "       h.RQSHPD, COUNT(*) AS DOC_CNT " +
-                "FROM KNRAWMS.SHPDH h LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT' " +
-                "WHERE 1=1"
-            );
-            List<Object> args = new ArrayList<>();
-            if (wareky != null && !wareky.isBlank()) { sql.append(" AND h.WAREKY=?"); args.add(wareky); }
-            if (dateFrom != null && !dateFrom.isBlank()) { sql.append(" AND h.RQSHPD>=?"); args.add(dateFrom.replace("-", "")); }
-            if (dateTo   != null && !dateTo.isBlank())   { sql.append(" AND h.RQSHPD<=?"); args.add(dateTo.replace("-", "")); }
-            sql.append(" GROUP BY h.DPTNKY, b.NAME01, h.RQSHPD ORDER BY h.RQSHPD, h.DPTNKY");
+            String p1 = (wareky   != null && !wareky.isBlank())   ? wareky                        : null;
+            String p3 = (dateFrom != null && !dateFrom.isBlank()) ? dateFrom.replace("-", "")      : null;
+            String p5 = (dateTo   != null && !dateTo.isBlank())   ? dateTo.replace("-", "")        : null;
             // Oracle KNRAWMS → wmsJdbc
-            List<Map<String, Object>> rows = wmsJdbc.queryForList(sql.toString(), args.toArray());
+            List<Map<String, Object>> rows = wmsJdbc.queryForList(
+                SHPPOINT_SQL, p1, p1, p3, p3, p5, p5
+            );
             return Map.of("ok", true, "rows", rows);
         } catch (Exception e) { return errMap(e); }
     }
@@ -106,21 +113,28 @@ public class SapService {
 
     public Map<String, Object> psSearch(String dateFrom, String dateTo, String dptnky, String shpoky, String status) {
         try {
-            // KNRAWMS.SHPDH / SHPDI / BZPTN → Oracle wmsJdbc
-            StringBuilder sql = new StringBuilder(
+            // ■ 소프트파싱: 고정 SQL + (? IS NULL OR col ...) 패턴
+            // p1,p2: dateFrom (? IS NULL OR h.RQSHPD>=?)
+            // p3,p4: dateTo   (? IS NULL OR h.RQSHPD<=?)
+            // p5,p6: dptnky   (? IS NULL OR h.DPTNKY=?)
+            // p7,p8: shpoky   (? IS NULL OR h.SHPOKY=?)
+            final String sql =
                 "SELECT h.SHPOKY, h.DPTNKY, COALESCE(b.NAME01,h.DPTNKY) AS DPTNM, " +
                 "       h.RQSHPD, COUNT(i.SHPOIT) AS ITEM_CNT, SUM(i.QTSHPO) AS TOTAL_QTY " +
                 "FROM KNRAWMS.SHPDH h JOIN KNRAWMS.SHPDI i ON h.SHPOKY=i.SHPOKY " +
                 "LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT' " +
-                "WHERE 1=1"
+                "WHERE (? IS NULL OR h.RQSHPD>=?) " +
+                "  AND (? IS NULL OR h.RQSHPD<=?) " +
+                "  AND (? IS NULL OR h.DPTNKY=?) " +
+                "  AND (? IS NULL OR h.SHPOKY=?) " +
+                "GROUP BY h.SHPOKY, h.DPTNKY, b.NAME01, h.RQSHPD ORDER BY h.RQSHPD, h.DPTNKY";
+            String p1 = (dateFrom != null && !dateFrom.isBlank()) ? dateFrom.replace("-", "") : null;
+            String p3 = (dateTo   != null && !dateTo.isBlank())   ? dateTo.replace("-", "")   : null;
+            String p5 = (dptnky   != null && !dptnky.isBlank())   ? dptnky                   : null;
+            String p7 = (shpoky   != null && !shpoky.isBlank())   ? shpoky                   : null;
+            List<Map<String, Object>> rows = wmsJdbc.queryForList(
+                sql, p1, p1, p3, p3, p5, p5, p7, p7
             );
-            List<Object> args = new ArrayList<>();
-            if (dateFrom != null && !dateFrom.isBlank()) { sql.append(" AND h.RQSHPD>=?"); args.add(dateFrom.replace("-","")); }
-            if (dateTo   != null && !dateTo.isBlank())   { sql.append(" AND h.RQSHPD<=?"); args.add(dateTo.replace("-","")); }
-            if (dptnky   != null && !dptnky.isBlank())   { sql.append(" AND h.DPTNKY=?"); args.add(dptnky); }
-            if (shpoky   != null && !shpoky.isBlank())   { sql.append(" AND h.SHPOKY=?"); args.add(shpoky); }
-            sql.append(" GROUP BY h.SHPOKY, h.DPTNKY, b.NAME01, h.RQSHPD ORDER BY h.RQSHPD, h.DPTNKY");
-            List<Map<String, Object>> rows = wmsJdbc.queryForList(sql.toString(), args.toArray());
             return Map.of("ok", true, "rows", rows);
         } catch (Exception e) { return errMap(e); }
     }
