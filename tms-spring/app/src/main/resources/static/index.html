@@ -5125,13 +5125,16 @@ async function renderDelivery() {
   const results  = await Promise.all(codeKeys.map(k => fetch(`/api/codes/${k}`).then(r=>r.json())));
   codeKeys.forEach((k,i) => dlvState.codes[k] = results[i]);
   // TMS_SHPPOINT 목록 (출하지점 select용)
-  dlvState.codes['TMS_SHPPOINT'] = await fetch('/api/delivery/shppoint').then(r=>r.json());
+  // SapController.shppoint()는 ApiResponse 없이 { ok:true, rows:[...] } 직접 반환
+  const shpRes = await fetch('/api/delivery/shppoint').then(r=>r.json());
+  dlvState.codes['TMS_SHPPOINT'] = Array.isArray(shpRes) ? shpRes : (shpRes.rows || []);
 
   // 납품처 개수 뱃지
+  // DeliveryController.getList()는 ApiResponse wrapper { success, code, message, data:{total,...} } 반환
   const cntEl = document.getElementById('cnt-delivery');
   if(cntEl) {
-    const cnt = await fetch('/api/delivery/list?page=1&size=1').then(r=>r.json());
-    cntEl.textContent = fmtNum(cnt.total);
+    const cntRes = await fetch('/api/delivery/list?page=1&size=1').then(r=>r.json());
+    cntEl.textContent = fmtNum(cntRes.data?.total ?? cntRes.total ?? 0);
   }
 
   buildDeliveryUI();
