@@ -45,14 +45,15 @@ public class SapService {
 
     // ── 납품처 관리 메뉴 — 출하지점(창고) 목록 조회 ─────────────────────────
     // 프론트엔드 dlvState.codes['TMS_SHPPOINT'] 로 저장되어 창고 select 옵션에 사용
-    // KNRAWMS.WAHMA (창고마스터) → {value: WAREKY, label: WARENM} 목록 반환
+    // KNRAWMS.BZPTN (납품처 마스터, PTNRTY='WH') → {value: PTNRKY, label: NAME01} 목록 반환
     // wareky/dateFrom/dateTo 파라미터는 레거시 시그니처 유지 (사용하지 않음)
     public Map<String, Object> shppoint(String wareky, String dateFrom, String dateTo) {
         try {
             List<Map<String, Object>> rows = wmsJdbc.queryForList(
-                "SELECT WAREKY AS value, WARENM AS label" +
-                " FROM KNRAWMS.WAHMA" +
-                " ORDER BY WAREKY"
+                "SELECT PTNRKY AS value, NAME01 AS label" +
+                " FROM KNRAWMS.BZPTN" +
+                " WHERE PTNRTY = 'WH'" +
+                " ORDER BY PTNRKY"
             );
             return Map.of("ok", true, "rows", rows);
         } catch (Exception e) { return errMap(e); }
