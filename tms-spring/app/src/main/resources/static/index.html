@@ -5126,8 +5126,16 @@ async function renderDelivery() {
   codeKeys.forEach((k,i) => dlvState.codes[k] = results[i]);
   // TMS_SHPPOINT 목록 (출하지점 select용)
   // SapController.shppoint()는 ApiResponse 없이 { ok:true, rows:[...] } 직접 반환
-  const shpRes = await fetch('/api/delivery/shppoint').then(r=>r.json());
-  dlvState.codes['TMS_SHPPOINT'] = Array.isArray(shpRes) ? shpRes : (shpRes.rows || []);
+  try {
+    const shpRes = await fetch('/api/delivery/shppoint').then(r=>r.json());
+    const shpArr = Array.isArray(shpRes) ? shpRes
+                 : Array.isArray(shpRes?.rows) ? shpRes.rows
+                 : [];
+    dlvState.codes['TMS_SHPPOINT'] = shpArr;
+  } catch(e) {
+    console.warn('shppoint 로드 실패:', e);
+    dlvState.codes['TMS_SHPPOINT'] = [];
+  }
 
   // 납품처 개수 뱃지
   // DeliveryController.getList()는 ApiResponse wrapper { success, code, message, data:{total,...} } 반환
@@ -5146,7 +5154,8 @@ function buildDeliveryUI() {
   c.style.overflowY = 'hidden';
 
   // 출하지점 select: TMS_SHPPOINT 코드 기반
-  const shpList = dlvState.codes['TMS_SHPPOINT'] || [];
+  const rawShp = dlvState.codes['TMS_SHPPOINT'];
+  const shpList = Array.isArray(rawShp) ? rawShp : [];
   const shpOpts = shpList.map(o=>
     `<option value="${o.value}">${o.value} — ${o.label}${o.cnt ? ' ('+o.cnt+'건)' : ''}</option>`).join('');
 
@@ -5476,7 +5485,8 @@ function buildDeliveryForm() {
 
 function _dlvFillSelects() {
   // 출하지점 폼 select 옵션 채우기 (WAHMA 기반)
-  const shpList = dlvState.codes['TMS_SHPPOINT'] || [];
+  const rawShp2 = dlvState.codes['TMS_SHPPOINT'];
+  const shpList = Array.isArray(rawShp2) ? rawShp2 : [];
   const fWareky = document.getElementById('f-WAREKY');
   if (fWareky) {
     fWareky.innerHTML = '<option value="">선택</option>' +
