@@ -12,7 +12,7 @@ import java.util.List;
  * 경로별 운송비 Repository (Oracle KNRAWMS — ROUTE_COST 테이블)
  *
  * ■ TmsJpaConfig 에서 관리 (Oracle KNRAWMS)
- *   - CONCAT('%', :param, '%') Oracle 정상 지원
+ *   - Oracle 문자열 연결: '%' || :param || '%'  (CONCAT 3인수 미지원 → ORA-00909)
  *   - OFFSET/FETCH NEXT 페이징 Oracle 정상 지원
  */
 @Repository
@@ -23,8 +23,8 @@ public interface RouteCostRepository extends JpaRepository<RouteCost, Long> {
     @Query(value = """
         SELECT * FROM KNRAWMS.ROUTE_COST
         WHERE (:wareky IS NULL OR WAREKY = :wareky)
-          AND (:ptnrky IS NULL OR PTNRKY LIKE CONCAT('%',:ptnrky,'%'))
-          AND (:cartype IS NULL OR CARTYPE LIKE CONCAT('%',:cartype,'%'))
+          AND (:ptnrky IS NULL OR PTNRKY LIKE '%' || :ptnrky || '%')
+          AND (:cartype IS NULL OR CARTYPE LIKE '%' || :cartype || '%')
         ORDER BY WAREKY, PTNRKY, CARTYPE
         """, nativeQuery = true)
     List<Object[]> searchList(
