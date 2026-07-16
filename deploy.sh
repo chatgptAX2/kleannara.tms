@@ -11,6 +11,11 @@ cd /data/tms/source || { echo "❌ 소스 경로 이동 실패"; exit 1; }
 echo "▶ git pull..."
 git pull origin main || { echo "❌ git pull 실패"; exit 1; }
 
+# 배포 중 안내 페이지 배치 (nginx 에러 페이지 디렉터리에 복사)
+echo "▶ 배포 중 안내 페이지 배치..."
+mkdir -p /data/tms/nginx
+cp /data/tms/source/50x.html /data/tms/nginx/50x.html || echo "⚠ 50x.html 복사 실패 (계속 진행)"
+
 # 빌드
 echo "▶ 빌드 시작..."
 cd tms-spring || { echo "❌ tms-spring 경로 이동 실패"; exit 1; }

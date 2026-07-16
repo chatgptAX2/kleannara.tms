@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="refresh" content="30">
+  <title>서비스 배포 중 — Kleannara TMS</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #e2e8f0;
+    }
+
+    .container {
+      background: rgba(255,255,255,0.05);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 20px;
+      padding: 56px 64px;
+      max-width: 620px;
+      width: 90%;
+      text-align: center;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.4);
+    }
+
+    .logo {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #93c5fd;
+      margin-bottom: 28px;
+      opacity: 0.85;
+    }
+
+    /* 배포 아이콘 애니메이션 */
+    .icon-wrap {
+      width: 88px;
+      height: 88px;
+      margin: 0 auto 32px;
+      position: relative;
+    }
+    .icon-circle {
+      width: 88px;
+      height: 88px;
+      border-radius: 50%;
+      background: rgba(59,130,246,0.15);
+      border: 2px solid rgba(96,165,250,0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    .icon-circle svg {
+      width: 44px;
+      height: 44px;
+      color: #60a5fa;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1);   box-shadow: 0 0 0  0   rgba(96,165,250,0.3); }
+      50%       { transform: scale(1.05); box-shadow: 0 0 0 16px rgba(96,165,250,0); }
+    }
+
+    h1 {
+      font-size: 26px;
+      font-weight: 700;
+      color: #f0f9ff;
+      margin-bottom: 12px;
+      line-height: 1.3;
+    }
+
+    .subtitle {
+      font-size: 15px;
+      color: #94a3b8;
+      line-height: 1.7;
+      margin-bottom: 36px;
+    }
+
+    /* 진행 바 */
+    .progress-wrap {
+      margin-bottom: 36px;
+    }
+    .progress-label {
+      font-size: 12px;
+      color: #64748b;
+      margin-bottom: 8px;
+      text-align: left;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #60a5fa, #93c5fd);
+      border-radius: 3px;
+      animation: progress 3s ease-in-out infinite;
+    }
+    @keyframes progress {
+      0%   { width: 15%; }
+      50%  { width: 80%; }
+      100% { width: 15%; }
+    }
+
+    /* 예상 시간 배지 */
+    .time-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16,185,129,0.12);
+      border: 1px solid rgba(16,185,129,0.3);
+      color: #6ee7b7;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 6px 16px;
+      border-radius: 20px;
+      margin-bottom: 36px;
+    }
+    .time-badge svg { width: 15px; height: 15px; }
+
+    /* 구분선 */
+    .divider {
+      height: 1px;
+      background: rgba(255,255,255,0.08);
+      margin: 32px 0;
+    }
+
+    /* 문의 안내 박스 */
+    .contact-box {
+      background: rgba(251,191,36,0.08);
+      border: 1px solid rgba(251,191,36,0.25);
+      border-radius: 12px;
+      padding: 20px 24px;
+      text-align: left;
+    }
+    .contact-box .warn-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #fbbf24;
+      margin-bottom: 12px;
+    }
+    .contact-box .warn-title svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .contact-box p {
+      font-size: 13px;
+      color: #d1d5db;
+      line-height: 1.7;
+      margin-bottom: 10px;
+    }
+    .contact-box p:last-child { margin-bottom: 0; }
+    .contact-box strong { color: #fef3c7; }
+
+    .contact-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .contact-list li {
+      font-size: 13px;
+      color: #d1d5db;
+      padding: 4px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .contact-list li::before {
+      content: '▸';
+      color: #fbbf24;
+      font-size: 11px;
+    }
+
+    .refresh-note {
+      margin-top: 24px;
+      font-size: 12px;
+      color: #475569;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <div class="logo">Kleannara TMS</div>
+
+    <div class="icon-wrap">
+      <div class="icon-circle">
+        <!-- 서버/배포 아이콘 -->
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
+        </svg>
+      </div>
+    </div>
+
+    <h1>서비스 배포 중입니다</h1>
+    <p class="subtitle">
+      새로운 버전으로 업데이트하고 있습니다.<br>
+      잠시 후 자동으로 서비스가 재개됩니다.
+    </p>
+
+    <div class="progress-wrap">
+      <div class="progress-label">배포 진행 중...</div>
+      <div class="progress-bar">
+        <div class="progress-fill"></div>
+      </div>
+    </div>
+
+    <div class="time-badge">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+      </svg>
+      예상 소요 시간: 약 1 ~ 2분
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- 2분 이상 지속 시 문의 안내 -->
+    <div class="contact-box">
+      <div class="warn-title">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+        </svg>
+        2분 이상 지속될 경우
+      </div>
+      <p>배포가 <strong>2분 이상</strong> 완료되지 않는 경우, 아래 담당 팀으로 문의해 주세요.</p>
+      <ul class="contact-list">
+        <li>AX 운영팀</li>
+        <li>기획팀</li>
+      </ul>
+    </div>
+
+    <p class="refresh-note">이 페이지는 30초마다 자동으로 새로고침됩니다.</p>
+
+  </div>
+</body>
+</html>

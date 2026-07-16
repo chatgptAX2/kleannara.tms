@@ -6,6 +6,7 @@ import com.company.module.dispatch.entity.PsDispatchI;
 import com.company.module.dispatch.repository.PsDispatchHRepository;
 import com.company.module.dispatch.repository.PsDispatchIRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +26,7 @@ import java.util.stream.Collectors;
  *   - em     (wmsPU, Oracle KNRAWMS): SHPDI, SHPDH, BZPTN, CMCDV, SKUMA, RECDI
  *   - tmsEm  (tmsPU, Oracle KNRAWMS): PS_DISPATCH_H, PS_DISPATCH_D, DS_VEHICLE
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true, transactionManager = "tmsTransactionManager")
@@ -139,6 +141,9 @@ public class PsDispatchService {
         List<String> shpmtyList = req.getShpmty();
         String dispStat  = req.getStatus() == null ? "all" : req.getStatus();
 
+        log.info("[PsDispatch] searchDocs 파라미터 — dateFrom={}, dateTo={}, wareky={}, skug05={}, dptnky={}, shpoky={}, status={}",
+            dateFrom, dateTo, req.getWareky(), req.getSkug05(), dptnky, shpoky, dispStat);
+
         // 배차완료 키 목록 (Oracle KNRAWMS.SHPDI → em)
         // Oracle CONCAT()은 인수 2개만 허용 → || 연산자 사용
         @SuppressWarnings("unchecked")
@@ -154,6 +159,8 @@ public class PsDispatchService {
         String warekyParam = req.getWareky();
         String skug05Param = req.getSkug05();
 
+        // RECDI: SKUKEY당 여러 입고 레코드가 존재할 수 있어 단순 LEFT JOIN 시 행 폭발(fan-out) 발생
+        // → SKUKEY별 최신 1건만 가져오는 서브쿼리로 처리하여 결과 건수 정확성 확보
         StringBuilder sb = new StringBuilder("""
             SELECT i.SHPOKY, i.SHPOIT, i.SKUKEY, i.DESC01,
                    TRIM(COALESCE(i.SVBELN,'')) AS SVBELN,
@@ -171,7 +178,11 @@ public class PsDispatchService {
             LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY = h.DPTNKY AND b.PTNRTY = 'CT'
             LEFT JOIN KNRAWMS.CMCDV c ON c.CMCDKY = 'TASOTY' AND c.CMCDVL = h.SHPMTY
             LEFT JOIN KNRAWMS.SKUMA m ON m.SKUKEY = i.SKUKEY
-            LEFT JOIN KNRAWMS.RECDI rd ON rd.SKUKEY = i.SKUKEY
+            LEFT JOIN (
+                SELECT SKUKEY, MAX(QTYRCV) AS QTYRCV
+                FROM KNRAWMS.RECDI
+                GROUP BY SKUKEY
+            ) rd ON rd.SKUKEY = i.SKUKEY
             WHERE 1=1
             """);
 
@@ -189,6 +200,9 @@ public class PsDispatchService {
         } else {
             sb.append(" AND TRIM(i.SKUG05) = '10'");
         }
+        // 납품요청일(RQSHPD) 날짜 범위 조건
+        // Oracle SHPDH.RQSHPD: VARCHAR2(8) 'yyyyMMdd' 형식
+        // JS → Controller: date_from=2026-06-30 → normalizedDateFrom() → '20260630'
         if (dateFrom != null && !dateFrom.isEmpty()) {
             sb.append(" AND h.RQSHPD >= ?"); params.add(dateFrom);
         }
@@ -212,6 +226,8 @@ public class PsDispatchService {
         }
         sb.append(" ORDER BY h.RQSHPD, h.DPTNKY, i.SHPOKY, i.SHPOIT");
 
+        log.info("[PsDispatch] 최종 SQL params({}\uac1c): {}", params.size(), params);
+
         // Oracle em으로 실행
         var query = em.createNativeQuery(sb.toString());
         for (int i = 0; i < params.size(); i++) {
@@ -220,6 +236,7 @@ public class PsDispatchService {
 
         @SuppressWarnings("unchecked")
         List<Object[]> rows = query.getResultList();
+        log.info("[PsDispatch] DB \uc870\ud68c \uacb0\uacfc: {}건 (dispStat={})", rows.size(), dispStat);
         List<PsDispatchDocResponse> result = new ArrayList<>();
 
         for (Object[] r : rows) {
