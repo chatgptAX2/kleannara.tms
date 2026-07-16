@@ -16283,11 +16283,13 @@ INNER JOIN SKUMA M  ON SI.SKUKEY=M.SKUKEY AND SH.OWNRKY=M.OWNRKY`);
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(body),
     });
-    const data = await res.json();
+    const json = await res.json();
     if (!res.ok) {
-      area.innerHTML = `<div style="padding:20px;color:#e74c3c;font-size:12px;">오류: ${data.error||res.statusText}</div>`;
+      area.innerHTML = `<div style="padding:20px;color:#e74c3c;font-size:12px;">오류: ${(json&&json.message)||res.statusText}</div>`;
       return;
     }
+    /* ApiResponse 래퍼 { success, code, message, data: { total, rows, page, size } } 처리 */
+    const data = (json && json.data != null) ? json.data : json;
     shipScheduleState.total  = data.total;
     shipScheduleState.params = body;
     renderShipScheduleResult(data, area);
@@ -18018,8 +18020,10 @@ async function svbelnPopupSearch() {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(body),
     });
-    const data = await res.json();
-    const rows = data.rows || [];
+    const json2 = await res.json();
+    /* ApiResponse 래퍼 { success, data: { rows, ... } } 처리 */
+    const data2 = (json2 && json2.data != null) ? json2.data : json2;
+    const rows = data2.rows || [];
 
     /* SVBELN 기준 중복 제거 */
     const seen = new Set();
