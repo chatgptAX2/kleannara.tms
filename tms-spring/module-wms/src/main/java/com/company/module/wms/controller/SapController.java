@@ -79,16 +79,7 @@ public class SapController {
     }
 
     // ── ps-dispatch 추가 API (기존 Spring Boot 모듈 미구현 부분) ──
-
-    @GetMapping("/ps-dispatch/search")
-    public ResponseEntity<Map<String, Object>> psSearch(
-            @RequestParam(required = false) String dateFrom,
-            @RequestParam(required = false) String dateTo,
-            @RequestParam(required = false) String dptnky,
-            @RequestParam(required = false) String shpoky,
-            @RequestParam(required = false) String status) {
-        return ResponseEntity.ok(sapService.psSearch(dateFrom, dateTo, dptnky, shpoky, status));
-    }
+    // NOTE: GET /ps-dispatch/search 는 PsDispatchController 에서 처리 (중복 제거)
 
     @PostMapping("/ps-dispatch/auto")
     public ResponseEntity<Map<String, Object>> psAuto(@RequestBody Map<String, Object> body) {
