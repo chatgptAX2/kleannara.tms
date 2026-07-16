@@ -13,10 +13,12 @@ import java.util.Map;
 /**
  * 납품처 관리 Controller
  * Flask: /api/delivery/*, /api/route_cost/* 대응
- * URL prefix: /delivery-api
+ * URL prefix: /api (nginx: /api/ → Spring)
+ * ※ 이중 prefix {"/delivery-api", "/api"} 제거 → 단일 /api prefix로 정리
+ *   (SapController 등 다른 /api 컨트롤러와 하위 경로 충돌 없음)
  */
 @RestController
-@RequestMapping({"/delivery-api", "/api"})
+@RequestMapping("/api")
 @RequiredArgsConstructor
 public class DeliveryController {
 
@@ -69,7 +71,7 @@ public class DeliveryController {
     }
 
     /** 운송비 검색 – Flask: GET /api/route_cost/search */
-    @GetMapping("/route-cost/search")
+    @GetMapping("/route_cost/search")
     public ResponseEntity<ApiResponse<List<Object[]>>> searchRouteCost(
             @RequestParam(required = false) String wareky,
             @RequestParam(required = false) String ptnrky,
@@ -78,7 +80,7 @@ public class DeliveryController {
     }
 
     /** 운송비 피벗 – Flask: GET /api/route_cost/pivot */
-    @GetMapping("/route-cost/pivot")
+    @GetMapping("/route_cost/pivot")
     public ResponseEntity<ApiResponse<Map<String, Object>>> pivotRouteCost(
             @RequestParam(required = false) String wareky,
             @RequestParam(required = false) String ptnrky) {
