@@ -152,7 +152,7 @@ public class PsDispatchService {
         StringBuilder sb = new StringBuilder("""
             SELECT i.SHPOKY, i.SHPOIT, i.SKUKEY, i.DESC01,
                    TRIM(COALESCE(i.SVBELN,'')) AS SVBELN,
-                   i.UOMKEY, CAST(i.QTSHPO AS DECIMAL(18,4)) AS QTSHPO,
+                   i.UOMKEY, CAST(i.QTSHPO AS NUMBER(18,4)) AS QTSHPO,
                    TRIM(COALESCE(i.SKUG05,'')) AS SKUG05,
                    h.DPTNKY,
                    TRIM(COALESCE(b.NAME01,'')) AS DPTNM,
