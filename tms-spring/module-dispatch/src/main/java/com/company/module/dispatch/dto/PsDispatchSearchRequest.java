@@ -26,6 +26,12 @@ public class PsDispatchSearchRequest {
     /** 출하유형코드 복수 선택 (201/205/206/208/221/231) */
     private java.util.List<String> shpmty;
 
+    /** 창고코드 — 미입력 시 기본 1100 */
+    private String wareky;
+
+    /** 제품군 코드 — 미입력 시 기본 10(지류) */
+    private String skug05;
+
     /**
      * 배차상태 필터
      * all | dispatched | undispatched

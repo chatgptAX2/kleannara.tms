@@ -140,15 +140,20 @@ public class PsDispatchService {
         String dispStat  = req.getStatus() == null ? "all" : req.getStatus();
 
         // 배차완료 키 목록 (Oracle KNRAWMS.SHPDI → em)
+        // Oracle CONCAT()은 인수 2개만 허용 → || 연산자 사용
         @SuppressWarnings("unchecked")
-        List<String> dispatchedKeys = em.createNativeQuery("""
-            SELECT CONCAT(SHPOKY,'|',SHPOIT)
-            FROM KNRAWMS.SHPDI
-            WHERE STATIT='NEW' AND TRIM(STDLNR) != ''
-            """).getResultList();
+        List<String> dispatchedKeys = em.createNativeQuery(
+            "SELECT SHPOKY || '|' || SHPOIT" +
+            " FROM KNRAWMS.SHPDI" +
+            " WHERE STATIT='NEW' AND TRIM(STDLNR) != ''"
+        ).getResultList();
         Set<String> dispatchedSet = new HashSet<>(dispatchedKeys);
 
         // 동적 WHERE 구성 (Oracle KNRAWMS 테이블 → em)
+        // 검색조건 파라미터 우선 적용; 파라미터 없을 때만 기본값 사용
+        String warekyParam = req.getWareky();
+        String skug05Param = req.getSkug05();
+
         StringBuilder sb = new StringBuilder("""
             SELECT i.SHPOKY, i.SHPOIT, i.SKUKEY, i.DESC01,
                    TRIM(COALESCE(i.SVBELN,'')) AS SVBELN,
@@ -167,10 +172,23 @@ public class PsDispatchService {
             LEFT JOIN KNRAWMS.CMCDV c ON c.CMCDKY = 'TASOTY' AND c.CMCDVL = h.SHPMTY
             LEFT JOIN KNRAWMS.SKUMA m ON m.SKUKEY = i.SKUKEY
             LEFT JOIN KNRAWMS.RECDI rd ON rd.SKUKEY = i.SKUKEY
-            WHERE TRIM(i.SKUG05) = '10' AND h.WAREKY = '1100'
+            WHERE 1=1
             """);
 
         List<Object> params = new ArrayList<>();
+
+        // 창고(WAREKY) — 파라미터 있으면 적용, 없으면 기본값 1100
+        if (warekyParam != null && !warekyParam.isBlank()) {
+            sb.append(" AND h.WAREKY = ?"); params.add(warekyParam.strip());
+        } else {
+            sb.append(" AND h.WAREKY = '1100'");
+        }
+        // 제품군(SKUG05) — 파라미터 있으면 적용, 없으면 기본값 10(지류)
+        if (skug05Param != null && !skug05Param.isBlank()) {
+            sb.append(" AND TRIM(i.SKUG05) = ?"); params.add(skug05Param.strip());
+        } else {
+            sb.append(" AND TRIM(i.SKUG05) = '10'");
+        }
         if (dateFrom != null && !dateFrom.isEmpty()) {
             sb.append(" AND h.RQSHPD >= ?"); params.add(dateFrom);
         }

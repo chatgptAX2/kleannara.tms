@@ -8849,9 +8849,11 @@ async function psdSearch() {
       shpmtyChks.forEach(v => params.append('shpmty', v));
     }
     const res  = await fetch(`/api/ps-dispatch/search?${params}`);
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error);
-    psdState.searchRows = data.rows || [];
+    const json = await res.json();
+    if (!res.ok) throw new Error((json && json.message) || res.statusText);
+    /* ApiResponse 래퍼 처리: { success, code, message, data: [...] } */
+    const rows = (json && json.data != null) ? json.data : (json.rows || json);
+    psdState.searchRows = Array.isArray(rows) ? rows : [];
     psdRenderDocTable();
     psdUpdateToolbar();
   } catch(e) {
@@ -12850,9 +12852,11 @@ async function psopSearch() {
       shpmtyChks.forEach(v => params.append('shpmty', v));
     }
     const res  = await fetch(`/api/ps-dispatch/search?${params}`);
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error);
-    psopState.searchRows = data.rows || [];
+    const json = await res.json();
+    if (!res.ok) throw new Error((json && json.message) || res.statusText);
+    /* ApiResponse 래퍼 처리: { success, code, message, data: [...] } */
+    const rows = (json && json.data != null) ? json.data : (json.rows || json);
+    psopState.searchRows = Array.isArray(rows) ? rows : [];
     // 인메모리 vehicles의 items → DISPATCHED 강제 true 재설정
     // (서버는 SHPDI.STDLNR='' 인 미저장/pending 배차를 항상 DISPATCHED=false 로 반환하기 때문)
     // ★ localStorage에서 복원된 pending vehicles도 포함
