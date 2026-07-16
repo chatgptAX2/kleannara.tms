@@ -43,28 +43,16 @@ public class SapService {
     private static final DateTimeFormatter YMDFORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final DateTimeFormatter HMSFORMAT = DateTimeFormatter.ofPattern("HHmmss");
 
-    // ── 납품처 출고예정 포인트 조회 (Oracle KNRAWMS.SHPDH 기반) ───────────────
-    // ■ 소프트파싱: 고정 SQL + (? IS NULL OR col ...) 패턴
-    // p1,p2: wareky   (? IS NULL OR h.WAREKY=?)
-    // p3,p4: dateFrom (? IS NULL OR h.RQSHPD>=?)
-    // p5,p6: dateTo   (? IS NULL OR h.RQSHPD<=?)
-    private static final String SHPPOINT_SQL =
-        "SELECT DISTINCT h.DPTNKY AS PTNRKY, COALESCE(b.NAME01,h.DPTNKY) AS PTNRNM, " +
-        "       h.RQSHPD, COUNT(*) AS DOC_CNT " +
-        "FROM KNRAWMS.SHPDH h LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT' " +
-        "WHERE (? IS NULL OR h.WAREKY=?) " +
-        "  AND (? IS NULL OR h.RQSHPD>=?) " +
-        "  AND (? IS NULL OR h.RQSHPD<=?) " +
-        "GROUP BY h.DPTNKY, b.NAME01, h.RQSHPD ORDER BY h.RQSHPD, h.DPTNKY";
-
+    // ── 납품처 관리 메뉴 — 출하지점(창고) 목록 조회 ─────────────────────────
+    // 프론트엔드 dlvState.codes['TMS_SHPPOINT'] 로 저장되어 창고 select 옵션에 사용
+    // KNRAWMS.WAHMA (창고마스터) → {value: WAREKY, label: WARENM} 목록 반환
+    // wareky/dateFrom/dateTo 파라미터는 레거시 시그니처 유지 (사용하지 않음)
     public Map<String, Object> shppoint(String wareky, String dateFrom, String dateTo) {
         try {
-            String p1 = (wareky   != null && !wareky.isBlank())   ? wareky                        : null;
-            String p3 = (dateFrom != null && !dateFrom.isBlank()) ? dateFrom.replace("-", "")      : null;
-            String p5 = (dateTo   != null && !dateTo.isBlank())   ? dateTo.replace("-", "")        : null;
-            // Oracle KNRAWMS → wmsJdbc
             List<Map<String, Object>> rows = wmsJdbc.queryForList(
-                SHPPOINT_SQL, p1, p1, p3, p3, p5, p5
+                "SELECT WAREKY AS value, WARENM AS label" +
+                " FROM KNRAWMS.WAHMA" +
+                " ORDER BY WAREKY"
             );
             return Map.of("ok", true, "rows", rows);
         } catch (Exception e) { return errMap(e); }
