@@ -59,12 +59,12 @@ public class ShipmentService {
             params.add(req.getStatdo());
         }
         if (hasText(req.getSkug05())) {
-            whereSb.append(" AND TRIM(SI.SKUG05) = ?");
+            whereSb.append(" AND SI.SKUG05 = ?");          // TRIM 제거 — INDEX 사용
             params.add(req.getSkug05().strip());
         }
         if (req.getLota02List() != null && !req.getLota02List().isEmpty()) {
             String ph = req.getLota02List().stream().map(x -> "?").collect(Collectors.joining(","));
-            whereSb.append(" AND TRIM(SI.LOTA02) IN (").append(ph).append(")");
+            whereSb.append(" AND SI.LOTA02 IN (").append(ph).append(")");  // TRIM 제거 — INDEX 사용
             params.addAll(req.getLota02List());
         }
         if (hasText(req.getKeyword())) {
@@ -95,7 +95,7 @@ public class ShipmentService {
             "    CD.CDESC1                     AS SKUG05NM," +
             "    SI.UOMKEY," +
             "    CAST(COALESCE(SI.QTSHPO,0) AS NUMBER(18,4)) AS QTSHPO," +
-            "    CAST(COALESCE(SI.QTUALO,0) AS NUMBER(18,4)) AS QTUALO," +
+            "    CAST(COALESCE(SI.QTSHPO - SI.QTALOC,0) AS NUMBER(18,4)) AS QTUALO," +  // QTUALO 컬럼 없음 → 계산식 대체
             "    CAST(COALESCE(SI.QTALOC,0) AS NUMBER(18,4)) AS QTALOC," +
             "    CAST(COALESCE(SI.QTJCMP,0) AS NUMBER(18,4)) AS QTJCMP," +
             "    CAST(COALESCE(SI.QTSHPD,0) AS NUMBER(18,4)) AS QTSHPD," +
@@ -141,7 +141,7 @@ public class ShipmentService {
             " LEFT  JOIN KNRAWMS.BZPTN CT ON CT.OWNRKY=SH.OWNRKY AND CT.PTNRTY='CT' AND CT.PTNRKY=SH.DPTNKY" +
             " LEFT  JOIN KNRAWMS.BZPTN VD ON VD.OWNRKY=SH.OWNRKY AND VD.PTNRTY='VD' AND VD.PTNRKY=SH.PTRCVR" +
             " LEFT  JOIN KNRAWMS.CMCDV ST ON ST.CMCDKY='STATDO' AND ST.CMCDVL=SH.STATDO" +
-            " LEFT  JOIN KNRAWMS.CMCDV CD ON CD.CMCDKY='SKUG05' AND CD.CMCDVL=TRIM(SI.SKUG05)" +
+            " LEFT  JOIN KNRAWMS.CMCDV CD ON CD.CMCDKY='SKUG05' AND CD.CMCDVL=SI.SKUG05" +  // TRIM 제거
             " LEFT  JOIN KNRAWMS.SKUMA M  ON SI.SKUKEY=M.SKUKEY AND SH.OWNRKY=M.OWNRKY" +
             " WHERE " + whereSQL +
             " ORDER BY SI.SVBELN, SI.SHPOKY, SI.SHPOIT" +
@@ -176,17 +176,18 @@ public class ShipmentService {
     // ──────────────────────────────────────────────────────────────────────────
 
     public ShipmentFilterOptsResponse getFilterOpts() {
-        // 창고 목록 — WAHMA 테이블 기준 (WAREKY→value, NAME01→label), 삭제 제외(DELMAK 없는 경우 전체)
-        @SuppressWarnings("unchecked")
-        List<Object[]> wahmaRows = em.createNativeQuery(
-            "SELECT WAREKY, NAME01 FROM KNRAWMS.WAHMA" +
-            " WHERE WAREKY IS NOT NULL AND TRIM(WAREKY) != ''" +
-            " ORDER BY WAREKY"
-        ).getResultList();
-        List<ShipmentFilterOptsResponse.CodeLabel> warekyList = wahmaRows.stream()
-            .map(row -> ShipmentFilterOptsResponse.CodeLabel.builder()
-                .value(str(row[0])).label(str(row[1])).build())
-            .collect(Collectors.toList());
+        // 창고 목록 — 운영 창고 고정 목록 (9개)
+        List<ShipmentFilterOptsResponse.CodeLabel> warekyList = Arrays.asList(
+            ShipmentFilterOptsResponse.CodeLabel.builder().value("1100").label("청주공장창고").build(),
+            ShipmentFilterOptsResponse.CodeLabel.builder().value("1500").label("음성공장창고").build(),
+            ShipmentFilterOptsResponse.CodeLabel.builder().value("4100").label("용인물류센터").build(),
+            ShipmentFilterOptsResponse.CodeLabel.builder().value("4400").label("경북물류센터").build(),
+            ShipmentFilterOptsResponse.CodeLabel.builder().value("4200").label("경남물류센터").build(),
+            ShipmentFilterOptsResponse.CodeLabel.builder().value("4300").label("전라물류센터").build(),
+            ShipmentFilterOptsResponse.CodeLabel.builder().value("4800").label("제주물류센터").build(),
+            ShipmentFilterOptsResponse.CodeLabel.builder().value("4000").label("파주물류센터").build(),
+            ShipmentFilterOptsResponse.CodeLabel.builder().value("6000").label("임가공 거점").build()
+        );
 
         // 출고상태 목록
         @SuppressWarnings("unchecked")
