@@ -8618,6 +8618,21 @@ async function renderPsDispatch() {
     </div>
     <div class="psd-search-row">
       <div class="psd-fg">
+        <label>창고 <span style="font-size:10px;color:var(--text3)">(WAREKY)</span></label>
+        <select id="psd-wareky">
+          <option value="1100" selected>1100 — 청주공장창고</option>
+          <option value="1500">1500 — 음성공장창고</option>
+          <option value="4100">4100 — 용인물류센터</option>
+          <option value="4400">4400 — 경북물류센터</option>
+          <option value="4200">4200 — 경남물류센터</option>
+          <option value="4300">4300 — 전라물류센터</option>
+          <option value="4800">4800 — 제주물류센터</option>
+          <option value="4000">4000 — 파주물류센터</option>
+          <option value="6000">6000 — 임가공 거점</option>
+          <option value="">전체</option>
+        </select>
+      </div>
+      <div class="psd-fg">
         <label>납품일(FROM)</label>
         <input type="date" id="psd-date-from" value="${defFrom}">
       </div>
@@ -8828,6 +8843,7 @@ async function renderPsDispatch() {
 
 /* ── 조회 ─────────────────────────────────────────── */
 async function psdSearch() {
+  const wareky    = document.getElementById('psd-wareky')?.value   || '1100';
   const dateFrom = document.getElementById('psd-date-from')?.value || '';
   const dateTo   = document.getElementById('psd-date-to')?.value   || '';
   const dptnky   = document.getElementById('psd-dptnky')?.value.trim() || '';
@@ -8843,7 +8859,7 @@ async function psdSearch() {
   tbody.innerHTML = `<tr><td colspan="16" style="text-align:center;padding:20px"><div class="spinner" style="margin:0 auto 8px"></div>조회 중...</td></tr>`;
 
   try {
-    const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo, dptnky, shpoky, status });
+    const params = new URLSearchParams({ wareky, date_from: dateFrom, date_to: dateTo, dptnky, shpoky, status });
     // 전체 선택이 아닐 때만 개별 shpmty 추가 (복수 값 → 같은 키 반복)
     if (!shpmtyAll && shpmtyChks.length > 0) {
       shpmtyChks.forEach(v => params.append('shpmty', v));

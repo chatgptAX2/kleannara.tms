@@ -226,7 +226,9 @@ public class PsDispatchService {
         }
         sb.append(" ORDER BY h.RQSHPD, h.DPTNKY, i.SHPOKY, i.SHPOIT");
 
-        log.info("[PsDispatch] 최종 SQL params({}\uac1c): {}", params.size(), params);
+        // ── SQL 전체 쿼리 + params를 stdout.log에 기록 (성능 분석용) ──────────
+        log.info("[PsDispatch] ==== SQL BEGIN ====\n{}", sb.toString());
+        log.info("[PsDispatch] params({}개): {}", params.size(), params);
 
         // Oracle em으로 실행
         var query = em.createNativeQuery(sb.toString());
@@ -326,6 +328,7 @@ public class PsDispatchService {
                 .grmCond(psGetGrm(sk))
                 .dispatched(isDisp)
                 .lota03(str(r[15]))
+                .isSplit(str(r[0]).contains("-S"))   // 분할문서 여부
                 .build());
         }
         return result;
