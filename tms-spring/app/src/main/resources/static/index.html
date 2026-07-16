@@ -8587,9 +8587,11 @@ async function renderPsDispatch() {
   let defFrom, defTo, _psdDataRangeHint = '';
   try {
     const _optsRes = await fetch('/api/shipment/schedule/filter-opts');
-    const _optsD   = await _optsRes.json();
-    const _maxStr  = _optsD.max_date || '';
-    const _minStr  = _optsD.min_date || '';
+    const _optsJ   = await _optsRes.json();
+    /* ApiResponse 래퍼 { success, data: {...} } 대응 */
+    const _optsD   = (_optsJ && _optsJ.data) ? _optsJ.data : _optsJ;
+    const _maxStr  = _optsD.maxDate  || _optsD.max_date || '';
+    const _minStr  = _optsD.minDate  || _optsD.min_date || '';
     if (_maxStr && _maxStr.length === 8) {
       const maxD  = new Date(_maxStr.slice(0,4)+'-'+_maxStr.slice(4,6)+'-'+_maxStr.slice(6,8));
       const fromD = new Date(maxD); fromD.setDate(fromD.getDate()-30);
@@ -12354,9 +12356,11 @@ async function renderPsDispatchOpt() {
   let defFrom, defTo, _psopDataRangeHint = '';
   try {
     const _optsRes = await fetch('/api/shipment/schedule/filter-opts');
-    const _optsD   = await _optsRes.json();
-    const _maxStr  = _optsD.max_date || '';
-    const _minStr  = _optsD.min_date || '';
+    const _optsJ   = await _optsRes.json();
+    /* ApiResponse 래퍼 { success, data: {...} } 대응 */
+    const _optsD   = (_optsJ && _optsJ.data) ? _optsJ.data : _optsJ;
+    const _maxStr  = _optsD.maxDate  || _optsD.max_date || '';
+    const _minStr  = _optsD.minDate  || _optsD.min_date || '';
     if (_maxStr && _maxStr.length === 8) {
       const maxD  = new Date(_maxStr.slice(0,4)+'-'+_maxStr.slice(4,6)+'-'+_maxStr.slice(6,8));
       const fromD = new Date(maxD); fromD.setDate(fromD.getDate()-30);
