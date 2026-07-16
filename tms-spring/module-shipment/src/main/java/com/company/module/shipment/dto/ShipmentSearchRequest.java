@@ -38,6 +38,8 @@ public class ShipmentSearchRequest {
     @JsonAlias("skukey")
     private String keyword;                 // 품목코드/품목명 검색어 — JS: skukey
 
+    private String ptnrky;                  // 납품처코드 — JS: ptnrky → WHERE SH.DPTNKY = ?
+
     private int page = 1;                   // 페이지 번호 (1-based, JS에서 1 전송)
 
     private int size = 500;                 // 페이지 크기

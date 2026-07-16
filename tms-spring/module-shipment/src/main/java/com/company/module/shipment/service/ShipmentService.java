@@ -72,6 +72,10 @@ public class ShipmentService {
             params.add("%" + req.getKeyword() + "%");
             params.add("%" + req.getKeyword() + "%");
         }
+        if (hasText(req.getPtnrky())) {
+            whereSb.append(" AND SH.DPTNKY = ?");   // 납품처코드 — STKNUM(선적번호) 아님
+            params.add(req.getPtnrky().strip());
+        }
 
         String whereSQL = whereSb.toString();
 
