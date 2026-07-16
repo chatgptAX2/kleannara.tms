@@ -5243,6 +5243,9 @@ function buildDeliveryUI() {
 </div>`;
   // DOM 삽입 후 출하지점 select 옵션 채우기
   _dlvFillSelects();
+  // 출하지점 기본값 1100 설정
+  const _vstelEl = document.getElementById('dlv-s-vstel');
+  if (_vstelEl) _vstelEl.value = '1100';
 }
 
 function buildDeliveryForm() {
@@ -5661,7 +5664,7 @@ function dlvToggleGridHide() {
 
 function dlvClearSearch() {
   const vstel = document.getElementById('dlv-s-vstel');
-  if (vstel) vstel.value = '';
+  if (vstel) vstel.value = '1100';
   // 플랜트 multi-select 전체 해제
   document.querySelectorAll('#dlv-werks-dd input[type=checkbox]').forEach(cb => { cb.checked = false; });
   dlvUpdateWerksLabel();
@@ -15767,7 +15770,7 @@ async function renderShipSchedule() {
     {value:'6000', label:'임가공 거점'},
   ];
   const warekyOpts = _WAREKY_LIST.map(o =>
-    `<option value="${o.value}">${o.value} — ${o.label}</option>`).join('');
+    `<option value="${o.value}"${o.value==='1100'?' selected':''}>${o.value} — ${o.label}</option>`).join('');
 
   /* statit 옵션 */
   const statitOpts = (opts.statit || []).map(o =>
@@ -16133,7 +16136,7 @@ function resetShipScheduleSearch() {
     toD   = new Date(today); toD.setDate(toD.getDate()+7);
   }
   const el = id => document.getElementById(id);
-  if (el('ss-wareky'))          el('ss-wareky').value = '';
+  if (el('ss-wareky'))          el('ss-wareky').value = '1100';
   if (el('ss-rqshpd-from'))    { el('ss-rqshpd-from').value = fmt8(fromD); }
   if (el('ss-rqshpd-from-cal')){ el('ss-rqshpd-from-cal').value = fmtH(fromD); }
   if (el('ss-rqshpd-to'))      { el('ss-rqshpd-to').value   = fmt8(toD); }
@@ -17791,7 +17794,9 @@ async function _ptnrPopupDoSearch() {
     const params = new URLSearchParams({ page: 1, size: 100 });
     if (q) params.set('ptnrky', q);
     const res  = await fetch(`/api/delivery/list?${params}`);
-    const data = await res.json();
+    const json = await res.json();
+    /* ApiResponse 래퍼 처리: { success, code, message, data: { rows, total } } */
+    const data = (json && json.data != null) ? json.data : json;
     const rows = data.rows || [];
 
     info.textContent = `총 ${rows.length}건 (최대 100건)`;
@@ -18227,7 +18232,9 @@ async function _ssPtnrDoSearch() {
     const params = new URLSearchParams({ page: 1, size: 100 });
     if (q) params.set('ptnrky', q);
     const res  = await fetch(`/api/delivery/list?${params}`);
-    const data = await res.json();
+    const json = await res.json();
+    /* ApiResponse 래퍼 처리: { success, code, message, data: { rows, total } } */
+    const data = (json && json.data != null) ? json.data : json;
     const rows = data.rows || [];
 
     info.textContent = `총 ${rows.length}건 (최대 100건)`;
