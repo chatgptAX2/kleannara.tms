@@ -40,6 +40,8 @@ public class ShipmentSearchRequest {
 
     private String ptnrky;                  // 납품처코드 — JS: ptnrky → WHERE SH.DPTNKY = ?
 
+    private List<String> svbeln;            // 납품문서번호 다중 — JS: svbeln → WHERE SI.SVBELN IN (...)
+
     private int page = 1;                   // 페이지 번호 (1-based, JS에서 1 전송)
 
     private int size = 500;                 // 페이지 크기

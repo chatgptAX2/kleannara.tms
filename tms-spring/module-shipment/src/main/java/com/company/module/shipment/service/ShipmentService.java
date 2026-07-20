@@ -54,6 +54,7 @@ public class ShipmentService {
      * p11,p12: lota02 (? IS NULL OR INSTR(',' || ? || ',', ',' || SI.LOTA02 || ',') > 0)
      * p13,p14,p15: keyword (? IS NULL OR SI.SKUKEY LIKE ? OR SI.DESC01 LIKE ?)
      * p16,p17: ptnrky (? IS NULL OR SH.DPTNKY = ?)
+     * p18,p19: svbeln (? IS NULL OR INSTR(',' || ? || ',', ',' || TRIM(SI.SVBELN) || ',') > 0)
      */
     private static final String SCHEDULE_COUNT_SQL =
         "SELECT COUNT(*)" +
@@ -67,10 +68,11 @@ public class ShipmentService {
         "   AND (? IS NULL OR SI.SKUG05 = ?)" +
         "   AND (? IS NULL OR INSTR(',' || ? || ',', ',' || SI.LOTA02 || ',') > 0)" +
         "   AND (? IS NULL OR SI.SKUKEY LIKE ? OR SI.DESC01 LIKE ?)" +
-        "   AND (? IS NULL OR SH.DPTNKY = ?)";
+        "   AND (? IS NULL OR SH.DPTNKY = ?)" +
+        "   AND (? IS NULL OR INSTR(',' || ? || ',', ',' || TRIM(SI.SVBELN) || ',') > 0)";
 
     /**
-     * 출고현황 본문 SQL (고정 텍스트, 동일한 16개 파라미터 + OFFSET/FETCH 2개)
+     * 출고현황 본문 SQL (고정 텍스트, 동일한 19개 파라미터 + OFFSET/FETCH 2개)
      */
     private static final String SCHEDULE_DATA_SQL =
         "SELECT" +
@@ -135,8 +137,9 @@ public class ShipmentService {
         "   AND (? IS NULL OR INSTR(',' || ? || ',', ',' || SI.LOTA02 || ',') > 0)" +
         "   AND (? IS NULL OR SI.SKUKEY LIKE ? OR SI.DESC01 LIKE ?)" +
         "   AND (? IS NULL OR SH.DPTNKY = ?)" +
+        "   AND (? IS NULL OR INSTR(',' || ? || ',', ',' || TRIM(SI.SVBELN) || ',') > 0)" +
         " ORDER BY SI.SVBELN, SI.SHPOKY, SI.SHPOIT" +
-        " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";    // p18,p19: offset, size
+        " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";    // p20,p21: offset, size
 
     public Map<String, Object> getSchedule(ShipmentSearchRequest req) {
 
@@ -155,11 +158,20 @@ public class ShipmentService {
         // keyword LIKE
         String p13Keyword = hasText(req.getKeyword()) ? "%" + req.getKeyword().trim() + "%" : null;
         String p16Ptnrky  = hasText(req.getPtnrky())  ? req.getPtnrky().strip()         : null;
+        // svbeln 다중값 → INSTR 패턴용 쉼표 구분 문자열
+        String p18Svbeln  = (req.getSvbeln() != null && !req.getSvbeln().isEmpty())
+                            ? "," + req.getSvbeln().stream()
+                                .map(String::strip)
+                                .filter(s -> !s.isEmpty())
+                                .collect(java.util.stream.Collectors.joining(",")) + ","
+                            : null;
+        // 실제로 유효한 값이 없으면 null로 처리
+        if (p18Svbeln != null && p18Svbeln.equals(",,")) p18Svbeln = null;
 
         // ── 전체 건수 (고정 SQL — 소프트파싱) ─────────────────────────────────
         var countQuery = em.createNativeQuery(SCHEDULE_COUNT_SQL);
         setScheduleParams(countQuery, p1Wareky, p3DateFrom, p5DateTo,
-                          p7Statdo, p9Skug05, p11Lota02, p13Keyword, p16Ptnrky);
+                          p7Statdo, p9Skug05, p11Lota02, p13Keyword, p16Ptnrky, p18Svbeln);
         long total = ((Number) countQuery.getSingleResult()).longValue();
 
         // ── 본문 쿼리 (고정 SQL — 소프트파싱) ─────────────────────────────────
@@ -168,9 +180,9 @@ public class ShipmentService {
 
         var dataQuery = em.createNativeQuery(SCHEDULE_DATA_SQL);
         setScheduleParams(dataQuery, p1Wareky, p3DateFrom, p5DateTo,
-                          p7Statdo, p9Skug05, p11Lota02, p13Keyword, p16Ptnrky);
-        dataQuery.setParameter(18, offset);  // OFFSET ? ROWS
-        dataQuery.setParameter(19, size);    // FETCH NEXT ? ROWS ONLY
+                          p7Statdo, p9Skug05, p11Lota02, p13Keyword, p16Ptnrky, p18Svbeln);
+        dataQuery.setParameter(20, offset);  // OFFSET ? ROWS
+        dataQuery.setParameter(21, size);    // FETCH NEXT ? ROWS ONLY
 
         @SuppressWarnings("unchecked")
         List<Object[]> rows = dataQuery.getResultList();
@@ -374,8 +386,8 @@ public class ShipmentService {
 
     /**
      * 출고현황 고정 SQL 공통 파라미터 바인딩 헬퍼
-     * COUNT SQL / DATA SQL 동일한 1~17번 파라미터 구조 공유
-     * DATA SQL은 추가로 p18=offset, p19=size 필요
+     * COUNT SQL / DATA SQL 동일한 1~19번 파라미터 구조 공유
+     * DATA SQL은 추가로 p20=offset, p21=size 필요
      *
      * p1,p2:     wareky  — (? IS NULL OR SH.WAREKY = ?)
      * p3,p4:     dateFrom— (? IS NULL OR SH.RQSHPD >= ?)
@@ -385,11 +397,12 @@ public class ShipmentService {
      * p11,p12:   lota02  — (? IS NULL OR INSTR(','||?||',', ','||SI.LOTA02||',') > 0)
      * p13,p14,p15: keyword — (? IS NULL OR SI.SKUKEY LIKE ? OR SI.DESC01 LIKE ?)
      * p16,p17:   ptnrky  — (? IS NULL OR SH.DPTNKY = ?)
+     * p18,p19:   svbeln  — (? IS NULL OR INSTR(','||?||',', ','||TRIM(SI.SVBELN)||',') > 0)
      */
     private void setScheduleParams(Query q,
                                    String wareky, String dateFrom, String dateTo,
                                    String statdo, String skug05, String lota02,
-                                   String keyword, String ptnrky) {
+                                   String keyword, String ptnrky, String svbeln) {
         q.setParameter(1,  wareky);   q.setParameter(2,  wareky);
         q.setParameter(3,  dateFrom); q.setParameter(4,  dateFrom);
         q.setParameter(5,  dateTo);   q.setParameter(6,  dateTo);
@@ -398,5 +411,6 @@ public class ShipmentService {
         q.setParameter(11, lota02);   q.setParameter(12, lota02);
         q.setParameter(13, keyword);  q.setParameter(14, keyword);  q.setParameter(15, keyword);
         q.setParameter(16, ptnrky);   q.setParameter(17, ptnrky);
+        q.setParameter(18, svbeln);   q.setParameter(19, svbeln);
     }
 }
