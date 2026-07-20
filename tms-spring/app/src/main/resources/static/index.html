@@ -16054,12 +16054,12 @@ async function renderShipSchedule() {
       ${_dataRangeHint ? `<span style="margin-left:auto;font-size:11px;font-weight:500;color:#d97706;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:2px 8px;">⚠ ${_dataRangeHint}</span>` : ''}
     </div>
 
-    <!-- ── 1행: 창고 | 출하요청일자 | 납품문서 ── -->
-    <div style="display:grid;grid-template-columns:120px minmax(260px,320px) minmax(200px,280px);gap:8px;align-items:end;margin-bottom:6px;">
+    <!-- ── 1행: 거점 | 출하요청일자 | 납품문서 ── -->
+    <div style="display:grid;grid-template-columns:140px minmax(280px,340px) minmax(260px,1fr);gap:8px;align-items:end;margin-bottom:6px;">
 
-      <!-- 창고 -->
+      <!-- 거점 -->
       <div>
-        <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:3px;">창고 <span style="font-weight:400;color:var(--text3);">(WAREKY)</span></label>
+        <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:3px;">거점 <span style="font-weight:400;color:var(--text3);">(WAREKY)</span></label>
         <select id="ss-wareky" style="width:100%;height:28px;padding:0 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text);font-size:12px;">
           <option value="">전체</option>
           ${warekyOpts}
@@ -16096,20 +16096,28 @@ async function renderShipSchedule() {
 
       <!-- 납품문서 -->
       <div>
-        <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:3px;">납품문서 <span style="font-weight:400;color:var(--text3);">(SVBELN)</span> <span style="color:var(--text3);font-size:10px;">다중선택</span></label>
+        <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:3px;">납품문서 <span style="font-weight:400;color:var(--text3);">(SVBELN)</span> <span style="color:var(--text3);font-size:10px;">다중입력·검색</span></label>
         <div style="display:flex;gap:3px;align-items:center;">
           <div style="flex:1;position:relative;">
+            <!-- 입력창: 직접 입력 또는 복수 번호 붙여넣기 지원 -->
+            <input id="ss-svbeln-input" type="text"
+              style="width:100%;height:28px;padding:0 6px;border:1px solid var(--border);border-radius:5px;
+                     background:var(--surface);color:var(--text);font-size:12px;box-sizing:border-box;"
+              placeholder="납품문서번호 입력 (복수 붙여넣기 가능)"
+              oninput="_svbelnInputChange(this.value)"
+              onpaste="_svbelnHandlePaste(event)"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();_svbelnApplyInput(this.value);loadShipSchedule(1);}">
+            <!-- 선택된 태그 표시 영역 (입력값 있을 때 숨김) -->
             <div id="ss-svbeln-tags"
-              style="height:28px;padding:0 5px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);
-                     font-size:11px;color:var(--text);display:flex;flex-wrap:nowrap;gap:3px;align-items:center;cursor:default;
-                     overflow-x:auto;overflow-y:hidden;scrollbar-width:none;"
-              onclick="openSvbelnPopup()">
-              <span id="ss-svbeln-placeholder" style="color:var(--text3);font-size:11px;">전체 (클릭하여 선택)</span>
+              style="display:none;height:28px;padding:0 5px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);
+                     font-size:11px;color:var(--text);flex-wrap:nowrap;gap:3px;align-items:center;
+                     overflow-x:auto;overflow-y:hidden;scrollbar-width:none;">
+              <span id="ss-svbeln-placeholder" style="color:var(--text3);font-size:11px;">전체</span>
             </div>
           </div>
           <button type="button" onclick="openSvbelnPopup()"
             style="flex-shrink:0;padding:0 7px;height:28px;font-size:12px;border-radius:5px;
-                   border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;" title="납품문서 검색">🔍</button>
+                   border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;" title="납품문서 검색팝업">🔍</button>
           <button type="button" onclick="clearSvbelnTags()"
             style="flex-shrink:0;padding:0 7px;height:28px;font-size:12px;border-radius:5px;
                    border:1px solid var(--border);background:var(--surface2);color:var(--text3);cursor:pointer;" title="선택 초기화">✕</button>
@@ -16118,7 +16126,7 @@ async function renderShipSchedule() {
     </div>
 
     <!-- ── 2행: 배차상태 | 제품군 | 품목코드 | 납품처 ── -->
-    <div style="display:grid;grid-template-columns:160px 100px minmax(180px,1fr) minmax(180px,260px);gap:8px;align-items:end;margin-bottom:6px;">
+    <div style="display:grid;grid-template-columns:160px 100px minmax(140px,200px) minmax(180px,1fr);gap:8px;align-items:end;margin-bottom:6px;">
 
       <!-- 배차상태 -->
       <div>
@@ -16240,10 +16248,11 @@ async function renderShipSchedule() {
   shipScheduleState.initialized = true;
 
   /* Enter 키 조회 */
-  ['ss-rqshpd-from','ss-rqshpd-to','ss-skukey'].forEach(id => {
+  ['ss-rqshpd-from','ss-rqshpd-to','ss-skukey','ss-ptnrky'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('keydown', e => { if (e.key==='Enter') loadShipSchedule(1); });
   });
+  /* ss-svbeln-input: onkeydown에서 _svbelnApplyInput 후 조회 — HTML inline handler로 처리됨 */
 
   /* 날짜 텍스트↔달력 동기화 함수 */
   window._ssDateSync = function(side, val) {
@@ -16405,7 +16414,13 @@ async function loadShipSchedule(pg) {
   const skukey     = (el('ss-skukey')?.value || '').trim();
   const size       = parseInt(el('ss-page-size')?.value || '50');
 
-  /* 납품문서(SVBELN) 팝업 선택 목록 */
+  /* 납품문서(SVBELN): 입력창 직접 입력값 + 팝업/붙여넣기 선택 목록 통합 */
+  const svbelnInputVal = (el('ss-svbeln-input')?.value || '').trim();
+  if (svbelnInputVal && (window._ssSvbelnSelected || []).length === 0) {
+    /* 입력창에 값이 있고 선택 배열이 비어있을 때 → 입력값 파싱하여 반영 */
+    const parsed = svbelnInputVal.split(/[\n\r\t,;\s]+/).map(s => s.trim()).filter(s => s.length > 0);
+    window._ssSvbelnSelected = [...new Set(parsed)];
+  }
   const svbelnArr  = (window._ssSvbelnSelected || []).slice();
 
   /* 납품처 코드 (팝업 선택) */
@@ -18085,7 +18100,7 @@ function ptnrPopupSelect(ptnrky, name01) {
     <!-- 검색바 -->
     <div style="display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);flex-shrink:0;align-items:center;">
       <input id="svbeln-popup-q" type="text"
-        placeholder="납품문서번호(SVBELN) 입력... (공백=전체)"
+        placeholder="납품문서번호 입력 (복수 줄바꿈·쉼표·공백 구분 가능, 빈칸=전체)"
         style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;
                color:var(--text);padding:7px 10px;font-size:12px;"
         onkeydown="if(event.key==='Enter') svbelnPopupSearch()">
@@ -18102,7 +18117,7 @@ function ptnrPopupSelect(ptnrky, name01) {
     <!-- 안내 / 카운트 -->
     <div style="display:flex;align-items:center;justify-content:space-between;
                 padding:4px 16px;flex-shrink:0;font-size:11px;color:var(--text3);">
-      <span id="svbeln-popup-info">납품문서번호를 입력하거나 빈 칸으로 전체 조회하세요</span>
+      <span id="svbeln-popup-info">납품문서번호를 입력하거나 빈 칸으로 전체 조회 (복수 번호 줄바꿈·쉼표로 구분 가능)</span>
       <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:var(--text2);">
         <input type="checkbox" id="svbeln-popup-chk-all" onchange="svbelnPopupToggleAll(this.checked)">
         현재 페이지 전체선택
@@ -18211,11 +18226,73 @@ function ptnrPopupSelect(ptnrky, name01) {
 window._ssSvbelnSelected = [];   // 선택된 SVBELN 배열 (전역)
 let _svbelnPopupRows = [];       // 현재 팝업에 표시 중인 rows
 
+/* ── 납품문서 직접 입력 관련 함수 ── */
+
+/** 입력창 → 선택 배열 동기화 (실시간) */
+function _svbelnInputChange(val) {
+  /* 입력 중에는 단순 텍스트 유지, Enter/blur 시 파싱 */
+}
+
+/** 붙여넣기 이벤트: 줄바꿈·탭·공백으로 구분된 복수 번호 처리 */
+function _svbelnHandlePaste(event) {
+  event.preventDefault();
+  const text = (event.clipboardData || window.clipboardData).getData('text');
+  /* 줄바꿈, 탭, 쉼표, 세미콜론, 공백 등으로 분리 → 빈값 제거 */
+  const nums = text.split(/[\n\r\t,;\s]+/).map(s => s.trim()).filter(s => s.length > 0);
+  if (nums.length === 0) return;
+  if (nums.length === 1) {
+    /* 단일 값: 입력창에 그대로 표시 */
+    const el = document.getElementById('ss-svbeln-input');
+    if (el) el.value = nums[0];
+    window._ssSvbelnSelected = nums;
+  } else {
+    /* 복수 값: 태그 모드로 전환 */
+    window._ssSvbelnSelected = [...new Set(nums)];  // 중복 제거
+    _svbelnSwitchToTagMode();
+  }
+  _svbelnUpdateSelCnt();
+  showToast(`납품문서 ${window._ssSvbelnSelected.length}건 입력됨`);
+}
+
+/** Enter 또는 조회 시 입력창 값을 파싱하여 선택 배열에 반영 */
+function _svbelnApplyInput(val) {
+  const nums = (val || '').split(/[\n\r\t,;\s]+/).map(s => s.trim()).filter(s => s.length > 0);
+  if (nums.length === 0) return;
+  window._ssSvbelnSelected = [...new Set(nums)];
+  if (nums.length > 1) {
+    _svbelnSwitchToTagMode();
+    _svbelnUpdateSelCnt();
+    showToast(`납품문서 ${nums.length}건 설정됨`);
+  }
+}
+
+/** 태그 모드로 전환 (복수 번호 선택 시: 입력창 숨기고 태그 div 표시) */
+function _svbelnSwitchToTagMode() {
+  const inputEl = document.getElementById('ss-svbeln-input');
+  const tagsEl  = document.getElementById('ss-svbeln-tags');
+  if (inputEl) { inputEl.style.display = 'none'; inputEl.value = ''; }
+  if (tagsEl)  { tagsEl.style.display = 'flex'; }
+  _svbelnRefreshTagsUI();
+}
+
+/** 입력 모드로 전환 (초기화 또는 단일 값 선택 시) */
+function _svbelnSwitchToInputMode(val) {
+  const inputEl = document.getElementById('ss-svbeln-input');
+  const tagsEl  = document.getElementById('ss-svbeln-tags');
+  if (tagsEl)  { tagsEl.style.display = 'none'; }
+  if (inputEl) { inputEl.style.display = ''; inputEl.value = val || ''; }
+}
+
 function openSvbelnPopup() {
   const ov = document.getElementById('svbeln-popup-overlay');
   ov.style.display = 'flex';
   const qEl = document.getElementById('svbeln-popup-q');
-  if (qEl) { qEl.value = ''; qEl.focus(); }
+  if (qEl) {
+    /* 입력창에 단일값이 있으면 팝업 검색창에 미리 채움 */
+    const inputVal = (document.getElementById('ss-svbeln-input')?.value || '').trim();
+    qEl.value = (window._ssSvbelnSelected.length === 0 && inputVal) ? inputVal : '';
+    qEl.focus();
+  }
   document.getElementById('svbeln-popup-info').textContent = '조회 버튼을 클릭하거나 Enter를 눌러 검색하세요';
   _svbelnPopupRows = [];
   _svbelnRenderBody([]);
@@ -18232,7 +18309,7 @@ function svbelnPopupClear() {
 }
 
 async function svbelnPopupSearch() {
-  const q    = (document.getElementById('svbeln-popup-q')?.value || '').trim();
+  const q     = (document.getElementById('svbeln-popup-q')?.value || '').trim();
   const tbody = document.getElementById('svbeln-popup-body');
   const info  = document.getElementById('svbeln-popup-info');
 
@@ -18241,20 +18318,27 @@ async function svbelnPopupSearch() {
   info.textContent = '조회 중...';
 
   try {
+    /* 팝업 검색창 입력값 파싱: 줄바꿈/탭/쉼표/공백으로 구분된 복수 번호 지원 */
+    const qNums = q ? q.split(/[\n\r\t,;\s]+/).map(s => s.trim()).filter(s => s.length > 0) : [];
+
     /* 납품문서번호 기준 조회: /api/shipment/schedule 에서 svbeln 검색 */
     const body = {
-      page: 1, size: 200,
-      svbeln: q ? [q] : [],
+      page: 1, size: 500,
+      svbeln: qNums,
     };
     const res  = await fetch('/api/shipment/schedule', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(body),
     });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`서버 오류 (${res.status}): ${errText.slice(0, 200)}`);
+    }
     const json2 = await res.json();
     /* ApiResponse 래퍼 { success, data: { rows, ... } } 처리 */
     const data2 = (json2 && json2.data != null) ? json2.data : json2;
-    const rows = data2.rows || [];
+    const rows = Array.isArray(data2.rows) ? data2.rows : [];
 
     /* SVBELN 기준 중복 제거 */
     const seen = new Set();
@@ -18264,7 +18348,7 @@ async function svbelnPopupSearch() {
     });
 
     _svbelnPopupRows = uniq;
-    info.textContent = `총 ${uniq.length}건 (최대 200건)`;
+    info.textContent = `총 ${uniq.length}건 (최대 500건)`;
 
     const allChk = document.getElementById('svbeln-popup-chk-all');
     if (allChk) allChk.checked = false;
@@ -18359,6 +18443,23 @@ function _svbelnUpdateSelCnt() {
 
 /* 태그 박스 갱신 (팝업 닫힌 상태에서도 호출됨) */
 function _svbelnRefreshTags() {
+  /* 선택값 개수에 따라 입력모드 / 태그모드 자동 전환 */
+  const sel = window._ssSvbelnSelected;
+  if (sel.length === 0) {
+    _svbelnSwitchToInputMode('');
+    return;
+  }
+  if (sel.length === 1) {
+    /* 단일: 입력창에 값 표시 */
+    _svbelnSwitchToInputMode(sel[0]);
+    return;
+  }
+  /* 복수: 태그 모드 */
+  _svbelnSwitchToTagMode();
+}
+
+/* 태그 UI 갱신 (태그모드 전용) */
+function _svbelnRefreshTagsUI() {
   const wrap = document.getElementById('ss-svbeln-tags');
   const ph   = document.getElementById('ss-svbeln-placeholder');
   if (!wrap) return;
@@ -18382,14 +18483,14 @@ function _svbelnRefreshTags() {
 /* 태그 개별 삭제 */
 function svbelnRemoveTag(v) {
   window._ssSvbelnSelected = window._ssSvbelnSelected.filter(x => x !== v);
-  _svbelnRefreshTags();
+  _svbelnRefreshTags();   // 개수에 따라 모드 자동 전환
   _svbelnUpdateSelCnt();
 }
 
 /* 전체 초기화 */
 function clearSvbelnTags() {
   window._ssSvbelnSelected = [];
-  _svbelnRefreshTags();
+  _svbelnSwitchToInputMode('');
   _svbelnUpdateSelCnt();
 }
 
@@ -18397,7 +18498,10 @@ function clearSvbelnTags() {
 function svbelnPopupConfirm() {
   closeSvbelnPopup();
   const cnt = window._ssSvbelnSelected.length;
-  if (cnt > 0) showToast(`납품문서 ${cnt}건 선택됨`);
+  if (cnt > 0) {
+    showToast(`납품문서 ${cnt}건 선택됨`);
+    _svbelnRefreshTags();  // 선택값 개수에 따라 입력/태그 모드 전환
+  }
 }
 
 /* ESC / 오버레이 클릭으로 닫기 */
