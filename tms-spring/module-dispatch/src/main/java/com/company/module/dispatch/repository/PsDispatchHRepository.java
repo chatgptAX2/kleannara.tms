@@ -16,7 +16,7 @@ public interface PsDispatchHRepository extends JpaRepository<PsDispatchH, String
     @Query(value = """
         SELECT MAX(DISPATCH_NO)
         FROM KNRAWMS.PS_DISPATCH_H
-        WHERE DISPATCH_NO LIKE CONCAT(:prefix, '%')
+        WHERE DISPATCH_NO LIKE :prefix || '%'
         """, nativeQuery = true)
     Optional<String> findMaxDispatchNoByPrefix(@Param("prefix") String prefix);
 
@@ -27,10 +27,10 @@ public interface PsDispatchHRepository extends JpaRepository<PsDispatchH, String
         LEFT JOIN KNRAWMS.DS_VEHICLE v ON v.CARTYPE = h.CARTYPE
         WHERE (:dateFrom IS NULL OR h.RQSHPD >= :dateFrom)
           AND (:dateTo   IS NULL OR h.RQSHPD <= :dateTo)
-          AND (:dptnky   IS NULL OR h.DPTNKY LIKE CONCAT('%',:dptnky,'%')
-                                 OR h.DPTNM  LIKE CONCAT('%',:dptnky,'%'))
+          AND (:dptnky   IS NULL OR h.DPTNKY LIKE '%' || :dptnky || '%'
+                                 OR h.DPTNM  LIKE '%' || :dptnky || '%')
           AND (:status   IS NULL OR h.STATUS = :status)
-          AND (:dispatchNo IS NULL OR h.DISPATCH_NO LIKE CONCAT('%',:dispatchNo,'%'))
+          AND (:dispatchNo IS NULL OR h.DISPATCH_NO LIKE '%' || :dispatchNo || '%')
         ORDER BY h.RQSHPD DESC, h.DISPATCH_NO
         """, nativeQuery = true)
     List<Object[]> searchList(

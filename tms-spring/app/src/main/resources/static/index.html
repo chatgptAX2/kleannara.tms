@@ -6,6 +6,7 @@
 <title>kleannara TMS</title>
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 input,select,textarea,button{font-family:'Pretendard Variable','Pretendard','Apple SD Gothic Neo','Malgun Gothic','\ub9d1\uc740 \uace0\ub515',sans-serif}
@@ -122,7 +123,10 @@ body{background:var(--bg);color:var(--text);font-family:'Pretendard Variable','P
   font-size:24px;font-weight:800;letter-spacing:1.5px;color:#ffffff;line-height:1;
   background:linear-gradient(135deg,#38bdf8 0%,#818cf8 100%);
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  cursor:pointer;transition:opacity .15s;
 }
+.logo-tms:hover{opacity:.8}
+.logo{cursor:pointer}
 .logo-sub{
   font-size:8px;font-weight:500;color:rgba(255,255,255,.2);
   letter-spacing:3px;text-transform:uppercase;
@@ -386,6 +390,149 @@ body.dc-dragging{user-select:none !important;-webkit-user-select:none !important
 .bar-row .bar-wrap{flex:1;background:var(--surface2);border-radius:4px;height:12px;overflow:hidden}
 .bar-row .bar-fill{height:100%;border-radius:4px;transition:.4s}
 .bar-row .val{width:55px;text-align:right;color:var(--text);font-weight:700}
+
+/* ═══════════════════════════════════════════════════════════
+   TMS DASHBOARD — 대시보드 전용 스타일
+═══════════════════════════════════════════════════════════ */
+#tms-dashboard{
+  /* #content 는 flex-column + overflow:hidden
+     → 자신이 flex:1 + min-height:0 + overflow-y:auto 로 스크롤 영역을 담당 */
+  flex:1;min-height:0;
+  width:100%;
+  overflow-y:auto;
+  overflow-x:hidden;
+  background:var(--bg);
+  padding-bottom:32px;
+}
+/* 상단 헤더 배너 */
+.db-banner{
+  background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#0369a1 100%);
+  padding:20px 24px 18px;position:relative;overflow:hidden;
+}
+.db-banner::after{
+  content:'';position:absolute;right:-40px;top:-40px;
+  width:220px;height:220px;border-radius:50%;
+  background:rgba(14,165,233,.12);pointer-events:none;
+}
+.db-banner-title{
+  font-size:18px;font-weight:800;color:#fff;
+  display:flex;align-items:center;gap:10px;line-height:1;
+}
+.db-banner-sub{
+  font-size:11px;color:rgba(255,255,255,.5);margin-top:5px;letter-spacing:.3px;
+}
+.db-banner-date{
+  position:absolute;right:24px;top:22px;
+  font-size:11px;color:rgba(255,255,255,.4);text-align:right;
+}
+/* KPI 카드 행 */
+.db-kpi-row{
+  display:grid;grid-template-columns:repeat(5,1fr);gap:12px;
+  padding:16px 20px 0;
+}
+.db-kpi{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;padding:14px 16px;
+  box-shadow:var(--shadow-sm);position:relative;overflow:hidden;
+  transition:transform .2s,box-shadow .2s;
+}
+.db-kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
+.db-kpi-icon{
+  font-size:20px;margin-bottom:8px;
+  width:38px;height:38px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+}
+.db-kpi-label{font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.5px;text-transform:uppercase}
+.db-kpi-value{font-size:24px;font-weight:800;color:var(--text);margin:3px 0 2px;line-height:1.1}
+.db-kpi-sub{font-size:10px;color:var(--text3);display:flex;align-items:center;gap:3px}
+.db-kpi-badge{
+  font-size:9px;font-weight:700;padding:1px 5px;border-radius:20px;
+}
+.db-kpi-badge.up{background:#d1fae5;color:#065f46}
+.db-kpi-badge.down{background:#fee2e2;color:#991b1b}
+.db-kpi-badge.flat{background:#f1f5f9;color:#475569}
+[data-theme="dark"] .db-kpi-badge.up{background:#052e16;color:#6ee7b7}
+[data-theme="dark"] .db-kpi-badge.down{background:#450a0a;color:#fca5a5}
+[data-theme="dark"] .db-kpi-badge.flat{background:#1e293b;color:#94a3b8}
+
+/* 섹션 타이틀 */
+.db-section-hdr{
+  display:flex;align-items:center;gap:8px;
+  padding:18px 20px 10px;
+  font-size:13px;font-weight:800;color:var(--text);
+  border-bottom:1px solid var(--border);margin:0 20px;
+}
+.db-section-hdr::before{
+  content:'';width:4px;height:16px;border-radius:2px;
+  background:linear-gradient(180deg,#0ea5e9,#6366f1);
+}
+/* 차트 그리드 */
+.db-grid{display:grid;gap:14px;padding:14px 20px 0}
+.db-grid-2{grid-template-columns:1fr 1fr}
+.db-grid-3{grid-template-columns:2fr 1fr 1fr}
+.db-grid-21{grid-template-columns:2fr 1fr}
+/* 차트 카드 */
+.db-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:14px;padding:16px 18px;box-shadow:var(--shadow-sm);
+}
+.db-card-hdr{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:12px;
+}
+.db-card-title{font-size:12px;font-weight:700;color:var(--text2)}
+.db-card-badge{
+  font-size:10px;font-weight:600;padding:2px 7px;
+  border-radius:20px;background:var(--surface2);color:var(--text3);
+}
+.db-chart-wrap{position:relative;height:200px}
+.db-chart-wrap.tall{height:260px}
+.db-chart-wrap.short{height:160px}
+/* 효율 요약 바 */
+.db-eff-row{
+  display:flex;align-items:center;gap:10px;padding:5px 0;
+  border-bottom:1px solid var(--border);font-size:11px;
+}
+.db-eff-row:last-child{border-bottom:none}
+.db-eff-lbl{width:90px;font-weight:600;color:var(--text2);flex-shrink:0}
+.db-eff-bar-wrap{flex:1;background:var(--surface2);border-radius:6px;height:10px;overflow:hidden}
+.db-eff-bar{height:100%;border-radius:6px;transition:width .6s ease}
+.db-eff-val{width:44px;text-align:right;font-weight:700;color:var(--primary);flex-shrink:0}
+/* 타입 분포 */
+.db-type-list{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.db-type-row{
+  display:flex;align-items:center;gap:8px;font-size:11px;padding:4px 0;
+  border-bottom:1px dashed var(--border);
+}
+.db-type-row:last-child{border-bottom:none}
+.db-type-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+.db-type-name{flex:1;color:var(--text2);font-weight:600}
+.db-type-cnt{color:var(--text3)}
+.db-type-ton{color:var(--primary);font-weight:700;width:60px;text-align:right}
+/* 로딩 스켈레톤 */
+.db-skeleton{
+  background:linear-gradient(90deg,var(--surface2) 25%,var(--border) 50%,var(--surface2) 75%);
+  background-size:200% 100%;
+  animation:db-shimmer 1.4s infinite;
+  border-radius:8px;
+}
+@keyframes db-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+/* 날짜 필터 */
+.db-date-filter{
+  display:flex;align-items:center;gap:8px;padding:10px 20px 0;
+  flex-wrap:wrap;
+}
+.db-date-filter label{font-size:11px;color:var(--text3);font-weight:600}
+.db-date-filter input[type="date"]{
+  padding:4px 8px;border:1px solid var(--border);border-radius:6px;
+  font-size:11px;background:var(--surface);color:var(--text);
+}
+.db-date-filter button{
+  padding:4px 12px;font-size:11px;border-radius:6px;
+  background:var(--primary);color:#fff;border:none;cursor:pointer;font-weight:600;
+  transition:background .15s;
+}
+.db-date-filter button:hover{background:var(--primary-dark)}
 
 /* ── MODAL ── */
 /* ── THEME TOGGLE BUTTON ── */
@@ -2762,7 +2909,7 @@ thead th:hover .th-drag-handle{opacity:.8}
 
 <!-- SIDEBAR -->
 <div id="sidebar">
-  <div class="logo">
+  <div class="logo" onclick="showPage('tmsDashboard')" title="TMS 대시보드">
     <div class="logo-brand">
       <div class="logo-name">
         <span class="logo-kleannara">kleannara</span>
@@ -2772,8 +2919,11 @@ thead th:hover .th-drag-handle{opacity:.8}
     </div>
   </div>
   <div id="sidebar-nav">
+  <div class="nav-item" onclick="showPage('tmsDashboard')" id="nav-tmsDashboard" style="margin:6px 8px 2px;background:linear-gradient(90deg,rgba(14,165,233,.18) 0%,rgba(99,102,241,.12) 100%);border:1px solid rgba(14,165,233,.25);border-radius:9px">
+    <span class="icon">📊</span> <span style="font-weight:700;color:var(--lnb-text)">대시보드</span>
+  </div>
   <div class="nav-section">배차관리</div>
-  <div class="nav-item active" onclick="showPage('psDispatchOpt')" id="nav-psDispatchOpt">
+  <div class="nav-item" onclick="showPage('psDispatchOpt')" id="nav-psDispatchOpt">
     <span class="icon">🚀</span> PS 배차(최적화)
   </div>
   <div class="nav-item" onclick="showPage('dispatchConstraint')" id="nav-dispatchConstraint">
@@ -3054,8 +3204,8 @@ async function init(){
       if(el) el.textContent = fmtNum(info.count);
     });
   } catch(e){ console.warn(e); }
-  // PS배차(최적화) 화면으로 시작
-  _doShowPage('psDispatchOpt');
+  // TMS 대시보드로 시작
+  _doShowPage('tmsDashboard');
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -3063,6 +3213,7 @@ async function init(){
 ═══════════════════════════════════════════════════════════ */
 /* ── 페이지별 메타 (breadcrumb 경로 + 제목) ── */
 const PAGE_META = {
+  tmsDashboard:  { title:'TMS 대시보드',      badge:'📊 Dashboard',   crumb:['홈','대시보드'] },
   schema:        { title:'테이블 스키마',     badge:'Schema',         crumb:['홈','도구','테이블 스키마'] },
   sql:           { title:'SQL 콘솔',          badge:'Query Console',  crumb:['홈','도구','SQL 콘솔'] },
   delivery:      { title:'납품처 관리',       badge:'납품처관리',      crumb:['홈','기준정보 관리','납품처 관리'] },
@@ -3102,6 +3253,7 @@ let _activeTab = null; // 현재 활성 탭 id
 
 /* 페이지 메타에서 탭 아이콘 추출 */
 const PAGE_ICON = {
+  tmsDashboard:'📊',
   schema:'🗂️', sql:'💾',
   delivery:'📍', vehicle:'🚛', wahma:'🏭',
   CMCDM:'📋', CMCDV:'📌', SKUMA:'📦', BZPTN:'🏢',
@@ -3173,8 +3325,8 @@ function closeTab(id) {
     if (_tabs.length === 0) {
       _activeTab = null;
       _renderTabBar();
-      // 출고예정정보로 fallback (탭 없이)
-      _doShowPage('psDispatchOpt');
+      // TMS 대시보드로 fallback (탭 없이)
+      _doShowPage('tmsDashboard');
       return;
     }
     const next = _tabs[Math.min(idx, _tabs.length - 1)];
@@ -3247,6 +3399,10 @@ function _doShowPage(p) {
   const srch    = document.getElementById('search-wrap');
   const psize   = document.getElementById('page-size-sel');
   const toolbar = document.getElementById('col-toolbar');
+
+  // 페이지 전환 시 #content overflow 초기화 (각 render 함수에서 필요시 재지정)
+  const _contentEl = document.getElementById('content');
+  if (_contentEl) { _contentEl.style.overflowY = 'hidden'; }
 
   state.page = p;
   state.currentPage = 1;
@@ -3397,6 +3553,9 @@ function _doShowPage(p) {
   } else if (p === 'dispatchConstraint') {
     srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderDispatchConstraint();
+  } else if (p === 'tmsDashboard') {
+    srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
+    renderTmsDashboard();
   } else if (p === 'docMgmt') {
     srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderDocMgmt();
@@ -17478,6 +17637,7 @@ const MMGR_VER_CUR   = '20260616_docmgmt';  // 서류관리 추가 시 버전 �
 // 기본 메뉴 구조 (sidebar HTML 기반)
 function mmgrDefaultConfig() {
   return [
+    { type:'item',    id:'nav-tmsDashboard', label:'대시보드',         icon:'📊', page:'tmsDashboard',  cnt:false },
     { type:'section', id:'sec-dispatch',   label:'배차관리' },
     { type:'item',    id:'nav-psDispatchOpt', label:'PS 배차(최적화)', icon:'🚀', page:'psDispatchOpt', cnt:false },
     { type:'item',    id:'nav-dispatchConstraint', label:'PS제약조건관리', icon:'🎯', page:'dispatchConstraint', cnt:false },
@@ -23199,6 +23359,618 @@ function _dmFmtSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
   return (bytes/(1024*1024)).toFixed(1) + ' MB';
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TMS 대시보드 — renderTmsDashboard()
+   /api/dashboard/summary  → KPI 카드 (5개)
+   /api/dashboard/transport → 운송현황 (일자별 + 출하유형)
+   /api/dashboard/efficiency → 운송효율성 (적재율 + 권역 + 차종)
+═══════════════════════════════════════════════════════════ */
+const _dbCharts = {};   // Chart.js 인스턴스 캐시 (destroy용)
+const _dbState  = { dateFrom: '', dateTo: '' };
+
+function renderTmsDashboard() {
+  const content = document.getElementById('content');
+  if (!content) return;
+
+  // #content flex 설정: 대시보드는 자식 #tms-dashboard 가 flex:1 + overflow-y:auto 로 스크롤 담당
+  content.style.display      = 'flex';
+  content.style.flexDirection = 'column';
+  content.style.overflow     = 'hidden';
+
+  // 날짜 기본값 (최근 7일)
+  const today   = new Date();
+  const d7ago   = new Date(today); d7ago.setDate(d7ago.getDate() - 6);
+  const fmt = d => d.toISOString().slice(0,10);
+  if (!_dbState.dateFrom) _dbState.dateFrom = fmt(d7ago);
+  if (!_dbState.dateTo)   _dbState.dateTo   = fmt(today);
+
+  content.innerHTML = `
+<div id="tms-dashboard">
+  <!-- 배너 -->
+  <div class="db-banner">
+    <div class="db-banner-title">📊 TMS 운송 대시보드</div>
+    <div class="db-banner-sub">Transportation Management System · 실시간 운송 현황 및 효율성 분석</div>
+    <div class="db-banner-date" id="db-today-label">—</div>
+  </div>
+
+  <!-- 날짜 필터 -->
+  <div class="db-date-filter">
+    <label>조회기간</label>
+    <input type="date" id="db-date-from" value="${_dbState.dateFrom}">
+    <span style="color:var(--text3);font-size:11px">~</span>
+    <input type="date" id="db-date-to"   value="${_dbState.dateTo}">
+    <button onclick="_dbRefresh()">🔍 조회</button>
+    <button onclick="_dbReset()" style="background:var(--surface2);color:var(--text2);border:1px solid var(--border)">↺ 초기화</button>
+    <span id="db-load-status" style="font-size:10px;color:var(--text3)"></span>
+  </div>
+
+  <!-- KPI 카드 5개 -->
+  <div class="db-kpi-row" id="db-kpi-row">
+    ${_dbSkeletonKPI(5)}
+  </div>
+
+  <!-- ── 운송현황 섹션 ── -->
+  <div class="db-section-hdr" style="margin-top:20px">🚛 운송현황</div>
+  <div class="db-grid db-grid-21">
+    <!-- 일자별 배차 현황 (누적 세로막대) -->
+    <div class="db-card">
+      <div class="db-card-hdr">
+        <span class="db-card-title">📅 일자별 배차 현황 (대기 / 완료)</span>
+        <span class="db-card-badge" id="db-daily-badge">—</span>
+      </div>
+      <div class="db-chart-wrap tall"><canvas id="chart-daily"></canvas></div>
+    </div>
+    <!-- 출하유형별 도넛 -->
+    <div class="db-card">
+      <div class="db-card-hdr">
+        <span class="db-card-title">📦 출하유형별 차량 비율</span>
+        <span class="db-card-badge" id="db-type-badge">—</span>
+      </div>
+      <div class="db-chart-wrap" style="height:180px"><canvas id="chart-type-donut"></canvas></div>
+      <div id="db-type-list" class="db-type-list" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <!-- ── 운송효율성 섹션 ── -->
+  <div class="db-section-hdr" style="margin-top:20px">⚡ 운송효율성</div>
+  <div class="db-grid db-grid-3">
+    <!-- 적재율 도넛 -->
+    <div class="db-card">
+      <div class="db-card-hdr">
+        <span class="db-card-title">📈 차량 적재율 구간 분포</span>
+        <span class="db-card-badge" id="db-loadrate-badge">—</span>
+      </div>
+      <div class="db-chart-wrap" style="height:200px"><canvas id="chart-loadrate"></canvas></div>
+    </div>
+    <!-- 권역별 물량 -->
+    <div class="db-card">
+      <div class="db-card-hdr">
+        <span class="db-card-title">🗺️ 권역별 물량 분포 (톤)</span>
+      </div>
+      <div class="db-chart-wrap tall"><canvas id="chart-region"></canvas></div>
+    </div>
+    <!-- 차종별 평균 적재율 -->
+    <div class="db-card">
+      <div class="db-card-hdr">
+        <span class="db-card-title">🚚 차종별 평균 적재효율</span>
+      </div>
+      <div id="db-eff-list" style="padding:4px 0">
+        <div class="db-skeleton" style="height:200px;margin-top:8px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 출하유형별 물량 바차트 -->
+  <div class="db-grid db-grid-2" style="margin-top:14px">
+    <div class="db-card">
+      <div class="db-card-hdr">
+        <span class="db-card-title">🏋️ 출하유형별 총 물량 (톤)</span>
+      </div>
+      <div class="db-chart-wrap short"><canvas id="chart-type-ton"></canvas></div>
+    </div>
+    <div class="db-card">
+      <div class="db-card-hdr">
+        <span class="db-card-title">📊 배차 완료율 일별 추이 (%)</span>
+      </div>
+      <div class="db-chart-wrap short"><canvas id="chart-confirm-rate"></canvas></div>
+    </div>
+  </div>
+
+</div>`;
+
+  // 오늘 날짜 표시
+  const todayLabel = document.getElementById('db-today-label');
+  if (todayLabel) {
+    const now = new Date();
+    todayLabel.textContent = now.toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
+  }
+
+  _dbLoadAll();
+}
+
+function _dbSkeletonKPI(n) {
+  return Array(n).fill(0).map(() => `
+    <div class="db-kpi">
+      <div class="db-skeleton" style="width:38px;height:38px;border-radius:10px;margin-bottom:8px"></div>
+      <div class="db-skeleton" style="height:10px;width:60%;margin-bottom:6px"></div>
+      <div class="db-skeleton" style="height:24px;width:50%;margin-bottom:4px"></div>
+      <div class="db-skeleton" style="height:9px;width:80%"></div>
+    </div>`).join('');
+}
+
+function _dbReset() {
+  const today = new Date();
+  const d7ago = new Date(today); d7ago.setDate(d7ago.getDate() - 6);
+  const fmt = d => d.toISOString().slice(0,10);
+  _dbState.dateFrom = fmt(d7ago);
+  _dbState.dateTo   = fmt(today);
+  const f = document.getElementById('db-date-from');
+  const t = document.getElementById('db-date-to');
+  if (f) f.value = _dbState.dateFrom;
+  if (t) t.value = _dbState.dateTo;
+  _dbLoadAll();
+}
+
+function _dbRefresh() {
+  const f = document.getElementById('db-date-from');
+  const t = document.getElementById('db-date-to');
+  if (f) _dbState.dateFrom = f.value;
+  if (t) _dbState.dateTo   = t.value;
+  _dbLoadAll();
+}
+
+async function _dbLoadAll() {
+  const status = document.getElementById('db-load-status');
+  if (status) status.textContent = '⏳ 로딩 중...';
+
+  // Chart.js 로드 확인
+  if (typeof Chart === 'undefined') {
+    if (status) status.textContent = '⚠️ Chart.js 로드 대기 중...';
+    setTimeout(_dbLoadAll, 400);
+    return;
+  }
+
+  const p = `dateFrom=${_dbState.dateFrom}&dateTo=${_dbState.dateTo}`;
+  try {
+    const [sumRes, trnRes, effRes] = await Promise.all([
+      fetch('/api/dashboard/summary').then(r=>r.json()),
+      fetch(`/api/dashboard/transport?${p}`).then(r=>r.json()),
+      fetch(`/api/dashboard/efficiency?${p}`).then(r=>r.json()),
+    ]);
+
+    const sum = sumRes?.data  ?? sumRes  ?? {};
+    const trn = trnRes?.data  ?? trnRes  ?? {};
+    const eff = effRes?.data  ?? effRes  ?? {};
+
+    _dbRenderKPI(sum);
+    _dbRenderDailyChart(trn);
+    _dbRenderTypeDonut(trn);
+    _dbRenderLoadRate(eff);
+    _dbRenderRegionChart(eff);
+    _dbRenderEffList(eff);
+    _dbRenderTypeTon(trn);
+    _dbRenderConfirmRate(trn);
+
+    if (status) status.textContent = `✓ ${new Date().toLocaleTimeString('ko-KR')} 업데이트`;
+  } catch(e) {
+    console.warn('대시보드 로딩 실패:', e);
+    if (status) status.textContent = '⚠️ 데이터 로딩 실패 (DB 연결 확인)';
+    _dbRenderFallback();
+  }
+}
+
+/* ── KPI 카드 5개 렌더 ── */
+function _dbRenderKPI(d) {
+  const row = document.getElementById('db-kpi-row');
+  if (!row) return;
+
+  const growthRate = d.growthRate ?? 0;
+  const growthCls  = growthRate > 0 ? 'up' : growthRate < 0 ? 'down' : 'flat';
+  const growthTxt  = growthRate > 0 ? `▲ ${growthRate}%` : growthRate < 0 ? `▼ ${Math.abs(growthRate)}%` : '→ 변동없음';
+  const avgRate    = d.weekAvgLoadRate ?? 0;
+  const rateColor  = avgRate >= 80 ? '#10b981' : avgRate >= 60 ? '#0ea5e9' : avgRate >= 40 ? '#f59e0b' : '#ef4444';
+
+  row.innerHTML = `
+    <div class="db-kpi">
+      <div class="db-kpi-icon" style="background:rgba(14,165,233,.12);font-size:18px">🚛</div>
+      <div class="db-kpi-label">오늘 배차대기</div>
+      <div class="db-kpi-value" style="color:#0ea5e9">${fmtNum(d.todayPending ?? 0)}</div>
+      <div class="db-kpi-sub">총 <b>${fmtNum(d.todayTotal ?? 0)}</b>건 중</div>
+    </div>
+    <div class="db-kpi">
+      <div class="db-kpi-icon" style="background:rgba(16,185,129,.12);font-size:18px">✅</div>
+      <div class="db-kpi-label">오늘 배차완료</div>
+      <div class="db-kpi-value" style="color:#10b981">${fmtNum(d.todayConfirmed ?? 0)}</div>
+      <div class="db-kpi-sub">
+        <span class="db-kpi-badge ${growthCls}">${growthTxt}</span>
+        <span>전일 대비</span>
+      </div>
+    </div>
+    <div class="db-kpi">
+      <div class="db-kpi-icon" style="background:rgba(99,102,241,.12);font-size:18px">📦</div>
+      <div class="db-kpi-label">오늘 총 물량</div>
+      <div class="db-kpi-value" style="color:#6366f1">${fmtNum(d.todayTon ?? 0)}<span style="font-size:12px;font-weight:500"> 톤</span></div>
+      <div class="db-kpi-sub">출하 적재 중량</div>
+    </div>
+    <div class="db-kpi">
+      <div class="db-kpi-icon" style="background:rgba(245,158,11,.12);font-size:18px">📅</div>
+      <div class="db-kpi-label">이번주 총 차량</div>
+      <div class="db-kpi-value" style="color:#f59e0b">${fmtNum(d.weekTotalCar ?? 0)}<span style="font-size:12px;font-weight:500"> 대</span></div>
+      <div class="db-kpi-sub">${fmtNum(d.weekTotalTon ?? 0)} 톤 운송</div>
+    </div>
+    <div class="db-kpi">
+      <div class="db-kpi-icon" style="background:rgba(16,185,129,.1);font-size:18px">⚡</div>
+      <div class="db-kpi-label">주간 평균 적재율</div>
+      <div class="db-kpi-value" style="color:${rateColor}">${avgRate ?? 0}<span style="font-size:12px;font-weight:500">%</span></div>
+      <div class="db-kpi-sub">차량 평균 적재 효율</div>
+    </div>`;
+}
+
+/* ── 캔버스에 "데이터 없음" 안내 ── */
+function _dbNoDataChart(canvasId, msg) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const parent = canvas.parentElement;
+  if (parent) {
+    parent.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:11px">${msg||'데이터 없음'}</div>`;
+  }
+}
+
+/* ── 일자별 배차 현황 (Stacked Bar) ── */
+function _dbRenderDailyChart(d) {
+  const rows    = d.dailyData ?? [];
+  const canvas  = document.getElementById('chart-daily');
+  const badge   = document.getElementById('db-daily-badge');
+  if (!canvas) return;
+
+  if (rows.length === 0) { _dbNoDataChart('chart-daily','조회 기간 내 배차 데이터 없음'); if(badge) badge.textContent='0대'; return; }
+
+  const labels    = rows.map(r => {
+    const s = String(r.RQSHPD ?? '');
+    return s.length === 8 ? `${s.slice(4,6)}/${s.slice(6,8)}` : s;
+  });
+  const pending   = rows.map(r => Number(r.PENDING_CNT   ?? 0));
+  const confirmed = rows.map(r => Number(r.CONFIRMED_CNT ?? 0));
+  const totals    = rows.map((_,i) => pending[i] + confirmed[i]);
+  const totalSum  = totals.reduce((a,b)=>a+b,0);
+
+  if (badge) badge.textContent = `총 ${fmtNum(totalSum)}대`;
+
+  _dbDestroyChart('daily');
+  _dbCharts['daily'] = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label:'배차완료',
+          data: confirmed,
+          backgroundColor: 'rgba(16,185,129,.75)',
+          borderColor:     '#10b981',
+          borderWidth: 1,
+          borderRadius: 3,
+        },
+        {
+          label:'배차대기',
+          data: pending,
+          backgroundColor: 'rgba(14,165,233,.65)',
+          borderColor:     '#0ea5e9',
+          borderWidth: 1,
+          borderRadius: 3,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position:'top', labels:{ font:{size:11}, boxWidth:12 } },
+        tooltip: {
+          callbacks: {
+            footer: items => {
+              const total = items.reduce((s,i)=>s+i.raw,0);
+              return `합계: ${total}대`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { stacked:true, ticks:{font:{size:10}}, grid:{display:false} },
+        y: { stacked:true, beginAtZero:true, ticks:{font:{size:10},stepSize:1} }
+      }
+    }
+  });
+}
+
+/* ── 출하유형별 도넛 ── */
+function _dbRenderTypeDonut(d) {
+  const rows   = d.typeData ?? [];
+  const canvas = document.getElementById('chart-type-donut');
+  const badge  = document.getElementById('db-type-badge');
+  const list   = document.getElementById('db-type-list');
+  if (!canvas) return;
+
+  if (rows.length === 0) { _dbNoDataChart('chart-type-donut','데이터 없음'); if(badge) badge.textContent='0대'; return; }
+
+  const TYPE_LABEL = { ROLL:'롤(원지)', BOARD:'판지', OTHER:'기타' };
+  const COLORS = ['#0ea5e9','#6366f1','#f59e0b','#10b981','#ef4444','#8b5cf6'];
+
+  const labels = rows.map(r => TYPE_LABEL[r.MAT_TYPE] ?? r.MAT_TYPE ?? '기타');
+  const values = rows.map(r => Number(r.CAR_CNT ?? 0));
+  const total  = values.reduce((a,b)=>a+b,0);
+
+  if (badge) badge.textContent = `총 ${fmtNum(total)}대`;
+
+  _dbDestroyChart('typeDonut');
+  _dbCharts['typeDonut'] = new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets:[{
+        data: values,
+        backgroundColor: COLORS,
+        borderWidth: 2,
+        hoverOffset: 6,
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      cutout:'62%',
+      plugins:{
+        legend:{ display:false },
+        tooltip:{ callbacks:{ label: ctx => ` ${ctx.label}: ${ctx.raw}대 (${total>0?(ctx.raw/total*100).toFixed(1):0}%)` } }
+      }
+    }
+  });
+
+  // 리스트 렌더
+  if (list) {
+    list.innerHTML = rows.map((r,i) => `
+      <div class="db-type-row">
+        <div class="db-type-dot" style="background:${COLORS[i%COLORS.length]}"></div>
+        <div class="db-type-name">${TYPE_LABEL[r.MAT_TYPE] ?? r.MAT_TYPE ?? '기타'}</div>
+        <div class="db-type-cnt">${fmtNum(r.CAR_CNT ?? 0)}대</div>
+        <div class="db-type-ton">${fmtNum(r.TOTAL_TON ?? 0)}톤</div>
+      </div>`).join('') || '<div style="color:var(--text3);font-size:11px;padding:8px 0">데이터 없음</div>';
+  }
+}
+
+/* ── 적재율 구간 도넛 ── */
+function _dbRenderLoadRate(d) {
+  const rows   = d.loadRateData ?? [];
+  const canvas = document.getElementById('chart-loadrate');
+  const badge  = document.getElementById('db-loadrate-badge');
+  if (!canvas) return;
+
+  if (rows.length === 0) { _dbNoDataChart('chart-loadrate','데이터 없음'); if(badge) badge.textContent='0대'; return; }
+
+  const BAND_COLORS = {
+    '0~20%':   '#ef4444',
+    '20~40%':  '#f97316',
+    '40~60%':  '#f59e0b',
+    '60~80%':  '#0ea5e9',
+    '80~100%': '#10b981',
+    '데이터없음': '#94a3b8',
+  };
+
+  const labels = rows.map(r => String(r.RATE_BAND ?? ''));
+  const values = rows.map(r => Number(r.CAR_CNT ?? 0));
+  const total  = values.reduce((a,b)=>a+b,0);
+  const colors = labels.map(l => BAND_COLORS[l] ?? '#94a3b8');
+
+  if (badge) badge.textContent = `총 ${fmtNum(total)}대`;
+
+  _dbDestroyChart('loadRate');
+  _dbCharts['loadRate'] = new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets:[{
+        data: values,
+        backgroundColor: colors,
+        borderWidth: 2,
+        hoverOffset: 6,
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      cutout:'60%',
+      plugins:{
+        legend:{
+          position:'right',
+          labels:{ font:{size:10}, boxWidth:12, padding:8 }
+        },
+        tooltip:{ callbacks:{ label: ctx => ` ${ctx.label}: ${ctx.raw}대 (${total>0?(ctx.raw/total*100).toFixed(1):0}%)` } }
+      }
+    }
+  });
+}
+
+/* ── 권역별 물량 가로 바차트 ── */
+function _dbRenderRegionChart(d) {
+  const rows   = d.regionData ?? [];
+  const canvas = document.getElementById('chart-region');
+  if (!canvas) return;
+
+  if (rows.length === 0) { _dbNoDataChart('chart-region','데이터 없음'); return; }
+
+  const labels = rows.map(r => String(r.REGION ?? '기타'));
+  const values = rows.map(r => Number(r.TOTAL_TON ?? 0));
+  const cnts   = rows.map(r => Number(r.CAR_CNT ?? 0));
+
+  _dbDestroyChart('region');
+  _dbCharts['region'] = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets:[{
+        label:'물량(톤)',
+        data: values,
+        backgroundColor: 'rgba(99,102,241,.7)',
+        borderColor: '#6366f1',
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ display:false },
+        tooltip:{ callbacks:{
+          label: ctx => ` ${ctx.raw}톤`,
+          afterLabel: (ctx) => ` ${cnts[ctx.dataIndex]}대`
+        }}
+      },
+      scales:{
+        x:{ beginAtZero:true, ticks:{font:{size:10}} },
+        y:{ ticks:{font:{size:10}} }
+      }
+    }
+  });
+}
+
+/* ── 차종별 평균 적재효율 바 리스트 ── */
+function _dbRenderEffList(d) {
+  const rows = d.cartypeData ?? [];
+  const el   = document.getElementById('db-eff-list');
+  if (!el) return;
+
+  const colorFn = v => v >= 80 ? '#10b981' : v >= 60 ? '#0ea5e9' : v >= 40 ? '#f59e0b' : '#ef4444';
+
+  if (rows.length === 0) {
+    el.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:16px 0;text-align:center">데이터 없음</div>';
+    return;
+  }
+
+  el.innerHTML = rows.map(r => {
+    const rate = Number(r.AVG_RATE ?? 0);
+    const col  = colorFn(rate);
+    return `
+      <div class="db-eff-row">
+        <div class="db-eff-lbl">${r.CARTYPE ?? '-'}</div>
+        <div class="db-eff-bar-wrap">
+          <div class="db-eff-bar" style="width:${Math.min(rate,100)}%;background:${col}"></div>
+        </div>
+        <div class="db-eff-val" style="color:${col}">${rate}%</div>
+      </div>
+      <div style="font-size:9px;color:var(--text3);padding:0 0 6px 90px">${fmtNum(r.CAR_CNT ?? 0)}대 운행</div>`;
+  }).join('');
+}
+
+/* ── 출하유형별 총 물량 바차트 ── */
+function _dbRenderTypeTon(d) {
+  const rows   = d.typeData ?? [];
+  const canvas = document.getElementById('chart-type-ton');
+  if (!canvas) return;
+
+  if (rows.length === 0) { _dbNoDataChart('chart-type-ton','데이터 없음'); return; }
+
+  const TYPE_LABEL = { ROLL:'롤(원지)', BOARD:'판지', OTHER:'기타' };
+  const COLORS = ['rgba(14,165,233,.7)','rgba(99,102,241,.7)','rgba(245,158,11,.7)'];
+
+  const labels = rows.map(r => TYPE_LABEL[r.MAT_TYPE] ?? r.MAT_TYPE ?? '기타');
+  const values = rows.map(r => Number(r.TOTAL_TON ?? 0));
+
+  _dbDestroyChart('typeTon');
+  _dbCharts['typeTon'] = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets:[{
+        label:'총 물량(톤)',
+        data: values,
+        backgroundColor: COLORS,
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false } },
+      scales:{
+        x:{ grid:{display:false}, ticks:{font:{size:10}} },
+        y:{ beginAtZero:true, ticks:{font:{size:10}} }
+      }
+    }
+  });
+}
+
+/* ── 일별 배차 완료율 라인차트 ── */
+function _dbRenderConfirmRate(d) {
+  const rows   = d.dailyData ?? [];
+  const canvas = document.getElementById('chart-confirm-rate');
+  if (!canvas) return;
+
+  if (rows.length === 0) { _dbNoDataChart('chart-confirm-rate','데이터 없음'); return; }
+
+  const labels = rows.map(r => {
+    const s = String(r.RQSHPD ?? '');
+    return s.length === 8 ? `${s.slice(4,6)}/${s.slice(6,8)}` : s;
+  });
+  const rates = rows.map(r => {
+    const total = Number(r.TOTAL_CNT ?? 0);
+    const conf  = Number(r.CONFIRMED_CNT ?? 0);
+    return total > 0 ? Math.round(conf / total * 1000) / 10 : 0;
+  });
+
+  _dbDestroyChart('confirmRate');
+  _dbCharts['confirmRate'] = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets:[{
+        label:'배차완료율(%)',
+        data: rates,
+        borderColor:     '#10b981',
+        backgroundColor: 'rgba(16,185,129,.12)',
+        borderWidth: 2.5,
+        pointBackgroundColor: '#10b981',
+        pointRadius: 4,
+        fill: true,
+        tension: 0.35,
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ display:false },
+        tooltip:{ callbacks:{ label: ctx => ` ${ctx.raw}%` } }
+      },
+      scales:{
+        x:{ ticks:{font:{size:10}}, grid:{display:false} },
+        y:{ min:0, max:100, ticks:{font:{size:10}, callback:v=>v+'%'} }
+      }
+    }
+  });
+}
+
+/* ── fallback (API 오류 시 0 데이터 표시) ── */
+function _dbRenderFallback() {
+  _dbRenderKPI({
+    todayPending:0, todayConfirmed:0, todayCancelled:0,
+    todayTotal:0, todayTon:0, yesterdayTotal:0,
+    growthRate:0, weekTotalCar:0, weekTotalTon:0, weekAvgLoadRate:0
+  });
+  const noDataHtml = '<div style="color:var(--text3);font-size:11px;padding:24px;text-align:center">⚠️ 데이터 없음 — DB 연결을 확인해주세요</div>';
+  ['db-type-list','db-eff-list'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = noDataHtml;
+  });
+  // 스켈레톤 제거 후 빈 차트 표시
+  _dbRenderDailyChart({dailyData:[]});
+  _dbRenderTypeDonut({typeData:[]});
+  _dbRenderLoadRate({loadRateData:[]});
+  _dbRenderRegionChart({regionData:[]});
+  _dbRenderTypeTon({typeData:[]});
+  _dbRenderConfirmRate({dailyData:[]});
+}
+
+function _dbDestroyChart(key) {
+  if (_dbCharts[key]) {
+    _dbCharts[key].destroy();
+    delete _dbCharts[key];
+  }
 }
 </script>
 </body>
