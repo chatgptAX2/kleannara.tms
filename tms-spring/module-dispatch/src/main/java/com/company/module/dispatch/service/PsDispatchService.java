@@ -171,10 +171,10 @@ public class PsDispatchService {
         " LEFT JOIN KNRAWMS.CMCDV c ON c.CMCDKY = 'TASOTY' AND c.CMCDVL = h.SHPMTY" +
         " LEFT JOIN KNRAWMS.SKUMA m ON m.SKUKEY = i.SKUKEY" +
         " WHERE h.WAREKY = ?" +                                                      // p1: wareky (기본값 '1100')
-        "   AND TRIM(i.SKUG05) = ?" +                                                // p2: skug05 (기본값 '10')
+        "   AND i.SKUG05 = ?" +                                                     // p2: skug05 (기본값 '10')
         "   AND (? IS NULL OR h.RQSHPD >= ?)" +                                      // p3,p4: dateFrom (null=전체)
         "   AND (? IS NULL OR h.RQSHPD <= ?)" +                                      // p5,p6: dateTo   (null=전체)
-        "   AND (? IS NULL OR h.DPTNKY LIKE ? OR TRIM(COALESCE(b.NAME01,'')) LIKE ?)" + // p7,p8,p9: dptnky (null=전체)
+        "   AND (? IS NULL OR h.DPTNKY LIKE ? OR b.NAME01 LIKE ?)" + // p7,p8,p9: dptnky (null=전체)
         "   AND (? IS NULL OR i.SHPOKY LIKE ? OR i.SVBELN LIKE ?)" +                 // p10,p11,p12: shpoky (null=전체)
         "   AND (? IS NULL OR INSTR(',' || ? || ',', ',' || h.SHPMTY || ',') > 0)" + // p13,p14: shpmty 목록 (null=전체)
         " ORDER BY h.RQSHPD, h.DPTNKY, i.SHPOKY, i.SHPOIT";
@@ -220,7 +220,7 @@ public class PsDispatchService {
         List<String> dispatchedKeys = em.createNativeQuery(
             "SELECT SHPOKY || '|' || SHPOIT" +
             " FROM KNRAWMS.SHPDI" +
-            " WHERE STATIT='NEW' AND TRIM(STDLNR) != ''"
+            " WHERE STATIT='NEW' AND STDLNR IS NOT NULL AND STDLNR <> ' '"
         ).getResultList();
         Set<String> dispatchedSet = new HashSet<>(dispatchedKeys);
 

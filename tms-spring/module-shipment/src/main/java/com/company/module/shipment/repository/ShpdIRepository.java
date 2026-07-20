@@ -17,7 +17,7 @@ public interface ShpdIRepository extends JpaRepository<ShpdI, ShpdIId> {
      */
     @Query(value = """
         SELECT DISTINCT LOTA02 FROM KNRAWMS.SHPDI
-        WHERE LOTA02 IS NOT NULL AND TRIM(LOTA02) != ''
+        WHERE LOTA02 IS NOT NULL AND LOTA02 <> ' '
         ORDER BY LOTA02
         """, nativeQuery = true)
     List<String> findDistinctLota02();

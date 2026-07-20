@@ -15021,7 +15021,7 @@ function _psopRestorePendingState() {
       restoredCount++;
     });
 
-    console.log(`[psop] localStorage에서 pending vehicles ${restoredCount}건 복원`);
+    /* localStorage 복원 완료 — 운영 콘솔 출력 생략 */
     return restoredCount;
   } catch(e) {
     console.warn('[psop] localStorage 복원 실패', e);
@@ -16447,75 +16447,6 @@ async function loadShipSchedule(pg) {
   shipScheduleState.loading = true;
   shipScheduleState.page    = pg || 1;
   shipScheduleState.size    = size;
-
-  /* ── 콘솔: 호출 파라미터 및 서버 실행 쿼리 출력 (생략 없이 섹션별 분리 출력) ── */
-  console.group('%c[출고예정정보] API 조회', 'color:#0ea5e9;font-weight:bold;font-size:13px');
-
-  /* ① 요청 파라미터 */
-  console.log('%c▶ 요청 파라미터 (body)', 'color:#64748b;font-weight:600', body);
-
-  /* ② WHERE 조건 (조건별 한 줄씩 출력 → 생략 없음) */
-  console.log('%c▶ WHERE 조건', 'color:#64748b;font-weight:600');
-  console.log('  wareky       :', body.wareky        ? `SH.WAREKY = '${body.wareky}'`               : '(전체)');
-  console.log('  rqshpd_from  :', body.rqshpd_from   ? `SH.RQSHPD >= '${body.rqshpd_from}'`         : '(전체)');
-  console.log('  rqshpd_to    :', body.rqshpd_to     ? `SH.RQSHPD <= '${body.rqshpd_to}'`           : '(전체)');
-  console.log('  skukey       :', body.skukey        ? `SI.SKUKEY LIKE '%${body.skukey}%'`           : '(전체)');
-  console.log('  skug05       :', body.skug05        ? `SI.SKUG05 = '${body.skug05}'`                : '(전체)');
-  console.log('  ptnrky       :', body.ptnrky        ? `SH.DPTNKY = '${body.ptnrky}'`                 : '(전체)');
-  console.log('  alloc_status :', body.alloc_status === 'done'    ? "SI.ALSTKY IS NOT NULL AND TRIM(SI.ALSTKY) != ''"
-                                : body.alloc_status === 'notdone' ? "SI.ALSTKY IS NULL OR TRIM(SI.ALSTKY) = ''"
-                                : '(전체)');
-  console.log('  svbeln       :', body.svbeln.length ? `SI.SVBELN IN (${body.svbeln.map(v=>`'${v}'`).join(', ')})` : '(전체)');
-  console.log('  shpmty       :', `SH.SHPMTY IN (${body.shpmty.map(v=>`'${v}'`).join(', ')})`);
-  console.log('  lota02       :', `SI.LOTA02 IN (${body.lota02.map(v=>`'${v}'`).join(', ')})`);
-  console.log('  page / size  :', `LIMIT ${body.size} OFFSET ${(body.page-1)*body.size}`);
-
-  /* ③ SELECT 전체 컬럼 (실제 쿼리 그대로) */
-  console.log('%c▶ SELECT 컬럼 (실제 쿼리)', 'color:#64748b;font-weight:600');
-  console.log(
-`    SI.STKNUM, SI.SVBELN, SI.SHPOKY,
-    SH.RQSHPD, SH.STATDO, ST.CDESC1 AS STATDONM, ST.USARG1 AS STATDONO,
-    SI.SHPOIT, SI.STATIT,
-    (SELECT CDESC1 FROM CMCDV WHERE CMCDKY='STATIT' AND CMCDVL=SI.STATIT) AS STATNM,
-    SI.APPOINTPICKING, SI.CHGFLG,
-    CASE WHEN SI.STATIT='NEW' THEN 'V' ELSE '' END           AS STATUS_NEW,
-    CASE WHEN SI.STATIT IN ('FAL','PAL') THEN 'V' ELSE '' END AS STATUS_ALO,
-    CASE WHEN SI.STATIT IN ('FPC','PPC') THEN 'V' ELSE '' END AS STATUS_PCK,
-    CASE WHEN SI.STATIT IN ('FSH','PSH') THEN 'V' ELSE '' END AS STATUS_SHP,
-    SI.SKUG05, CD.CDESC1 AS SKUG05NM,
-    SI.SKUKEY, SI.DESC01,
-    CASE WHEN SH.SHPMTY='231' THEN SH.PTRCVR ELSE SH.DPTNKY END AS DPTNKY,
-    CASE WHEN SH.SHPMTY='231' THEN VD.NAME01 ELSE CT.NAME01 END  AS DPTNKYNM,
-    SI.SAPSTS,
-    SI.QTSHPO, SI.QTYORG, SI.UOMKEY,
-    SI.QTALOC, (SI.QTSHPO - SI.QTALOC) AS QTUALO,
-    SI.QTJCMP, SI.QTSHPD, SI.DUOMKY,
-    SI.NAME01, M.SKUL01,
-    SI.LOTA02, (SELECT CDESC1 FROM CMCDV WHERE CMCDKY='LOTA02' AND CMCDVL=SI.LOTA02) AS LOTA02NM,
-    SI.LOTA03, SI.LOTA01, ' ' AS LOTA01NM,
-    SH.SAP2, SI.LOTA08,
-    (SELECT CDESC1 FROM CMCDV WHERE CMCDKY='NATNKY' AND CMCDVL=SI.LOTA08) AS LOTA08NM,
-    SI.LOTA07, SI.LOTA15, SI.LOTA17,
-    (SELECT NAME01 FROM BZPTN WHERE OWNRKY=SH.OWNRKY AND PTNRTY='CT' AND PTNRKY=SI.LOTA09) AS LOTA09NM,
-    SH.DOCTXT, SI.ALSTKY, SH.PRTCHK,
-    SI.CREDAT, SI.CRETIM, SI.CREUSR,
-    SI.LMODAT, SI.LMOTIM, SI.LMOUSR,
-    SI.TLOTA01, ' ' AS TLOTA01NM,
-    SI.TLOTA02, (SELECT CDESC1 FROM CMCDV WHERE CMCDKY='LOTA02' AND CMCDVL=SI.TLOTA02) AS TLOTA02NM,
-    SH.DOCUTY AS DOCUTYNM, SH.WAREKY, SI.MEASKY`);
-
-  /* ④ FROM / JOIN */
-  console.log('%c▶ FROM / JOIN', 'color:#64748b;font-weight:600');
-  console.log(
-`FROM SHPDI SI
-INNER JOIN SHPDH SH ON SH.SHPOKY = SI.SHPOKY
-LEFT  JOIN BZPTN CT ON CT.OWNRKY=SH.OWNRKY AND CT.PTNRTY='CT' AND CT.PTNRKY=SH.DPTNKY
-LEFT  JOIN BZPTN VD ON VD.OWNRKY=SH.OWNRKY AND VD.PTNRTY='VD' AND VD.PTNRKY=SH.PTRCVR
-LEFT  JOIN CMCDV ST ON ST.CMCDKY='STATDO' AND ST.CMCDVL=SH.STATDO
-LEFT  JOIN CMCDV CD ON CD.CMCDKY='SKUG05' AND CD.CMCDVL=SI.SKUG05
-INNER JOIN SKUMA M  ON SI.SKUKEY=M.SKUKEY AND SH.OWNRKY=M.OWNRKY`);
-
-  console.groupEnd();
 
   const area = document.getElementById('ss-result-area');
   area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3);font-size:13px;">⏳ 조회 중...</div>';

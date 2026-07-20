@@ -320,7 +320,7 @@ public class DispatchConfigApiService {
                 "       '' AS REGION_YN " +
                 "FROM KNRAWMS.SHPDH h LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT' " +
                 "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=h.DPTNKY AND d.PTNRTY='CT' " +
-                "WHERE h.DPTNKY IS NOT NULL AND TRIM(h.DPTNKY) <> '' ORDER BY h.DPTNKY"
+                "WHERE h.DPTNKY IS NOT NULL AND h.DPTNKY <> ' ' ORDER BY h.DPTNKY"
             );
             // Python 로직: 우편번호 범위 매핑
             Map<String, Map<String, Object>> regionMap = new LinkedHashMap<>();
