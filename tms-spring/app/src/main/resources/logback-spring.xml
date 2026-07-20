@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  TMS Spring Boot — logback-spring.xml
+  ─────────────────────────────────────────────────────────────────
+  목적: 모든 SQL(조회/DML) 을 stdout.log 에 기록
+  출력 채널: stdout (→ systemd journal / stdout.log)
+  포맷:
+    [SQL]  실행된 SQL 전문
+    [BIND] 바인드 파라미터 값 목록
+  ─────────────────────────────────────────────────────────────────
+-->
+<configuration scan="true" scanPeriod="30 seconds">
+
+  <!-- ── 공통 패턴 ──────────────────────────────────────────── -->
+  <property name="LOG_PATTERN"
+            value="%d{yyyy-MM-dd HH:mm:ss.SSS} %5level [%15.15thread] %-50.50logger{50} : %msg%n"/>
+
+  <!-- ── stdout Appender (콘솔 → systemd stdout.log) ───────── -->
+  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>${LOG_PATTERN}</pattern>
+      <charset>UTF-8</charset>
+    </encoder>
+  </appender>
+
+  <!-- ── 애플리케이션 로거 ────────────────────────────────────── -->
+  <logger name="com.company" level="INFO" additivity="false">
+    <appender-ref ref="STDOUT"/>
+  </logger>
+
+  <!-- ── Hibernate SQL 로거 ───────────────────────────────────
+       org.hibernate.SQL          : 실행 SQL 전문 (DEBUG)
+       org.hibernate.orm.jdbc.bind: 바인드 파라미터 (TRACE)
+  ──────────────────────────────────────────────────────────── -->
+  <logger name="org.hibernate.SQL" level="DEBUG" additivity="false">
+    <appender-ref ref="STDOUT"/>
+  </logger>
+  <logger name="org.hibernate.orm.jdbc.bind" level="TRACE" additivity="false">
+    <appender-ref ref="STDOUT"/>
+  </logger>
+  <!-- Hibernate 6.x 구버전 호환 파라미터 로거 -->
+  <logger name="org.hibernate.type.descriptor.sql" level="TRACE" additivity="false">
+    <appender-ref ref="STDOUT"/>
+  </logger>
+
+  <!-- ── Spring JdbcTemplate SQL 로거 ─────────────────────────
+       JdbcTemplate 은 org.springframework.jdbc.core 채널로 SQL 출력
+  ──────────────────────────────────────────────────────────── -->
+  <logger name="org.springframework.jdbc.core.JdbcTemplate" level="DEBUG" additivity="false">
+    <appender-ref ref="STDOUT"/>
+  </logger>
+  <logger name="org.springframework.jdbc.core.StatementCreatorUtils" level="TRACE" additivity="false">
+    <appender-ref ref="STDOUT"/>
+  </logger>
+
+  <!-- ── 루트 로거 ─────────────────────────────────────────── -->
+  <root level="WARN">
+    <appender-ref ref="STDOUT"/>
+  </root>
+
+</configuration>

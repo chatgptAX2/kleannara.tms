@@ -99,6 +99,14 @@ sap:
     mock: true
 
 logging:
+  # logback-spring.xml 이 우선 적용됨 (SQL DEBUG/TRACE 포함)
+  # 아래 값은 logback-spring.xml 미로드 시 fallback 역할
   level:
     com.company: INFO
-    org.hibernate.SQL: WARN
+    # Hibernate SQL 전문 (JPA/EntityManager 경로)
+    org.hibernate.SQL: DEBUG
+    org.hibernate.orm.jdbc.bind: TRACE
+    org.hibernate.type.descriptor.sql: TRACE
+    # Spring JdbcTemplate 경로 (DashboardService, ShipmentService 등)
+    org.springframework.jdbc.core.JdbcTemplate: DEBUG
+    org.springframework.jdbc.core.StatementCreatorUtils: TRACE
