@@ -18903,9 +18903,11 @@ async function renderDispatchConstraint() {
 
   document.getElementById('dcon-run-date').value = new Date().toISOString().slice(0,10);
   /* 화면 재진입 시 세트 선택 상태 초기화 → dconLoadSets()가 첫 번째 세트를 자동 선택하도록 */
-  DCON.selSetId   = null;
-  DCON._spRows    = [];
-  DCON._vehicles  = null;   // DS_VEHICLE 캐시 초기화 → dconSelectSet에서 재로드
+  DCON.selSetId      = null;
+  DCON._spRows       = [];
+  DCON._setFullRows  = [];   // 이전 세트 데이터 초기화
+  DCON._spActiveTab  = 'GLOBAL';
+  DCON._vehicles     = null;   // DS_VEHICLE 캐시 초기화 → dconSelectSet에서 재로드
   DCON._entryTonPartners  = null;
   DCON._forkliftPartners  = null;
   DCON._dynamicPartners   = null;
@@ -19946,10 +19948,8 @@ function _dconRenderSetList() {
 ══════════════════════════════════════════════════════════════ */
 async function dconSelectSet(setId) {
   DCON.selSetId = setId;
-  DCON._spActiveTab = 'GLOBAL';
   DCON._spNewRows = [];
-  DCON._spRows = [];
-  DCON._cartypeRows = [];   // CARTYPE 탭용 DS_VEHICLE 기반 상태
+  /* _spRows / _cartypeRows는 API 성공 후 갱신 (실패 시 이전 상태 유지로 탭 소실 방지) */
   _dconRenderSetList();
 
   /* 세트명 표시 */
@@ -19969,7 +19969,13 @@ async function dconSelectSet(setId) {
                      : fetch('/api/dispatch-const-set/vehicle-types').then(r=>r.json()),
     ]);
     if (!rd.ok) throw new Error(rd.error || '조회 실패');
+
+    /* API 성공 시에만 _spRows·_cartypeRows 초기화 및 재구성 */
     DCON._setFullRows = rd.rows || [];
+    DCON._spRows = [];
+    DCON._cartypeRows = [];
+    DCON._spActiveTab = DCON._spActiveTab || 'GLOBAL';
+
     /* IN_SET=1인 것만 편집 대상 (초기) - CARTYPE 타입은 별도 관리 */
     DCON._spRows = rd.rows.filter(row => row.IN_SET && row.CONST_TYPE !== 'CARTYPE').map(row => ({
       ...row,
@@ -20004,6 +20010,8 @@ async function dconSelectSet(setId) {
     _dconSpRender();
   } catch(e) {
     if (body) body.innerHTML = `<div class="dcon-empty" style="color:#ef5350">오류: ${e.message}</div>`;
+    /* API 실패 시에도 _setFullRows 기반으로 탭 바는 유지 (이전 상태 표시) */
+    _dconSpRenderTabs();
   }
 }
 
@@ -20025,10 +20033,23 @@ function _dconSpRenderTabs() {
   rows.filter(r => !r._deleted).forEach(r => {
     typeCnt[r.CONST_TYPE] = (typeCnt[r.CONST_TYPE]||0) + 1;
   });
+  /* _spRows 외에 _setFullRows의 IN_SET=1 항목도 보조 반영 —
+     dconSelectSet() 실패·지연 등으로 _spRows가 비었을 때도 DB 기준으로 탭 표시 */
+  (DCON._setFullRows||[]).filter(r => r.IN_SET && r.CONST_TYPE !== 'CARTYPE').forEach(r => {
+    if (typeCnt[r.CONST_TYPE] === undefined) {
+      typeCnt[r.CONST_TYPE] = 0;   /* count는 0, 탭은 표시됨 (실행 시 재계산) */
+    }
+  });
   /* VEHICLE은 차종 단위로 */
-  if (typeCnt['VEHICLE']) {
+  if (typeCnt['VEHICLE'] !== undefined) {
     const vids = new Set(rows.filter(r=>r.CONST_TYPE==='VEHICLE'&&!r._deleted).map(r=>r.TARGET_ID||r.TARGET_NM||'공통'));
-    typeCnt['VEHICLE'] = vids.size;
+    /* _setFullRows 기반 fallback: _spRows에 없어도 IN_SET=1인 VEHICLE 차종 카운트 */
+    if (vids.size === 0) {
+      const sfVids = new Set((DCON._setFullRows||[]).filter(r=>r.CONST_TYPE==='VEHICLE'&&r.IN_SET).map(r=>r.TARGET_ID||r.TARGET_NM||'공통'));
+      typeCnt['VEHICLE'] = sfVids.size;
+    } else {
+      typeCnt['VEHICLE'] = vids.size;
+    }
   }
   /* CARTYPE: _cartypeState에서 활성 항목 수 카운트 */
   const ctState = DCON._cartypeState || {};
@@ -20337,7 +20358,10 @@ function _dconSpRenderTable(rows, ft, tab) {
     const unit = pm.unit  || '';
     const hint = pm.hint  || '';
     const isOverride = r._pval !== String(r.CONST_VALUE ?? '');
-    const activeYn = r.ITEM_ACTIVE || 'Y';
+    /* ITEM_ACTIVE 기본값 방어: 탭매니저 추가 항목은 _dconTabMgrToggleId에서
+       ITEM_ACTIVE='Y'로 강제하므로 여기서 'N'이 오는 경우는 실제로 저장된 비활성 상태.
+       단 null/undefined 방어를 위해 'Y'/'N' 외 값은 'Y'로 fallback */
+    const activeYn = r.ITEM_ACTIVE === 'N' ? 'N' : 'Y';
 
     /* Y/N 타입 여부 판별 */
     const isYN   = unit === 'Y/N';
@@ -21793,9 +21817,16 @@ function _dconTabMgrToggleId(constId, include, tabKey) {
     const existIdx = DCON._spRows.findIndex(sr => sr.CONST_ID === constId);
     if (existIdx >= 0) {
       DCON._spRows[existIdx]._deleted = false;
+      /* 기존 IN_SET=0(DB 미등록) 항목이 ITEM_ACTIVE='N'으로 오면 활성으로 강제 복원 */
+      if (DCON._spRows[existIdx].ITEM_ACTIVE !== 'Y') {
+        DCON._spRows[existIdx].ITEM_ACTIVE = 'Y';
+      }
     } else {
       DCON._spRows.push({
         ...fullRow,
+        /* 탭매니저에서 새로 추가: DB 미등록이라 ITEM_ACTIVE='N'(기본값)이 올 수 있음
+           → 사용자가 세트에 추가하는 것이므로 활성('Y')으로 강제 */
+        ITEM_ACTIVE: fullRow.IN_SET ? (fullRow.ITEM_ACTIVE || 'Y') : 'Y',
         _pval: fullRow.PARAM_VALUE != null ? String(fullRow.PARAM_VALUE) : String(fullRow.CONST_VALUE ?? ''),
         _isNew: false, _deleted: false,
       });
