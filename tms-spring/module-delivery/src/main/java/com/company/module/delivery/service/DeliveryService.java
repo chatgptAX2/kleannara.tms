@@ -169,17 +169,20 @@ public class DeliveryService {
     public Map<String, Object> getDetail(String ptnrky, String ptnrty, String ownrky) {
         @SuppressWarnings("unchecked")
         List<Object[]> bRows = tmsEm.createNativeQuery(
-            "SELECT * FROM KNRAWMS.BZPTN WHERE PTNRKY=? AND PTNRTY=? AND OWNRKY=?")
+            "SELECT PTNRKY, NAME01, PTNRTY, OWNRKY, ADDR01, ADDR02, REGN01, TELN01" +
+            " FROM KNRAWMS.BZPTN WHERE PTNRKY=? AND PTNRTY=? AND OWNRKY=?")
             .setParameter(1, ptnrky).setParameter(2, ptnrty).setParameter(3, ownrky)
             .getResultList();
         if (bRows.isEmpty()) throw new com.company.core.common.exception.EntityNotFoundException(
             com.company.core.common.exception.ErrorCode.DELIVERY_NOT_FOUND);
 
         Optional<BzptnDetail> detail = bzptnDetailRepo.findByPtnrkyAndPtnrtyAndOwnrky(ptnrky, ptnrty, ownrky);
-        return Map.of(
-            "bzptn",  toMap(bRows.get(0)),
-            "detail", detail.map(this::detailToMap).orElse(null)
-        );
+
+        // Map.of()는 null 값 비허용(NPE) → LinkedHashMap 사용
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("bzptn",  toBzptnMap(bRows.get(0)));
+        out.put("detail", detail.map(this::detailToMap).orElse(null));
+        return out;
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -412,9 +415,19 @@ public class DeliveryService {
     private double toDouble(Object o)    { try { return Double.parseDouble(o.toString()); } catch (Exception e) { return 0.0; } }
     private String nullIfBlank(String s) { return (s == null || s.isBlank()) ? null : s.strip(); }
 
-    private Map<String, Object> toMap(Object o) {
-        if (o == null) return Map.of();
-        return Map.of("raw", o.toString());
+    private Map<String, Object> toBzptnMap(Object o) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (o instanceof Object[]) {
+            // SELECT PTNRKY,NAME01,PTNRTY,OWNRKY,ADDR01,ADDR02,REGN01,TELN01 순서
+            String[] cols = {"PTNRKY","NAME01","PTNRTY","OWNRKY","ADDR01","ADDR02","REGN01","TELN01"};
+            Object[] arr = (Object[]) o;
+            for (int i = 0; i < cols.length && i < arr.length; i++) {
+                m.put(cols[i], arr[i] == null ? "" : arr[i].toString().strip());
+            }
+        } else if (o != null) {
+            m.put("PTNRKY", o.toString());
+        }
+        return m;
     }
 
     private Map<String, Object> detailToMap(BzptnDetail d) {
