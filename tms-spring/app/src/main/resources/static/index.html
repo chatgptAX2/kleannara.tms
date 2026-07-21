@@ -6080,8 +6080,11 @@ async function selectDeliveryRow(idx, tr) {
 
   // 상세 조회
   const res  = await fetch(`/api/delivery/detail/${row.PTNRKY}?ptnrty=${row.PTNRTY||'CT'}&ownrky=${row.OWNRKY||'KN'}`);
-  const data = await res.json();
-  if (data.error) { showToast(data.error); return; }
+  const raw  = await res.json();
+  if (!raw || raw.success === false) { showToast(raw?.message || '상세 조회 오류'); return; }
+
+  // ApiResponse 래퍼 언래핑: {success, data:{bzptn,detail}} → data
+  const data = ('data' in raw && raw.data !== null && raw.data !== undefined) ? raw.data : raw;
 
   dlvState.mode = 'edit';
   const titleEl = document.getElementById('dlv-form-title');
@@ -6094,11 +6097,18 @@ function fillDeliveryForm(data) {
   const b = data.bzptn || {};
   const d = data.detail || {};
 
-  // 거래처 기본정보 (읽기전용)
+  // 헬퍼: 반드시 setSel 정의 먼저, setVal 다음 — 순서 바뀌면 ReferenceError 발생
   const setVal = (id, v) => {
     const el = document.getElementById(id);
     if (el) el.value = (v || '').trim();
   };
+  const setSel = (id, v) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = v || '';
+  };
+
+  // 거래처 기본정보 (읽기전용)
   setVal('f-PTNRKY', b.PTNRKY);
   setVal('f-NAME01', b.NAME01);
   setVal('f-NAME02', b.NAME02);
@@ -6109,7 +6119,7 @@ function fillDeliveryForm(data) {
   setVal('f-EMAIL1', b.EMAIL1);
   setVal('f-PTNRTY', b.PTNRTY || 'CT');
 
-  // TMS 상세 (편집 가능)
+  // TMS 상세 (편집 가능) — setVal / setSel 모두 이미 정의됨
   setVal('f-WAREKY',       d.WAREKY);
   setVal('f-AREA_CD',      d.AREA_CD);
   setVal('f-MAX_BOX_QTY',  d.MAX_BOX_QTY);
@@ -6120,14 +6130,6 @@ function fillDeliveryForm(data) {
   setVal('f-LONGITUDE',    d.LONGITUDE);
 
   // select 필드
-  const setSel = (id, v) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.value = v || '';
-    if (!el.value && v) {
-      // 없으면 첫 번째 옵션
-    }
-  };
   setSel('f-ROUTE_CD',       d.ROUTE_CD);
   setSel('f-ITEM_GROUP',     d.ITEM_GROUP);
   setSel('f-UNLOAD_TIME',    d.UNLOAD_TIME != null ? String(d.UNLOAD_TIME) : '');
@@ -6152,7 +6154,7 @@ function fillDeliveryForm(data) {
     initYN(f, d[f]);
   });
 
-  // 스크롤 하단으로
+  // 스크롤 상단으로
   const detailSec = document.getElementById('dlv-detail-section');
   if (detailSec) detailSec.scrollTop = 0;
 }
