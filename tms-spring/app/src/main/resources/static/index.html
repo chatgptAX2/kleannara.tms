@@ -5871,13 +5871,26 @@ async function searchDelivery(page) {
   });
   if (warekyVal) params.set('wareky', warekyVal);
 
-  const res = await fetch(`/api/delivery/list?${params}`).then(r => r.json());
-  /* ApiResponse 래퍼 { success, code, message, data: { total, rows, page, size } } 처리 */
-  const data = (res && res.data != null) ? res.data : res;
-  dlvState.total = data.total ?? 0;
+  let res;
+  try {
+    res = await fetch(`/api/delivery/list?${params}`).then(r => r.json());
+  } catch(e) {
+    wrap.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><div>조회 오류: ${e.message}</div></div>`;
+    return;
+  }
+  /* ApiResponse 래퍼 { success, code, message, data: { total, rows, page, size } } 처리
+   * @JsonInclude(NON_NULL) 로 인해 에러 응답 시 data 키 자체가 없을 수 있음
+   * res.data != null 은 undefined != null = true 로 undefined 를 통과시키는 버그 존재
+   * 'data' in res 로 키 존재 여부를 명시적으로 체크 */
+  if (res && res.success === false) {
+    wrap.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><div>조회 실패: ${res.message || res.code || '서버 오류'}</div></div>`;
+    return;
+  }
+  const data = (res && 'data' in res && res.data !== null && res.data !== undefined) ? res.data : (res || {});
+  dlvState.total = Number(data.total) || 0;
 
   const badge = document.getElementById('dlv-total-badge');
-  if (badge) badge.textContent = `총 ${fmtNum(data.total ?? 0)}건`;
+  if (badge) badge.textContent = `총 ${fmtNum(dlvState.total)}건`;
 
   renderDeliveryList(data);
   renderDlvPagination(data);
@@ -5887,7 +5900,9 @@ function renderDeliveryList(data) {
   const wrap = document.getElementById('dlv-list-wrap');
   if (!wrap) return;
 
-  if (!data.rows?.length) {
+  // data 자체가 없거나 rows 배열이 없는 경우 방어 처리
+  const rows = Array.isArray(data?.rows) ? data.rows : [];
+  if (!rows.length) {
     wrap.innerHTML = `<div class="empty-state"><div class="icon">📋</div><div>조회 결과가 없습니다</div></div>`;
     return;
   }
@@ -5935,7 +5950,7 @@ function renderDeliveryList(data) {
   let html = `<table class="dlv-list-table" id="dlv-list-table">
     <thead><tr>${dlvThHtml}</tr></thead><tbody>`;
 
-  data.rows.forEach((row, idx) => {
+  rows.forEach((row, idx) => {
     const isSelected = dlvState.selectedRow?.PTNRKY === row.PTNRKY;
     const skuLabel   = skug05Map[row.ITEM_GROUP] || row.ITEM_GROUP || '';
     const hasDtl     = row.HAS_DETAIL === 'Y';
@@ -5961,11 +5976,11 @@ function renderDeliveryList(data) {
   html += '</tbody></table>';
 
   wrap.innerHTML = html;
-  wrap._rows = data.rows;
+  wrap._rows = rows;
 
   // 이전 선택 행 복원
   if (dlvState.selectedRow) {
-    const idx = data.rows.findIndex(r => r.PTNRKY === dlvState.selectedRow.PTNRKY);
+    const idx = rows.findIndex(r => r.PTNRKY === dlvState.selectedRow.PTNRKY);
     if (idx >= 0) {
       const tr = wrap.querySelector(`tr[data-idx="${idx}"]`);
       if (tr) tr.classList.add('selected');
@@ -6004,7 +6019,10 @@ async function dlvDeleteRow(ptnrky, ptnrty, ownrky) {
 function renderDlvPagination(data) {
   const pg = document.getElementById('dlv-pg');
   if (!pg) return;
-  const { page, pages, total, size } = data;
+  const page  = Number(data.page)  || 1;
+  const pages = Number(data.pages) || 1;
+  const total = Number(data.total) || 0;
+  const size  = Number(data.size)  || dlvState.size || 50;
   const start = (page - 1) * size + 1;
   const end   = Math.min(page * size, total);
   const from  = Math.max(1, page - 3), to = Math.min(pages, page + 3);

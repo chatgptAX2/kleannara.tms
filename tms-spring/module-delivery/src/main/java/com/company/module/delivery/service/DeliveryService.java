@@ -33,10 +33,8 @@ public class DeliveryService {
 
     private final BzptnDetailRepository bzptnDetailRepo;
     private final RouteCostRepository   routeCostRepo;
-    /** WMS Oracle — CMCDV 공통코드 조회용 (KNRAWMS.CMCDV) */
+    /** WMS Oracle — BZPTN/CMCDV 조회용 (KNRAWMS 계정) */
     private final JdbcTemplate          wmsJdbc;
-    /** TMS Oracle — BZPTN/BZPTN_DETAIL 동적 SQL 조회 */
-    private final JdbcTemplate          tmsJdbc;
 
     /** TMS DB (Oracle KNRATMS) — BZPTN / BZPTN_DETAIL 읽기·쓰기용 */
     @PersistenceContext(unitName = "tmsPU")
@@ -45,12 +43,10 @@ public class DeliveryService {
     public DeliveryService(
             BzptnDetailRepository bzptnDetailRepo,
             RouteCostRepository   routeCostRepo,
-            @Qualifier("wmsJdbcTemplate") JdbcTemplate wmsJdbc,
-            @Qualifier("tmsJdbcTemplate") JdbcTemplate tmsJdbc) {
+            @Qualifier("wmsJdbcTemplate") JdbcTemplate wmsJdbc) {
         this.bzptnDetailRepo = bzptnDetailRepo;
         this.routeCostRepo   = routeCostRepo;
         this.wmsJdbc         = wmsJdbc;
-        this.tmsJdbc         = tmsJdbc;
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -123,7 +119,7 @@ public class DeliveryService {
             " LEFT JOIN KNRAWMS.BZPTN_DETAIL d" +
             "   ON b.PTNRKY=d.PTNRKY AND b.PTNRTY=d.PTNRTY AND b.OWNRKY=d.OWNRKY" +
             where;
-        Long total = tmsJdbc.queryForObject(countSql, Long.class, params.toArray());
+        Long total = wmsJdbc.queryForObject(countSql, Long.class, params.toArray());
         if (total == null) total = 0L;
 
         // ── 데이터 쿼리 (Oracle 12c+ OFFSET / FETCH) ──────────────────
@@ -133,24 +129,24 @@ public class DeliveryService {
         dataParams.add(offset);
         dataParams.add(size);
 
-        List<Map<String, Object>> rows = tmsJdbc.queryForList(dataSql, dataParams.toArray());
+        List<Map<String, Object>> rows = wmsJdbc.queryForList(dataSql, dataParams.toArray());
 
         // ── 컬럼명 대문자 정규화 (Oracle JDBC 대소문자 혼용 대비) ───────
         List<Map<String, Object>> result = new ArrayList<>();
         for (Map<String, Object> r : rows) {
             Map<String, Object> m = new LinkedHashMap<>();
             r.forEach((k, v) -> m.put(k.toUpperCase(), v == null ? "" : v.toString().strip()));
-            // 숫자형 컬럼은 원본 유지 (strip이 toString() 변환하므로 null safe)
             result.add(m);
         }
 
-        return Map.of(
-            "total", total,
-            "page",  page,
-            "size",  size,
-            "pages", total > 0 ? (int) Math.ceil((double) total / size) : 1,
-            "rows",  result
-        );
+        // LinkedHashMap 사용 (Map.of는 null 불허 + 직렬화 순서 비보장)
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("total", total);
+        out.put("page",  page);
+        out.put("size",  size);
+        out.put("pages", total > 0 ? (int) Math.ceil((double) total / size) : 1);
+        out.put("rows",  result);
+        return out;
     }
 
     // ──────────────────────────────────────────────────────────────────────────
