@@ -5283,18 +5283,18 @@ async function renderDelivery() {
   const codeKeys = ['LOTA02','SKUG05','TMS_ROUTE','TMS_UNLOADTIME','TMS_MAXHEIGHT','TMS_INBOUNDTIME','TMS_REGION','TMS_AUTOPLT','TMS_CARCLASS10'];
   const results  = await Promise.all(codeKeys.map(k => fetch(`/api/codes/${k}`).then(r=>r.json())));
   codeKeys.forEach((k,i) => dlvState.codes[k] = results[i]);
-  // TMS_SHPPOINT 목록 (출하지점 select용)
-  // SapController.shppoint()는 ApiResponse 없이 { ok:true, rows:[...] } 직접 반환
-  try {
-    const shpRes = await fetch('/api/delivery/shppoint').then(r=>r.json());
-    const shpArr = Array.isArray(shpRes) ? shpRes
-                 : Array.isArray(shpRes?.rows) ? shpRes.rows
-                 : [];
-    dlvState.codes['TMS_SHPPOINT'] = shpArr;
-  } catch(e) {
-    console.warn('shppoint 로드 실패:', e);
-    dlvState.codes['TMS_SHPPOINT'] = [];
-  }
+  // 출하지점(WAREKY) 목록 — BZPTN_DETAIL.WAREKY 기준 하드코딩
+  dlvState.codes['TMS_SHPPOINT'] = [
+    { value: '1100', label: '청주공장창고' },
+    { value: '1500', label: '음성공장창고' },
+    { value: '4100', label: '용인물류센터' },
+    { value: '4400', label: '경북물류센터' },
+    { value: '4200', label: '경남물류센터' },
+    { value: '4300', label: '전라물류센터' },
+    { value: '4800', label: '제주물류센터' },
+    { value: '4000', label: '파주물류센터' },
+    { value: '6000', label: '임가공 거점'  },
+  ];
 
   // 납품처 개수 뱃지
   // DeliveryController.getList()는 ApiResponse wrapper { success, code, message, data:{total,...} } 반환
@@ -5836,7 +5836,7 @@ function dlvToggleGridHide() {
 
 function dlvClearSearch() {
   const vstel = document.getElementById('dlv-s-vstel');
-  if (vstel) vstel.value = '1100';
+  if (vstel) vstel.value = '';
   // 플랜트 multi-select 전체 해제
   document.querySelectorAll('#dlv-werks-dd input[type=checkbox]').forEach(cb => { cb.checked = false; });
   dlvUpdateWerksLabel();
@@ -5858,10 +5858,8 @@ async function searchDelivery(page) {
   if (!wrap) return;
   wrap.innerHTML = `<div class="loading"><div class="spinner"></div>조회 중...</div>`;
 
-  // 출하지점 select 값 (TMS_SHPPOINT 코드 → WAREKY 직접 필터)
-  const vstelVal   = (document.getElementById('dlv-s-vstel')?.value || '').trim();
-  // 플랜트 multi-select 값 (LOTA02 코드 → werks 복수 파라미터)
-  const warekyVals = dlvGetWerks();
+  // 출하지점 select 값 → BZPTN_DETAIL.WAREKY 조건에 직접 사용
+  const warekyVal = (document.getElementById('dlv-s-vstel')?.value || '').trim();
 
   const params = new URLSearchParams({
     page:     dlvState.page,
@@ -5871,8 +5869,7 @@ async function searchDelivery(page) {
     sort_col: dlvState.sortCol,
     sort_dir: dlvState.sortDir,
   });
-  if (vstelVal) params.set('vstel', vstelVal);
-  warekyVals.forEach(v => params.append('werks', v));
+  if (warekyVal) params.set('wareky', warekyVal);
 
   const res = await fetch(`/api/delivery/list?${params}`).then(r => r.json());
   /* ApiResponse 래퍼 { success, code, message, data: { total, rows, page, size } } 처리 */

@@ -30,6 +30,7 @@ public class DeliveryController {
             @RequestParam(defaultValue = "1")  int page,
             @RequestParam(defaultValue = "50") int size,
             @RequestParam(required = false) String vstel,
+            @RequestParam(required = false) String wareky,   // 출하지점 단일값 (WAREKY)
             @RequestParam(required = false) String skug05,
             @RequestParam(required = false) String ptnrky,
             @RequestParam(required = false) String q,
@@ -38,7 +39,9 @@ public class DeliveryController {
             @RequestParam(required = false) List<String> werks) {
 
         DeliverySearchRequest req = new DeliverySearchRequest();
-        req.setPage(page); req.setSize(size); req.setVstel(vstel);
+        req.setPage(page); req.setSize(size);
+        // wareky 파라미터 우선, 없으면 vstel fallback (하위 호환)
+        req.setVstel(wareky != null && !wareky.isBlank() ? wareky : vstel);
         req.setSkug05(skug05); req.setPtnrky(ptnrky); req.setQ(q);
         req.setSortCol(sortCol); req.setSortDir(sortDir);
         req.setWerks(werks);
