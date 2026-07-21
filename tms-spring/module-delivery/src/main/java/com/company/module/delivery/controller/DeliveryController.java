@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -32,13 +33,15 @@ public class DeliveryController {
             @RequestParam(required = false) String skug05,
             @RequestParam(required = false) String ptnrky,
             @RequestParam(required = false) String q,
-            @RequestParam(defaultValue = "PTNRKY") String sortCol,
-            @RequestParam(defaultValue = "ASC")    String sortDir) {
+            @RequestParam(name = "sort_col", defaultValue = "PTNRKY") String sortCol,
+            @RequestParam(name = "sort_dir", defaultValue = "ASC")    String sortDir,
+            @RequestParam(required = false) List<String> werks) {
 
         DeliverySearchRequest req = new DeliverySearchRequest();
         req.setPage(page); req.setSize(size); req.setVstel(vstel);
         req.setSkug05(skug05); req.setPtnrky(ptnrky); req.setQ(q);
         req.setSortCol(sortCol); req.setSortDir(sortDir);
+        req.setWerks(werks);
         return ResponseEntity.ok(ApiResponse.success(deliveryService.getList(req)));
     }
 
