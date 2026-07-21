@@ -36,7 +36,7 @@ public interface RouteCostRepository extends JpaRepository<RouteCost, Long> {
           EFF_DATE      AS DATE_START,
           EXP_DATE      AS DATE_END,
           'KRW'         AS UNIT
-        FROM ROUTE_COST
+        FROM KNRAWMS.ROUTE_COST
         WHERE (:wareky   IS NULL OR WAREKY  = :wareky)
           AND (:ptnrky   IS NULL OR PTNRKY  LIKE '%' || :ptnrky  || '%')
           AND (:carclass IS NULL OR CARTYPE LIKE '%' || :carclass || '%')
