@@ -11,7 +11,7 @@ import lombok.*;
  *   delivery.entity.tms 패키지 → tmsEntityManagerFactory
  */
 @Entity
-@Table(name = "ROUTE_COST")
+@Table(name = "ROUTE_COST", schema = "KNRAWMS")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Builder

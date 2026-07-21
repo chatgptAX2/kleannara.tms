@@ -18,7 +18,7 @@ import lombok.*;
  * Flask: api_delivery_list / api_delivery_save / api_delivery_delete 대응
  */
 @Entity
-@Table(name = "bzptn_detail",
+@Table(name = "BZPTN_DETAIL", schema = "KNRAWMS",
        uniqueConstraints = @UniqueConstraint(
            name = "UK_BZPTN_DETAIL",
            columnNames = {"PTNRKY", "PTNRTY", "OWNRKY"}))
