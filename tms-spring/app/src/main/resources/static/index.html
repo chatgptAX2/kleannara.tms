@@ -21866,7 +21866,10 @@ async function _dconSpSave() {
     const curVal = valEl ? valEl.value : r._pval;
     const origVal = String(r.CONST_VALUE ?? '');
     const paramVal = curVal !== origVal ? curVal : null;
-    const activeYn = ynEl ? ynEl.value : (r.ITEM_ACTIVE || 'Y');
+    /* [BUG FIX] 탭매니저에서 새로 추가된 항목(원래 IN_SET=0)은 ITEM_ACTIVE='N'이 DB 기본값.
+       ynEl DOM이 없고 ITEM_ACTIVE='N'이면 잘못된 'N'이 그대로 전송되어 저장 후 비활성 처리됨.
+       → DOM에 활성화 select가 없으면 항상 'Y'로 강제 (명시적으로 비활성화한 경우가 아님) */
+    const activeYn = ynEl ? ynEl.value : 'Y';
     return { const_id: r.CONST_ID, active_yn: activeYn, param_value: paramVal };
   });
 
