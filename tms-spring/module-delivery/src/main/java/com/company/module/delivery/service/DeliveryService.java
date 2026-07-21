@@ -9,9 +9,12 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import lombok.extern.slf4j.Slf4j;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.Query;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -25,15 +28,17 @@ import java.util.*;
  * ─ DB 라우팅 ───────────────────────────────────────────────────
  *   TMS/WMS DataSource 는 동일 Oracle DB (KNMESWMS) / 동일 계정 (KNRATMS).
  *   tmsEm (tmsPU) 단독으로 BZPTN JOIN BZPTN_DETAIL 직접 수행 가능.
+ *   getList() 는 wmsJdbc/tmsJdbc 미사용 — tmsEm NativeQuery 로 통일
  * ───────────────────────────────────────────────────────────────
  */
+@Slf4j
 @Service
 @Transactional(readOnly = true, transactionManager = "tmsTransactionManager")
 public class DeliveryService {
 
     private final BzptnDetailRepository bzptnDetailRepo;
     private final RouteCostRepository   routeCostRepo;
-    /** WMS Oracle — BZPTN/CMCDV 조회용 (KNRAWMS 계정) */
+    /** WMS Oracle — CMCDV(공통코드) 조회 전용 */
     private final JdbcTemplate          wmsJdbc;
 
     /** TMS DB (Oracle KNRATMS) — BZPTN / BZPTN_DETAIL 읽기·쓰기용 */
@@ -51,95 +56,102 @@ public class DeliveryService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 납품처 목록 (Flask api_delivery_list)
-    // BZPTN JOIN BZPTN_DETAIL — 동일 DB이므로 단일 쿼리로 처리
-    // vstel(WAREKY) 단일값 → d.WAREKY = ? 조건
+    // tmsEm NativeQuery 사용 — JdbcTemplate DataSource 의존성 없애고 tmsEm 단일화
     // ──────────────────────────────────────────────────────────────────────────
     public Map<String, Object> getList(DeliverySearchRequest req) {
         int page   = req.getPage() == null ? 1 : req.getPage();
         int size   = req.getSize() == null ? 50 : req.getSize();
         int offset = (page - 1) * size;
 
-        String wareky    = nullIfBlank(req.getVstel());   // 출하지점 WAREKY 단일값
+        String wareky    = nullIfBlank(req.getVstel());
         String itemGroup = nullIfBlank(req.getSkug05());
         String ptnrky    = nullIfBlank(req.getPtnrky());
         String q         = nullIfBlank(req.getQ());
 
-        // ── 동적 WHERE 절 구성 ──────────────────────────────────────────
-        StringBuilder where = new StringBuilder(
-            " WHERE b.PTNRTY = 'CT'");
-        List<Object> params = new ArrayList<>();
+        // ── 동적 WHERE 절 ──────────────────────────────────────────────
+        StringBuilder where = new StringBuilder(" WHERE b.PTNRTY = 'CT'");
 
-        // 출하지점 단일값 (dlv-s-vstel select → wareky 파라미터)
-        if (wareky != null) {
-            where.append(" AND d.WAREKY = ?");
-            params.add(wareky);
-        }
-        if (itemGroup != null) {
-            where.append(" AND d.ITEM_GROUP = ?");
-            params.add(itemGroup);
-        }
-        if (ptnrky != null) {
-            where.append(" AND (b.PTNRKY LIKE ? OR b.NAME01 LIKE ?)");
-            params.add("%" + ptnrky + "%");
-            params.add("%" + ptnrky + "%");
-        }
-        if (q != null) {
-            where.append(" AND (b.PTNRKY LIKE ? OR b.NAME01 LIKE ? OR b.ADDR01 LIKE ? OR b.REGN01 LIKE ?)");
-            params.add("%" + q + "%");
-            params.add("%" + q + "%");
-            params.add("%" + q + "%");
-            params.add("%" + q + "%");
-        }
+        if (wareky    != null) where.append(" AND d.WAREKY = :wareky");
+        if (itemGroup != null) where.append(" AND d.ITEM_GROUP = :itemGroup");
+        if (ptnrky    != null) where.append(" AND (b.PTNRKY LIKE :ptnrky OR b.NAME01 LIKE :ptnrky)");
+        if (q         != null) where.append(" AND (b.PTNRKY LIKE :q OR b.NAME01 LIKE :q OR b.ADDR01 LIKE :q OR b.REGN01 LIKE :q)");
 
-        // ── SELECT 절 ───────────────────────────────────────────────────
-        String selectCols =
-            " SELECT b.PTNRKY, b.NAME01, b.PTNRTY, b.OWNRKY," +
-            "        b.ADDR01, b.ADDR02, b.REGN01, b.TELN01," +
-            "        d.WAREKY, d.ROUTE_CD, d.ITEM_GROUP, d.AREA_CD," +
-            "        d.UNLOAD_TIME, d.MAX_HEIGHT, d.AUTO_ALLOC_YN, d.FORKLIFT_YN," +
-            "        d.INB_TIME_FROM1, d.INB_TIME_TO1, d.MAX_BOX_QTY, d.DEADLINE_TIME, d.MAX_TON," +
-            "        CASE WHEN d.PTNRKY IS NOT NULL THEN 'Y' ELSE 'N' END AS HAS_DETAIL" +
-            " FROM KNRAWMS.BZPTN b" +
-            " LEFT JOIN KNRAWMS.BZPTN_DETAIL d" +
-            "   ON b.PTNRKY=d.PTNRKY AND b.PTNRTY=d.PTNRTY AND b.OWNRKY=d.OWNRKY";
-
-        // ── 정렬 (SQL Injection 방지 — 허용 컬럼 화이트리스트) ──────────
-        String sc = req.getSortCol() == null ? "b.PTNRKY" : req.getSortCol();
+        // ── 정렬 화이트리스트 ──────────────────────────────────────────
+        Set<String> allowed = Set.of("PTNRKY","NAME01","WAREKY","ITEM_GROUP","ADDR01","AREA_CD","DEADLINE_TIME","FORKLIFT_YN","MAX_TON");
+        String sc = req.getSortCol() == null ? "PTNRKY" : req.getSortCol();
+        if (!allowed.contains(sc)) sc = "PTNRKY";
         String sd = "DESC".equalsIgnoreCase(req.getSortDir()) ? "DESC" : "ASC";
-        // 허용 정렬 컬럼 목록
-        Set<String> allowedCols = Set.of(
-            "PTNRKY","NAME01","WAREKY","ITEM_GROUP","ADDR01","AREA_CD",
-            "DEADLINE_TIME","FORKLIFT_YN","MAX_TON");
-        if (!allowedCols.contains(sc)) sc = "PTNRKY";
-        // b. 접두사가 없으면 alias 그대로 사용 (Oracle SELECT 절 alias ORDER BY 지원)
-        String orderBy = " ORDER BY " + sc + " " + sd;
 
-        // ── COUNT 쿼리 ──────────────────────────────────────────────────
-        String countSql = "SELECT COUNT(*) FROM KNRAWMS.BZPTN b" +
+        // ── COUNT ──────────────────────────────────────────────────────
+        String countSql =
+            "SELECT COUNT(*) FROM KNRAWMS.BZPTN b" +
             " LEFT JOIN KNRAWMS.BZPTN_DETAIL d" +
             "   ON b.PTNRKY=d.PTNRKY AND b.PTNRTY=d.PTNRTY AND b.OWNRKY=d.OWNRKY" +
             where;
-        Long total = wmsJdbc.queryForObject(countSql, Long.class, params.toArray());
-        if (total == null) total = 0L;
 
-        // ── 데이터 쿼리 (Oracle 12c+ OFFSET / FETCH) ──────────────────
-        String dataSql = selectCols + where + orderBy +
-            " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
-        List<Object> dataParams = new ArrayList<>(params);
-        dataParams.add(offset);
-        dataParams.add(size);
+        Query countQ = tmsEm.createNativeQuery(countSql);
+        if (wareky    != null) countQ.setParameter("wareky",    wareky);
+        if (itemGroup != null) countQ.setParameter("itemGroup", itemGroup);
+        if (ptnrky    != null) countQ.setParameter("ptnrky",    "%" + ptnrky + "%");
+        if (q         != null) countQ.setParameter("q",         "%" + q + "%");
 
-        List<Map<String, Object>> rows = wmsJdbc.queryForList(dataSql, dataParams.toArray());
+        Object countResult = countQ.getSingleResult();
+        long total = countResult == null ? 0L
+            : countResult instanceof BigDecimal ? ((BigDecimal) countResult).longValue()
+            : ((Number) countResult).longValue();
 
-        // ── 컬럼명 대문자 정규화 (Oracle JDBC 대소문자 혼용 대비) ───────
+        // ── 데이터 (Oracle OFFSET/FETCH) ──────────────────────────────
+        String dataSql =
+            "SELECT b.PTNRKY, b.NAME01, b.PTNRTY, b.OWNRKY," +
+            "       b.ADDR01, b.ADDR02, b.REGN01, b.TELN01," +
+            "       d.WAREKY, d.ROUTE_CD, d.ITEM_GROUP, d.AREA_CD," +
+            "       d.UNLOAD_TIME, d.MAX_HEIGHT, d.AUTO_ALLOC_YN, d.FORKLIFT_YN," +
+            "       d.INB_TIME_FROM1, d.INB_TIME_TO1, d.MAX_BOX_QTY, d.DEADLINE_TIME, d.MAX_TON," +
+            "       CASE WHEN d.PTNRKY IS NOT NULL THEN 'Y' ELSE 'N' END AS HAS_DETAIL" +
+            " FROM KNRAWMS.BZPTN b" +
+            " LEFT JOIN KNRAWMS.BZPTN_DETAIL d" +
+            "   ON b.PTNRKY=d.PTNRKY AND b.PTNRTY=d.PTNRTY AND b.OWNRKY=d.OWNRKY" +
+            where +
+            " ORDER BY " + sc + " " + sd +
+            " OFFSET :offset ROWS FETCH NEXT :size ROWS ONLY";
+
+        Query dataQ = tmsEm.createNativeQuery(dataSql);
+        if (wareky    != null) dataQ.setParameter("wareky",    wareky);
+        if (itemGroup != null) dataQ.setParameter("itemGroup", itemGroup);
+        if (ptnrky    != null) dataQ.setParameter("ptnrky",    "%" + ptnrky + "%");
+        if (q         != null) dataQ.setParameter("q",         "%" + q + "%");
+        dataQ.setParameter("offset", offset);
+        dataQ.setParameter("size",   size);
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> rawRows = dataQ.getResultList();
+
+        // ── Object[] → Map (컬럼명 SELECT 순서에 맞게 매핑) ──────────
+        String[] cols = {
+            "PTNRKY","NAME01","PTNRTY","OWNRKY",
+            "ADDR01","ADDR02","REGN01","TELN01",
+            "WAREKY","ROUTE_CD","ITEM_GROUP","AREA_CD",
+            "UNLOAD_TIME","MAX_HEIGHT","AUTO_ALLOC_YN","FORKLIFT_YN",
+            "INB_TIME_FROM1","INB_TIME_TO1","MAX_BOX_QTY","DEADLINE_TIME","MAX_TON",
+            "HAS_DETAIL"
+        };
         List<Map<String, Object>> result = new ArrayList<>();
-        for (Map<String, Object> r : rows) {
+        for (Object raw : rawRows) {
             Map<String, Object> m = new LinkedHashMap<>();
-            r.forEach((k, v) -> m.put(k.toUpperCase(), v == null ? "" : v.toString().strip()));
+            if (raw instanceof Object[]) {
+                Object[] arr = (Object[]) raw;
+                for (int i = 0; i < cols.length && i < arr.length; i++) {
+                    m.put(cols[i], arr[i] == null ? "" : arr[i].toString().strip());
+                }
+            } else {
+                // 단일 컬럼인 경우(cols 1개) — 방어
+                m.put(cols[0], raw == null ? "" : raw.toString().strip());
+            }
             result.add(m);
         }
 
-        // LinkedHashMap 사용 (Map.of는 null 불허 + 직렬화 순서 비보장)
+        log.debug("[DeliveryService.getList] total={} page={} size={} rows={}", total, page, size, result.size());
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("total", total);
         out.put("page",  page);

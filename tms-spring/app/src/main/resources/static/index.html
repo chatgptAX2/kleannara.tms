@@ -5873,27 +5873,51 @@ async function searchDelivery(page) {
 
   let res;
   try {
-    res = await fetch(`/api/delivery/list?${params}`).then(r => r.json());
+    const response = await fetch(`/api/delivery/list?${params}`);
+    res = await response.json();
+    console.log('[searchDelivery] HTTP', response.status, 'raw res=', JSON.stringify(res).slice(0,500));
   } catch(e) {
+    console.error('[searchDelivery] fetch/parse error:', e);
     wrap.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><div>조회 오류: ${e.message}</div></div>`;
     return;
   }
-  /* ApiResponse 래퍼 { success, code, message, data: { total, rows, page, size } } 처리
-   * @JsonInclude(NON_NULL) 로 인해 에러 응답 시 data 키 자체가 없을 수 있음
-   * res.data != null 은 undefined != null = true 로 undefined 를 통과시키는 버그 존재
-   * 'data' in res 로 키 존재 여부를 명시적으로 체크 */
-  if (res && res.success === false) {
+
+  /* ── ApiResponse 언래핑 ─────────────────────────────────────────────
+   *  서버 응답 구조: { success:true, code:"200", message:"OK", data:{ total, page, size, pages, rows:[] } }
+   *  @JsonInclude(NON_NULL): 에러 시 data 키 자체가 JSON 에서 제거됨
+   *  → res.data 가 undefined → "data" in res 로 키 존재 여부 체크 필수
+   * ──────────────────────────────────────────────────────────────────── */
+  if (!res || typeof res !== 'object') {
+    wrap.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><div>응답 파싱 실패</div></div>`;
+    return;
+  }
+  if (res.success === false) {
+    console.warn('[searchDelivery] server error:', res.message, res.code);
     wrap.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><div>조회 실패: ${res.message || res.code || '서버 오류'}</div></div>`;
     return;
   }
-  const data = (res && 'data' in res && res.data !== null && res.data !== undefined) ? res.data : (res || {});
-  dlvState.total = Number(data.total) || 0;
 
+  // data 키가 있으면 언래핑, 없으면 res 자체를 data로 사용 (하위호환)
+  const data = ('data' in res && res.data !== null && res.data !== undefined) ? res.data : res;
+  console.log('[searchDelivery] data=', JSON.stringify(data).slice(0,300));
+
+  // 핵심 필드 추출 — 모든 경우에 안전한 기본값 보장
+  const total = Number(data.total)  || 0;
+  const pgNum = Number(data.page)   || dlvState.page || 1;
+  const pgSz  = Number(data.size)   || dlvState.size || 50;
+  const pages = Number(data.pages)  || Math.max(1, Math.ceil(total / pgSz));
+  const rows  = Array.isArray(data.rows) ? data.rows : [];
+
+  console.log('[searchDelivery] total=%d page=%d size=%d pages=%d rows=%d', total, pgNum, pgSz, pages, rows.length);
+
+  dlvState.total = total;
   const badge = document.getElementById('dlv-total-badge');
-  if (badge) badge.textContent = `총 ${fmtNum(dlvState.total)}건`;
+  if (badge) badge.textContent = `총 ${fmtNum(total)}건`;
 
-  renderDeliveryList(data);
-  renderDlvPagination(data);
+  // render 에 정규화된 data 객체를 전달
+  const normalized = { total, page: pgNum, size: pgSz, pages, rows };
+  renderDeliveryList(normalized);
+  renderDlvPagination(normalized);
 }
 
 function renderDeliveryList(data) {
