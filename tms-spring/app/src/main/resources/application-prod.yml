@@ -122,7 +122,7 @@ sap:
 logging:
   # logback-spring.xml 이 우선 적용됨 (SQL DEBUG/TRACE 포함)
   level:
-    com.company: INFO
+    com.company: DEBUG
     org.hibernate.SQL: DEBUG
     org.hibernate.orm.jdbc.bind: TRACE
     org.hibernate.type.descriptor.sql: TRACE
