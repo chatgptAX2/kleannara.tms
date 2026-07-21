@@ -5280,7 +5280,7 @@ async function renderDelivery() {
   c.innerHTML = `<div class="loading"><div class="spinner"></div>공통코드 로딩 중...</div>`;
 
   // 공통코드 병렬 로드
-  const codeKeys = ['LOTA02','SKUG05','TMS_ROUTE','TMS_UNLOADTIME','TMS_MAXHEIGHT','TMS_INBOUNDTIME','TMS_REGION','TMS_AUTOPLT','TMS_CARCLASS10'];
+  const codeKeys = ['SKUG05','TMS_ROUTE','TMS_UNLOADTIME','TMS_MAXHEIGHT','TMS_INBOUNDTIME','TMS_REGION','TMS_AUTOPLT','TMS_CARCLASS10'];
   const results  = await Promise.all(codeKeys.map(k => fetch(`/api/codes/${k}`).then(r=>r.json())));
   codeKeys.forEach((k,i) => dlvState.codes[k] = results[i]);
   // 출하지점(WAREKY) 목록 — BZPTN_DETAIL.WAREKY 기준 하드코딩
@@ -5320,14 +5320,6 @@ function buildDeliveryUI() {
 
   const skug05Opts = dlvState.codes['SKUG05'].map(o=>`<option value="${o.value}">${o.value} ${o.label}</option>`).join('');
 
-  // 플랜트 multi-select: LOTA02 코드(P100~P500) 기반
-  const plantList = dlvState.codes['LOTA02'] || [];
-  const plantMsOpts = plantList.map(o=>`
-    <div class="ms-option" data-val="${o.value}">
-      <input type="checkbox" id="dlv-werks-${o.value}" value="${o.value}" onchange="dlvWerksChange()">
-      <label for="dlv-werks-${o.value}">${o.value} — ${o.label}</label>
-    </div>`).join('');
-
   c.innerHTML = `
 <div class="dlv-layout">
 
@@ -5341,21 +5333,6 @@ function buildDeliveryUI() {
       </select>
     </div>
     <div class="dlv-search-group">
-      <label>플랜트 <span id="dlv-werks-badge" class="ms-count-badge" style="display:none"></span></label>
-      <div class="ms-wrap" id="dlv-werks-wrap" style="min-width:160px;max-width:280px">
-        <div class="ms-trigger" id="dlv-werks-trigger" onclick="dlvToggleWerks(event)">
-          <span id="dlv-werks-label" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">전체</span>
-          <span class="ms-arrow" style="flex-shrink:0">▾</span>
-        </div>
-        <div class="ms-dropdown" id="dlv-werks-dd" style="display:none">
-          <div class="ms-option all-opt" onclick="dlvWerksAll()">
-            <input type="checkbox" id="dlv-werks-all-chk"> <label for="dlv-werks-all-chk">전체 선택</label>
-          </div>
-          ${plantMsOpts}
-        </div>
-      </div>
-    </div>
-    <div class="dlv-search-group">
       <label>제품군</label>
       <select id="dlv-s-skug05" onchange="dlvSearchChange()">
         <option value="">전체</option>
@@ -5364,7 +5341,7 @@ function buildDeliveryUI() {
     </div>
     <div class="dlv-search-group">
       <label>납품처</label>
-      <input id="dlv-s-ptnrky" type="text" placeholder="코드/명칭" style="width:120px" oninput="dlvSearchChange()">
+      <input id="dlv-s-ptnrky" type="text" placeholder="코드/명칭" style="width:160px" oninput="dlvSearchChange()">
     </div>
     <button class="dlv-btn" onclick="dlvClearSearch()">↺ 초기화</button>
     <button class="dlv-btn primary" onclick="searchDelivery()">🔍 조회</button>
@@ -5682,70 +5659,7 @@ function dlvSearchChange() {
   dlvSearchTimer = setTimeout(() => searchDelivery(), 400);
 }
 
-/* ── 플랜트 multi-select 헬퍼 ── */
-function dlvGetWerks() {
-  return [...document.querySelectorAll('#dlv-werks-dd input[type=checkbox][value]')]
-    .filter(cb => cb.checked).map(cb => cb.value);
-}
-function dlvUpdateWerksLabel() {
-  const vals = dlvGetWerks();
-  const lbl  = document.getElementById('dlv-werks-label');
-  const badge= document.getElementById('dlv-werks-badge');
-  const allChk = document.getElementById('dlv-werks-all-chk');
-  const total  = dlvState.codes['LOTA02']?.length || 0;
-  if (!lbl) return;
-  if (vals.length === 0 || vals.length === total) {
-    lbl.textContent = '전체';
-    if (badge) badge.style.display = 'none';
-    if (allChk) allChk.checked = true;
-  } else {
-    // 선택된 플랜트 명칭 전체 표시 (폭이 충분하므로)
-    lbl.textContent = vals.map(v => {
-      const o = dlvState.codes['LOTA02']?.find(x => x.value === v);
-      return o ? `${o.value} ${o.label}` : v;
-    }).join(', ');
-    if (badge) { badge.textContent = vals.length; badge.style.display = ''; }
-    if (allChk) allChk.checked = false;
-  }
-}
-function dlvToggleWerks(e) {
-  e.stopPropagation();
-  const dd  = document.getElementById('dlv-werks-dd');
-  const tr  = document.getElementById('dlv-werks-trigger');
-  if (!dd) return;
-  const open = dd.style.display !== 'none';
-  dd.style.display = open ? 'none' : 'block';
-  tr.classList.toggle('open', !open);
-}
-function dlvWerksAll() {
-  const allChk = document.getElementById('dlv-werks-all-chk');
-  const checks = document.querySelectorAll('#dlv-werks-dd input[type=checkbox][value]');
-  const toCheck = !allChk.checked;
-  allChk.checked = toCheck;
-  checks.forEach(cb => { cb.checked = toCheck; });
-  dlvUpdateWerksLabel();
-  dlvSearchChange();
-}
-function dlvWerksChange() {
-  dlvUpdateWerksLabel();
-  dlvSearchChange();
-}
-function dlvWerksFilter(q) {
-  document.querySelectorAll('#dlv-werks-dd .ms-option:not(.all-opt)').forEach(el => {
-    const txt = el.textContent.toLowerCase();
-    el.style.display = txt.includes(q.toLowerCase()) ? '' : 'none';
-  });
-}
-// 외부 클릭 시 드롭다운 닫기
-document.addEventListener('click', e => {
-  const wrap = document.getElementById('dlv-werks-wrap');
-  if (wrap && !wrap.contains(e.target)) {
-    const dd = document.getElementById('dlv-werks-dd');
-    const tr = document.getElementById('dlv-werks-trigger');
-    if (dd) dd.style.display = 'none';
-    if (tr) tr.classList.remove('open');
-  }
-});
+/* ── 플랜트 검색조건 삭제됨 (납품처 관리에서 미사용) ── */
 
 /* ── 납품처 그리드 높이 조절 ── */
 let _dlvGridPx = null; // null = CSS default (%)
@@ -5837,9 +5751,6 @@ function dlvToggleGridHide() {
 function dlvClearSearch() {
   const vstel = document.getElementById('dlv-s-vstel');
   if (vstel) vstel.value = '';
-  // 플랜트 multi-select 전체 해제
-  document.querySelectorAll('#dlv-werks-dd input[type=checkbox]').forEach(cb => { cb.checked = false; });
-  dlvUpdateWerksLabel();
   ['dlv-s-ptnrky'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
