@@ -6197,34 +6197,34 @@ async function dlvSave() {
   const maxHNum = maxHVal ? parseInt(maxHVal.replace('H',''), 10) : null;
 
   const payload = {
-    PTNRKY:         ptnrky,
-    PTNRTY:         document.getElementById('f-PTNRTY')?.value || 'CT',
-    OWNRKY:         'KN',
-    WAREKY:         document.getElementById('f-WAREKY')?.value || '',
-    ROUTE_CD:       document.getElementById('f-ROUTE_CD')?.value || null,
-    ITEM_GROUP:     document.getElementById('f-ITEM_GROUP')?.value || null,
-    UNLOAD_TIME:    parseInt(document.getElementById('f-UNLOAD_TIME')?.value)||null,
-    DEADLINE_TIME:  (document.getElementById('f-DEADLINE_TIME')?.value || '').trim() || null,
-    INB_TIME_FROM1: document.getElementById('f-INB_TIME_FROM1')?.value || null,
-    INB_TIME_TO1:   document.getElementById('f-INB_TIME_TO1')?.value || null,
-    AREA_CD:        document.getElementById('f-AREA_CD')?.value || null,
-    MAX_HEIGHT:     maxHNum,
-    FORKLIFT_YN:    getYN('FORKLIFT_YN'),
-    HANDWORK_YN:    getYN('HANDWORK_YN'),
-    AUTO_PLT:       document.getElementById('f-AUTO_PLT')?.value || null,
-    MAX_BOX_QTY:    parseInt(document.getElementById('f-MAX_BOX_QTY')?.value)||null,
-    MAX_TON:        (document.getElementById('f-MAX_TON')?.value || '').trim() || null,
-    AUTO_ALLOC_YN:  getYN('AUTO_ALLOC_YN'),
-    SINGLE_ITEM_YN: getYN('SINGLE_ITEM_YN'),
-    NY_TYPE:        getYN('NY_TYPE'),
-    SINGLE_HEIGHT:  parseFloat(document.getElementById('f-SINGLE_HEIGHT')?.value)||null,
-    DYNAMIC_YN:     getYN('DYNAMIC_YN'),
-    LTL_YN:         getYN('LTL_YN'),
-    PRIORITY_YN:    getYN('PRIORITY_YN'),
-    MIN_QTSIWH:     parseFloat(document.getElementById('f-MIN_QTSIWH')?.value)||null,
-    LATITUDE:       parseFloat(document.getElementById('f-LATITUDE')?.value)||null,
-    LONGITUDE:      parseFloat(document.getElementById('f-LONGITUDE')?.value)||null,
-    DEL_YN:         getYN('DEL_YN'),
+    ptnrky:        ptnrky,
+    ptnrty:        document.getElementById('f-PTNRTY')?.value || 'CT',
+    ownrky:        'KN',
+    wareky:        document.getElementById('f-WAREKY')?.value || '',
+    routeCd:       document.getElementById('f-ROUTE_CD')?.value || null,
+    itemGroup:     document.getElementById('f-ITEM_GROUP')?.value || null,
+    unloadTime:    parseInt(document.getElementById('f-UNLOAD_TIME')?.value)||null,
+    deadlineTime:  (document.getElementById('f-DEADLINE_TIME')?.value || '').trim() || null,
+    inbTimeFrom1:  document.getElementById('f-INB_TIME_FROM1')?.value || null,
+    inbTimeTo1:    document.getElementById('f-INB_TIME_TO1')?.value || null,
+    areaCd:        document.getElementById('f-AREA_CD')?.value || null,
+    maxHeight:     maxHNum,
+    forkliftYn:    getYN('FORKLIFT_YN'),
+    handworkYn:    getYN('HANDWORK_YN'),
+    autoPlt:       document.getElementById('f-AUTO_PLT')?.value || null,
+    maxBoxQty:     parseInt(document.getElementById('f-MAX_BOX_QTY')?.value)||null,
+    maxTon:        (document.getElementById('f-MAX_TON')?.value || '').trim() || null,
+    autoAllocYn:   getYN('AUTO_ALLOC_YN'),
+    singleItemYn:  getYN('SINGLE_ITEM_YN'),
+    nyType:        getYN('NY_TYPE'),
+    singleHeight:  parseFloat(document.getElementById('f-SINGLE_HEIGHT')?.value)||null,
+    dynamicYn:     getYN('DYNAMIC_YN'),
+    ltlYn:         getYN('LTL_YN'),
+    priorityYn:    getYN('PRIORITY_YN'),
+    minQtsiwh:     parseFloat(document.getElementById('f-MIN_QTSIWH')?.value)||null,
+    latitude:      parseFloat(document.getElementById('f-LATITUDE')?.value)||null,
+    longitude:     parseFloat(document.getElementById('f-LONGITUDE')?.value)||null,
+    delYn:         getYN('DEL_YN'),
   };
 
   try {
@@ -6233,11 +6233,13 @@ async function dlvSave() {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
     });
-    const data = await res.json();
-    if (data.error) {
-      showToast('저장 실패: ' + data.error);
+    const raw  = await res.json();
+    if (!raw || raw.success === false) {
+      showToast('저장 실패: ' + (raw?.message || '서버 오류'));
       return;
     }
+    // ApiResponse 래퍼 언래핑: {success, data:{ok, action}} → data
+    const data = ('data' in raw && raw.data !== null && raw.data !== undefined) ? raw.data : raw;
     showToast(data.action === 'created' ? '✅ 납품처 상세 등록 완료' : '✅ 납품처 상세 수정 완료');
     // 리스트 새로고침
     await searchDelivery();
