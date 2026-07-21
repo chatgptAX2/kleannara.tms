@@ -35,7 +35,7 @@ public class DeliveryService {
     private final RouteCostRepository   routeCostRepo;
     /** WMS Oracle — CMCDV 공통코드 조회용 (KNRAWMS.CMCDV) */
     private final JdbcTemplate          wmsJdbc;
-    /** TMS Oracle — BZPTN/BZPTN_DETAIL 동적 SQL (werks IN 등) */
+    /** TMS Oracle — BZPTN/BZPTN_DETAIL 동적 SQL 조회 */
     private final JdbcTemplate          tmsJdbc;
 
     /** TMS DB (Oracle KNRATMS) — BZPTN / BZPTN_DETAIL 읽기·쓰기용 */
@@ -56,39 +56,27 @@ public class DeliveryService {
     // ──────────────────────────────────────────────────────────────────────────
     // 납품처 목록 (Flask api_delivery_list)
     // BZPTN JOIN BZPTN_DETAIL — 동일 DB이므로 단일 쿼리로 처리
-    // werks(복수) 파라미터 → d.WAREKY IN (...) 동적 조건
+    // vstel(WAREKY) 단일값 → d.WAREKY = ? 조건
     // ──────────────────────────────────────────────────────────────────────────
     public Map<String, Object> getList(DeliverySearchRequest req) {
         int page   = req.getPage() == null ? 1 : req.getPage();
         int size   = req.getSize() == null ? 50 : req.getSize();
         int offset = (page - 1) * size;
 
-        String wareky    = nullIfBlank(req.getVstel());   // 출하지점 단일값
+        String wareky    = nullIfBlank(req.getVstel());   // 출하지점 WAREKY 단일값
         String itemGroup = nullIfBlank(req.getSkug05());
         String ptnrky    = nullIfBlank(req.getPtnrky());
         String q         = nullIfBlank(req.getQ());
-
-        // werks 다중값 유효 목록 (비어있으면 전체)
-        List<String> werksList = req.getWerks() == null ? List.of()
-            : req.getWerks().stream()
-                .filter(v -> v != null && !v.isBlank())
-                .distinct().toList();
 
         // ── 동적 WHERE 절 구성 ──────────────────────────────────────────
         StringBuilder where = new StringBuilder(
             " WHERE b.PTNRTY = 'CT'");
         List<Object> params = new ArrayList<>();
 
-        // vstel 단일값 (출하지점 select)
+        // 출하지점 단일값 (dlv-s-vstel select → wareky 파라미터)
         if (wareky != null) {
             where.append(" AND d.WAREKY = ?");
             params.add(wareky);
-        }
-        // werks 다중값 (플랜트 multi-select) — vstel 과 OR 조합 아닌 독립 필터
-        if (!werksList.isEmpty()) {
-            String placeholders = String.join(",", Collections.nCopies(werksList.size(), "?"));
-            where.append(" AND d.WAREKY IN (").append(placeholders).append(")");
-            params.addAll(werksList);
         }
         if (itemGroup != null) {
             where.append(" AND d.ITEM_GROUP = ?");
