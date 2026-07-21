@@ -72,7 +72,8 @@ public class DeliveryService {
         StringBuilder where = new StringBuilder(" WHERE b.PTNRTY = 'CT'");
 
         if (wareky    != null) where.append(" AND d.WAREKY = :wareky");
-        if (itemGroup != null) where.append(" AND d.ITEM_GROUP = :itemGroup");
+        // 제품군: BZPTN.PTNL01(SAP 제품군 코드) 우선, BZPTN_DETAIL.ITEM_GROUP 병행 조건
+        if (itemGroup != null) where.append(" AND (b.PTNL01 = :itemGroup OR d.ITEM_GROUP = :itemGroup)");
         if (ptnrky    != null) where.append(" AND (b.PTNRKY LIKE :ptnrky OR b.NAME01 LIKE :ptnrky)");
         if (q         != null) where.append(" AND (b.PTNRKY LIKE :q OR b.NAME01 LIKE :q OR b.ADDR01 LIKE :q OR b.REGN01 LIKE :q)");
 

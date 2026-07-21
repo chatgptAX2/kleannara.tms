@@ -24,13 +24,16 @@
   </appender>
 
   <!-- ── 애플리케이션 로거 ────────────────────────────────────── -->
-  <logger name="com.company" level="INFO" additivity="false">
+  <!-- DEBUG: DeliveryService.log.debug() 등 서비스 레이어 디버그 출력 활성 -->
+  <logger name="com.company" level="DEBUG" additivity="false">
     <appender-ref ref="STDOUT"/>
   </logger>
 
-  <!-- ── Hibernate SQL 로거 ───────────────────────────────────
-       org.hibernate.SQL          : 실행 SQL 전문 (DEBUG)
-       org.hibernate.orm.jdbc.bind: 바인드 파라미터 (TRACE)
+  <!-- ── Hibernate NativeQuery SQL 로거 ──────────────────────
+       org.hibernate.SQL              : 실행 SQL 전문 (DEBUG)
+       org.hibernate.orm.jdbc.bind    : 바인드 파라미터 — Hibernate 6.x (TRACE)
+       org.hibernate.type.descriptor.sql : 바인드 파라미터 — Hibernate 5.x 호환 (TRACE)
+       org.hibernate.engine.jdbc      : JDBC 레벨 SQL/파라미터 (DEBUG)
   ──────────────────────────────────────────────────────────── -->
   <logger name="org.hibernate.SQL" level="DEBUG" additivity="false">
     <appender-ref ref="STDOUT"/>
@@ -38,8 +41,12 @@
   <logger name="org.hibernate.orm.jdbc.bind" level="TRACE" additivity="false">
     <appender-ref ref="STDOUT"/>
   </logger>
-  <!-- Hibernate 6.x 구버전 호환 파라미터 로거 -->
+  <!-- Hibernate 5.x / 6.x 호환 파라미터 로거 -->
   <logger name="org.hibernate.type.descriptor.sql" level="TRACE" additivity="false">
+    <appender-ref ref="STDOUT"/>
+  </logger>
+  <!-- Hibernate 6 NativeQuery 바인딩 추가 로거 -->
+  <logger name="org.hibernate.engine.jdbc.spi.SqlExceptionHelper" level="WARN" additivity="false">
     <appender-ref ref="STDOUT"/>
   </logger>
 
