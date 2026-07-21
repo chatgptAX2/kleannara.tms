@@ -5874,11 +5874,13 @@ async function searchDelivery(page) {
   if (vstelVal) params.set('vstel', vstelVal);
   warekyVals.forEach(v => params.append('werks', v));
 
-  const data = await fetch(`/api/delivery/list?${params}`).then(r => r.json());
-  dlvState.total = data.total;
+  const res = await fetch(`/api/delivery/list?${params}`).then(r => r.json());
+  /* ApiResponse 래퍼 { success, code, message, data: { total, rows, page, size } } 처리 */
+  const data = (res && res.data != null) ? res.data : res;
+  dlvState.total = data.total ?? 0;
 
   const badge = document.getElementById('dlv-total-badge');
-  if (badge) badge.textContent = `총 ${fmtNum(data.total)}건`;
+  if (badge) badge.textContent = `총 ${fmtNum(data.total ?? 0)}건`;
 
   renderDeliveryList(data);
   renderDlvPagination(data);
