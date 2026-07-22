@@ -16073,8 +16073,20 @@ async function renderShipSchedule() {
               </div>
             </div>
             <button type="button" onclick="openSvbelnPopup()"
-              style="flex-shrink:0;padding:0 7px;height:28px;font-size:12px;border-radius:5px;
-                     border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;" title="납품문서 검색팝업">🔍</button>
+              style="flex-shrink:0;padding:0 6px;height:28px;border-radius:5px;
+                     border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;" title="납품문서 다중입력">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <!-- 레이어3 (맨 아래, 가장 진한 그림자) -->
+                <rect x="3" y="14" width="16" height="10" rx="2" fill="currentColor" opacity="0.22"/>
+                <!-- 레이어2 (중간) -->
+                <rect x="2" y="9.5" width="16" height="10" rx="2" fill="currentColor" opacity="0.45"/>
+                <!-- 레이어1 (맨 위, 흰색 배경) -->
+                <rect x="1" y="5" width="16" height="10" rx="2" fill="var(--surface)" stroke="currentColor" stroke-width="1.5"/>
+                <!-- 돋보기 -->
+                <circle cx="18.5" cy="18.5" r="3.5" fill="var(--surface)" stroke="currentColor" stroke-width="1.6"/>
+                <line x1="21" y1="21" x2="23" y2="23" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+            </button>
             <button type="button" onclick="clearSvbelnTags()"
               style="flex-shrink:0;padding:0 7px;height:28px;font-size:12px;border-radius:5px;
                      border:1px solid var(--border);background:var(--surface2);color:var(--text3);cursor:pointer;" title="선택 초기화">✕</button>
@@ -16139,15 +16151,25 @@ async function renderShipSchedule() {
 
         <!-- 납품처 -->
         <div>
-          <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:3px;">납품처 <span style="font-weight:400;color:var(--text3);">(DPTNKY)</span></label>
+          <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:3px;">납품처 <span style="font-weight:400;color:var(--text3);">(DPTNKY)</span> <span style="color:var(--text3);font-size:10px;">다중선택</span></label>
           <div style="display:flex;gap:3px;align-items:center;">
-            <input id="ss-ptnrky" type="text"
-              style="flex:1;height:28px;min-width:0;max-width:130px;padding:0 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface);
-                     color:var(--text);font-size:12px;box-sizing:border-box;" placeholder="코드/명칭"
-              oninput="_ssPtnrInputChange(this.value)">
+            <!-- 배지/입력 혼합 영역 -->
+            <div style="flex:1;min-width:0;position:relative;">
+              <input id="ss-ptnrky" type="text"
+                style="width:100%;height:28px;padding:0 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface);
+                       color:var(--text);font-size:12px;box-sizing:border-box;" placeholder="코드/명칭"
+                oninput="_ssPtnrInputChange(this.value)">
+              <!-- 배지 표시 영역 -->
+              <div id="ss-ptnrky-tags"
+                style="display:none;height:28px;padding:0 5px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);
+                       font-size:11px;color:var(--text);flex-wrap:nowrap;gap:3px;align-items:center;
+                       overflow-x:auto;overflow-y:hidden;scrollbar-width:none;">
+                <span id="ss-ptnrky-placeholder" style="color:var(--text3);font-size:11px;">전체</span>
+              </div>
+            </div>
             <button type="button" onclick="openSsPtnrPopup()"
               style="flex-shrink:0;padding:0 7px;height:28px;font-size:12px;border-radius:5px;
-                     border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;" title="납품처 검색">🔍</button>
+                     border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;" title="납품처 검색 (다중선택)">🔍</button>
             <button type="button" onclick="clearSsPtnr()"
               style="flex-shrink:0;padding:0 7px;height:28px;font-size:12px;border-radius:5px;
                      border:1px solid var(--border);background:var(--surface2);color:var(--text3);cursor:pointer;" title="초기화">✕</button>
@@ -16383,8 +16405,12 @@ async function loadShipSchedule(pg) {
   }
   const svbelnArr  = (window._ssSvbelnSelected || []).slice();
 
-  /* 납품처 코드 (팝업 선택) */
-  const ptnrky     = el('ss-ptnrky')?.value || '';
+  /* 납품처 코드 (팝업 다중선택 또는 직접 입력) */
+  const ptnrkyArr = (window._ssPtnrSelected || []).map(s => s.ptnrky);
+  /* 직접 입력값이 있고 팝업 선택이 없을 경우 단일값으로 처리 */
+  const ptnrkyDirect = el('ss-ptnrky')?.value?.trim() || '';
+  const ptnrkyFinal  = ptnrkyArr.length > 0 ? ptnrkyArr
+                     : ptnrkyDirect ? [ptnrkyDirect] : [];
 
   /* 배차상태 라디오 */
   const allocSt    = document.querySelector('input[name="ss-alloc"]:checked')?.value || '';
@@ -16393,7 +16419,9 @@ async function loadShipSchedule(pg) {
   const lota02Arr = [...document.querySelectorAll('.ss-lota02:checked')].map(cb => cb.value);
 
   const body = {
-    wareky, skug05, skukey, ptnrky,
+    wareky, skug05, skukey,
+    ptnrky:  ptnrkyFinal.length === 1 ? ptnrkyFinal[0] : '',   /* 단건 호환 */
+    ptnrky_list: ptnrkyFinal,                                    /* 다중선택 배열 */
     alloc_status: allocSt,
     svbeln: svbelnArr,
     rqshpd_from: rqshpdFrom,
@@ -18052,14 +18080,16 @@ function ptnrPopupSelect(ptnrky, name01) {
 <div id="ss-ptnr-popup-overlay"
   style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9100;align-items:center;justify-content:center;">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;
-              width:660px;max-width:95vw;height:400px;max-height:90vh;
+              width:700px;max-width:95vw;height:480px;max-height:92vh;
               display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.4);">
+    <!-- 헤더 -->
     <div style="display:flex;align-items:center;justify-content:space-between;
                 padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;">
-      <span style="font-size:14px;font-weight:700;color:var(--text);">🔍 납품처 검색</span>
+      <span style="font-size:14px;font-weight:700;color:var(--text);">🔍 납품처 검색 (다중선택)</span>
       <button onclick="closeSsPtnrPopup()"
         style="background:none;border:none;font-size:18px;color:var(--text3);cursor:pointer;line-height:1;">✕</button>
     </div>
+    <!-- 검색바 -->
     <div style="display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);flex-shrink:0;align-items:center;">
       <input id="ss-ptnr-popup-q" type="text"
         placeholder="납품처 코드 또는 명칭 검색..."
@@ -18067,7 +18097,7 @@ function ptnrPopupSelect(ptnrky, name01) {
                color:var(--text);padding:7px 10px;font-size:12px;"
         oninput="ssPtnrPopupSearch()" onkeydown="if(event.key==='Enter') ssPtnrPopupSearch()">
       <button onclick="ssPtnrPopupSearch()"
-        style="padding:7px 14px;font-size:12px;border-radius:6px;border:none;background:var(--primary);color:#fff;cursor:pointer;">
+        style="padding:7px 14px;font-size:12px;border-radius:6px;border:none;background:var(--primary);color:#fff;cursor:pointer;white-space:nowrap;">
         🔍 조회
       </button>
       <button onclick="document.getElementById('ss-ptnr-popup-q').value=''; ssPtnrPopupSearch();"
@@ -18075,12 +18105,29 @@ function ptnrPopupSelect(ptnrky, name01) {
         ↺
       </button>
     </div>
-    <div id="ss-ptnr-popup-info"
-      style="padding:4px 16px;font-size:11px;color:var(--text3);flex-shrink:0;"></div>
-    <div style="overflow:auto;flex:1;min-height:0;padding:0 16px 12px;">
+    <!-- 선택 현황 바 -->
+    <div id="ss-ptnr-popup-sel-bar"
+      style="display:flex;align-items:center;justify-content:space-between;
+             padding:4px 16px;background:var(--surface2);border-bottom:1px solid var(--border);flex-shrink:0;min-height:28px;">
+      <span id="ss-ptnr-popup-info" style="font-size:11px;color:var(--text3);"></span>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span id="ss-ptnr-sel-cnt" style="font-size:11px;font-weight:600;color:var(--primary);"></span>
+        <button onclick="_ssPtnrClearAll()"
+          style="padding:2px 8px;font-size:11px;border-radius:4px;border:1px solid var(--border);
+                 background:var(--surface);color:var(--text3);cursor:pointer;white-space:nowrap;">
+          선택 초기화
+        </button>
+      </div>
+    </div>
+    <!-- 테이블 -->
+    <div style="overflow:auto;flex:1;min-height:0;padding:0 16px 0;">
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
         <thead>
           <tr style="position:sticky;top:0;z-index:1;background:var(--surface2);">
+            <th style="padding:7px 6px;width:36px;text-align:center;border-bottom:1px solid var(--border);">
+              <input type="checkbox" id="ss-ptnr-chk-all" title="전체 선택/해제"
+                onchange="_ssPtnrToggleAll(this.checked)">
+            </th>
             <th style="padding:7px 8px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;white-space:nowrap;">납품처코드</th>
             <th style="padding:7px 8px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">납품처명</th>
             <th style="padding:7px 8px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;white-space:nowrap;">권역</th>
@@ -18088,12 +18135,26 @@ function ptnrPopupSelect(ptnrky, name01) {
           </tr>
         </thead>
         <tbody id="ss-ptnr-popup-body">
-          <tr><td colspan="4" style="padding:20px;text-align:center;color:var(--text3);">검색어를 입력하세요</td></tr>
+          <tr><td colspan="5" style="padding:20px;text-align:center;color:var(--text3);">검색어를 입력하세요</td></tr>
         </tbody>
       </table>
     </div>
-    <div style="padding:8px 16px;border-top:1px solid var(--border);flex-shrink:0;font-size:11px;color:var(--text3);">
-      💡 행을 클릭하면 납품처가 선택됩니다
+    <!-- 하단 버튼 -->
+    <div style="padding:10px 16px;border-top:1px solid var(--border);flex-shrink:0;
+                display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-size:11px;color:var(--text3);">💡 체크박스로 여러 납품처를 선택할 수 있습니다</span>
+      <div style="display:flex;gap:8px;">
+        <button onclick="ssPtnrPopupConfirm()"
+          style="padding:6px 20px;font-size:12px;border-radius:6px;border:none;
+                 background:var(--primary);color:#fff;cursor:pointer;font-weight:600;">
+          ✔ 선택 적용
+        </button>
+        <button onclick="closeSsPtnrPopup()"
+          style="padding:6px 14px;font-size:12px;border-radius:6px;
+                 border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;">
+          닫기
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -18379,8 +18440,92 @@ document.addEventListener('keydown', e => {
 /* ═══════════════════════════════════════════════════════
    납품처 팝업 (출고문서아이템 전용: ss-ptnrky)
 ═══════════════════════════════════════════════════════ */
+/* ── 납품처 다중선택 전역 상태 ── */
+window._ssPtnrSelected = [];   // [{ ptnrky, name01 }, ...]
 let _ssPtnrTimer = null;
 
+/* ── 납품처 배지(태그) UI 갱신 ── */
+function _ssPtnrRefreshBadge() {
+  const wrap = document.getElementById('ss-ptnrky-tags');
+  const inp  = document.getElementById('ss-ptnrky');
+  const ph   = document.getElementById('ss-ptnrky-placeholder');
+  if (!wrap) return;
+  const sel = window._ssPtnrSelected;
+  [...wrap.children].forEach(c => { if (c !== ph) c.remove(); });
+  if (sel.length === 0) {
+    /* 선택 없음 → 입력창 표시, 배지 wrap 숨김 */
+    wrap.style.display = 'none';
+    if (ph)  ph.style.display = '';
+    if (inp) { inp.style.display = ''; inp.value = ''; }
+    return;
+  }
+  /* 선택 있음 → 배지 wrap 표시, 입력창 숨김 */
+  wrap.style.display = 'flex';
+  if (ph)  ph.style.display = 'none';
+  if (inp) inp.style.display = 'none';
+  const badge = document.createElement('span');
+  badge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:2px 10px;' +
+    'border-radius:10px;background:var(--primary);color:#fff;font-size:11px;font-weight:600;' +
+    'white-space:nowrap;cursor:pointer;';
+  badge.title = sel.map(s => `${s.ptnrky}(${s.name01})`).join(', ');
+  badge.innerHTML = `🏢 ${sel.length}건 선택 <span style="cursor:pointer;font-size:12px;margin-left:2px;" onclick="event.stopPropagation();clearSsPtnr();">✕</span>`;
+  badge.onclick = () => openSsPtnrPopup();
+  wrap.appendChild(badge);
+}
+
+/* ── 납품처 선택 카운트 팝업 내 갱신 ── */
+function _ssPtnrUpdateSelCnt() {
+  const cnt = window._ssPtnrSelected.length;
+  const el  = document.getElementById('ss-ptnr-sel-cnt');
+  if (el) el.textContent = cnt > 0 ? `${cnt}건 선택됨` : '';
+  /* 전체선택 체크박스 상태 갱신 */
+  const allCb = document.getElementById('ss-ptnr-chk-all');
+  if (!allCb) return;
+  const rowCbs = [...document.querySelectorAll('.ss-ptnr-row-chk')];
+  if (rowCbs.length === 0) { allCb.checked = false; allCb.indeterminate = false; return; }
+  const checkedCount = rowCbs.filter(c => c.checked).length;
+  allCb.indeterminate = checkedCount > 0 && checkedCount < rowCbs.length;
+  allCb.checked = checkedCount === rowCbs.length;
+}
+
+/* ── 팝업 내 전체선택/해제 ── */
+function _ssPtnrToggleAll(checked) {
+  const rowCbs = [...document.querySelectorAll('.ss-ptnr-row-chk')];
+  rowCbs.forEach(cb => {
+    cb.checked = checked;
+    const ptnrky = cb.dataset.ptnrky;
+    const name01 = cb.dataset.name01;
+    if (checked) {
+      if (!window._ssPtnrSelected.find(s => s.ptnrky === ptnrky))
+        window._ssPtnrSelected.push({ ptnrky, name01 });
+    } else {
+      window._ssPtnrSelected = window._ssPtnrSelected.filter(s => s.ptnrky !== ptnrky);
+    }
+  });
+  _ssPtnrUpdateSelCnt();
+}
+
+/* ── 행 체크박스 토글 ── */
+function _ssPtnrRowToggle(cb) {
+  const ptnrky = cb.dataset.ptnrky;
+  const name01 = cb.dataset.name01;
+  if (cb.checked) {
+    if (!window._ssPtnrSelected.find(s => s.ptnrky === ptnrky))
+      window._ssPtnrSelected.push({ ptnrky, name01 });
+  } else {
+    window._ssPtnrSelected = window._ssPtnrSelected.filter(s => s.ptnrky !== ptnrky);
+  }
+  _ssPtnrUpdateSelCnt();
+}
+
+/* ── 선택 전체 초기화 (팝업 내) ── */
+function _ssPtnrClearAll() {
+  window._ssPtnrSelected = [];
+  document.querySelectorAll('.ss-ptnr-row-chk').forEach(cb => { cb.checked = false; });
+  _ssPtnrUpdateSelCnt();
+}
+
+/* ── 팝업 열기 ── */
 function openSsPtnrPopup() {
   const ov = document.getElementById('ss-ptnr-popup-overlay');
   ov.style.display = 'flex';
@@ -18388,35 +18533,52 @@ function openSsPtnrPopup() {
   if (qEl) { qEl.value = ''; qEl.focus(); }
   document.getElementById('ss-ptnr-popup-info').textContent = '';
   document.getElementById('ss-ptnr-popup-body').innerHTML =
-    '<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--text3);">검색어를 입력하세요</td></tr>';
+    '<tr><td colspan="5" style="padding:20px;text-align:center;color:var(--text3);">검색어를 입력하거나 조회 버튼을 클릭하세요</td></tr>';
+  _ssPtnrUpdateSelCnt();
+  /* 빈 검색으로 초기 목록 로드 */
+  ssPtnrPopupSearch();
 }
 
+/* ── 팝업 닫기 ── */
 function closeSsPtnrPopup() {
   document.getElementById('ss-ptnr-popup-overlay').style.display = 'none';
 }
 
-function clearSsPtnr() {
-  const el = document.getElementById('ss-ptnrky');
-  if (el) { el.value = ''; el.title = ''; el.placeholder = '코드/명칭 입력 또는 팝업 선택'; }
+/* ── 선택 적용 후 닫기 ── */
+function ssPtnrPopupConfirm() {
+  _ssPtnrRefreshBadge();
+  const cnt = window._ssPtnrSelected.length;
+  showToast(cnt > 0 ? `납품처 ${cnt}건 선택됨` : '납품처 선택이 초기화되었습니다');
+  closeSsPtnrPopup();
 }
 
-/* 납품처 직접 입력 시 호출 — 팝업 없이 입력값을 그대로 ptnrky로 사용 */
+/* ── 입력칸 초기화 ── */
+function clearSsPtnr() {
+  window._ssPtnrSelected = [];
+  _ssPtnrRefreshBadge();
+  const inp = document.getElementById('ss-ptnrky');
+  if (inp) { inp.style.display = ''; inp.value = ''; inp.title = ''; }
+}
+
+/* 납품처 직접 입력 시 호출 */
 function _ssPtnrInputChange(val) {
   const el = document.getElementById('ss-ptnrky');
   if (el) el.title = val ? `입력값: ${val}` : '';
 }
 
+/* ── 검색 디바운스 ── */
 function ssPtnrPopupSearch() {
   clearTimeout(_ssPtnrTimer);
   _ssPtnrTimer = setTimeout(_ssPtnrDoSearch, 280);
 }
 
+/* ── 실제 검색 ── */
 async function _ssPtnrDoSearch() {
   const q     = (document.getElementById('ss-ptnr-popup-q')?.value || '').trim();
   const tbody = document.getElementById('ss-ptnr-popup-body');
   const info  = document.getElementById('ss-ptnr-popup-info');
 
-  tbody.innerHTML = '<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--text3);">' +
+  tbody.innerHTML = '<tr><td colspan="5" style="padding:16px;text-align:center;color:var(--text3);">' +
     '<div class="spinner" style="width:18px;height:18px;margin:auto;"></div></td></tr>';
 
   try {
@@ -18424,41 +18586,52 @@ async function _ssPtnrDoSearch() {
     if (q) params.set('ptnrky', q);
     const res  = await fetch(`/api/delivery/list?${params}`);
     const json = await res.json();
-    /* ApiResponse 래퍼 처리: { success, code, message, data: { rows, total } } */
     const data = (json && json.data != null) ? json.data : json;
     const rows = data.rows || [];
 
     info.textContent = `총 ${rows.length}건 (최대 100건)`;
 
     if (rows.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--text3);">검색 결과가 없습니다</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" style="padding:20px;text-align:center;color:var(--text3);">검색 결과가 없습니다</td></tr>';
+      _ssPtnrUpdateSelCnt();
       return;
     }
 
-    tbody.innerHTML = rows.map(r => `
-      <tr onclick="ssPtnrSelect('${(r.PTNRKY||'').replace(/'/g,"\\'")}','${(r.NAME01||'').replace(/'/g,"\\'")}')"}
-          style="cursor:pointer;border-bottom:1px solid var(--border);"
+    const selSet = new Set(window._ssPtnrSelected.map(s => s.ptnrky));
+    tbody.innerHTML = rows.map(r => {
+      const pk    = (r.PTNRKY  || '').replace(/'/g, "\\'");
+      const nm    = (r.NAME01  || '').replace(/'/g, "\\'");
+      const pkRaw = r.PTNRKY  || '';
+      const nmRaw = r.NAME01  || '';
+      const chkd  = selSet.has(pkRaw) ? 'checked' : '';
+      return `
+      <tr style="border-bottom:1px solid var(--border);cursor:pointer;"
           onmouseenter="this.style.background='var(--surface2)'"
-          onmouseleave="this.style.background=''">
+          onmouseleave="this.style.background=''"
+          onclick="_ssPtnrRowClickRow(this)">
+        <td style="padding:7px 6px;text-align:center;" onclick="event.stopPropagation()">
+          <input type="checkbox" class="ss-ptnr-row-chk" ${chkd}
+            data-ptnrky="${pkRaw}" data-name01="${nmRaw}"
+            onchange="_ssPtnrRowToggle(this)">
+        </td>
         <td style="padding:7px 8px;white-space:nowrap;font-weight:600;color:var(--primary);">${r.PTNRKY||'-'}</td>
         <td style="padding:7px 8px;">${r.NAME01||'-'}</td>
         <td style="padding:7px 8px;white-space:nowrap;">${r.AREA_CD||'-'}</td>
         <td style="padding:7px 8px;white-space:nowrap;">${r.WAREKY||'-'}</td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
+    _ssPtnrUpdateSelCnt();
   } catch(e) {
-    tbody.innerHTML = '<tr><td colspan="4" style="padding:16px;text-align:center;color:#ef4444;">조회 오류: ' + e.message + '</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="padding:16px;text-align:center;color:#ef4444;">조회 오류: ' + e.message + '</td></tr>';
   }
 }
 
-function ssPtnrSelect(ptnrky, name01) {
-  const el = document.getElementById('ss-ptnrky');
-  if (el) {
-    el.value = ptnrky;
-    el.title = `${ptnrky} — ${name01}`;
-    el.placeholder = `${ptnrky} (${name01})`;
-  }
-  showToast(`납품처 선택: ${ptnrky} (${name01})`);
-  closeSsPtnrPopup();
+/* 행 클릭 → 체크박스 토글 */
+function _ssPtnrRowClickRow(tr) {
+  const cb = tr.querySelector('.ss-ptnr-row-chk');
+  if (!cb) return;
+  cb.checked = !cb.checked;
+  _ssPtnrRowToggle(cb);
 }
 
 /* ESC / 오버레이 클릭으로 닫기 */

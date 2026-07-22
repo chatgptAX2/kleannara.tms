@@ -157,7 +157,20 @@ public class ShipmentService {
                             ? "," + String.join(",", req.getLota02List()) + "," : null;
         // keyword LIKE
         String p13Keyword = hasText(req.getKeyword()) ? "%" + req.getKeyword().trim() + "%" : null;
-        String p16Ptnrky  = hasText(req.getPtnrky())  ? req.getPtnrky().strip()         : null;
+        // ptnrky: 다중선택(ptnrkyList) 우선, 없으면 단건 ptnrky 사용
+        // 다중일 때는 INSTR 쉼표 패턴으로 변환 → 기존 (? IS NULL OR SH.DPTNKY = ?) 조건에 단건만 들어가므로
+        // 다중의 경우 쉼표 구분 문자열 INSTR 방식 적용을 위해 getScheduleMulti 분기 처리
+        List<String> ptnrkyListReq = req.getPtnrkyList();
+        boolean ptnrkyMulti = ptnrkyListReq != null && ptnrkyListReq.size() > 1;
+        String p16Ptnrky;
+        if (ptnrkyMulti) {
+            // 다중 → INSTR 패턴용 쉼표 구분 문자열 (단건 조건 대신 인라인 뷰로 처리)
+            p16Ptnrky = null; // 아래 별도 처리
+        } else if (ptnrkyListReq != null && ptnrkyListReq.size() == 1) {
+            p16Ptnrky = ptnrkyListReq.get(0).strip();
+        } else {
+            p16Ptnrky = hasText(req.getPtnrky()) ? req.getPtnrky().strip() : null;
+        }
         // svbeln 다중값 → INSTR 패턴용 쉼표 구분 문자열
         String p18Svbeln  = (req.getSvbeln() != null && !req.getSvbeln().isEmpty())
                             ? "," + req.getSvbeln().stream()
@@ -168,17 +181,37 @@ public class ShipmentService {
         // 실제로 유효한 값이 없으면 null로 처리
         if (p18Svbeln != null && p18Svbeln.equals(",,")) p18Svbeln = null;
 
-        // ── 전체 건수 (고정 SQL — 소프트파싱) ─────────────────────────────────
-        var countQuery = em.createNativeQuery(SCHEDULE_COUNT_SQL);
+        // ── 납품처 다중선택 IN절 동적 생성 ───────────────────────────────────
+        // 단건(p16Ptnrky != null)이면 기존 고정 SQL 사용, 다중이면 IN절 추가
+        List<String> ptnrkyInList = null;
+        if (ptnrkyMulti) {
+            ptnrkyInList = ptnrkyListReq.stream()
+                .map(String::strip)
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .collect(Collectors.toList());
+        }
+        final String ptnrkyInClause = (ptnrkyInList != null && !ptnrkyInList.isEmpty())
+            ? " AND SH.DPTNKY IN (" + ptnrkyInList.stream().map(s -> "'" + s.replace("'","''") + "'").collect(Collectors.joining(",")) + ")"
+            : "";
+
+        // ── 전체 건수 ─────────────────────────────────────────────────────────
+        String countSql = SCHEDULE_COUNT_SQL + ptnrkyInClause;
+        var countQuery = em.createNativeQuery(countSql);
         setScheduleParams(countQuery, p1Wareky, p3DateFrom, p5DateTo,
                           p7Statdo, p9Skug05, p11Lota02, p13Keyword, p16Ptnrky, p18Svbeln);
         long total = ((Number) countQuery.getSingleResult()).longValue();
 
-        // ── 본문 쿼리 (고정 SQL — 소프트파싱) ─────────────────────────────────
+        // ── 본문 쿼리 ─────────────────────────────────────────────────────────
         int size   = Math.max(1, Math.min(req.getSize(), 99999));
         int offset = (req.getPage() - 1) * size;   // 1-based page → 0-based offset
 
-        var dataQuery = em.createNativeQuery(SCHEDULE_DATA_SQL);
+        // 다중 납품처 시 고정 SQL에 IN절 삽입 (ORDER BY 앞에 추가)
+        String dataSql = ptnrkyInClause.isEmpty() ? SCHEDULE_DATA_SQL
+            : SCHEDULE_DATA_SQL.replace(
+                " ORDER BY SI.SVBELN",
+                ptnrkyInClause + " ORDER BY SI.SVBELN");
+        var dataQuery = em.createNativeQuery(dataSql);
         setScheduleParams(dataQuery, p1Wareky, p3DateFrom, p5DateTo,
                           p7Statdo, p9Skug05, p11Lota02, p13Keyword, p16Ptnrky, p18Svbeln);
         dataQuery.setParameter(20, offset);  // OFFSET ? ROWS
