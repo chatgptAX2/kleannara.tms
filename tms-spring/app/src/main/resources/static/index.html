@@ -21980,8 +21980,8 @@ async function _dconSpSave() {
         body: JSON.stringify({ set_id: DCON.selSetId, items })
       });
       const d1 = await res1.json();
-      console.debug('[dcon] 저장 응답:', d1);
-      if (!d1.ok) throw new Error(d1.error);
+      console.debug('[dcon] items/save 응답:', d1);
+      if (!d1.ok) throw new Error('[items/save] ' + (d1.error || 'API 오류'));
 
       /* CARTYPE 저장 */
       if (cartypeItems.length > 0) {
@@ -21990,7 +21990,8 @@ async function _dconSpSave() {
           body: JSON.stringify({ set_id: DCON.selSetId, items: cartypeItems })
         });
         const d2 = await res2.json();
-        if (!d2.ok) throw new Error('CARTYPE 저장 실패: ' + d2.error);
+        console.debug('[dcon] cartype/save 응답:', d2);
+        if (!d2.ok) throw new Error('[cartype/save] ' + (d2.error || 'API 오류'));
       }
     }
 
@@ -22015,7 +22016,8 @@ async function _dconSpSave() {
         body: JSON.stringify({ items: etItems })
       });
       const d3 = await res3.json();
-      if (!d3.ok) throw new Error('진입톤수 저장 실패: ' + d3.error);
+      console.debug('[dcon] entry-ton/save 응답:', d3);
+      if (!d3.ok) throw new Error('[entry-ton/save] ' + (d3.error || 'API 오류'));
       etSaved = d3.saved || 0;
       DCON._entryTonDirty = false;
     }
@@ -22035,7 +22037,8 @@ async function _dconSpSave() {
         body: JSON.stringify({ items: fkItems }),
       });
       const dFk = await resFk.json();
-      if (!dFk.ok) throw new Error('지게차여부 저장 실패: ' + dFk.error);
+      console.debug('[dcon] forklift/save 응답:', dFk);
+      if (!dFk.ok) throw new Error('[forklift/save] ' + (dFk.error || 'API 오류'));
       fkSaved = dFk.saved || 0;
       DCON._forkliftDirty = false;
     }
@@ -22055,12 +22058,13 @@ async function _dconSpSave() {
         body: JSON.stringify({ items: dyItems }),
       });
       const dDy = await resDy.json();
-      if (!dDy.ok) throw new Error('동적여부 저장 실패: ' + dDy.error);
+      console.debug('[dcon] dynamic/save 응답:', dDy);
+      if (!dDy.ok) throw new Error('[dynamic/save] ' + (dDy.error || 'API 오류'));
       dySaved = dDy.saved || 0;
       DCON._dynamicDirty = false;
     }
 
-    /* REGION 저장: BZPTN_DETAIL.REGION_YN 일괄 업데이트 */
+    /* REGION 저장: BZPTN_DETAIL.REGION_YN 일괄 업데이트 (DB DDL 미완료 — no-op) */
     const rgState2 = DCON._regionState || {};
     const rgItems = Object.entries(rgState2).map(([ptnrky, st]) => ({
       ptnrky,
@@ -22076,7 +22080,8 @@ async function _dconSpSave() {
         body: JSON.stringify({ items: rgItems }),
       });
       const dRg = await resRg.json();
-      if (!dRg.ok) throw new Error('지역묶음 저장 실패: ' + dRg.error);
+      console.debug('[dcon] region/save 응답:', dRg);
+      if (!dRg.ok) throw new Error('[region/save] ' + (dRg.error || 'API 오류'));
       rgSaved = dRg.saved || 0;
       DCON._regionDirty = false;
     }
