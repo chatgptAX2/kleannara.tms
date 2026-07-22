@@ -16011,7 +16011,7 @@ async function renderShipSchedule() {
     </div>
 
     <!-- ── 1행: 거점 | 출하요청일자 | 납품문서 ── -->
-    <div style="display:grid;grid-template-columns:140px minmax(280px,340px) minmax(260px,1fr);gap:8px;align-items:end;margin-bottom:6px;">
+    <div style="display:grid;grid-template-columns:140px minmax(280px,340px) 220px;gap:8px;align-items:end;margin-bottom:6px;">
 
       <!-- 거점 -->
       <div>
@@ -16054,7 +16054,7 @@ async function renderShipSchedule() {
       <div>
         <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:3px;">납품문서 <span style="font-weight:400;color:var(--text3);">(SVBELN)</span> <span style="color:var(--text3);font-size:10px;">다중입력·검색</span></label>
         <div style="display:flex;gap:3px;align-items:center;">
-          <div style="flex:1;position:relative;">
+          <div style="flex:1;min-width:0;position:relative;">
             <!-- 입력창: 직접 입력 또는 복수 번호 붙여넣기 지원 -->
             <input id="ss-svbeln-input" type="text"
               style="width:100%;height:28px;padding:0 6px;border:1px solid var(--border);border-radius:5px;
@@ -16082,7 +16082,7 @@ async function renderShipSchedule() {
     </div>
 
     <!-- ── 2행: 배차상태 | 제품군 | 품목코드 | 납품처 ── -->
-    <div style="display:grid;grid-template-columns:160px 100px minmax(140px,200px) minmax(180px,1fr);gap:8px;align-items:end;margin-bottom:6px;">
+    <div style="display:grid;grid-template-columns:160px 100px minmax(140px,200px) 200px;gap:8px;align-items:end;margin-bottom:6px;">
 
       <!-- 배차상태 -->
       <div>
@@ -16123,8 +16123,8 @@ async function renderShipSchedule() {
         <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:3px;">납품처 <span style="font-weight:400;color:var(--text3);">(DPTNKY)</span></label>
         <div style="display:flex;gap:3px;align-items:center;">
           <input id="ss-ptnrky" type="text"
-            style="flex:1;height:28px;min-width:0;padding:0 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface);
-                   color:var(--text);font-size:12px;box-sizing:border-box;" placeholder="코드/명칭 입력 또는 팝업 선택"
+            style="flex:1;height:28px;min-width:0;max-width:130px;padding:0 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface);
+                   color:var(--text);font-size:12px;box-sizing:border-box;" placeholder="코드/명칭"
             oninput="_ssPtnrInputChange(this.value)">
           <button type="button" onclick="openSsPtnrPopup()"
             style="flex-shrink:0;padding:0 7px;height:28px;font-size:12px;border-radius:5px;
@@ -18009,7 +18009,7 @@ function ptnrPopupSelect(ptnrky, name01) {
         <thead>
           <tr style="position:sticky;top:0;z-index:1;background:var(--surface2);">
             <th style="width:44px;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;text-align:center;">Num</th>
-            <th style="width:90px;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">Logical</th>
+            <th style="width:72px;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">Oper</th>
             <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">From</th>
             <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">To</th>
           </tr>
@@ -18211,7 +18211,7 @@ function _svbelnRenderInputRows() {
     setTimeout(() => { document.getElementById('svbeln-val-1')?.focus(); }, 50);
   }
 
-  /* 범위값 탭 */
+  /* 범위값 탭 — Logical 제거, Oper(=/≠) 추가 */
   const rtbody = document.getElementById('svbeln-range-body');
   if (rtbody) {
     rtbody.innerHTML = Array.from({length: SVBELN_ROW_COUNT}, (_, i) => {
@@ -18220,11 +18220,11 @@ function _svbelnRenderInputRows() {
       return `<tr style="${rowStyle}border-bottom:1px solid var(--border);">
         <td style="padding:4px 8px;text-align:center;font-size:12px;color:${num===1?'var(--primary)':'var(--text3)'};">${num}</td>
         <td style="padding:3px 6px;">
-          <select id="svbeln-rlogic-${num}"
+          <select id="svbeln-roper-${num}"
             style="width:100%;height:26px;font-size:12px;border:1px solid var(--border);
                    border-radius:4px;background:var(--surface);color:var(--text);padding:0 4px;">
-            <option value="OR">OR</option>
-            <option value="AND">AND</option>
+            <option value="=">=</option>
+            <option value="!=">&#8800;</option>
           </select>
         </td>
         <td style="padding:3px 6px;">
@@ -18294,7 +18294,7 @@ function _svbelnRefreshTags() {
   _svbelnSwitchToTagMode();
 }
 
-/* 태그 UI 갱신 (태그모드 전용) */
+/* 태그 UI 갱신 — 개수만 표시 (번호 전체 나열 대신 "N건 선택" 뱃지 하나만) */
 function _svbelnRefreshTagsUI() {
   const wrap = document.getElementById('ss-svbeln-tags');
   const ph   = document.getElementById('ss-svbeln-placeholder');
@@ -18307,13 +18307,15 @@ function _svbelnRefreshTagsUI() {
     return;
   }
   if (ph) ph.style.display = 'none';
-  sel.forEach(v => {
-    const tag = document.createElement('span');
-    tag.style.cssText = 'display:inline-flex;align-items:center;gap:3px;padding:2px 7px;' +
-      'border-radius:10px;background:var(--primary);color:#fff;font-size:11px;font-weight:600;white-space:nowrap;';
-    tag.innerHTML = `${v} <span style="cursor:pointer;font-size:12px;margin-left:2px;" onclick="svbelnRemoveTag('${v}')">✕</span>`;
-    wrap.appendChild(tag);
-  });
+  /* 개수 뱃지 하나만 표시 + 클릭 시 팝업 열기 */
+  const badge = document.createElement('span');
+  badge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:2px 10px;' +
+    'border-radius:10px;background:var(--primary);color:#fff;font-size:11px;font-weight:600;' +
+    'white-space:nowrap;cursor:pointer;';
+  badge.title = sel.join(', ');
+  badge.innerHTML = `📋 ${sel.length}건 선택 <span style="cursor:pointer;font-size:12px;margin-left:2px;" onclick="event.stopPropagation();clearSvbelnTags();">✕</span>`;
+  badge.onclick = () => openSvbelnPopup();
+  wrap.appendChild(badge);
 }
 
 /* 태그 개별 삭제 */
