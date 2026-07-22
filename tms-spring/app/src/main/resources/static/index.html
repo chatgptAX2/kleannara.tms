@@ -21609,12 +21609,9 @@ async function dconOpenTabMgr() {
       const rd = await fetch(`/api/dispatch-const-set/full?set_id=${DCON.selSetId}`).then(r => r.json());
       if (rd.ok) {
         DCON._setFullRows = rd.rows || [];
-        DCON._spRows = (rd.rows || []).filter(row => row.IN_SET && row.CONST_TYPE !== 'CARTYPE').map(row => ({
-          ...row,
-          _pval: row.PARAM_VALUE != null ? String(row.PARAM_VALUE) : String(row.CONST_VALUE ?? ''),
-          _isNew: false,
-          _deleted: false,
-        }));
+        /* [BUG FIX] _spRows는 건드리지 않음 — 사용자가 탭매니저 열기 전에 편집 중인
+           체크 상태(_spRows)를 API 재조회 결과로 덮어쓰면 이전 체크가 소실됨.
+           _setFullRows(전체 마스터 목록)만 채우고, _spRows는 dconSelectSet()에서 관리. */
       }
     } catch(e) {
       console.error('[TabMgr] _setFullRows 로드 실패:', e);
