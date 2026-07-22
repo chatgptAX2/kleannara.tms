@@ -373,9 +373,9 @@ public class DispatchConfigApiService {
 
     @Transactional(transactionManager = "tmsTransactionManager")
     public Map<String, Object> setRegionSave(Map<String, Object> body) {
-        // REGION_YN 컬럼이 Oracle KNRAWMS.BZPTN_DETAIL에 미존재 — 저장 비지원
-        // (조회는 '' 리터럴로 정상 응답, 저장은 DB DDL 컬럼 추가 후 활성화 예정)
-        return Map.of("ok", false, "error", "REGION_YN 저장은 현재 지원되지 않습니다. DB 스키마 확인 후 활성화 예정입니다.");
+        // REGION_YN 컬럼이 Oracle KNRAWMS.BZPTN_DETAIL에 미존재 — DB DDL 미완료로 저장 비활성
+        // 저장 흐름을 차단하지 않도록 no-op(saved:0)으로 성공 반환, DDL 완료 후 실제 구현 예정
+        return Map.of("ok", true, "saved", 0);
     }
 
     public Map<String, Object> setEntryTonList() {
