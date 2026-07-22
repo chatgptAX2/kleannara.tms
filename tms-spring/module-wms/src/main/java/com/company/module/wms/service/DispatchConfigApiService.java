@@ -221,7 +221,10 @@ public class DispatchConfigApiService {
                 Map<String, Object> itemInfo = constIdObj != null ? includedMap.get(constIdObj.toString()) : null;
                 d.put("IN_SET",      itemInfo != null ? 1 : 0);
                 d.put("ITEM_ID",     itemInfo != null ? itemInfo.get("ITEM_ID") : null);
-                d.put("ITEM_ACTIVE", itemInfo != null ? itemInfo.get("ACTIVE_YN") : "N");
+                /* IN_SET=0(세트 미포함) 항목의 ITEM_ACTIVE를 "N"으로 반환하면
+                   JS _dconTabMgrToggleId에서 추가 시 ITEM_ACTIVE='N'이 그대로 사용될 수 있음.
+                   null로 반환하면 JS의 `fullRow.ITEM_ACTIVE || 'Y'` 로직이 'Y'로 안전 처리. */
+                d.put("ITEM_ACTIVE", itemInfo != null ? itemInfo.get("ACTIVE_YN") : null);
                 d.put("PARAM_VALUE", itemInfo != null ? itemInfo.get("PARAM_VALUE") : null);
                 result.add(d);
             }
