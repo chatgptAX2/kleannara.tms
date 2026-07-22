@@ -38,7 +38,10 @@ public class ShipmentSearchRequest {
     @JsonAlias("skukey")
     private String keyword;                 // 품목코드/품목명 검색어 — JS: skukey
 
-    private String ptnrky;                  // 납품처코드 — JS: ptnrky → WHERE SH.DPTNKY = ?
+    private String ptnrky;                  // 납품처코드 단건 (하위호환) — JS: ptnrky
+
+    @JsonAlias("ptnrky_list")
+    private List<String> ptnrkyList;        // 납품처코드 다중선택 — JS: ptnrky_list
 
     private List<String> svbeln;            // 납품문서번호 다중 — JS: svbeln → WHERE SI.SVBELN IN (...)
 
