@@ -310,8 +310,11 @@ public class DispatchConfigApiService {
                         profileId, "CARTYPE", field, defaultVal, constOp, carclassCd, cartype, "Y", "차량유형관리 연동", 0, today(), today());
                     constId = tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_CONST.CURRVAL FROM DUAL", Long.class);
                 }
-                tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST_SET_ITEM (ITEM_ID,SET_ID,CONST_ID,ACTIVE_YN,PARAM_VALUE) VALUES (SEQ_DS_DISPATCH_CONST_SET_ITEM.NEXTVAL,?,?,?,?)",
-                    setId, constId, "Y", paramVal);
+                // ORA-18734: Oracle 19c JDBC ParameterMetadata가 NEXTVAL 포함 PreparedStatement 파싱 실패
+                // → NEXTVAL을 서브쿼리로 분리하여 회피
+                Long itemId = tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_CONST_SET_ITEM.NEXTVAL FROM DUAL", Long.class);
+                tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST_SET_ITEM (ITEM_ID,SET_ID,CONST_ID,ACTIVE_YN,PARAM_VALUE) VALUES (?,?,?,?,?)",
+                    itemId, setId, constId, "Y", paramVal);
                 saved++;
             }
             return Map.of("ok", true, "saved", saved);
@@ -461,8 +464,11 @@ public class DispatchConfigApiService {
                 if (constId == null) continue;
                 String yn   = Objects.toString(it.get("active_yn"), "Y").trim();
                 Object pval = it.get("param_value");
-                tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST_SET_ITEM (ITEM_ID,SET_ID,CONST_ID,ACTIVE_YN,PARAM_VALUE) VALUES (SEQ_DS_DISPATCH_CONST_SET_ITEM.NEXTVAL,?,?,?,?)",
-                    setId, constId, yn, pval);
+                // ORA-18734: Oracle 19c JDBC ParameterMetadata가 NEXTVAL 포함 PreparedStatement 파싱 실패
+                // → NEXTVAL을 서브쿼리로 분리하여 회피
+                Long itemId = tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_CONST_SET_ITEM.NEXTVAL FROM DUAL", Long.class);
+                tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST_SET_ITEM (ITEM_ID,SET_ID,CONST_ID,ACTIVE_YN,PARAM_VALUE) VALUES (?,?,?,?,?)",
+                    itemId, setId, constId, yn, pval);
             }
             return Map.of("ok", true, "saved", items.size());
         } catch (Exception e) { return errMap(e); }
