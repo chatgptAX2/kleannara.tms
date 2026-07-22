@@ -199,17 +199,26 @@ public class DispatchConfigApiService {
                 "JOIN KNRAWMS.DS_DISPATCH_PROFILE p ON p.PROFILE_ID=c.PROFILE_ID " +
                 "ORDER BY c.CONST_TYPE, c.SORT_SEQ, c.CONST_ID"
             );
-            Map<Object, Map<String, Object>> includedMap = new HashMap<>();
+            /* Oracle JDBC는 NUMBER 컬럼을 BigDecimal로 반환.
+               DS_DISPATCH_CONST.CONST_ID 와 DS_DISPATCH_CONST_SET_ITEM.CONST_ID 의
+               NUMBER 선언 precision/scale 차이로 BigDecimal.scale 이 다를 수 있어
+               HashMap.get(BigDecimal) equals 비교 시 miss 발생 → IN_SET=0 오반환.
+               String 키로 변환해 scale 무관하게 값 일치 비교. */
+            Map<String, Map<String, Object>> includedMap = new HashMap<>();
             if (setId != null) {
                 List<Map<String, Object>> items = tmsJdbc.queryForList(
                     "SELECT CONST_ID, ITEM_ID, ACTIVE_YN, PARAM_VALUE FROM KNRAWMS.DS_DISPATCH_CONST_SET_ITEM WHERE SET_ID=?", setId
                 );
-                for (Map<String, Object> it : items) includedMap.put(it.get("CONST_ID"), it);
+                for (Map<String, Object> it : items) {
+                    Object cid = it.get("CONST_ID");
+                    if (cid != null) includedMap.put(cid.toString(), it);
+                }
             }
             List<Map<String, Object>> result = new ArrayList<>();
             for (Map<String, Object> c : allConsts) {
                 Map<String, Object> d = new LinkedHashMap<>(c);
-                Map<String, Object> itemInfo = includedMap.get(d.get("CONST_ID"));
+                Object constIdObj = d.get("CONST_ID");
+                Map<String, Object> itemInfo = constIdObj != null ? includedMap.get(constIdObj.toString()) : null;
                 d.put("IN_SET",      itemInfo != null ? 1 : 0);
                 d.put("ITEM_ID",     itemInfo != null ? itemInfo.get("ITEM_ID") : null);
                 d.put("ITEM_ACTIVE", itemInfo != null ? itemInfo.get("ACTIVE_YN") : "N");

@@ -19977,7 +19977,10 @@ async function dconSelectSet(setId) {
     DCON._spActiveTab = DCON._spActiveTab || 'GLOBAL';
 
     /* IN_SET=1인 것만 편집 대상 (초기) - CARTYPE 타입은 별도 관리 */
-    DCON._spRows = rd.rows.filter(row => row.IN_SET && row.CONST_TYPE !== 'CARTYPE').map(row => ({
+    const inSetRows = rd.rows.filter(row => row.IN_SET && row.CONST_TYPE !== 'CARTYPE');
+    console.debug('[dcon] setFull rows:', rd.rows.length, '/ IN_SET rows:', inSetRows.length,
+      inSetRows.map(r => r.CONST_TYPE+':'+r.CONST_KEY+'(IN_SET='+r.IN_SET+')'));
+    DCON._spRows = inSetRows.map(row => ({
       ...row,
       _pval: row.PARAM_VALUE != null ? String(row.PARAM_VALUE) : String(row.CONST_VALUE ?? ''),
       _isNew: false,
@@ -21974,11 +21977,13 @@ async function _dconSpSave() {
   try {
     /* 일반 제약조건 저장 (세트 선택 시에만) */
     if (DCON.selSetId) {
+      console.debug('[dcon] 저장 items:', items.length, items.map(i=>i.const_id+'('+i.active_yn+')'));
       const res1 = await fetch('/api/dispatch-const-set/items/save', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ set_id: DCON.selSetId, items })
       });
       const d1 = await res1.json();
+      console.debug('[dcon] 저장 응답:', d1);
       if (!d1.ok) throw new Error(d1.error);
 
       /* CARTYPE 저장 */
