@@ -191,9 +191,8 @@ public class DispatchConfigApiService {
 
     public Map<String, Object> setFull(Integer setId) {
         try {
-            /* DS_DISPATCH_CONST LEFT JOIN DS_DISPATCH_PROFILE
-               INNER JOIN 대신 LEFT JOIN 사용:
-               DS_DISPATCH_PROFILE이 없는 CONST도 포함 (orphan const 방어) */
+            /* ── ① DS_DISPATCH_CONST 마스터 전체 조회 (tabMgr 전체 목록 표시용) ──
+               PROFILE LEFT JOIN으로 orphan CONST도 포함. */
             List<Map<String, Object>> allConsts = tmsJdbc.queryForList(
                 "SELECT c.CONST_ID, c.PROFILE_ID, c.CONST_TYPE, c.CONST_KEY, c.CONST_OP, " +
                 "       c.CONST_VALUE, c.TARGET_ID, c.TARGET_NM, c.NOTE, c.ACTIVE_YN, c.SORT_SEQ, " +
@@ -202,22 +201,31 @@ public class DispatchConfigApiService {
                 "LEFT JOIN KNRAWMS.DS_DISPATCH_PROFILE p ON p.PROFILE_ID=c.PROFILE_ID " +
                 "ORDER BY c.CONST_TYPE, c.SORT_SEQ, c.CONST_ID"
             );
-            /* Oracle JDBC는 NUMBER 컬럼을 BigDecimal로 반환.
-               DS_DISPATCH_CONST.CONST_ID 와 DS_DISPATCH_CONST_SET_ITEM.CONST_ID 의
-               NUMBER 선언 precision/scale 차이로 BigDecimal.scale 이 다를 수 있어
-               HashMap.get(BigDecimal) equals 비교 시 miss 발생 → IN_SET=0 오반환.
-               String 키로 변환해 scale 무관하게 값 일치 비교. */
+
+            /* ── ② DS_DISPATCH_CONST_SET_ITEM 조회 (세트에 저장된 항목 — IN_SET=1 기준) ──
+               Oracle JDBC는 NUMBER를 BigDecimal로 반환하며 precision/scale 차이로
+               BigDecimal.equals() 비교 시 miss 발생 가능 → String 키로 정규화. */
             Map<String, Map<String, Object>> includedMap = new HashMap<>();
             if (setId != null) {
                 List<Map<String, Object>> items = tmsJdbc.queryForList(
-                    "SELECT CONST_ID, ITEM_ID, ACTIVE_YN, PARAM_VALUE FROM KNRAWMS.DS_DISPATCH_CONST_SET_ITEM WHERE SET_ID=?", setId
+                    "SELECT i.CONST_ID, i.ITEM_ID, i.ACTIVE_YN, i.PARAM_VALUE, " +
+                    "       c.CONST_TYPE, c.CONST_KEY, c.CONST_OP, c.CONST_VALUE, " +
+                    "       c.TARGET_ID, c.TARGET_NM, c.NOTE, c.ACTIVE_YN AS MASTER_YN, " +
+                    "       c.SORT_SEQ, c.PROFILE_ID, p.PROFILE_NM " +
+                    "FROM KNRAWMS.DS_DISPATCH_CONST_SET_ITEM i " +
+                    "LEFT JOIN KNRAWMS.DS_DISPATCH_CONST c ON c.CONST_ID = i.CONST_ID " +
+                    "LEFT JOIN KNRAWMS.DS_DISPATCH_PROFILE p ON p.PROFILE_ID = c.PROFILE_ID " +
+                    "WHERE i.SET_ID = ? " +
+                    "ORDER BY c.CONST_TYPE, c.SORT_SEQ, i.CONST_ID",
+                    setId
                 );
                 for (Map<String, Object> it : items) {
                     Object cid = it.get("CONST_ID");
                     if (cid != null) includedMap.put(cid.toString(), it);
                 }
             }
-            /* allConsts에 포함된 CONST_ID 집합 — orphan ITEM 감지용 */
+
+            /* ── ③ 마스터 전체 → IN_SET 플래그 부여 ── */
             Set<String> allConstIds = new java.util.HashSet<>();
             List<Map<String, Object>> result = new ArrayList<>();
             for (Map<String, Object> c : allConsts) {
@@ -228,38 +236,40 @@ public class DispatchConfigApiService {
                 Map<String, Object> itemInfo = constIdStr != null ? includedMap.get(constIdStr) : null;
                 d.put("IN_SET",      itemInfo != null ? 1 : 0);
                 d.put("ITEM_ID",     itemInfo != null ? itemInfo.get("ITEM_ID") : null);
-                /* IN_SET=0(세트 미포함) 항목의 ITEM_ACTIVE를 "N"으로 반환하면
-                   JS _dconTabMgrToggleId에서 추가 시 ITEM_ACTIVE='N'이 그대로 사용될 수 있음.
-                   null로 반환하면 JS의 `fullRow.ITEM_ACTIVE || 'Y'` 로직이 'Y'로 안전 처리. */
+                /* IN_SET=0 항목의 ITEM_ACTIVE를 null로 → JS 'Y' 안전처리 */
                 d.put("ITEM_ACTIVE", itemInfo != null ? itemInfo.get("ACTIVE_YN") : null);
                 d.put("PARAM_VALUE", itemInfo != null ? itemInfo.get("PARAM_VALUE") : null);
                 result.add(d);
             }
-            /* DS_DISPATCH_CONST_SET_ITEM에는 있지만 DS_DISPATCH_CONST에 없는 orphan ITEM 보완.
-               items/save 저장 후 setFull 재조회 시 해당 CONST_ID가 마스터에 없으면
-               IN_SET=0으로 반환되어 화면에 표시되지 않는 버그를 방지.
-               orphan ITEM은 CONST_ID/ITEM_ID만 포함한 최소 행으로 추가하고 IN_SET=1 표시. */
+
+            /* ── ④ SET_ITEM에는 있지만 DS_DISPATCH_CONST 마스터에 없는 항목(orphan) 보완 ──
+               세트에 저장된 CONST_ID가 마스터에 없더라도 IN_SET=1로 반드시 화면에 표시한다.
+               SET_ITEM LEFT JOIN CONST 결과에서 CONST_KEY 등을 그대로 사용하므로
+               저장 당시 마스터가 삭제된 경우에도 저장값은 유지·표시된다. */
             for (Map.Entry<String, Map<String, Object>> entry : includedMap.entrySet()) {
                 if (!allConstIds.contains(entry.getKey())) {
-                    Map<String, Object> orphan = new LinkedHashMap<>();
-                    orphan.put("CONST_ID",   entry.getValue().get("CONST_ID"));
-                    orphan.put("PROFILE_ID", null);
-                    orphan.put("CONST_TYPE", "UNKNOWN");
-                    orphan.put("CONST_KEY",  "UNKNOWN_" + entry.getKey());
-                    orphan.put("CONST_OP",   null);
-                    orphan.put("CONST_VALUE",null);
-                    orphan.put("TARGET_ID",  null);
-                    orphan.put("TARGET_NM",  null);
-                    orphan.put("NOTE",       "마스터 미등록 항목");
-                    orphan.put("ACTIVE_YN",  "Y");
-                    orphan.put("SORT_SEQ",   9999);
-                    orphan.put("PROFILE_NM", null);
-                    orphan.put("IN_SET",      1);
-                    orphan.put("ITEM_ID",     entry.getValue().get("ITEM_ID"));
-                    orphan.put("ITEM_ACTIVE", entry.getValue().get("ACTIVE_YN"));
-                    orphan.put("PARAM_VALUE", entry.getValue().get("PARAM_VALUE"));
-                    result.add(orphan);
-                    log.warn("setFull orphan ITEM: CONST_ID={} is in SET_ITEM but not in DS_DISPATCH_CONST", entry.getKey());
+                    Map<String, Object> item = entry.getValue();
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("CONST_ID",   item.get("CONST_ID"));
+                    row.put("PROFILE_ID", item.get("PROFILE_ID"));
+                    /* SET_ITEM LEFT JOIN CONST 결과에서 CONST_TYPE 등 사용;
+                       CONST가 없으면(null) GLOBAL로 fallback — 탭에 반드시 표시되도록. */
+                    row.put("CONST_TYPE", item.get("CONST_TYPE") != null ? item.get("CONST_TYPE") : "GLOBAL");
+                    row.put("CONST_KEY",  item.get("CONST_KEY")  != null ? item.get("CONST_KEY")  : "UNKNOWN_" + entry.getKey());
+                    row.put("CONST_OP",   item.get("CONST_OP"));
+                    row.put("CONST_VALUE",item.get("CONST_VALUE"));
+                    row.put("TARGET_ID",  item.get("TARGET_ID"));
+                    row.put("TARGET_NM",  item.get("TARGET_NM"));
+                    row.put("NOTE",       item.get("NOTE"));
+                    row.put("ACTIVE_YN",  item.get("MASTER_YN") != null ? item.get("MASTER_YN") : "Y");
+                    row.put("SORT_SEQ",   item.get("SORT_SEQ")  != null ? item.get("SORT_SEQ")  : 9999);
+                    row.put("PROFILE_NM", item.get("PROFILE_NM"));
+                    row.put("IN_SET",      1);
+                    row.put("ITEM_ID",     item.get("ITEM_ID"));
+                    row.put("ITEM_ACTIVE", item.get("ACTIVE_YN"));
+                    row.put("PARAM_VALUE", item.get("PARAM_VALUE"));
+                    result.add(row);
+                    log.warn("setFull orphan ITEM: CONST_ID={} SET_ITEM exists but not in DS_DISPATCH_CONST master", entry.getKey());
                 }
             }
             return Map.of("ok", true, "rows", result);
