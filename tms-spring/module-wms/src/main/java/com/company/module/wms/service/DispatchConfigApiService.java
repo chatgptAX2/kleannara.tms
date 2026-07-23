@@ -688,17 +688,19 @@ public class DispatchConfigApiService {
                 Object colVal = it.get(columnName.toLowerCase());
                 if (colVal == null) colVal = it.get(columnName);
                 if (ptnrky.isBlank()) continue;
-                // Oracle MERGE INTO (ON DUPLICATE KEY UPDATE 대체) — tmsJdbc (TMS DB)
+                // Oracle MERGE INTO — UK_BZPTN_DETAIL 는 (PTNRKY, PTNRTY, OWNRKY) 3컬럼.
+                // 제약관리 화면에는 WAREKY(거점) 선택 기능이 없으므로 ON 절 식별키에서 WAREKY 제외.
+                // WAREKY는 INSERT 시 기본값 기록용으로만 사용하며, UPDATE 시에는 기존 값 유지.
                 tmsJdbc.update(
                     "MERGE INTO KNRAWMS.BZPTN_DETAIL t " +
-                    "USING (SELECT ? AS PTNRKY, ? AS PTNRTY, ? AS OWNRKY, ? AS WAREKY FROM DUAL) s " +
-                    "ON (t.PTNRKY=s.PTNRKY AND t.PTNRTY=s.PTNRTY AND t.OWNRKY=s.OWNRKY AND t.WAREKY=s.WAREKY) " +
+                    "USING (SELECT ? AS PTNRKY, ? AS PTNRTY, ? AS OWNRKY FROM DUAL) s " +
+                    "ON (t.PTNRKY=s.PTNRKY AND t.PTNRTY=s.PTNRTY AND t.OWNRKY=s.OWNRKY) " +
                     "WHEN MATCHED THEN UPDATE SET t." + columnName + "=?, t.LMODAT=?, t.LMOTIM=?, t.LMOUSR='DCON_SET' " +
                     "WHEN NOT MATCHED THEN INSERT (PTNRKY,PTNRTY,OWNRKY,WAREKY," + columnName + ",LMODAT,LMOTIM,LMOUSR) " +
                     "VALUES (?,?,?,?,?,?,?,'DCON_SET')",
-                    ptnrky, ptnrty, ownrky, wareky,
-                    colVal, lmodat, lmotim,
-                    ptnrky, ptnrty, ownrky, wareky, colVal, lmodat, lmotim
+                    ptnrky, ptnrty, ownrky,             // USING 3개 (WAREKY 제거)
+                    colVal, lmodat, lmotim,              // WHEN MATCHED UPDATE
+                    ptnrky, ptnrty, ownrky, wareky, colVal, lmodat, lmotim  // WHEN NOT MATCHED INSERT
                 );
                 saved++;
             }
