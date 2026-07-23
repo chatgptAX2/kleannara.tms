@@ -16011,10 +16011,10 @@ async function renderShipSchedule() {
     </div>
 
     <!-- ── 1행: [좌] 거점 | 출하요청일자 | 납품문서  [우] 출하유형 ── -->
-    <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:6px;">
+    <div style="display:grid;grid-template-columns:680px 1fr;gap:0;align-items:stretch;margin-bottom:6px;">
 
       <!-- 좌측: 거점 / 일자 / 납품문서 -->
-      <div style="display:grid;grid-template-columns:140px minmax(260px,320px) 220px;gap:8px;align-items:end;flex-shrink:0;">
+      <div style="display:grid;grid-template-columns:140px 300px 1fr;gap:8px;align-items:end;padding-right:10px;overflow:hidden;">
 
         <!-- 거점 -->
         <div>
@@ -16099,7 +16099,7 @@ async function renderShipSchedule() {
       </div>
 
       <!-- 우측: 출하유형 (세로 구분선) -->
-      <div style="flex:1;min-width:0;padding-left:10px;border-left:1px solid var(--border);">
+      <div style="padding-left:10px;border-left:1px solid var(--border);display:flex;flex-direction:column;justify-content:flex-end;">
         <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:3px;">출하유형 <span style="font-weight:400;color:var(--text3);">(SHPMTY)</span></label>
         <div style="display:flex;flex-wrap:wrap;gap:2px 5px;align-items:center;min-height:28px;">
           <label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer;
@@ -16114,10 +16114,10 @@ async function renderShipSchedule() {
     </div>
 
     <!-- ── 2행: [좌] 배차상태 | 제품군 | 품목코드 | 납품처  [우] 플랜트 + 버튼 ── -->
-    <div style="display:flex;gap:10px;align-items:flex-start;">
+    <div style="display:grid;grid-template-columns:680px 1fr;gap:0;align-items:stretch;">
 
       <!-- 좌측: 배차상태 / 제품군 / 품목코드 / 납품처 -->
-      <div style="display:grid;grid-template-columns:160px 100px minmax(130px,190px) 200px;gap:8px;align-items:end;flex-shrink:0;">
+      <div style="display:grid;grid-template-columns:160px 90px 182px 1fr;gap:8px;align-items:end;padding-right:10px;overflow:hidden;">
 
         <!-- 배차상태 -->
         <div>
@@ -16182,7 +16182,7 @@ async function renderShipSchedule() {
       </div>
 
       <!-- 우측: 플랜트 + 버튼 (세로 구분선) -->
-      <div style="flex:1;min-width:0;padding-left:10px;border-left:1px solid var(--border);display:flex;flex-direction:column;justify-content:space-between;gap:4px;">
+      <div style="padding-left:10px;border-left:1px solid var(--border);display:flex;flex-direction:column;justify-content:space-between;gap:4px;">
         <!-- 플랜트 -->
         <div>
           <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:3px;">플랜트 <span style="font-weight:400;color:var(--text3);">(LOTA02)</span></label>
