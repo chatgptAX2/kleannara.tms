@@ -20084,8 +20084,9 @@ async function dconLoadSets() {
     if (!d.ok) return;
     DCON.sets = d.rows || [];
     _dconRenderSetList();
-    /* 세트가 있고 아직 선택된 세트가 없으면 첫 번째 세트 자동 선택 */
-    if (DCON.sets.length > 0 && !DCON.selSetId) {
+    /* 세트가 있으면 항상 첫 번째 세트 자동 선택
+       (화면 재진입 시 selSetId=null로 초기화되므로 조건 없이 항상 호출) */
+    if (DCON.sets.length > 0) {
       await dconSelectSet(DCON.sets[0].SET_ID);
     }
   } catch(e) { console.error('dconLoadSets', e); }
@@ -20157,7 +20158,6 @@ async function dconSelectSet(setId) {
     DCON._setFullRows = rd.rows || [];
     DCON._spRows = [];
     DCON._cartypeRows = [];
-    DCON._spActiveTab = DCON._spActiveTab || 'GLOBAL';
 
     /* IN_SET=1인 것만 편집 대상 (초기) - CARTYPE 타입은 별도 관리 */
     const inSetRows = rd.rows.filter(row => row.IN_SET && row.CONST_TYPE !== 'CARTYPE');
@@ -20169,6 +20169,15 @@ async function dconSelectSet(setId) {
       _isNew: false,
       _deleted: false,
     }));
+
+    /* 저장된 제약조건이 있으면 첫 번째 IN_SET=1 탭으로 자동 이동
+       (탭이 GLOBAL이지만 실제 데이터가 다른 탭에 있는 경우 빈 화면 방지) */
+    if (inSetRows.length > 0) {
+      const firstInSetType = inSetRows.find(r => r.CONST_TYPE && r.CONST_TYPE !== 'CARTYPE')?.CONST_TYPE;
+      if (firstInSetType) DCON._spActiveTab = firstInSetType;
+    } else {
+      DCON._spActiveTab = DCON._spActiveTab || 'GLOBAL';
+    }
 
     /* DS_VEHICLE 캐시 */
     if (vd.ok) DCON._vehicles = vd.vehicles || [];
@@ -22281,8 +22290,7 @@ async function _dconSpSave() {
     const setObj = DCON.sets.find(s => s.SET_ID === DCON.selSetId);
     if (setObj) setObj.ITEM_CNT = totalSaved;
     _dconRenderSetList();
-    /* 현재 탭 유지하며 패널 재로드 */
-    const savedTab = DCON._spActiveTab;
+    /* 저장 완료 후 패널 재로드 (신규 행 초기화) */
     DCON._spNewRows = [];
     /* 저장 완료 후 BZPTN_DETAIL(진입톤수/지게차/동적) 최신값을 DB에서 다시 읽어야
        화면에 저장된 값이 반영된다. dirty=false 상태에서 dconSelectSet()을 호출하면
@@ -22292,30 +22300,9 @@ async function _dconSpSave() {
     DCON._forkliftDirty = true;
     DCON._dynamicDirty  = true;
     await dconSelectSet(DCON.selSetId);
-    /* 저장 전 탭으로 복귀 —
-       단, dconSelectSet() 내 _dconSpRenderTabs()가 이미 저장된 항목 기준으로
-       _spActiveTab을 유효한 탭으로 설정했을 수 있으므로,
-       savedTab이 현재 visibleTabs에 실제로 존재(데이터 있음)할 때만 복귀.
-       존재하지 않는 탭(예: 저장 전 GLOBAL 탭이었는데 GLOBAL 항목이 없는 경우)으로
-       강제 전환하면 빈 화면이 표시되는 버그를 방지. */
-    if (savedTab && savedTab !== DCON._spActiveTab) {
-      /* 현재 visibleTabs 계산: _spRows 기준으로 탭 목록 재확인 */
-      const currentTypeCnt = {};
-      (DCON._spRows||[]).filter(r=>!r._deleted).forEach(r=>{
-        currentTypeCnt[r.CONST_TYPE] = (currentTypeCnt[r.CONST_TYPE]||0)+1;
-      });
-      (DCON._setFullRows||[]).filter(r=>r.IN_SET && r.CONST_TYPE!=='CARTYPE').forEach(r=>{
-        if (currentTypeCnt[r.CONST_TYPE]===undefined) currentTypeCnt[r.CONST_TYPE]=0;
-      });
-      const bzptnTabs = ['ENTRY_TON','FORKLIFT','DYNAMIC','REGION'];
-      const isTabVisible = bzptnTabs.includes(savedTab)
-        ? true   /* BZPTN 탭은 데이터 유무와 무관하게 항상 유효 */
-        : (currentTypeCnt[savedTab] !== undefined);
-      if (isTabVisible) {
-        _dconSpSwitchTab(savedTab);
-      }
-      /* isTabVisible=false → _dconSpRenderTabs()가 결정한 첫 번째 유효 탭 유지 */
-    }
+    /* dconSelectSet() 내부에서 이미 IN_SET=1 항목의 첫 번째 CONST_TYPE으로
+       _spActiveTab을 설정하고 렌더링까지 완료했으므로 별도 탭 복귀 불필요.
+       (이전에는 savedTab='GLOBAL'로 강제 복귀해 GLOBAL 탭이 비어 보이는 버그 존재) */
     return true;
   } catch(e) { showToast(`❌ 저장 실패: ${e.message}`, 'error'); return false; }
 }
