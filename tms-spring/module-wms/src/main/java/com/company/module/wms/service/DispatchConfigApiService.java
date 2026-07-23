@@ -495,7 +495,13 @@ public class DispatchConfigApiService {
         List<Map<String, Object>> items = (List<Map<String, Object>>) body.get("items");
         if (items == null) items = Collections.emptyList();
         try {
-            tmsJdbc.update("DELETE FROM KNRAWMS.DS_DISPATCH_CONST_SET_ITEM WHERE SET_ID=?", setId);
+            /* CARTYPE 타입 항목은 cartypeSave()에서 별도 관리하므로 여기서는 삭제 제외.
+               전체 DELETE를 하면 cartypeItems=0일 때 CARTYPE 데이터가 영구 소실된다. */
+            tmsJdbc.update(
+                "DELETE FROM KNRAWMS.DS_DISPATCH_CONST_SET_ITEM " +
+                "WHERE SET_ID=? AND CONST_ID NOT IN " +
+                "(SELECT CONST_ID FROM KNRAWMS.DS_DISPATCH_CONST WHERE CONST_TYPE='CARTYPE')",
+                setId);
             // SEQ_DS_DISPATCH_CONST_SET_ITEM 시퀀스 미존재 → 루프 전 MAX+1 로 채번 시작값 확보
             Long nextItemId = tmsJdbc.queryForObject(
                 "SELECT NVL(MAX(ITEM_ID),0)+1 FROM KNRAWMS.DS_DISPATCH_CONST_SET_ITEM", Long.class);

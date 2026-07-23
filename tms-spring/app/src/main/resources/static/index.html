@@ -20124,6 +20124,12 @@ function _dconRenderSetList() {
    ③ 세트 선택 → 오른쪽 편집 패널 표시
 ══════════════════════════════════════════════════════════════ */
 async function dconSelectSet(setId) {
+  /* null/undefined 전달 방어 — BZPTN 탭 저장 등 세트 미선택 상태에서 호출 시
+     setFull?set_id=null 요청이 가면 모든 IN_SET=0으로 반환되어 _spRows가 초기화되는 버그 */
+  if (setId == null) {
+    _dconSpRender();
+    return;
+  }
   DCON.selSetId = setId;
   DCON._spNewRows = [];
   /* _spRows / _cartypeRows는 API 성공 후 갱신 (실패 시 이전 상태 유지로 탭 소실 방지) */
@@ -22286,9 +22292,29 @@ async function _dconSpSave() {
     DCON._forkliftDirty = true;
     DCON._dynamicDirty  = true;
     await dconSelectSet(DCON.selSetId);
-    /* 저장 전 탭으로 복귀 */
+    /* 저장 전 탭으로 복귀 —
+       단, dconSelectSet() 내 _dconSpRenderTabs()가 이미 저장된 항목 기준으로
+       _spActiveTab을 유효한 탭으로 설정했을 수 있으므로,
+       savedTab이 현재 visibleTabs에 실제로 존재(데이터 있음)할 때만 복귀.
+       존재하지 않는 탭(예: 저장 전 GLOBAL 탭이었는데 GLOBAL 항목이 없는 경우)으로
+       강제 전환하면 빈 화면이 표시되는 버그를 방지. */
     if (savedTab && savedTab !== DCON._spActiveTab) {
-      _dconSpSwitchTab(savedTab);
+      /* 현재 visibleTabs 계산: _spRows 기준으로 탭 목록 재확인 */
+      const currentTypeCnt = {};
+      (DCON._spRows||[]).filter(r=>!r._deleted).forEach(r=>{
+        currentTypeCnt[r.CONST_TYPE] = (currentTypeCnt[r.CONST_TYPE]||0)+1;
+      });
+      (DCON._setFullRows||[]).filter(r=>r.IN_SET && r.CONST_TYPE!=='CARTYPE').forEach(r=>{
+        if (currentTypeCnt[r.CONST_TYPE]===undefined) currentTypeCnt[r.CONST_TYPE]=0;
+      });
+      const bzptnTabs = ['ENTRY_TON','FORKLIFT','DYNAMIC','REGION'];
+      const isTabVisible = bzptnTabs.includes(savedTab)
+        ? true   /* BZPTN 탭은 데이터 유무와 무관하게 항상 유효 */
+        : (currentTypeCnt[savedTab] !== undefined);
+      if (isTabVisible) {
+        _dconSpSwitchTab(savedTab);
+      }
+      /* isTabVisible=false → _dconSpRenderTabs()가 결정한 첫 번째 유효 탭 유지 */
     }
     return true;
   } catch(e) { showToast(`❌ 저장 실패: ${e.message}`, 'error'); return false; }
