@@ -22278,6 +22278,13 @@ async function _dconSpSave() {
     /* 현재 탭 유지하며 패널 재로드 */
     const savedTab = DCON._spActiveTab;
     DCON._spNewRows = [];
+    /* 저장 완료 후 BZPTN_DETAIL(진입톤수/지게차/동적) 최신값을 DB에서 다시 읽어야
+       화면에 저장된 값이 반영된다. dirty=false 상태에서 dconSelectSet()을 호출하면
+       _dconLoadBzptnData()가 건너뛰어져 저장 전 인메모리 값이 그대로 표시되는 버그.
+       → dirty 플래그를 강제 true로 설정하여 다음 dconSelectSet()에서 반드시 재조회. */
+    DCON._entryTonDirty = true;
+    DCON._forkliftDirty = true;
+    DCON._dynamicDirty  = true;
     await dconSelectSet(DCON.selSetId);
     /* 저장 전 탭으로 복귀 */
     if (savedTab && savedTab !== DCON._spActiveTab) {
