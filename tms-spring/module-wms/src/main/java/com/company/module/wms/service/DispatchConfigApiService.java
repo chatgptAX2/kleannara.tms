@@ -384,6 +384,7 @@ public class DispatchConfigApiService {
     public Map<String, Object> setEntryTonList() {
         try {
             // tmsJdbc 단독 — BZPTN JOIN BZPTN_DETAIL (동일 DB/계정이므로 JOIN 가능)
+            // b.PTNL01='10' : PS 납품처 대상만 조회
             List<Map<String, Object>> partners = tmsJdbc.queryForList(
                 "SELECT b.PTNRKY, 'CT' AS PTNRTY, " +
                 "       COALESCE(d.OWNRKY,'KN') AS OWNRKY, " +
@@ -392,7 +393,7 @@ public class DispatchConfigApiService {
                 "       d.AREA_CD, d.MAX_TON, d.AUTO_ALLOC_YN " +
                 "FROM KNRAWMS.BZPTN b " +
                 "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=b.PTNRKY AND d.PTNRTY=b.PTNRTY AND d.OWNRKY=b.OWNRKY " +
-                "WHERE b.PTNRTY='CT' ORDER BY d.AREA_CD, b.PTNRKY"
+                "WHERE b.PTNRTY='CT' AND b.PTNL01='10' ORDER BY d.AREA_CD, b.PTNRKY"
             );
             List<Map<String, Object>> carclasses = wmsJdbc.queryForList(
                 "SELECT CMCDVL AS value, CDESC1 AS label FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10' ORDER BY CMCDVL"
@@ -409,6 +410,7 @@ public class DispatchConfigApiService {
     public Map<String, Object> setForkliftList() {
         try {
             // tmsJdbc 단독 — BZPTN JOIN BZPTN_DETAIL (동일 DB/계정이므로 JOIN 가능)
+            // b.PTNL01='10' : PS 납품처 대상만 조회
             List<Map<String, Object>> rows = tmsJdbc.queryForList(
                 "SELECT b.PTNRKY, 'CT' AS PTNRTY, " +
                 "       COALESCE(d.OWNRKY,'KN') AS OWNRKY, " +
@@ -417,7 +419,7 @@ public class DispatchConfigApiService {
                 "       d.AREA_CD, d.FORKLIFT_YN, d.AUTO_ALLOC_YN " +
                 "FROM KNRAWMS.BZPTN b " +
                 "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=b.PTNRKY AND d.PTNRTY=b.PTNRTY AND d.OWNRKY=b.OWNRKY " +
-                "WHERE b.PTNRTY='CT' ORDER BY d.AREA_CD, b.PTNRKY"
+                "WHERE b.PTNRTY='CT' AND b.PTNL01='10' ORDER BY d.AREA_CD, b.PTNRKY"
             );
             return Map.of("ok", true, "partners", rows);
         } catch (Exception e) { return errMap(e); }
@@ -431,6 +433,7 @@ public class DispatchConfigApiService {
     public Map<String, Object> setDynamicList() {
         try {
             // tmsJdbc 단독 — BZPTN JOIN BZPTN_DETAIL (동일 DB/계정이므로 JOIN 가능)
+            // b.PTNL01='10' : PS 납품처 대상만 조회
             List<Map<String, Object>> rows = tmsJdbc.queryForList(
                 "SELECT b.PTNRKY, 'CT' AS PTNRTY, " +
                 "       COALESCE(d.OWNRKY,'KN') AS OWNRKY, " +
@@ -439,7 +442,7 @@ public class DispatchConfigApiService {
                 "       d.AREA_CD, d.DYNAMIC_YN, d.AUTO_ALLOC_YN " +
                 "FROM KNRAWMS.BZPTN b " +
                 "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=b.PTNRKY AND d.PTNRTY=b.PTNRTY AND d.OWNRKY=b.OWNRKY " +
-                "WHERE b.PTNRTY='CT' ORDER BY d.AREA_CD, b.PTNRKY"
+                "WHERE b.PTNRTY='CT' AND b.PTNL01='10' ORDER BY d.AREA_CD, b.PTNRKY"
             );
             return Map.of("ok", true, "partners", rows);
         } catch (Exception e) { return errMap(e); }
@@ -688,6 +691,13 @@ public class DispatchConfigApiService {
                 Object colVal = it.get(columnName.toLowerCase());
                 if (colVal == null) colVal = it.get(columnName);
                 if (ptnrky.isBlank()) continue;
+                // PS 납품처(PTNL01='10') 대상인지 검증 — 조회 대상과 저장 대상 일치 보장
+                int psCount = tmsJdbc.queryForObject(
+                    "SELECT COUNT(*) FROM KNRAWMS.BZPTN WHERE PTNRKY=? AND PTNRTY='CT' AND PTNL01='10'",
+                    Integer.class, ptnrky
+                );
+                if (psCount == 0) { saved++; continue; } // PS 대상 아님 → 건너뜀
+
                 // Oracle MERGE INTO — UK_BZPTN_DETAIL 는 (PTNRKY, PTNRTY, OWNRKY) 3컬럼.
                 // 제약관리 화면에는 WAREKY(거점) 선택 기능이 없으므로 ON 절 식별키에서 WAREKY 제외.
                 // WAREKY는 INSERT 시 기본값 기록용으로만 사용하며, UPDATE 시에는 기존 값 유지.
