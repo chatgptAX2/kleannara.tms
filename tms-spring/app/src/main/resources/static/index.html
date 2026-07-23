@@ -316,7 +316,8 @@ tbody td.dc-copied{
   outline-offset:-1px;
   transition:background .35s,outline .35s;
 }
-/* 전용 테이블(납품처/차량/WAHMA)에도 동일 적용 */
+/* 전용 테이블(납품처/차량/WAHMA/출고예정)에도 동일 적용 */
+.ss-table tbody td.dc-selecting,
 .dlv-list-table tbody td.dc-selecting,
 .vhc-table tbody td.dc-selecting,
 .wahma-table tbody td.dc-selecting{
@@ -324,6 +325,7 @@ tbody td.dc-copied{
   outline:1px solid rgba(59,130,246,.55);
   outline-offset:-1px;
 }
+.ss-table tbody td.dc-copied,
 .dlv-list-table tbody td.dc-copied,
 .vhc-table tbody td.dc-copied,
 .wahma-table tbody td.dc-copied{
@@ -699,10 +701,11 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .ss-table thead th.ss-sort-desc .ss-sort-icon::after{content:'▼'}
 .ss-table thead th .ss-sort-icon{font-size:9px;color:var(--primary);flex-shrink:0}
 .ss-table thead th .ss-sort-icon::after{content:'⇅';color:var(--text3);font-size:9px}
-.ss-table tbody tr{border-bottom:1px solid var(--tr-border);transition:background .08s;cursor:pointer}
+.ss-table tbody tr{border-bottom:1px solid var(--tr-border);transition:background .08s;cursor:default}
 .ss-table tbody tr:hover{background:var(--tr-hover)}
-.ss-table tbody tr.row-selected{background:var(--tr-selected)!important;outline:2px solid var(--primary);outline-offset:-2px}
-.ss-table tbody td{padding:3px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border);font-size:11px;box-sizing:border-box;vertical-align:middle;line-height:1.3}
+.ss-table tbody tr.row-selected{background:var(--tr-selected)!important}
+.ss-table tbody td{padding:3px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border);font-size:11px;box-sizing:border-box;vertical-align:middle;line-height:1.3;cursor:cell;user-select:none;}
+.ss-table tbody td.ss-cell-selected{background:rgba(59,130,246,.18)!important;outline:2px solid var(--primary);outline-offset:-2px;}
 .dlv-list-table{border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed}
 .dlv-list-table thead th{position:sticky;top:0;background:var(--th-bg);padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none;cursor:grab;box-sizing:border-box}
 .dlv-list-table thead th .th-cell{padding:6px 10px 6px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px}
@@ -4713,7 +4716,7 @@ function sapDocResetColOrder() {
 ═══════════════════════════════════════════════════════════ */
 (function () {
   /* ── 감시 컨테이너 셀렉터 (joined → closest 한 번에) ── */
-  const CONTAINER_SEL = '#table-outer, #dlv-list-wrap, #vhc-list-wrap, #wahma-list-wrap';
+  const CONTAINER_SEL = '#table-outer, #ss-result-area, #dlv-list-wrap, #vhc-list-wrap, #wahma-list-wrap';
   const SEL_CLS       = 'dc-selecting';
   const COPY_CLS      = 'dc-copied';
   const DRAG_MIN_PX   = 4;   // 이 픽셀 이상 움직여야 드래그로 간주
@@ -4904,8 +4907,31 @@ function sapDocResetColOrder() {
     const endTd       = _lastEnd;
     _reset();
 
-    /* 클릭(드래그 없음)이면 행 클릭 이벤트에 위임 */
-    if (!wasDragging) return;
+    /* 클릭(드래그 없음) — ss-table 셀이면 셀 강조 + 복사, 아니면 위임 */
+    if (!wasDragging) {
+      if (startTd && startTd.closest('.ss-table')) {
+        /* 이전 선택 해제 */
+        document.querySelectorAll('.ss-table tbody td.ss-cell-selected')
+                .forEach(el => el.classList.remove('ss-cell-selected'));
+        startTd.classList.add('ss-cell-selected');
+        const text = _cellText(startTd);
+        if (text !== '') {
+          (async () => {
+            const ok = await _copy(text);
+            if (ok) {
+              /* 복사 완료 플래시 */
+              startTd.classList.remove('ss-cell-selected');
+              startTd.classList.add('dc-copied');
+              setTimeout(() => startTd.classList.remove('dc-copied'), 900);
+              showToast(`📋 "${text.slice(0, 60)}${text.length > 60 ? '…' : ''}" 복사됨`);
+            } else {
+              showToast('⚠️ 클립보드 복사 실패 (브라우저 권한 확인)');
+            }
+          })();
+        }
+      }
+      return;
+    }
 
     const grid = _getCells(startTd, endTd || startTd);
     if (!grid.length) return;
@@ -16761,7 +16787,7 @@ function _ssBuildTbody(cols, rows) {
       const titleVal  = String(raw ?? '').replace(/"/g, '&quot;');
       return `<td style="${alignStyle}width:${w}px;min-width:${w}px;max-width:${w}px;box-sizing:border-box;" title="${titleVal}">${rendered}</td>`;
     }).join('');
-    return `<tr onclick="(function(tr){document.querySelectorAll('.ss-table tbody tr').forEach(r=>r.classList.remove('row-selected'));tr.classList.add('row-selected');})(this)">${cells}</tr>`;
+    return `<tr>${cells}</tr>`;
   }).join('');
 }
 
