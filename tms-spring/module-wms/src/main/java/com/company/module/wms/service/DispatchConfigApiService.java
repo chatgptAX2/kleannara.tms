@@ -191,12 +191,15 @@ public class DispatchConfigApiService {
 
     public Map<String, Object> setFull(Integer setId) {
         try {
+            /* DS_DISPATCH_CONST LEFT JOIN DS_DISPATCH_PROFILE
+               INNER JOIN 대신 LEFT JOIN 사용:
+               DS_DISPATCH_PROFILE이 없는 CONST도 포함 (orphan const 방어) */
             List<Map<String, Object>> allConsts = tmsJdbc.queryForList(
                 "SELECT c.CONST_ID, c.PROFILE_ID, c.CONST_TYPE, c.CONST_KEY, c.CONST_OP, " +
                 "       c.CONST_VALUE, c.TARGET_ID, c.TARGET_NM, c.NOTE, c.ACTIVE_YN, c.SORT_SEQ, " +
                 "       p.PROFILE_NM " +
                 "FROM KNRAWMS.DS_DISPATCH_CONST c " +
-                "JOIN KNRAWMS.DS_DISPATCH_PROFILE p ON p.PROFILE_ID=c.PROFILE_ID " +
+                "LEFT JOIN KNRAWMS.DS_DISPATCH_PROFILE p ON p.PROFILE_ID=c.PROFILE_ID " +
                 "ORDER BY c.CONST_TYPE, c.SORT_SEQ, c.CONST_ID"
             );
             /* Oracle JDBC는 NUMBER 컬럼을 BigDecimal로 반환.
@@ -214,11 +217,15 @@ public class DispatchConfigApiService {
                     if (cid != null) includedMap.put(cid.toString(), it);
                 }
             }
+            /* allConsts에 포함된 CONST_ID 집합 — orphan ITEM 감지용 */
+            Set<String> allConstIds = new java.util.HashSet<>();
             List<Map<String, Object>> result = new ArrayList<>();
             for (Map<String, Object> c : allConsts) {
                 Map<String, Object> d = new LinkedHashMap<>(c);
                 Object constIdObj = d.get("CONST_ID");
-                Map<String, Object> itemInfo = constIdObj != null ? includedMap.get(constIdObj.toString()) : null;
+                String constIdStr = constIdObj != null ? constIdObj.toString() : null;
+                if (constIdStr != null) allConstIds.add(constIdStr);
+                Map<String, Object> itemInfo = constIdStr != null ? includedMap.get(constIdStr) : null;
                 d.put("IN_SET",      itemInfo != null ? 1 : 0);
                 d.put("ITEM_ID",     itemInfo != null ? itemInfo.get("ITEM_ID") : null);
                 /* IN_SET=0(세트 미포함) 항목의 ITEM_ACTIVE를 "N"으로 반환하면
@@ -227,6 +234,33 @@ public class DispatchConfigApiService {
                 d.put("ITEM_ACTIVE", itemInfo != null ? itemInfo.get("ACTIVE_YN") : null);
                 d.put("PARAM_VALUE", itemInfo != null ? itemInfo.get("PARAM_VALUE") : null);
                 result.add(d);
+            }
+            /* DS_DISPATCH_CONST_SET_ITEM에는 있지만 DS_DISPATCH_CONST에 없는 orphan ITEM 보완.
+               items/save 저장 후 setFull 재조회 시 해당 CONST_ID가 마스터에 없으면
+               IN_SET=0으로 반환되어 화면에 표시되지 않는 버그를 방지.
+               orphan ITEM은 CONST_ID/ITEM_ID만 포함한 최소 행으로 추가하고 IN_SET=1 표시. */
+            for (Map.Entry<String, Map<String, Object>> entry : includedMap.entrySet()) {
+                if (!allConstIds.contains(entry.getKey())) {
+                    Map<String, Object> orphan = new LinkedHashMap<>();
+                    orphan.put("CONST_ID",   entry.getValue().get("CONST_ID"));
+                    orphan.put("PROFILE_ID", null);
+                    orphan.put("CONST_TYPE", "UNKNOWN");
+                    orphan.put("CONST_KEY",  "UNKNOWN_" + entry.getKey());
+                    orphan.put("CONST_OP",   null);
+                    orphan.put("CONST_VALUE",null);
+                    orphan.put("TARGET_ID",  null);
+                    orphan.put("TARGET_NM",  null);
+                    orphan.put("NOTE",       "마스터 미등록 항목");
+                    orphan.put("ACTIVE_YN",  "Y");
+                    orphan.put("SORT_SEQ",   9999);
+                    orphan.put("PROFILE_NM", null);
+                    orphan.put("IN_SET",      1);
+                    orphan.put("ITEM_ID",     entry.getValue().get("ITEM_ID"));
+                    orphan.put("ITEM_ACTIVE", entry.getValue().get("ACTIVE_YN"));
+                    orphan.put("PARAM_VALUE", entry.getValue().get("PARAM_VALUE"));
+                    result.add(orphan);
+                    log.warn("setFull orphan ITEM: CONST_ID={} is in SET_ITEM but not in DS_DISPATCH_CONST", entry.getKey());
+                }
             }
             return Map.of("ok", true, "rows", result);
         } catch (Exception e) { return errMap(e); }
