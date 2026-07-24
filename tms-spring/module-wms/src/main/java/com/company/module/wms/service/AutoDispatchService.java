@@ -427,7 +427,7 @@ public class AutoDispatchService {
             String costCar   = selectCar(vehKg, validCars, vehInfo, dptnky, objective, cp, routeCostMap);
             String vehCar    = sortKey(inchCar, carOrder) <= sortKey(costCar, carOrder) ? inchCar : costCar;
 
-            // 높이 검사 + 차량 업그레이드
+            // 높이 검사 + 차량 업그레이드 (기존 단순 높이 검사)
             List<String> notes = new ArrayList<>(splitNotesPre);
             if (isDynBlocked) notes.add("[동적배차불가] DYNAMIC_YN=N → 고정노선 전용 오더");
             else if ("Y".equals(pi.dynamicYn)) notes.add("[동적배차가능] DYNAMIC_YN=Y");
@@ -458,6 +458,31 @@ public class AutoDispatchService {
                     }
                 }
             }
+
+            // ── 원지 3D 물리검증 ──────────────────────────────────────
+            VehInfo vi3d  = vehInfo.getOrDefault(vehCar, VehInfo.EMPTY);
+            RollPhysics3D rp3d = verifyRolls3D(b.items, skumaMap, vi3d, cp);
+            notes.add(rp3d.summary);
+            notes.addAll(rp3d.layerNotes);
+
+            // 3D 검증 결과 적재 불가 → 더 큰 차량으로 업그레이드 시도
+            if (!rp3d.fits && !rp3d.summary.contains("스킵")) {
+                boolean upgraded3d = false;
+                for (Map<String, Object> c : carOrder) {
+                    String ct = str(c.get("CARTYPE"));
+                    if (sortKey(ct, carOrder) >= sortKey(vehCar, carOrder)) continue;
+                    VehInfo cvi = vehInfo.getOrDefault(ct, VehInfo.EMPTY);
+                    RollPhysics3D rp3dUp = verifyRolls3D(b.items, skumaMap, cvi, cp);
+                    if (rp3dUp.fits) {
+                        notes.add(String.format("[3D-원지-업그레이드] %s→%s (3D 공간 부족 해소)", vehCar, ct));
+                        vehCar = ct; upgraded3d = true;
+                        notes.add(rp3dUp.summary);
+                        break;
+                    }
+                }
+                if (!upgraded3d) notes.add("[3D-원지-수동확인] 가용 차량 중 3D 배치 가능한 차량 없음 — 수동 배차 필요");
+            }
+            // ─────────────────────────────────────────────────────────
 
             VehInfo vi    = vehInfo.getOrDefault(vehCar, VehInfo.EMPTY);
             double cap    = vi.loadKg;
@@ -491,6 +516,9 @@ public class AutoDispatchService {
             vrow.put("profile_id",    pid);
             vrow.put("profile_nm",    str(prof.get("PROFILE_NM")));
             vrow.put("notes",         notes);
+            vrow.put("physics3d_roll_fits",        rp3d.fits);
+            vrow.put("physics3d_roll_floor_pct",   round2(rp3d.usedFloorRatio));
+            vrow.put("physics3d_roll_stack_height", round2(rp3d.stackHeightM));
             vrow.put("is_mixed",      isMixedGroup);
             vrow.put("is_mixed_load", isMixedLoad);
             vrow.put("mixed_dptnm",   isMixedGroup ? dptnm : "");
@@ -586,6 +614,39 @@ public class AutoDispatchService {
                 notesB.add("[혼적-Y축] LIFO: 나중 하차→안쪽 / 먼저 하차→문 쪽");
             }
 
+            // ── 판지 3D 물리검증 ──────────────────────────────────────
+            BoardPhysics3D bp3d = verifyBoards3D(vb.items, skumaMap, vi, cp);
+            notesB.add(bp3d.summary);
+            notesB.addAll(bp3d.shelfNotes);
+
+            // 3D 검증 실패 → 더 큰 차량으로 업그레이드 시도
+            if (!bp3d.fits && !bp3d.summary.contains("스킵")) {
+                boolean upgraded3d = false;
+                for (Map<String, Object> c : carOrder) {
+                    String ct = str(c.get("CARTYPE"));
+                    if (sortKey(ct, carOrder) >= sortKey(vehCar, carOrder)) continue;
+                    VehInfo cvi = vehInfo.getOrDefault(ct, VehInfo.EMPTY);
+                    BoardPhysics3D bp3dUp = verifyBoards3D(vb.items, skumaMap, cvi, cp);
+                    if (bp3dUp.fits) {
+                        notesB.add(String.format("[3D-판지-업그레이드] %s→%s (3D 공간 부족 해소)", vehCar, ct));
+                        vehCar = ct; vi = cvi; upgraded3d = true;
+                        // 업그레이드 후 적재율/CBM 재계산
+                        cap        = vi.loadKg;
+                        fill       = cap > 0 ? vehKg / cap * 100 : 0;
+                        vehEffH    = vi.effectiveHeightM;
+                        vehCbmCap  = vi.lengthM * vi.widthM * vehEffH;
+                        cbmFill    = vehCbmCap > 0 ? vb.totalCbm / vehCbmCap * 100 : 0;
+                        costVal    = routeCostMap.getOrDefault(dptnky, Collections.emptyMap())
+                                                  .getOrDefault(ct, 0.0);
+                        notesB.add(bp3dUp.summary);
+                        bp3d = bp3dUp;
+                        break;
+                    }
+                }
+                if (!upgraded3d) notesB.add("[3D-판지-수동확인] 가용 차량 중 3D 배치 가능한 차량 없음 — 수동 배차 필요");
+            }
+            // ─────────────────────────────────────────────────────────
+
             Map<String, Object> vrow = new LinkedHashMap<>();
             vrow.put("dptnky", dptnky); vrow.put("dptnm", dptnm); vrow.put("rqshpd", rqshpd);
             vrow.put("cartype", vehCar);
@@ -605,6 +666,10 @@ public class AutoDispatchService {
             vrow.put("profile_id",    pid);
             vrow.put("profile_nm",    str(prof.get("PROFILE_NM")));
             vrow.put("notes",         notesB);
+            vrow.put("physics3d_board_fits",        bp3d.fits);
+            vrow.put("physics3d_board_floor_pct",   round2(bp3d.usedFloorRatio));
+            vrow.put("physics3d_board_max_height",  round2(bp3d.maxHeightM));
+            vrow.put("physics3d_board_vol_m3",      round4(bp3d.usedVolM3));
             vrow.put("is_mixed",      isMixedGroup);
             vrow.put("is_mixed_load", isMixedLoad);
             vrow.put("mixed_dptnm",   isMixedGroup ? dptnm : "");
@@ -1381,5 +1446,359 @@ public class AutoDispatchService {
         int maxStack = 2;
         boolean allowSplit = true, allowMixedLoad = false;
         boolean boardBulkIntOnly = true, boardInnerSplit = true;
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  3D 물리검증 엔진
+    //
+    //  ■ 원지(원통형 블록)
+    //    - 단위 블록: 직경 D(mm) × 너비 W(mm) 의 원통
+    //    - 차량 적재함 길이(L_car) 방향으로 원통 축 배치
+    //    - 바닥 행 배치: 차량 너비(W_car)에 직경 D 기준 열(col) 수 = floor(W_car / D)
+    //    - 단수(tier): floor(가용 높이 / D) 단까지 적층
+    //    - 복수 SKU: 직경이 다른 롤은 같은 레이어에 혼재 불가 → 각 직경 그룹을 독립 레이어로 계획
+    //    - 검증: 전체 롤 수 ≤ Σ(각 레이어의 tier × col × 바닥 점유 행 수)
+    //
+    //  ■ 판지(직육면체 블록)
+    //    - 단위 블록: W(mm) × L(mm) × H(mm) (번들 1묶음 기준)
+    //    - 차량 바닥(W_car × L_car)에 블록을 그리디 Shelf 배치
+    //    - Shelf = 바닥에서 특정 Y(길이방향) 구간까지 채운 열
+    //    - 블록 배치 시 회전 허용(W/L 교환): 차량 너비에 최적으로 맞는 방향 선택
+    //    - 높이 누적: 같은 Shelf 내 블록의 최대 H = 해당 Shelf 점유 높이
+    //    - 검증: 모든 번들 배치 후 Shelf 총 높이 ≤ 차량 가용 높이
+    // ════════════════════════════════════════════════════════════════
+
+    // ── 원지(원통) 3D 검증 결과 VO ───────────────────────────────────
+    private static class RollPhysics3D {
+        boolean fits;           // 차량에 물리적으로 적재 가능한가
+        int     totalRolls;     // 검증 대상 총 롤 수
+        int     maxCapacity;    // 해당 차량의 최대 수용 롤 수 (3D 기준)
+        double  usedFloorRatio; // 바닥 점유율 (%)
+        double  stackHeightM;   // 최고 단 높이 (m)
+        String  summary;        // 요약 메시지
+        List<String> layerNotes = new ArrayList<>(); // 레이어별 배치 상세
+
+        static RollPhysics3D fail(String reason) {
+            RollPhysics3D r = new RollPhysics3D();
+            r.fits = false; r.summary = reason; return r;
+        }
+    }
+
+    // ── 판지(직육면체) 3D 검증 결과 VO ──────────────────────────────
+    private static class BoardPhysics3D {
+        boolean fits;           // 차량에 물리적으로 적재 가능한가
+        int     totalBundles;   // 검증 대상 총 번들 수
+        double  usedFloorRatio; // 바닥 점유율 (%)
+        double  maxHeightM;     // 최고 Shelf 높이 (m)
+        double  usedVolM3;      // 적재 물품 총 체적 (m³)
+        String  summary;        // 요약 메시지
+        List<String> shelfNotes = new ArrayList<>();
+
+        static BoardPhysics3D fail(String reason) {
+            BoardPhysics3D r = new BoardPhysics3D();
+            r.fits = false; r.summary = reason; return r;
+        }
+    }
+
+    /**
+     * 원지(원통형) 3D 물리검증
+     *
+     * @param items      원지 아이템 목록 (각 아이템에 SKUKEY, QTSHPO, KG_WEIGHT, WIDTH_MM 포함)
+     * @param skumaMap   SKU 마스터 (GRSWGT, wMm 참조)
+     * @param vi         배차 대상 차량 정보
+     * @param cp         제약 파라미터 (maxStack, rollSingleKg)
+     */
+    private RollPhysics3D verifyRolls3D(List<Map<String, Object>> items,
+                                         Map<String, SkuInfo> skumaMap,
+                                         VehInfo vi, ConstraintParams cp) {
+        double carWmm = vi.widthM  * 1000.0;   // 차량 너비 (mm)
+        double carLmm = vi.lengthM * 1000.0;   // 차량 길이 (mm)
+        double carHmm = vi.effectiveHeightM * 1000.0; // 차량 가용 높이 (mm)
+
+        if (carWmm <= 0 || carLmm <= 0 || carHmm <= 0)
+            return RollPhysics3D.fail("차량 치수 정보 없음 — 3D검증 스킵");
+
+        // ── 1. 아이템별 원통 블록 파라미터 추출 ──────────────────────
+        // 원통 축 = 차량 길이(Y) 방향으로 눕혀 적재
+        // 직경 D, 너비(축 길이) W_roll
+        //   W_roll: SHPDI.WIDTH_MM(=WIDTHW) → fallback: SKUMA.wMm → fallback: SKUKEY 파싱
+        //   직경 D:  gsm/밀도/중량 역산 calcRollDiameter
+        //
+        // 레이어 그룹: {직경_반올림50mm → RollLayer}
+        Map<Integer, RollLayer> layerMap = new LinkedHashMap<>(); // key = 직경 50mm 버킷
+
+        int totalRolls = 0;
+        for (Map<String, Object> it : items) {
+            String sk  = str(it.get("SKUKEY"));
+            if (!isRoll(sk) && !"R".equals(str(it.get("UOMKEY")))) continue;
+
+            int qty = Math.max(1, (int) dbl(it.get("QTSHPO")));
+            totalRolls += qty;
+
+            // 너비(mm): SHPDI.WIDTH_MM 우선, 없으면 SKUMA.wMm, 없으면 SKUKEY 파싱
+            double widthMm = dbl(it.get("WIDTH_MM"));
+            if (widthMm <= 0) {
+                SkuInfo sm = skumaMap.getOrDefault(sk, new SkuInfo());
+                widthMm = sm.wMm > 0 ? sm.wMm : 0;
+            }
+            if (widthMm <= 0) {
+                int[] dims = parseSkyueyDims(sk);
+                if (dims != null) widthMm = dims[1]; // wmm
+            }
+            if (widthMm <= 0) widthMm = 1000.0; // 최후 fallback 1000mm
+
+            // 직경(mm): KG_WEIGHT 또는 단위중량 기반 역산
+            double kgPerRoll = itemRollKg(it, skumaMap, cp.rollSingleKg) / Math.max(qty, 1);
+            Double dmmCalc = calcRollDiameter(kgPerRoll, sk);
+            double diamMm  = (dmmCalc != null && dmmCalc > 0) ? dmmCalc : 800.0; // fallback 800mm
+
+            // 직경 50mm 단위 버킷으로 그룹화 (소수점 오차 흡수)
+            int bucket = (int)(Math.ceil(diamMm / 50.0) * 50);
+            layerMap.computeIfAbsent(bucket, k -> new RollLayer(k, widthMm))
+                    .addRolls(qty, widthMm, diamMm);
+        }
+
+        if (totalRolls == 0) return RollPhysics3D.fail("원통형 롤 없음");
+
+        // ── 2. 레이어별 적재 계획 ─────────────────────────────────────
+        // 차량 길이 방향(Y축): 너비 widthMm 만큼 점유
+        // 차량 너비 방향(X축): 직경 diamMm 만큼 열 점유 → cols = floor(carWmm / diamMm)
+        // 차량 높이 방향(Z축): 직경 diamMm 만큼 단 점유 → maxTiers = min(cp.maxStack, floor(carHmm / diamMm))
+        // 길이 점유: ceil(rolls / cols) 행 × widthMm → 총 길이 Σ
+        RollPhysics3D result = new RollPhysics3D();
+        result.totalRolls = totalRolls;
+
+        double usedLengthMm = 0.0; // Y축 점유 길이 누적
+        int    totalCap     = 0;
+
+        for (Map.Entry<Integer, RollLayer> e : layerMap.entrySet()) {
+            RollLayer layer = e.getValue();
+            double diamMm  = layer.repDiamMm;
+            double widthMm = layer.repWidthMm;
+
+            int cols     = Math.max(1, (int)(carWmm / diamMm));
+            int maxTiers = Math.max(1, Math.min(cp.maxStack, (int)(carHmm / diamMm)));
+            int perRow   = cols; // 한 행(X×Z 단면)에 세울 수 있는 개수 = cols × 1tier에서 추가로 높이 방향 = cols × maxTiers
+            int perSlice = cols * maxTiers; // 너비 1 widthMm 깊이 점유 슬라이스당 수용 롤 수
+
+            // 이 레이어에 필요한 길이(Y) = ceil(layer.totalRolls / perSlice) × widthMm
+            int rows = (int) Math.ceil((double) layer.totalRolls / perSlice);
+            double layerLengthMm = rows * widthMm;
+            usedLengthMm += layerLengthMm;
+
+            int layerCap = rows * perSlice;
+            totalCap += layerCap;
+
+            result.layerNotes.add(String.format(
+                "[3D-원지] 직경그룹%dmm: 롤%d개 / 차량내 배치=%d열×%d단×%d행 / Y축점유=%.0fmm",
+                (int)diamMm, layer.totalRolls, cols, maxTiers, rows, layerLengthMm));
+        }
+
+        result.maxCapacity  = totalCap;
+        result.stackHeightM = layerMap.values().stream()
+            .mapToDouble(l -> l.repDiamMm * Math.min(cp.maxStack, (int)(carHmm / l.repDiamMm)))
+            .max().orElse(0) / 1000.0;
+        result.usedFloorRatio = carLmm > 0 ? Math.min(100.0, usedLengthMm / carLmm * 100.0) : 0.0;
+        result.fits = (usedLengthMm <= carLmm * 1.02); // 2% 마진 허용
+
+        result.summary = String.format(
+            "[3D-원지검증] %s / 총%d롤 / Y축점유%.0fmm/%.0fmm(%.0f%%) / 최고단높이%.2fm / %s",
+            result.fits ? "적재가능" : "적재불가(차량업그레이드필요)",
+            totalRolls, usedLengthMm, carLmm, result.usedFloorRatio,
+            result.stackHeightM, result.fits ? "OK" : "OVERFLOW");
+        return result;
+    }
+
+    /** 원지 레이어 그룹 보조 클래스 */
+    private static class RollLayer {
+        int    bucket;
+        double repDiamMm  = 0;  // 대표 직경 (평균)
+        double repWidthMm = 0;  // 대표 너비 (평균)
+        int    totalRolls = 0;
+        int    sampleCount = 0;
+
+        RollLayer(int bucket, double firstWidth) {
+            this.bucket = bucket; this.repWidthMm = firstWidth;
+        }
+        void addRolls(int qty, double widthMm, double diamMm) {
+            totalRolls += qty;
+            // 가중 평균으로 대표값 갱신
+            repDiamMm  = (repDiamMm  * sampleCount + diamMm  * qty) / (sampleCount + qty);
+            repWidthMm = (repWidthMm * sampleCount + widthMm * qty) / (sampleCount + qty);
+            sampleCount += qty;
+        }
+    }
+
+    /**
+     * 판지(직육면체) 3D 물리검증 — Shelf 배치 알고리즘
+     *
+     * 차량 적재함: 너비(X=W_car) × 길이(Y=L_car) × 높이(Z=H_car)
+     * 각 번들 블록: w × l × h (mm)
+     *   w, l: SKUMA.ASKL04/05 또는 SKUKEY 파싱, 회전 허용(w↔l)
+     *   h   : calcBoardHeight() — gsm/밀도/매수 기반 역산
+     *
+     * Shelf 배치:
+     *   - 현재 Shelf의 Y 좌표부터 블록 l 만큼 전진
+     *   - 해당 Shelf 내 X 방향으로 블록 w 씩 채움
+     *   - Shelf 너비(X) 초과 → 다음 Shelf 행으로 이동 (Y 좌표 += l)
+     *   - Shelf 총 높이(Z) = 해당 Shelf 내 블록 최대 h
+     *   - 모든 Shelf의 최대 Z > H_car → 배치 불가 (차량 업그레이드 필요)
+     */
+    private BoardPhysics3D verifyBoards3D(List<Map<String, Object>> items,
+                                           Map<String, SkuInfo> skumaMap,
+                                           VehInfo vi, ConstraintParams cp) {
+        double carWmm = vi.widthM  * 1000.0;
+        double carLmm = vi.lengthM * 1000.0;
+        double carHmm = vi.effectiveHeightM * 1000.0;
+
+        if (carWmm <= 0 || carLmm <= 0 || carHmm <= 0)
+            return BoardPhysics3D.fail("차량 치수 정보 없음 — 3D검증 스킵");
+
+        // ── 1. 아이템별 번들 블록 추출 ────────────────────────────────
+        // 번들 1묶음 = GRSWGT 기준 1 연(ream) 또는 1 roll 단위
+        // 총 번들 수 = qty / grswgt 또는 qty (UOM에 따라)
+        List<BoardBlock> blocks = new ArrayList<>();
+        int totalBundles = 0;
+        double totalVolMm3 = 0;
+
+        for (Map<String, Object> it : items) {
+            String sk = str(it.get("SKUKEY"));
+            SkuInfo sm = skumaMap.getOrDefault(sk, new SkuInfo());
+
+            // 치수 추출: SKUMA.ASKL04(W), ASKL05(L) → fallback: SKUKEY 파싱
+            double wMm = sm.wMm > 0 ? sm.wMm : 0;
+            double lMm = sm.lMm > 0 ? sm.lMm : 0;
+            if (wMm <= 0 || lMm <= 0) {
+                int[] bd = parseBoardDims(sk);
+                if (bd != null) { wMm = bd[0]; lMm = bd[1]; }
+            }
+            // 출고예정정보 WIDTH_MM, LENGTH 필드로 보완 (SHPDI 컬럼)
+            if (wMm <= 0) { double v = dbl(it.get("WIDTH_MM")); if (v > 0) wMm = v; }
+            if (lMm <= 0) { double v = dbl(it.get("LENGTH"));   if (v > 0) lMm = v; }
+            if (wMm <= 0) wMm = 1000.0;
+            if (lMm <= 0) lMm = 1000.0;
+
+            // 높이 h: 번들(묶음) 1단위 높이 (mm)
+            double hM  = calcBoardHeight(it, skumaMap);     // 번들 1개 높이(m)
+            double hMm = Math.max(1.0, hM * 1000.0);
+            hMm = Math.min(hMm, cp.maxBoardHeightM * 1000.0); // 상한 clamp
+
+            // 번들 수 = 총 kg / 묶음 단중
+            double totalKg = boardKg(it, skumaMap);
+            double grswgt  = sm.grswgt > 0 ? sm.grswgt : dbl(it.get("GRSWGT"));
+            int    bundles = grswgt > 0 ? Math.max(1, (int) Math.ceil(totalKg / grswgt)) : 1;
+
+            totalBundles += bundles;
+            totalVolMm3  += wMm * lMm * hMm * bundles;
+
+            blocks.add(new BoardBlock(wMm, lMm, hMm, bundles, sk));
+        }
+
+        if (totalBundles == 0) return BoardPhysics3D.fail("판지 번들 없음");
+
+        // ── 2. 블록 정렬: 높이 내림차순 (높은 블록 먼저 → 바닥 안정성) ─
+        blocks.sort(Comparator.comparingDouble((BoardBlock b) -> b.hMm).reversed());
+
+        // ── 3. Shelf 배치 시뮬레이션 ──────────────────────────────────
+        BoardPhysics3D result = new BoardPhysics3D();
+        result.totalBundles = totalBundles;
+        result.usedVolM3    = totalVolMm3 / 1e9;
+
+        // Shelf 상태: 현재 Y 위치, 현재 X 사용량, 현재 Shelf 최대 높이
+        double curY       = 0.0;  // 현재 Shelf Y 시작 위치
+        double curX       = 0.0;  // 현재 Shelf X 사용량
+        double curShelfL  = 0.0;  // 현재 Shelf 길이(L 방향)
+        double curShelfH  = 0.0;  // 현재 Shelf 최대 높이
+        double maxZ       = 0.0;  // 전체 최고 높이
+        boolean overflow  = false;
+
+        for (BoardBlock blk : blocks) {
+            int remaining = blk.count;
+            while (remaining > 0) {
+                // 블록 방향 선택: w를 X방향, l을 Y방향 / 또는 l을 X방향, w를 Y방향
+                // → 차량 너비(X)에 더 잘 맞는 방향 선택
+                double bw, bl;
+                if (blk.wMm <= carWmm && blk.lMm <= carWmm) {
+                    // 둘 다 가능: 너비 낭비가 적은 방향
+                    double rem1 = carWmm - (Math.floor(carWmm / blk.wMm) * blk.wMm);
+                    double rem2 = carWmm - (Math.floor(carWmm / blk.lMm) * blk.lMm);
+                    bw = rem1 <= rem2 ? blk.wMm : blk.lMm;
+                    bl = rem1 <= rem2 ? blk.lMm : blk.wMm;
+                } else if (blk.wMm <= carWmm) {
+                    bw = blk.wMm; bl = blk.lMm;
+                } else if (blk.lMm <= carWmm) {
+                    bw = blk.lMm; bl = blk.wMm;
+                } else {
+                    // 블록 단면이 차량 너비보다 큼 → 배치 불가
+                    result.shelfNotes.add(String.format(
+                        "[3D-판지] %s 번들크기(%.0f×%.0fmm)가 차량너비(%.0fmm) 초과 → 수동검토", blk.skukey, blk.wMm, blk.lMm, carWmm));
+                    overflow = true;
+                    remaining = 0;
+                    continue;
+                }
+
+                // 현재 Shelf에 X방향으로 몇 개 들어가는지
+                int colsInShelf = (int)(carWmm / bw);
+                if (colsInShelf <= 0) { overflow = true; remaining = 0; continue; }
+
+                // 새 Shelf가 필요한가? (X 다 찼거나, 첫 배치)
+                if (curX + bw > carWmm + 0.5) {
+                    // 다음 Shelf 행으로
+                    curY += curShelfL;
+                    maxZ = Math.max(maxZ, curShelfH);
+                    curX = 0; curShelfL = bl; curShelfH = blk.hMm;
+                }
+                if (curShelfL <= 0) curShelfL = bl;
+
+                // Y축 범위 초과 검사
+                if (curY + bl > carLmm + 0.5) {
+                    overflow = true;
+                    result.shelfNotes.add(String.format(
+                        "[3D-판지] %s: Y축 점유 초과(%.0fmm > 차량길이%.0fmm) → 수용불가", blk.skukey, curY + bl, carLmm));
+                    remaining = 0;
+                    continue;
+                }
+
+                // 이 Shelf에 배치 가능한 수량
+                int canPlace = colsInShelf;
+                int place    = Math.min(canPlace, remaining);
+                curX += bw * place;
+                curShelfH = Math.max(curShelfH, blk.hMm);
+                remaining -= place;
+
+                // X 가득 찬 경우 다음 Shelf 준비
+                if (curX + bw > carWmm + 0.5 && remaining > 0) {
+                    curY += curShelfL;
+                    maxZ = Math.max(maxZ, curShelfH);
+                    curX = 0; curShelfL = bl; curShelfH = blk.hMm;
+                }
+            }
+        }
+        maxZ = Math.max(maxZ, curShelfH);
+
+        result.maxHeightM = maxZ / 1000.0;
+        result.usedFloorRatio = carLmm > 0 ? Math.min(100.0, (curY + curShelfL) / carLmm * 100.0) : 0.0;
+
+        // 높이 초과 여부
+        if (maxZ > carHmm * 1.02) overflow = true;
+
+        result.fits = !overflow;
+        result.summary = String.format(
+            "[3D-판지검증] %s / 총%d번들 / Y축점유%.0fmm/%.0fmm / 최고높이%.2fm/%.2fm / 바닥점유%.0f%% / %s",
+            result.fits ? "적재가능" : "적재불가(차량업그레이드필요)",
+            totalBundles, curY + curShelfL, carLmm,
+            result.maxHeightM, vi.effectiveHeightM,
+            result.usedFloorRatio, result.fits ? "OK" : "OVERFLOW");
+        return result;
+    }
+
+    /** 판지 번들 블록 보조 클래스 */
+    private static class BoardBlock {
+        double wMm, lMm, hMm;
+        int    count;
+        String skukey;
+        BoardBlock(double w, double l, double h, int cnt, String sk) {
+            wMm = w; lMm = l; hMm = h; count = cnt; skukey = sk;
+        }
     }
 }
