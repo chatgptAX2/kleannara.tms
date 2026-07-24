@@ -194,4 +194,43 @@ public class DispatchConfigApiController {
     public ResponseEntity<Map<String, Object>> constraintAuto(@RequestBody Map<String, Object> body) {
         return ResponseEntity.ok(autoDispatch.runAuto(body));
     }
+
+    // ── 제약조건 항목 관리 (DS_DISPATCH_CONST) ───────────────────
+
+    /**
+     * 전체 제약조건 목록 조회.
+     * set_id 지정 시 해당 세트의 USE_YN / SETTING_VAL 포함.
+     */
+    @GetMapping("/const-item/list")
+    public ResponseEntity<Map<String, Object>> constItemList(
+            @RequestParam(name = "set_id", required = false) Integer setId) {
+        return ResponseEntity.ok(svc.constItemList(setId));
+    }
+
+    /**
+     * 제약조건 항목 저장 (INSERT or UPDATE DS_DISPATCH_CONST).
+     * body.const_id 없으면 INSERT, 있으면 UPDATE.
+     */
+    @PostMapping("/const-item/save")
+    public ResponseEntity<Map<String, Object>> constItemSave(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(svc.constItemSave(body));
+    }
+
+    /**
+     * 제약조건 항목 삭제.
+     * DS_DISPATCH_CONST_SET_ITEM 연관 행 CASCADE 삭제 후 DS_DISPATCH_CONST 삭제.
+     */
+    @PostMapping("/const-item/delete")
+    public ResponseEntity<Map<String, Object>> constItemDelete(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(svc.constItemDelete(body));
+    }
+
+    /**
+     * 세트별 제약조건 설정값 저장 (USE_YN / PARAM_VALUE MERGE).
+     * body: { set_id, settings: [{const_id, use_yn, setting_val, note}] }
+     */
+    @PostMapping("/const-item/setting/save")
+    public ResponseEntity<Map<String, Object>> constItemSettingSave(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(svc.constItemSettingSave(body));
+    }
 }
