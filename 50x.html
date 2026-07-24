@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="refresh" content="30">
-  <title>서비스 배포 중 — Kleannara TMS</title>
+  <title>시스템 배포 중 — Kleannara TMS</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -112,7 +111,7 @@
       100% { width: 15%; }
     }
 
-    /* 예상 시간 배지 */
+    /* 카운트다운 배지 */
     .time-badge {
       display: inline-flex;
       align-items: center;
@@ -186,6 +185,10 @@
       font-size: 12px;
       color: #475569;
     }
+    #countdown {
+      color: #6ee7b7;
+      font-weight: 700;
+    }
   </style>
 </head>
 <body>
@@ -203,10 +206,10 @@
       </div>
     </div>
 
-    <h1>서비스 배포 중입니다</h1>
+    <h1>시스템 배포 중입니다</h1>
     <p class="subtitle">
       새로운 버전으로 업데이트하고 있습니다.<br>
-      잠시 후 자동으로 서비스가 재개됩니다.
+      배포가 완료되면 자동으로 서비스에 접속됩니다.
     </p>
 
     <div class="progress-wrap">
@@ -220,7 +223,7 @@
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
       </svg>
-      예상 소요 시간: 약 1 ~ 2분
+      <span id="countdown">10</span>초 후 자동 재접속 시도
     </div>
 
     <div class="divider"></div>
@@ -241,8 +244,30 @@
       </ul>
     </div>
 
-    <p class="refresh-note">이 페이지는 30초마다 자동으로 새로고침됩니다.</p>
+    <p class="refresh-note">배포 완료 시 자동으로 서비스에 접속됩니다. (<span id="countdown2">10</span>초마다 재시도)</p>
 
   </div>
+
+  <script>
+    (function () {
+      var INTERVAL = 10; // 10초 간격
+      var remaining = INTERVAL;
+
+      function tick() {
+        remaining--;
+        var el1 = document.getElementById('countdown');
+        var el2 = document.getElementById('countdown2');
+        if (el1) el1.textContent = remaining;
+        if (el2) el2.textContent = INTERVAL;
+
+        if (remaining <= 0) {
+          // 현재 URL 그대로 재호출 — 서버가 정상이면 바로 서비스로 진입
+          window.location.reload();
+        }
+      }
+
+      setInterval(tick, 1000);
+    })();
+  </script>
 </body>
 </html>
