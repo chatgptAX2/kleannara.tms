@@ -78,7 +78,34 @@ public class AutoDispatchService {
         String objective = str(prof.getOrDefault("OBJECTIVE", "MIN_VEHICLES"));
         long pid         = toLong(prof.get("PROFILE_ID"), 0L);
 
-        // 제약 조건 로드 (DS_DISPATCH_CONST: MariaDB)
+        // ── 제약조건 세트(DS_DISPATCH_CONST_SET_ITEM) 로드 ─────────────
+        // 프로파일에 SET_ID가 연결되어 있으면 세트 아이템을 로드하여 제약조건 값 오버라이드/비활성 필터링에 사용
+        Integer setId = toInt(prof.get("SET_ID"));
+        String appliedSetNm = "";
+        // CONST_ID → {ACTIVE_YN, PARAM_VALUE} 맵
+        Map<Long, Map<String, Object>> setItemMap = new LinkedHashMap<>();
+        if (setId != null) {
+            try {
+                List<Map<String, Object>> setItems = tmsJdbc.queryForList(
+                    "SELECT i.ITEM_ID, i.CONST_ID, i.ACTIVE_YN, i.PARAM_VALUE, s.SET_NM" +
+                    " FROM KNRAWMS.DS_DISPATCH_CONST_SET_ITEM i" +
+                    " JOIN KNRAWMS.DS_DISPATCH_CONST_SET s ON s.SET_ID = i.SET_ID" +
+                    " WHERE i.SET_ID = ?",
+                    setId
+                );
+                for (Map<String, Object> si : setItems) {
+                    long constId = toLong(si.get("CONST_ID"), -1L);
+                    if (constId >= 0) setItemMap.put(constId, si);
+                    if (appliedSetNm.isEmpty()) appliedSetNm = str(si.get("SET_NM"));
+                }
+                log.info("[AutoDispatch] 적용 세트: SET_ID={}, SET_NM={}, 아이템 수={}",
+                         setId, appliedSetNm, setItemMap.size());
+            } catch (Exception ex) {
+                log.warn("[AutoDispatch] 세트 아이템 로드 실패 (SET_ID={}) — 마스터 기준으로 진행: {}", setId, ex.getMessage());
+            }
+        }
+
+        // 제약 조건 로드 (DS_DISPATCH_CONST)
         List<Map<String, Object>> constRows = tmsJdbc.queryForList(
             "SELECT * FROM KNRAWMS.DS_DISPATCH_CONST WHERE PROFILE_ID=? AND ACTIVE_YN='Y' ORDER BY SORT_SEQ",
             pid
@@ -89,6 +116,22 @@ public class AutoDispatchService {
         Set<String> allowedCartypes = new HashSet<>();
 
         for (Map<String, Object> r : constRows) {
+            long constId = toLong(r.get("CONST_ID"), -1L);
+
+            // ── 세트 오버라이드 적용 ──────────────────────────────────
+            if (!setItemMap.isEmpty() && setItemMap.containsKey(constId)) {
+                Map<String, Object> si = setItemMap.get(constId);
+                // 세트에서 비활성(N) 처리된 항목 → skip
+                if ("N".equalsIgnoreCase(str(si.get("ACTIVE_YN")))) continue;
+                // 세트의 PARAM_VALUE가 존재하면 CONST_VALUE를 오버라이드
+                String paramVal = str(si.get("PARAM_VALUE"));
+                if (!paramVal.isEmpty()) {
+                    r = new HashMap<>(r);
+                    r.put("CONST_VALUE", paramVal);
+                }
+            }
+            // ─────────────────────────────────────────────────────────
+
             String key = str(r.get("CONST_KEY"));
             String tid = str(r.get("TARGET_ID"));
             if (!tid.isEmpty()) {
@@ -243,6 +286,8 @@ public class AutoDispatchService {
         result.put("objective",           objective);
         result.put("profile_id",          pid);
         result.put("profile_nm",          str(prof.get("PROFILE_NM")));
+        result.put("applied_set_id",      setId);
+        result.put("applied_set_nm",      appliedSetNm.isEmpty() ? null : appliedSetNm);
         result.put("total_vehicles",      allVehicles.size());
         result.put("total_cost",          Math.round(totalCost));
         result.put("avg_fill_ratio",      round2(avgFill));
