@@ -73,7 +73,7 @@ public class DispatchConfigApiController {
     }
 
     @GetMapping("/dispatch-const-set/full")
-    public ResponseEntity<Map<String, Object>> setFull(@RequestParam(required = false) Integer setId) {
+    public ResponseEntity<Map<String, Object>> setFull(@RequestParam(name = "set_id", required = false) Integer setId) {
         return ResponseEntity.ok(svc.setFull(setId));
     }
 
