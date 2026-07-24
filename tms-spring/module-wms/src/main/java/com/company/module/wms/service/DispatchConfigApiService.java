@@ -152,9 +152,11 @@ public class DispatchConfigApiService {
                 tmsJdbc.update("UPDATE KNRAWMS.DS_DISPATCH_CONST_SET SET SET_NM=?,SET_DESC=?,ACTIVE_YN=?,LMODAT=? WHERE SET_ID=?",
                     nm, desc, act, today(), setId);
             } else {
-                tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST_SET (SET_ID,SET_NM,SET_DESC,ACTIVE_YN,CREDAT,LMODAT) VALUES (SEQ_DS_DISPATCH_CONST_SET.NEXTVAL,?,?,?,?,?)",
-                    nm, desc, act, today(), today());
-                setId = tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_CONST_SET.CURRVAL FROM DUAL", Integer.class);
+                // SEQ_DS_DISPATCH_CONST_SET 시퀀스 미존재 → MAX+1 채번
+                setId = tmsJdbc.queryForObject(
+                    "SELECT NVL(MAX(SET_ID),0)+1 FROM KNRAWMS.DS_DISPATCH_CONST_SET", Integer.class);
+                tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST_SET (SET_ID,SET_NM,SET_DESC,ACTIVE_YN,CREDAT,LMODAT) VALUES (?,?,?,?,?,?)",
+                    setId, nm, desc, act, today(), today());
             }
             return Map.of("ok", true, "SET_ID", setId);
         } catch (Exception e) { return errMap(e); }
