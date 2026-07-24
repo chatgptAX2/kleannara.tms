@@ -18897,122 +18897,116 @@ async function renderDispatchConstraint() {
               <span class="dcon-set-pane-hdr-badge" id="dcon-ci-cnt-badge">-</span>
             </h3>
             <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
-              <input type="text" id="dcon-ci-search" placeholder="🔍 검색..."
+              <input type="text" id="dcon-ci-search" placeholder="🔍 KEY/NOTE 검색..."
                 oninput="_dconCiFilter()"
-                style="width:120px;padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text)"/>
-              <select id="dcon-ci-grp-filter" onchange="_dconCiFilter()"
+                style="width:140px;padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text)"/>
+              <select id="dcon-ci-type-filter" onchange="_dconCiFilter()"
                 style="padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text)">
-                <option value="">전체 그룹</option>
-                <option value="COMMON">공통(§1)</option>
-                <option value="ROLL">원지(§2)</option>
-                <option value="BOARD">판지(§3)</option>
-                <option value="MIX">혼합(§4)</option>
+                <option value="">전체 유형</option>
+                <option value="GLOBAL">GLOBAL</option>
+                <option value="VEHICLE">VEHICLE</option>
+                <option value="PRODUCT">PRODUCT</option>
+                <option value="REGION">REGION</option>
               </select>
               <button class="dcon-run-btn secondary" onclick="_dconCiAddForm()"
                 style="padding:4px 10px;font-size:11px">＋ 항목 추가</button>
             </div>
           </div>
 
-          <!-- 세트 선택 알림 (세트 미선택 시) -->
-          <div id="dcon-ci-no-set" style="padding:8px 14px;background:var(--warning-bg,#fff8e1);border-bottom:1px solid var(--border);font-size:11px;color:var(--text2);display:flex;align-items:center;gap:6px">
-            <span>💡</span>
-            <span>좌측에서 <strong>제약조건 세트</strong>를 선택하면 세트별 활성/설정값을 관리할 수 있습니다.</span>
-          </div>
-
-          <!-- 항목 추가/수정 폼 -->
-          <div id="dcon-ci-form" style="display:none;padding:10px 14px;background:var(--surface2);border-bottom:1px solid var(--border);flex-shrink:0">
+          <!-- 항목 추가/수정 인라인 폼 -->
+          <div id="dcon-ci-form" style="display:none;padding:10px 14px;background:var(--surface2);border-bottom:2px solid var(--primary);flex-shrink:0">
             <div style="font-size:11px;font-weight:700;color:var(--primary);margin-bottom:8px" id="dcon-ci-form-title">＋ 새 제약조건 항목 추가</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
               <div>
-                <label style="font-size:10px;color:var(--text3);display:block;margin-bottom:2px">항목 코드 (영문대문자_)</label>
-                <input type="text" id="dcon-ci-f-cd" placeholder="예: MY_CONST" maxlength="30"
+                <label style="font-size:10px;color:var(--text3);display:block;margin-bottom:2px">CONST_KEY <span style="color:var(--danger)">*</span></label>
+                <input type="text" id="dcon-ci-f-key" placeholder="예: MAX_LOAD_RATE" maxlength="60"
                   style="width:100%;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);box-sizing:border-box"/>
               </div>
               <div>
-                <label style="font-size:10px;color:var(--text3);display:block;margin-bottom:2px">항목명</label>
-                <input type="text" id="dcon-ci-f-nm" placeholder="예: 최대 적재율"
-                  style="width:100%;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);box-sizing:border-box"/>
-              </div>
-              <div>
-                <label style="font-size:10px;color:var(--text3);display:block;margin-bottom:2px">그룹</label>
-                <select id="dcon-ci-f-grp"
+                <label style="font-size:10px;color:var(--text3);display:block;margin-bottom:2px">CONST_TYPE</label>
+                <select id="dcon-ci-f-type"
                   style="width:100%;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">
-                  <option value="COMMON">공통(§1)</option>
-                  <option value="ROLL">원지(§2)</option>
-                  <option value="BOARD">판지(§3)</option>
-                  <option value="MIX">혼합(§4)</option>
+                  <option value="GLOBAL">GLOBAL</option>
+                  <option value="VEHICLE">VEHICLE</option>
+                  <option value="PRODUCT">PRODUCT</option>
+                  <option value="REGION">REGION</option>
                 </select>
               </div>
               <div>
-                <label style="font-size:10px;color:var(--text3);display:block;margin-bottom:2px">값 유형</label>
-                <select id="dcon-ci-f-type" onchange="_dconCiFormTypeChange()"
+                <label style="font-size:10px;color:var(--text3);display:block;margin-bottom:2px">CONST_OP</label>
+                <select id="dcon-ci-f-op"
                   style="width:100%;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">
-                  <option value="YN">Y/N 선택</option>
-                  <option value="NUM">숫자</option>
-                  <option value="TEXT">문자열</option>
-                  <option value="SELECT">선택목록</option>
-                  <option value="CSV">콤마구분 숫자</option>
+                  <option value="=">=</option>
+                  <option value="!=">!=</option>
+                  <option value=">">&gt;</option>
+                  <option value=">=">&gt;=</option>
+                  <option value="<">&lt;</option>
+                  <option value="<=">&lt;=</option>
+                  <option value="IN">IN</option>
+                  <option value="BETWEEN">BETWEEN</option>
                 </select>
               </div>
               <div>
-                <label style="font-size:10px;color:var(--text3);display:block;margin-bottom:2px">기본값</label>
-                <input type="text" id="dcon-ci-f-defval" placeholder="예: Y 또는 100"
+                <label style="font-size:10px;color:var(--text3);display:block;margin-bottom:2px">CONST_VALUE</label>
+                <input type="text" id="dcon-ci-f-val" placeholder="예: Y, 100, 1.4t"
                   style="width:100%;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);box-sizing:border-box"/>
               </div>
               <div>
-                <label style="font-size:10px;color:var(--text3);display:block;margin-bottom:2px">단위</label>
-                <input type="text" id="dcon-ci-f-unit" placeholder="예: % / m / ton"
+                <label style="font-size:10px;color:var(--text3);display:block;margin-bottom:2px">TARGET_ID</label>
+                <input type="text" id="dcon-ci-f-tgtid" placeholder="예: VH001"
                   style="width:100%;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);box-sizing:border-box"/>
               </div>
               <div>
-                <label style="font-size:10px;color:var(--text3);display:block;margin-bottom:2px">엑셀 참조</label>
-                <input type="text" id="dcon-ci-f-ref" placeholder="예: §2-1"
+                <label style="font-size:10px;color:var(--text3);display:block;margin-bottom:2px">TARGET_NM</label>
+                <input type="text" id="dcon-ci-f-tgtnm" placeholder="예: 1.4톤 차량"
                   style="width:100%;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);box-sizing:border-box"/>
               </div>
               <div>
-                <label style="font-size:10px;color:var(--text3);display:block;margin-bottom:2px">정렬 순서</label>
+                <label style="font-size:10px;color:var(--text3);display:block;margin-bottom:2px">정렬순서</label>
                 <input type="number" id="dcon-ci-f-seq" value="0"
                   style="width:100%;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);box-sizing:border-box"/>
               </div>
-              <div id="dcon-ci-f-opts-wrap" style="grid-column:span 2;display:none">
-                <label style="font-size:10px;color:var(--text3);display:block;margin-bottom:2px">선택 옵션 (JSON 배열, 예: ["Y","N"])</label>
-                <input type="text" id="dcon-ci-f-opts" placeholder='["Y","N"]'
-                  style="width:100%;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);box-sizing:border-box"/>
+              <div>
+                <label style="font-size:10px;color:var(--text3);display:block;margin-bottom:2px">활성여부</label>
+                <select id="dcon-ci-f-active"
+                  style="width:100%;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">
+                  <option value="Y">Y — 활성</option>
+                  <option value="N">N — 비활성</option>
+                </select>
               </div>
-              <div style="grid-column:span 2">
-                <label style="font-size:10px;color:var(--text3);display:block;margin-bottom:2px">상세 설명</label>
-                <input type="text" id="dcon-ci-f-desc" placeholder="항목에 대한 설명"
+              <div style="grid-column:span 4">
+                <label style="font-size:10px;color:var(--text3);display:block;margin-bottom:2px">NOTE</label>
+                <input type="text" id="dcon-ci-f-note" placeholder="항목에 대한 메모"
                   style="width:100%;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);box-sizing:border-box"/>
               </div>
             </div>
-            <input type="hidden" id="dcon-ci-f-editcd"/>
+            <input type="hidden" id="dcon-ci-f-id"/>
             <div style="display:flex;gap:6px;margin-top:8px">
               <button class="dcon-run-btn primary" onclick="_dconCiFormSave()" style="padding:4px 14px;font-size:11px">💾 저장</button>
-              <button class="dcon-run-btn secondary" onclick="_dconCiFormClose()" style="padding:4px 10px;font-size:11px">취소</button>
+              <button class="dcon-run-btn secondary" onclick="_dconCiFormClose()" style="padding:4px 10px;font-size:11px">✕ 취소</button>
             </div>
           </div>
 
-          <!-- 항목 목록 (좌: 목록, 우: 설정값 편집) -->
-          <div style="display:flex;flex:1;min-height:0;overflow:hidden">
-            <!-- 좌: 항목 목록 (체크박스로 세트 활성 여부 선택) -->
-            <div style="width:55%;min-width:180px;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden">
-              <div style="padding:5px 8px;font-size:10px;color:var(--text3);border-bottom:1px solid var(--border);flex-shrink:0;background:var(--th-bg)">
-                ☑ 체크 = 이 세트에 적용 &nbsp;|&nbsp; 클릭 = 설정값 편집
-              </div>
-              <div id="dcon-ci-list" style="flex:1;overflow-y:auto;padding:4px 0"></div>
-            </div>
-            <!-- 우: 선택 항목 설정값 편집 -->
-            <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
-              <div id="dcon-ci-detail" style="flex:1;overflow-y:auto;padding:12px 14px">
-                <div class="dcon-empty" style="padding:30px 0;font-size:12px">← 항목을 클릭하면<br>설정값을 변경할 수 있습니다</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 저장 바 -->
-          <div class="dcon-set-savebar" style="flex-shrink:0">
-            <span style="font-size:10px;color:var(--text3);flex:1" id="dcon-ci-save-hint">변경 후 💾 저장을 눌러주세요</span>
-            <button class="dcon-run-btn primary" onclick="_dconCiSaveAll()" style="padding:4px 14px;font-size:11px">💾 전체 저장</button>
+          <!-- 전체 목록 테이블 -->
+          <div style="flex:1;min-height:0;overflow:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:860px">
+              <thead>
+                <tr style="background:var(--th-bg);position:sticky;top:0;z-index:2">
+                  <th style="padding:5px 6px;border:1px solid var(--border);text-align:center;width:52px">ID</th>
+                  <th style="padding:5px 6px;border:1px solid var(--border);text-align:center;width:76px">TYPE</th>
+                  <th style="padding:5px 6px;border:1px solid var(--border);text-align:left;min-width:160px">CONST_KEY</th>
+                  <th style="padding:5px 6px;border:1px solid var(--border);text-align:center;width:60px">OP</th>
+                  <th style="padding:5px 6px;border:1px solid var(--border);text-align:left;min-width:100px">VALUE</th>
+                  <th style="padding:5px 6px;border:1px solid var(--border);text-align:left;width:80px">TARGET_ID</th>
+                  <th style="padding:5px 6px;border:1px solid var(--border);text-align:left;min-width:90px">TARGET_NM</th>
+                  <th style="padding:5px 6px;border:1px solid var(--border);text-align:left;min-width:100px">NOTE</th>
+                  <th style="padding:5px 6px;border:1px solid var(--border);text-align:center;width:42px">활성</th>
+                  <th style="padding:5px 6px;border:1px solid var(--border);text-align:center;width:42px">순서</th>
+                  <th style="padding:5px 6px;border:1px solid var(--border);text-align:center;width:90px">작업</th>
+                </tr>
+              </thead>
+              <tbody id="dcon-ci-list"></tbody>
+            </table>
           </div>
         </div>
 
@@ -22402,7 +22396,7 @@ async function dconLinkSetToProfile(setId) {
 
 /* ══════════════════════════════════════════════════════════════
    제약조건 항목 관리 (CI: Constraint Item) 패널
-   ─ ③컬럼 상단 탭 전환 · 항목 CRUD · 세트별 설정값 관리
+   ─ DS_DISPATCH_CONST 기반 전체 목록 테이블 + CRUD
 ══════════════════════════════════════════════════════════════ */
 
 /* ─ 패널 전환 (세트편집 ↔ 제약조건항목관리) ─ */
@@ -22438,32 +22432,23 @@ function dconSwitchPanel(mode) {
 }
 
 /* ─ 전역 상태 ─ */
-DCON._ciItems      = [];   // DS_DISPATCH_CONST_ITEM 전체
-DCON._ciFiltered   = [];   // 필터링된 항목
-DCON._ciSelItemCd  = null; // 현재 선택된 항목 코드
-DCON._ciDirty      = {};   // { item_cd: { use_yn, setting_val, note } } 변경분
+DCON._ciItems    = [];   // DS_DISPATCH_CONST 전체 행
+DCON._ciFiltered = [];   // 필터링된 행
 
-/* 그룹 레이블 */
-const CI_GRP_LABEL = { COMMON:'공통(§1)', ROLL:'원지(§2)', BOARD:'판지(§3)', MIX:'혼합(§4)' };
-const CI_TYPE_LABEL = { YN:'Y/N 선택', NUM:'숫자', TEXT:'문자열', SELECT:'선택목록', CSV:'콤마구분 숫자' };
+/* TYPE 뱃지 색상 */
+const CI_TYPE_COLOR = {
+  GLOBAL:  '#2563eb', VEHICLE: '#7c3aed',
+  PRODUCT: '#0891b2', REGION:  '#059669'
+};
 
 /* ─ 항목 목록 로드 ─ */
 async function _dconCiLoad() {
   try {
-    const setId = DCON.selSetId || '';
-    const url   = `/api/const-item/list${setId ? '?set_id='+setId : ''}`;
-    const r = await fetch(url);
+    const r = await fetch('/api/const-item/list');
     const d = await r.json();
     if (!d.ok) throw new Error(d.error);
-    DCON._ciItems    = d.rows || [];
-    DCON._ciDirty    = {};
-    DCON._ciSelItemCd = null;
+    DCON._ciItems = d.rows || [];
     _dconCiFilter();
-    // 세트 미선택 알림 업데이트
-    const noSetEl = document.getElementById('dcon-ci-no-set');
-    if (noSetEl) noSetEl.style.display = DCON.selSetId ? 'none' : 'flex';
-    document.getElementById('dcon-ci-detail').innerHTML =
-      '<div class="dcon-empty" style="padding:30px 0;font-size:12px">← 항목을 클릭하면<br>설정값을 변경할 수 있습니다</div>';
   } catch(e) {
     showToast(`❌ 항목 로드 실패: ${e.message}`, 'error');
   }
@@ -22471,300 +22456,110 @@ async function _dconCiLoad() {
 
 /* ─ 필터 ─ */
 function _dconCiFilter() {
-  const kw  = (document.getElementById('dcon-ci-search')?.value || '').toLowerCase();
-  const grp = document.getElementById('dcon-ci-grp-filter')?.value || '';
+  const kw   = (document.getElementById('dcon-ci-search')?.value || '').toLowerCase();
+  const type = document.getElementById('dcon-ci-type-filter')?.value || '';
   DCON._ciFiltered = DCON._ciItems.filter(it => {
-    if (grp && it.ITEM_GRP !== grp) return false;
-    if (kw && !(it.ITEM_NM.toLowerCase().includes(kw) || it.ITEM_CD.toLowerCase().includes(kw) || (it.DESCRIPTION||'').toLowerCase().includes(kw))) return false;
+    if (type && (it.CONST_TYPE || '') !== type) return false;
+    if (kw) {
+      const key  = (it.CONST_KEY  || '').toLowerCase();
+      const note = (it.NOTE       || '').toLowerCase();
+      const tgid = (it.TARGET_ID  || '').toLowerCase();
+      const tgnm = (it.TARGET_NM  || '').toLowerCase();
+      if (!(key.includes(kw) || note.includes(kw) || tgid.includes(kw) || tgnm.includes(kw))) return false;
+    }
     return true;
   });
   _dconCiRenderList();
 }
 
-/* ─ 목록 렌더 ─ */
+/* ─ XSS 방지 이스케이프 ─ */
+function _esc(v) {
+  if (v == null) return '';
+  return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ─ 목록 테이블 렌더 ─ */
 function _dconCiRenderList() {
-  const el = document.getElementById('dcon-ci-list');
-  if (!el) return;
+  const tbody = document.getElementById('dcon-ci-list');
+  if (!tbody) return;
   const total = DCON._ciItems.length;
   const shown = DCON._ciFiltered.length;
-  document.getElementById('dcon-ci-cnt-badge').textContent = `${shown}/${total}건`;
+  const badge = document.getElementById('dcon-ci-cnt-badge');
+  if (badge) badge.textContent = `${shown}/${total}건`;
 
   if (!shown) {
-    el.innerHTML = '<div class="dcon-empty" style="padding:20px;font-size:11px">항목 없음</div>';
+    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:24px;color:var(--text3);font-size:11px">등록된 제약조건 항목이 없습니다. 상단 [＋ 항목 추가]를 클릭하세요.</td></tr>`;
     return;
   }
 
-  el.innerHTML = DCON._ciFiltered.map(it => {
-    const isActive = DCON._ciSelItemCd === it.ITEM_CD;
-    // 세트 설정 (변경분 우선)
-    const dirty   = DCON._ciDirty[it.ITEM_CD];
-    const useYn   = dirty ? dirty.use_yn   : (it.USE_YN || 'N');
-    const grpCls  = `dcon-ci-grp-${it.ITEM_GRP}`;
-    const grpLbl  = CI_GRP_LABEL[it.ITEM_GRP] || it.ITEM_GRP;
-    const ynBadge = useYn === 'Y'
-      ? `<span class="dcon-ci-badge-on">적용</span>`
-      : `<span class="dcon-ci-badge-off">미적용</span>`;
-    return `<div class="dcon-ci-item${isActive?' active':''}" id="dcon-ci-row-${it.ITEM_CD}"
-        onclick="_dconCiSelectItem('${it.ITEM_CD}')">
-      ${DCON.selSetId ? `<input type="checkbox" class="dcon-ci-item-chk"
-        ${useYn==='Y'?'checked':''} title="이 세트에 적용"
-        onclick="event.stopPropagation();_dconCiToggleUse('${it.ITEM_CD}',this.checked)">` : ''}
-      <span class="dcon-ci-item-grp ${grpCls}">${grpLbl}</span>
-      <span class="dcon-ci-item-nm" title="${it.ITEM_NM}">${it.ITEM_NM}</span>
-      ${DCON.selSetId ? ynBadge : ''}
-      <span class="dcon-ci-item-ref">${it.SOURCE_REF||''}</span>
-    </div>`;
+  tbody.innerHTML = DCON._ciFiltered.map((it, idx) => {
+    const typeColor = CI_TYPE_COLOR[it.CONST_TYPE] || '#64748b';
+    const activeBg  = it.ACTIVE_YN === 'Y' ? '#dcfce7' : '#fee2e2';
+    const activeClr = it.ACTIVE_YN === 'Y' ? '#166534' : '#991b1b';
+    const rowBg     = idx % 2 === 0 ? '' : 'var(--surface2)';
+    return `<tr style="background:${rowBg}" onmouseover="this.style.background='var(--tr-hover)'" onmouseout="this.style.background='${rowBg}'">
+      <td style="padding:4px 6px;border:1px solid var(--border);text-align:center;color:var(--text3);font-size:10px">${it.CONST_ID}</td>
+      <td style="padding:4px 6px;border:1px solid var(--border);text-align:center">
+        <span style="background:${typeColor};color:#fff;border-radius:3px;padding:1px 5px;font-size:10px;font-weight:600">${_esc(it.CONST_TYPE)}</span>
+      </td>
+      <td style="padding:4px 6px;border:1px solid var(--border);font-family:monospace;font-weight:600;font-size:11px">${_esc(it.CONST_KEY)}</td>
+      <td style="padding:4px 6px;border:1px solid var(--border);text-align:center;font-family:monospace;font-size:11px">${_esc(it.CONST_OP)}</td>
+      <td style="padding:4px 6px;border:1px solid var(--border);font-size:11px">${_esc(it.CONST_VALUE)}</td>
+      <td style="padding:4px 6px;border:1px solid var(--border);font-size:10px;color:var(--text3)">${_esc(it.TARGET_ID)}</td>
+      <td style="padding:4px 6px;border:1px solid var(--border);font-size:11px">${_esc(it.TARGET_NM)}</td>
+      <td style="padding:4px 6px;border:1px solid var(--border);font-size:10px;color:var(--text3)">${_esc(it.NOTE)}</td>
+      <td style="padding:4px 6px;border:1px solid var(--border);text-align:center">
+        <span style="background:${activeBg};color:${activeClr};border-radius:3px;padding:1px 5px;font-size:10px;font-weight:600">${_esc(it.ACTIVE_YN) || 'Y'}</span>
+      </td>
+      <td style="padding:4px 6px;border:1px solid var(--border);text-align:center;font-size:11px;color:var(--text3)">${it.SORT_SEQ != null ? it.SORT_SEQ : ''}</td>
+      <td style="padding:4px 6px;border:1px solid var(--border);text-align:center;white-space:nowrap">
+        <button class="dcon-run-btn secondary" onclick="_dconCiEditItem(${it.CONST_ID})"
+          style="padding:2px 7px;font-size:10px;margin-right:2px">✏️ 수정</button>
+        <button class="dcon-run-btn secondary" onclick="_dconCiDeleteItem(${it.CONST_ID},'${_esc(it.CONST_KEY)}')"
+          style="padding:2px 7px;font-size:10px;color:var(--danger)">🗑 삭제</button>
+      </td>
+    </tr>`;
   }).join('');
 }
 
-/* ─ 체크박스 토글 (USE_YN) ─ */
-function _dconCiToggleUse(itemCd, checked) {
-  if (!DCON.selSetId) { showToast('세트를 먼저 선택하세요', 'warn'); return; }
-  if (!DCON._ciDirty[itemCd]) {
-    const it = DCON._ciItems.find(x => x.ITEM_CD === itemCd);
-    DCON._ciDirty[itemCd] = {
-      use_yn:      it?.USE_YN || 'N',
-      setting_val: it?.SETTING_VAL || null,
-      note:        it?.SET_NOTE   || ''
-    };
-  }
-  DCON._ciDirty[itemCd].use_yn = checked ? 'Y' : 'N';
-  // 목록 뱃지 갱신 (로우만)
-  const rowEl = document.getElementById(`dcon-ci-row-${itemCd}`);
-  if (rowEl) {
-    const badge = rowEl.querySelector('.dcon-ci-badge-on,.dcon-ci-badge-off');
-    if (badge) {
-      badge.className = checked ? 'dcon-ci-badge-on' : 'dcon-ci-badge-off';
-      badge.textContent = checked ? '적용' : '미적용';
-    }
-  }
-  // 상세 패널이 이 항목이면 use_yn select 갱신
-  if (DCON._ciSelItemCd === itemCd) {
-    const ynEl = document.getElementById('dcon-ci-det-use-yn');
-    if (ynEl) ynEl.value = checked ? 'Y' : 'N';
-  }
-  _updateCiSaveHint();
-}
-
-/* ─ 항목 클릭 → 상세 편집 패널 ─ */
-function _dconCiSelectItem(itemCd) {
-  DCON._ciSelItemCd = itemCd;
-  // 목록 active 클래스 갱신
-  document.querySelectorAll('.dcon-ci-item').forEach(el => {
-    el.classList.toggle('active', el.id === `dcon-ci-row-${itemCd}`);
-    el.classList.toggle('', el.id !== `dcon-ci-row-${itemCd}`);
-  });
-  _dconCiRenderDetail(itemCd);
-}
-
-/* ─ 상세 패널 렌더 ─ */
-function _dconCiRenderDetail(itemCd) {
-  const detEl = document.getElementById('dcon-ci-detail');
-  if (!detEl) return;
-  const it = DCON._ciItems.find(x => x.ITEM_CD === itemCd);
-  if (!it) return;
-
-  const dirty   = DCON._ciDirty[itemCd];
-  const useYn   = dirty ? dirty.use_yn      : (it.USE_YN      || 'N');
-  const setVal  = dirty ? dirty.setting_val : (it.SETTING_VAL || '');
-  const note    = dirty ? dirty.note        : (it.SET_NOTE     || '');
-  const grpLbl  = CI_GRP_LABEL[it.ITEM_GRP] || it.ITEM_GRP;
-  const typeLbl = CI_TYPE_LABEL[it.ITEM_TYPE] || it.ITEM_TYPE;
-
-  // 값 입력 컨트롤 생성
-  let valCtrl = '';
-  const effVal = setVal !== null && setVal !== '' ? setVal : it.DEFAULT_VAL;
-  if (it.ITEM_TYPE === 'YN') {
-    valCtrl = `<select id="dcon-ci-det-val" class="dcon-ci-detail-inp" style="max-width:120px"
-      onchange="_dconCiDetChange('${itemCd}','setting_val',this.value)">
-      <option value="Y" ${effVal==='Y'?'selected':''}>Y (예/적용)</option>
-      <option value="N" ${effVal==='N'?'selected':''}>N (아니오/미적용)</option>
-    </select>`;
-  } else if (it.ITEM_TYPE === 'SELECT') {
-    let opts = [];
-    try { opts = JSON.parse(it.SELECT_OPTS || '[]'); } catch(e) { opts = []; }
-    valCtrl = `<select id="dcon-ci-det-val" class="dcon-ci-detail-inp" style="max-width:160px"
-      onchange="_dconCiDetChange('${itemCd}','setting_val',this.value)">
-      ${opts.map(o=>`<option value="${o}" ${effVal===String(o)?'selected':''}>${o}</option>`).join('')}
-    </select>`;
-  } else if (it.ITEM_TYPE === 'NUM') {
-    valCtrl = `<input type="number" id="dcon-ci-det-val" class="dcon-ci-detail-inp"
-      step="any" value="${effVal}" style="max-width:140px"
-      oninput="_dconCiDetChange('${itemCd}','setting_val',this.value)"/>
-      <span style="font-size:11px;color:var(--text3);margin-left:4px">${it.UNIT||''}</span>`;
-  } else if (it.ITEM_TYPE === 'CSV') {
-    valCtrl = `<input type="text" id="dcon-ci-det-val" class="dcon-ci-detail-inp"
-      value="${effVal}" placeholder="1.4t,3.5t,5t,5t축,11t,15t,18t 순서"
-      oninput="_dconCiDetChange('${itemCd}','setting_val',this.value)"/>
-      <div style="font-size:10px;color:var(--text3);margin-top:3px">콤마(,)로 구분된 값 (차종 순서: 1.4t→3.5t→5t→5t축→11t→15t→18t)</div>`;
-  } else {
-    valCtrl = `<input type="text" id="dcon-ci-det-val" class="dcon-ci-detail-inp"
-      value="${effVal}"
-      oninput="_dconCiDetChange('${itemCd}','setting_val',this.value)"/>`;
-  }
-
-  detEl.innerHTML = `
-    <div class="dcon-ci-detail-hdr">
-      ${it.ITEM_NM}
-      ${it.SOURCE_REF ? `<span style="font-size:10px;color:var(--text3);margin-left:6px">${it.SOURCE_REF}</span>` : ''}
-    </div>
-    <div class="dcon-ci-detail-badge-row">
-      <span class="dcon-ci-detail-badge">코드: ${it.ITEM_CD}</span>
-      <span class="dcon-ci-detail-badge">그룹: ${grpLbl}</span>
-      <span class="dcon-ci-detail-badge">유형: ${typeLbl}</span>
-      <span class="dcon-ci-detail-badge">기본값: ${it.DEFAULT_VAL}${it.UNIT?' '+it.UNIT:''}</span>
-      <span class="dcon-ci-detail-badge">연산자: ${it.CONST_OP||'='}</span>
-    </div>
-    ${it.DESCRIPTION ? `<div class="dcon-ci-detail-desc">📌 ${it.DESCRIPTION}</div>` : ''}
-
-    ${DCON.selSetId ? `
-    <div class="dcon-ci-detail-row">
-      <label>이 세트에 적용 (USE_YN)</label>
-      <select id="dcon-ci-det-use-yn" class="dcon-ci-detail-inp" style="max-width:120px"
-        onchange="_dconCiDetChange('${itemCd}','use_yn',this.value);_dconCiSyncChk('${itemCd}',this.value)">
-        <option value="Y" ${useYn==='Y'?'selected':''}>Y — 적용</option>
-        <option value="N" ${useYn==='N'?'selected':''}>N — 미적용</option>
-      </select>
-    </div>
-    <div class="dcon-ci-detail-row">
-      <label>설정값 <span style="color:var(--text3)">(비워두면 기본값 ${it.DEFAULT_VAL} 사용)</span></label>
-      ${valCtrl}
-    </div>
-    <div class="dcon-ci-detail-row">
-      <label>메모</label>
-      <input type="text" class="dcon-ci-detail-inp" id="dcon-ci-det-note"
-        value="${note}" placeholder="선택사항"
-        oninput="_dconCiDetChange('${itemCd}','note',this.value)"/>
-    </div>
-    <div style="display:flex;gap:6px;margin-top:10px">
-      <button class="dcon-run-btn primary" onclick="_dconCiSaveAll()" style="padding:4px 14px;font-size:11px">💾 전체 저장</button>
-      <button class="dcon-run-btn secondary" onclick="_dconCiResetItem('${itemCd}')" style="padding:4px 10px;font-size:11px">↩ 기본값 복원</button>
-    </div>
-    ` : `<div style="font-size:11px;color:var(--text3);padding:10px 0">💡 좌측에서 제약조건 세트를 선택하면 설정값을 관리할 수 있습니다.</div>`}
-
-    <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:10px">
-      <div style="font-size:10px;color:var(--text3);font-weight:700;margin-bottom:6px">📝 항목 정보 수정</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="dcon-run-btn secondary" onclick="_dconCiEditItem('${itemCd}')"
-          style="padding:3px 10px;font-size:10px">✏️ 항목 편집</button>
-        <button class="dcon-run-btn secondary"
-          style="padding:3px 10px;font-size:10px;color:var(--danger)"
-          onclick="_dconCiDeleteItem('${itemCd}')">🗑 항목 삭제</button>
-      </div>
-    </div>`;
-}
-
-/* ─ 상세 패널 값 변경 핸들러 ─ */
-function _dconCiDetChange(itemCd, field, val) {
-  if (!DCON._ciDirty[itemCd]) {
-    const it = DCON._ciItems.find(x => x.ITEM_CD === itemCd);
-    DCON._ciDirty[itemCd] = {
-      use_yn:      it?.USE_YN      || 'N',
-      setting_val: it?.SETTING_VAL || null,
-      note:        it?.SET_NOTE    || ''
-    };
-  }
-  DCON._ciDirty[itemCd][field] = val || null;
-  _updateCiSaveHint();
-}
-
-/* ─ 목록의 체크박스와 상세 USE_YN select 동기화 ─ */
-function _dconCiSyncChk(itemCd, val) {
-  const rowEl = document.getElementById(`dcon-ci-row-${itemCd}`);
-  if (!rowEl) return;
-  const chk = rowEl.querySelector('.dcon-ci-item-chk');
-  if (chk) chk.checked = val === 'Y';
-  const badge = rowEl.querySelector('.dcon-ci-badge-on,.dcon-ci-badge-off');
-  if (badge) {
-    badge.className   = val === 'Y' ? 'dcon-ci-badge-on' : 'dcon-ci-badge-off';
-    badge.textContent = val === 'Y' ? '적용' : '미적용';
-  }
-}
-
-function _updateCiSaveHint() {
-  const cnt = Object.keys(DCON._ciDirty).length;
-  const hintEl = document.getElementById('dcon-ci-save-hint');
-  if (hintEl) hintEl.textContent = cnt > 0 ? `✏️ ${cnt}건 변경됨 — 💾 저장을 눌러주세요` : '변경 후 💾 저장을 눌러주세요';
-}
-
-/* ─ 기본값 복원 ─ */
-function _dconCiResetItem(itemCd) {
-  const it = DCON._ciItems.find(x => x.ITEM_CD === itemCd);
-  if (!it) return;
-  DCON._ciDirty[itemCd] = { use_yn: 'N', setting_val: null, note: '' };
-  _dconCiSyncChk(itemCd, 'N');
-  _dconCiRenderDetail(itemCd);
-  _updateCiSaveHint();
-}
-
-/* ─ 전체 저장 ─ */
-async function _dconCiSaveAll() {
-  if (!DCON.selSetId) { showToast('세트를 선택하세요', 'warn'); return; }
-  const settings = Object.entries(DCON._ciDirty).map(([item_cd, d]) => ({
-    item_cd,
-    use_yn:      d.use_yn      || 'N',
-    setting_val: d.setting_val || null,
-    note:        d.note        || ''
-  }));
-  if (!settings.length) { showToast('변경된 내용이 없습니다', 'info'); return; }
-  try {
-    const r = await fetch('/api/const-item/setting/save', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ set_id: DCON.selSetId, settings })
-    });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error);
-    showToast(`✅ ${settings.length}건 설정 저장 완료`);
-    DCON._ciDirty = {};
-    _updateCiSaveHint();
-    await _dconCiLoad();
-    if (DCON._ciSelItemCd) _dconCiRenderDetail(DCON._ciSelItemCd);
-  } catch(e) { showToast(`❌ 저장 실패: ${e.message}`, 'error'); }
-}
-
 /* ─ 항목 추가 폼 열기 ─ */
-function _dconCiAddForm(editCd) {
+function _dconCiAddForm(constId) {
   const form = document.getElementById('dcon-ci-form');
   if (!form) return;
   form.style.display = 'block';
-  document.getElementById('dcon-ci-form-title').textContent = editCd ? '✏️ 항목 수정' : '＋ 새 제약조건 항목 추가';
-  document.getElementById('dcon-ci-f-editcd').value = editCd || '';
 
-  if (editCd) {
-    const it = DCON._ciItems.find(x => x.ITEM_CD === editCd);
-    if (it) {
-      document.getElementById('dcon-ci-f-cd').value      = it.ITEM_CD;
-      document.getElementById('dcon-ci-f-cd').disabled   = true;
-      document.getElementById('dcon-ci-f-nm').value      = it.ITEM_NM;
-      document.getElementById('dcon-ci-f-grp').value     = it.ITEM_GRP;
-      document.getElementById('dcon-ci-f-type').value    = it.ITEM_TYPE;
-      document.getElementById('dcon-ci-f-defval').value  = it.DEFAULT_VAL || '';
-      document.getElementById('dcon-ci-f-unit').value    = it.UNIT || '';
-      document.getElementById('dcon-ci-f-ref').value     = it.SOURCE_REF || '';
-      document.getElementById('dcon-ci-f-seq').value     = it.SORT_SEQ || 0;
-      document.getElementById('dcon-ci-f-opts').value    = it.SELECT_OPTS || '';
-      document.getElementById('dcon-ci-f-desc').value    = it.DESCRIPTION || '';
-      _dconCiFormTypeChange();
-    }
+  if (constId) {
+    const it = DCON._ciItems.find(x => x.CONST_ID == constId);
+    document.getElementById('dcon-ci-form-title').textContent = '✏️ 제약조건 항목 수정';
+    document.getElementById('dcon-ci-f-id').value     = constId;
+    document.getElementById('dcon-ci-f-key').value    = it?.CONST_KEY   || '';
+    document.getElementById('dcon-ci-f-type').value   = it?.CONST_TYPE  || 'GLOBAL';
+    document.getElementById('dcon-ci-f-op').value     = it?.CONST_OP    || '=';
+    document.getElementById('dcon-ci-f-val').value    = it?.CONST_VALUE || '';
+    document.getElementById('dcon-ci-f-tgtid').value  = it?.TARGET_ID   || '';
+    document.getElementById('dcon-ci-f-tgtnm').value  = it?.TARGET_NM   || '';
+    document.getElementById('dcon-ci-f-note').value   = it?.NOTE        || '';
+    document.getElementById('dcon-ci-f-seq').value    = it?.SORT_SEQ    ?? 0;
+    document.getElementById('dcon-ci-f-active').value = it?.ACTIVE_YN   || 'Y';
   } else {
-    document.getElementById('dcon-ci-f-cd').value    = '';
-    document.getElementById('dcon-ci-f-cd').disabled = false;
-    document.getElementById('dcon-ci-f-nm').value    = '';
-    document.getElementById('dcon-ci-f-grp').value   = 'COMMON';
-    document.getElementById('dcon-ci-f-type').value  = 'YN';
-    document.getElementById('dcon-ci-f-defval').value= 'Y';
-    document.getElementById('dcon-ci-f-unit').value  = '';
-    document.getElementById('dcon-ci-f-ref').value   = '';
-    document.getElementById('dcon-ci-f-seq').value   = 0;
-    document.getElementById('dcon-ci-f-opts').value  = '';
-    document.getElementById('dcon-ci-f-desc').value  = '';
-    _dconCiFormTypeChange();
+    document.getElementById('dcon-ci-form-title').textContent = '＋ 새 제약조건 항목 추가';
+    document.getElementById('dcon-ci-f-id').value     = '';
+    document.getElementById('dcon-ci-f-key').value    = '';
+    document.getElementById('dcon-ci-f-type').value   = 'GLOBAL';
+    document.getElementById('dcon-ci-f-op').value     = '=';
+    document.getElementById('dcon-ci-f-val').value    = '';
+    document.getElementById('dcon-ci-f-tgtid').value  = '';
+    document.getElementById('dcon-ci-f-tgtnm').value  = '';
+    document.getElementById('dcon-ci-f-note').value   = '';
+    document.getElementById('dcon-ci-f-seq').value    = 0;
+    document.getElementById('dcon-ci-f-active').value = 'Y';
   }
   form.scrollIntoView({ behavior:'smooth', block:'start' });
+  document.getElementById('dcon-ci-f-key').focus();
 }
 
-function _dconCiEditItem(itemCd) {
-  _dconCiAddForm(itemCd);
+function _dconCiEditItem(constId) {
+  _dconCiAddForm(constId);
 }
 
 function _dconCiFormClose() {
@@ -22772,32 +22567,25 @@ function _dconCiFormClose() {
   if (form) form.style.display = 'none';
 }
 
-function _dconCiFormTypeChange() {
-  const type = document.getElementById('dcon-ci-f-type')?.value;
-  const wrap = document.getElementById('dcon-ci-f-opts-wrap');
-  if (wrap) wrap.style.display = type === 'SELECT' ? 'block' : 'none';
-}
-
-/* ─ 항목 저장 ─ */
+/* ─ 항목 저장 (INSERT or UPDATE DS_DISPATCH_CONST) ─ */
 async function _dconCiFormSave() {
-  const cd   = (document.getElementById('dcon-ci-f-cd')?.value || '').trim().toUpperCase();
-  const nm   = (document.getElementById('dcon-ci-f-nm')?.value || '').trim();
-  if (!cd)  { showToast('항목 코드를 입력하세요', 'warn'); return; }
-  if (!nm)  { showToast('항목명을 입력하세요', 'warn'); return; }
+  const constKey = (document.getElementById('dcon-ci-f-key')?.value || '').trim().toUpperCase();
+  if (!constKey) { showToast('CONST_KEY를 입력하세요', 'warn'); return; }
+
+  const constIdRaw = document.getElementById('dcon-ci-f-id')?.value || '';
   const body = {
-    item_cd:    cd,
-    item_nm:    nm,
-    item_grp:   document.getElementById('dcon-ci-f-grp')?.value   || 'COMMON',
-    item_type:  document.getElementById('dcon-ci-f-type')?.value  || 'YN',
-    default_val:document.getElementById('dcon-ci-f-defval')?.value|| 'Y',
-    unit:       document.getElementById('dcon-ci-f-unit')?.value  || '',
-    source_ref: document.getElementById('dcon-ci-f-ref')?.value   || '',
-    sort_seq:   parseInt(document.getElementById('dcon-ci-f-seq')?.value || '0'),
-    select_opts:document.getElementById('dcon-ci-f-opts')?.value  || null,
-    description:document.getElementById('dcon-ci-f-desc')?.value  || '',
-    active_yn:  'Y',
-    const_op:   '='
+    const_key:   constKey,
+    const_type:  document.getElementById('dcon-ci-f-type')?.value  || 'GLOBAL',
+    const_op:    document.getElementById('dcon-ci-f-op')?.value    || '=',
+    const_value: document.getElementById('dcon-ci-f-val')?.value   || '',
+    target_id:   document.getElementById('dcon-ci-f-tgtid')?.value || '',
+    target_nm:   document.getElementById('dcon-ci-f-tgtnm')?.value || '',
+    note:        document.getElementById('dcon-ci-f-note')?.value  || '',
+    sort_seq:    parseInt(document.getElementById('dcon-ci-f-seq')?.value || '0'),
+    active_yn:   document.getElementById('dcon-ci-f-active')?.value || 'Y'
   };
+  if (constIdRaw) body.const_id = Number(constIdRaw);
+
   try {
     const r = await fetch('/api/const-item/save', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -22805,28 +22593,30 @@ async function _dconCiFormSave() {
     });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error);
-    showToast(`✅ "${nm}" 항목 저장 완료`);
+    showToast(`✅ "${constKey}" 항목 ${constIdRaw ? '수정' : '추가'} 완료`);
     _dconCiFormClose();
     await _dconCiLoad();
   } catch(e) { showToast(`❌ 저장 실패: ${e.message}`, 'error'); }
 }
 
 /* ─ 항목 삭제 ─ */
-async function _dconCiDeleteItem(itemCd) {
-  if (!confirm(`"${itemCd}" 항목을 삭제하시겠습니까?\n모든 세트의 설정값도 함께 삭제됩니다.`)) return;
+async function _dconCiDeleteItem(constId, constKey) {
+  if (!confirm(`"${constKey}" (ID:${constId}) 항목을 삭제하시겠습니까?\n모든 세트의 설정값도 함께 삭제됩니다.`)) return;
   try {
     const r = await fetch('/api/const-item/delete', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ item_cd: itemCd })
+      body: JSON.stringify({ const_id: constId })
     });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error);
-    showToast(`✅ "${itemCd}" 항목 삭제 완료`);
-    DCON._ciSelItemCd = null;
-    document.getElementById('dcon-ci-detail').innerHTML =
-      '<div class="dcon-empty" style="padding:30px 0;font-size:12px">← 항목을 클릭하면<br>설정값을 변경할 수 있습니다</div>';
+    showToast(`✅ "${constKey}" 항목 삭제 완료`);
     await _dconCiLoad();
   } catch(e) { showToast(`❌ 삭제 실패: ${e.message}`, 'error'); }
+}
+
+/* ─ 세트별 설정값 저장 (CONST_ID 기반 — 세트 편집 탭에서 사용) ─ */
+async function _dconCiSaveAll() {
+  showToast('세트별 설정값은 [세트 편집] 탭에서 관리합니다', 'info');
 }
 
 /* ─ dconSelectSet 호출 시 항목관리 패널도 자동 갱신 ─ */
