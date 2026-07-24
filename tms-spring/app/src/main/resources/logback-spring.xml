@@ -29,6 +29,14 @@
     <appender-ref ref="STDOUT"/>
   </logger>
 
+  <!-- ── TMS 완성쿼리 로거 ─────────────────────────────────────
+       ShipmentService 에서 [QUERY-PARAMS] / [BOUND-SQL] 태그로 출력
+       ? 를 실제 바인드값으로 치환한 완성쿼리를 stdout.log 에 기록
+  ──────────────────────────────────────────────────────────── -->
+  <logger name="TMS_QUERY_LOG" level="INFO" additivity="false">
+    <appender-ref ref="STDOUT"/>
+  </logger>
+
   <!-- ── Hibernate NativeQuery SQL 로거 ──────────────────────
        org.hibernate.SQL              : 실행 SQL 전문 (DEBUG)
        org.hibernate.orm.jdbc.bind    : 바인드 파라미터 — Hibernate 6.x (TRACE)
