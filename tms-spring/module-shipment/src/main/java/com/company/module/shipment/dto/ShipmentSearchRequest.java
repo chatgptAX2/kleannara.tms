@@ -43,6 +43,9 @@ public class ShipmentSearchRequest {
     @JsonAlias("ptnrky_list")
     private List<String> ptnrkyList;        // 납품처코드 다중선택 — JS: ptnrky_list
 
+    @JsonAlias("shpmty")
+    private List<String> shpmtyList;        // 출하유형 다중선택 — JS: shpmty → WHERE SH.SHPMTY IN (...)
+
     private List<String> svbeln;            // 납품문서번호 다중 — JS: svbeln → WHERE SI.SVBELN IN (...)
 
     private int page = 1;                   // 페이지 번호 (1-based, JS에서 1 전송)
