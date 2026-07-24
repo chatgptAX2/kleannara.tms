@@ -22,7 +22,7 @@ input,select,textarea,button{font-family:'Pretendard Variable','Pretendard','App
   /* LNB: 딥 네이비 사이드바 */
   --lnb-bg:#0f172a;--lnb-surface2:#1e293b;--lnb-border:#1e3a5f;
   --lnb-text:#f1f5f9;--lnb-text2:#cbd5e1;--lnb-text3:#64748b;
-  --lnb-active-bg:#0ea5e9;
+  --lnb-active-bg:#1d4ed8;
   /* GNB: 슬레이트 네이비 (#3D425A) */
   --gnb-bg:#3d425a;--gnb-border:#2e3247;
   --gnb-tab-active-bg:#f8fafc;--gnb-tab-active-text:#3d425a;
@@ -144,14 +144,14 @@ body{background:var(--bg);color:var(--text);font-family:'Pretendard Variable','P
 }
 .nav-item:hover{background:rgba(255,255,255,.08);color:var(--lnb-text)}
 .nav-item.active{
-  background:linear-gradient(90deg,rgba(14,165,233,.25) 0%,rgba(14,165,233,.12) 100%);
-  color:#38bdf8;font-weight:600;
-  border-left:2px solid #0ea5e9;margin-left:6px;padding-left:12px;
+  background:#1d4ed8;
+  color:#ffffff;font-weight:600;
+  border-left:none;margin-left:8px;padding-left:14px;
 }
 .nav-item .icon{font-size:14px;width:16px;text-align:center;flex-shrink:0;opacity:.8}
 .nav-item.active .icon{opacity:1}
 .nav-item .cnt{margin-left:auto;background:rgba(255,255,255,.08);border-radius:10px;padding:1px 7px;font-size:10px;color:var(--lnb-text3);white-space:nowrap}
-.nav-item.active .cnt{background:rgba(14,165,233,.25);color:#7dd3fc}
+.nav-item.active .cnt{background:rgba(255,255,255,.2);color:#ffffff}
 
 /* ── MAIN ── */
 #main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
@@ -703,8 +703,9 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .ss-table thead th .ss-sort-icon::after{content:'⇅';color:var(--text3);font-size:9px}
 .ss-table tbody tr{border-bottom:1px solid var(--tr-border);transition:background .08s;cursor:default}
 .ss-table tbody tr:hover{background:var(--tr-hover)}
-.ss-table tbody tr.row-selected{background:var(--tr-selected)!important}
-.ss-table tbody td{padding:3px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border);font-size:11px;box-sizing:border-box;vertical-align:middle;line-height:1.3;cursor:cell;user-select:none;}
+.ss-table tbody tr.row-selected{background:var(--tr-selected)!important;outline:2px solid var(--primary);outline-offset:-2px;}
+.ss-table tbody tr.row-selected td{color:var(--text)!important;background:var(--tr-selected)!important;}
+.ss-table tbody td{padding:3px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border);font-size:11px;box-sizing:border-box;vertical-align:middle;line-height:1.3;cursor:cell;user-select:text;}
 .ss-table tbody td.ss-cell-selected{background:rgba(59,130,246,.18)!important;outline:2px solid var(--primary);outline-offset:-2px;}
 .dlv-list-table{border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed}
 .dlv-list-table thead th{position:sticky;top:0;background:var(--th-bg);padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none;cursor:grab;box-sizing:border-box}
@@ -4907,28 +4908,19 @@ function sapDocResetColOrder() {
     const endTd       = _lastEnd;
     _reset();
 
-    /* 클릭(드래그 없음) — ss-table 셀이면 셀 강조 + 복사, 아니면 위임 */
+    /* 클릭(드래그 없음) — ss-table 셀이면 행 전체 하이라이트 + 셀 강조, 아니면 위임 */
     if (!wasDragging) {
       if (startTd && startTd.closest('.ss-table')) {
-        /* 이전 선택 해제 */
+        /* 이전 행 선택 해제 */
+        document.querySelectorAll('.ss-table tbody tr.row-selected')
+                .forEach(el => el.classList.remove('row-selected'));
+        /* 클릭된 행 전체 강조 */
+        const clickedTr = startTd.closest('tr');
+        if (clickedTr) clickedTr.classList.add('row-selected');
+        /* 이전 셀 선택 해제 */
         document.querySelectorAll('.ss-table tbody td.ss-cell-selected')
                 .forEach(el => el.classList.remove('ss-cell-selected'));
         startTd.classList.add('ss-cell-selected');
-        const text = _cellText(startTd);
-        if (text !== '') {
-          (async () => {
-            const ok = await _copy(text);
-            if (ok) {
-              /* 복사 완료 플래시 */
-              startTd.classList.remove('ss-cell-selected');
-              startTd.classList.add('dc-copied');
-              setTimeout(() => startTd.classList.remove('dc-copied'), 900);
-              showToast(`📋 "${text.slice(0, 60)}${text.length > 60 ? '…' : ''}" 복사됨`);
-            } else {
-              showToast('⚠️ 클립보드 복사 실패 (브라우저 권한 확인)');
-            }
-          })();
-        }
       }
       return;
     }
