@@ -1546,6 +1546,7 @@ public class AutoDispatchService {
                 if (dims != null) widthMm = dims[1]; // wmm
             }
             if (widthMm <= 0) widthMm = 1000.0; // 최후 fallback 1000mm
+            final double finalWidthMm = widthMm; // 람다 캡처용 effectively-final 복사본
 
             // 직경(mm): KG_WEIGHT 또는 단위중량 기반 역산
             double kgPerRoll = itemRollKg(it, skumaMap, cp.rollSingleKg) / Math.max(qty, 1);
@@ -1554,7 +1555,7 @@ public class AutoDispatchService {
 
             // 직경 50mm 단위 버킷으로 그룹화 (소수점 오차 흡수)
             int bucket = (int)(Math.ceil(diamMm / 50.0) * 50);
-            layerMap.computeIfAbsent(bucket, k -> new RollLayer(k, widthMm))
+            layerMap.computeIfAbsent(bucket, k -> new RollLayer(k, finalWidthMm))
                     .addRolls(qty, widthMm, diamMm);
         }
 
