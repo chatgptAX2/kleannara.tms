@@ -13408,7 +13408,9 @@ function _psopSyncGroupDom(keys) {
 }
 function psopChkDoc(key, checked) {
   /* 동일 납품일+납품처코드 그룹 일괄 선택 */
-  const keys = _psopGroupKeys(key);
+  /* 선택(ON): 동일 납품일+납품처코드 그룹 일괄 선택
+     해제(OFF): 클릭한 단일 납품문서만 해제 */
+  const keys = checked ? _psopGroupKeys(key) : [key];
   keys.forEach(k => {
     if (checked) psopState.selectedDocs.add(k);
     else         psopState.selectedDocs.delete(k);
@@ -13421,10 +13423,10 @@ function psopChkDoc(key, checked) {
 }
 function psopToggleDocSel(key, ev) {
   if (ev.target.tagName==='INPUT') return;
-  /* 동일 납품일+납품처코드 그룹 일괄 토글
-     — 클릭한 행의 현재 상태를 반전시킨 값으로 그룹 전체를 통일 */
+  /* 선택(ON): 동일 납품일+납품처코드 그룹 일괄 선택
+     해제(OFF): 클릭한 단일 납품문서만 해제 */
   const willSelect = !psopState.selectedDocs.has(key);
-  const keys = _psopGroupKeys(key);
+  const keys = willSelect ? _psopGroupKeys(key) : [key];
   keys.forEach(k => {
     if (willSelect) psopState.selectedDocs.add(k);
     else            psopState.selectedDocs.delete(k);
