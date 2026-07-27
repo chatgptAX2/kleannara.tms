@@ -1,6 +1,7 @@
 package com.company.module.dispatch.dto;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.Getter;
@@ -66,8 +67,32 @@ public class PsDispatchSaveRequest {
         private String dptnky;
         @JsonAlias({"DPTNM"})
         private String dptnm;
-        @JsonAlias({"is_split", "IS_SPLIT", "ISSPLIT"})
         private Integer isSplit;      // 분할여부 (0/1)
+
+        /**
+         * IS_SPLIT / is_split 역직렬화.
+         * 프론트(검색결과 row)는 이 값을 Boolean(true/false) 으로 보내는 반면,
+         * 자동배차 결과는 Integer(0/1)/문자열("Y"/"N") 로 보낼 수 있다.
+         * 어떤 형태로 와도 0/1 Integer 로 정규화하여 Integer↔Boolean
+         * 역직렬화 오류(HttpMessageNotReadableException)를 방지한다.
+         */
+        @JsonSetter("isSplit")
+        @JsonAlias({"is_split", "IS_SPLIT", "ISSPLIT"})
+        public void setIsSplit(Object v) {
+            this.isSplit = toIntFlag(v);
+        }
+
+        private static Integer toIntFlag(Object v) {
+            if (v == null) return null;
+            if (v instanceof Boolean b)  return b ? 1 : 0;
+            if (v instanceof Number n)   return n.intValue() != 0 ? 1 : 0;
+            String s = v.toString().trim();
+            if (s.isEmpty()) return null;
+            if (s.equalsIgnoreCase("true")  || s.equalsIgnoreCase("Y")) return 1;
+            if (s.equalsIgnoreCase("false") || s.equalsIgnoreCase("N")) return 0;
+            try { return Integer.parseInt(s) != 0 ? 1 : 0; }
+            catch (NumberFormatException e) { return 0; }
+        }
         @JsonAlias({"org_shpoky", "ORG_SHPOKY", "ORGSHPOKY"})
         private String orgShpoky;     // 원본 납품문서 (분할 시)
         @JsonAlias({"org_shpoit", "ORG_SHPOIT", "ORGSHPOIT"})
