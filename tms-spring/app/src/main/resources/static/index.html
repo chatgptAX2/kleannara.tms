@@ -10436,6 +10436,45 @@ function psdShowAutoResultModal(vehicles, objNm) {
     // 납품처 배지 그룹 (지게차·납기·최대톤수)
     const ptnrBadges = [forkBadge, deadlineBadge, maxTonBadge].filter(Boolean).join('');
 
+    // ── 3D 물리검증 결과 섹션 ────────────────────────────────────
+    let physics3dHtml = '';
+    if (mtype === 'ROLL' && v.physics3d_roll_fits != null) {
+      const fits      = v.physics3d_roll_fits;
+      const floorPct  = (v.physics3d_roll_floor_pct  || 0).toFixed(1);
+      const stackH    = (v.physics3d_roll_stack_height|| 0).toFixed(2);
+      const fitsColor = fits ? '#4ade80' : '#f87171';
+      const fitsBg    = fits ? 'rgba(74,222,128,.10)' : 'rgba(248,113,113,.10)';
+      const fitsIcon  = fits ? '✅' : '❌';
+      physics3dHtml = `
+        <div class="psd-3d-verify" style="margin:4px 0 2px;padding:5px 10px;border-radius:6px;background:${fitsBg};border:1px solid ${fitsColor}33;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11px">
+          <span style="font-weight:700;color:${fitsColor}">${fitsIcon} 3D 원지검증 ${fits?'적재가능':'적재불가'}</span>
+          <span style="color:var(--text2)">🔵 Y축점유 <b style="color:var(--text)">${floorPct}%</b></span>
+          <span style="color:var(--text2)">📏 최고단높이 <b style="color:var(--text)">${stackH}m</b></span>
+          <div style="width:100%;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden">
+            <div style="height:100%;width:${Math.min(parseFloat(floorPct),100)}%;background:${parseFloat(floorPct)>95?'#f87171':parseFloat(floorPct)>75?'#fbbf24':'#4ade80'};border-radius:3px;transition:width .4s"></div>
+          </div>
+        </div>`;
+    } else if (mtype === 'BOARD' && v.physics3d_board_fits != null) {
+      const fits      = v.physics3d_board_fits;
+      const floorPct  = (v.physics3d_board_floor_pct  || 0).toFixed(1);
+      const maxH      = (v.physics3d_board_max_height  || 0).toFixed(2);
+      const volM3     = (v.physics3d_board_vol_m3      || 0).toFixed(3);
+      const fitsColor = fits ? '#4ade80' : '#f87171';
+      const fitsBg    = fits ? 'rgba(74,222,128,.10)' : 'rgba(248,113,113,.10)';
+      const fitsIcon  = fits ? '✅' : '❌';
+      physics3dHtml = `
+        <div class="psd-3d-verify" style="margin:4px 0 2px;padding:5px 10px;border-radius:6px;background:${fitsBg};border:1px solid ${fitsColor}33;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11px">
+          <span style="font-weight:700;color:${fitsColor}">${fitsIcon} 3D 판지검증 ${fits?'적재가능':'적재불가'}</span>
+          <span style="color:var(--text2)">🟩 바닥점유 <b style="color:var(--text)">${floorPct}%</b></span>
+          <span style="color:var(--text2)">📦 최고높이 <b style="color:var(--text)">${maxH}m</b></span>
+          <span style="color:var(--text2)">📐 총체적 <b style="color:var(--text)">${volM3}m³</b></span>
+          <div style="width:100%;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden">
+            <div style="height:100%;width:${Math.min(parseFloat(floorPct),100)}%;background:${parseFloat(floorPct)>95?'#f87171':parseFloat(floorPct)>75?'#fbbf24':'#4ade80'};border-radius:3px;transition:width .4s"></div>
+          </div>
+        </div>`;
+    }
+    // ─────────────────────────────────────────────────────────────
+
     return `<div class="psd-auto-veh">
       <div class="psd-auto-veh-hdr">
         ${mtypeBadge}
@@ -10452,6 +10491,7 @@ function psdShowAutoResultModal(vehicles, objNm) {
         </span>
       </div>
       ${loadBar}
+      ${physics3dHtml}
       ${notesHtml}
       <div class="psd-auto-veh-items">${itemsHtml}</div>
     </div>`;
@@ -10506,6 +10546,20 @@ function psdShowAutoResultModal(vehicles, objNm) {
     ? `<span style="font-size:11px;color:#fb923c;font-weight:700;margin-left:4px">✂️ 납품분할 ${splitVehCnt}대</span>`
     : '';
 
+  // 3D 검증 통계 집계
+  const roll3dTotal  = vehicles.filter(v => v.material_type==='ROLL'  && v.physics3d_roll_fits  != null).length;
+  const roll3dFail   = vehicles.filter(v => v.material_type==='ROLL'  && v.physics3d_roll_fits  === false).length;
+  const board3dTotal = vehicles.filter(v => v.material_type==='BOARD' && v.physics3d_board_fits != null).length;
+  const board3dFail  = vehicles.filter(v => v.material_type==='BOARD' && v.physics3d_board_fits === false).length;
+  const phys3dSummary = (roll3dTotal + board3dTotal) > 0 ? (() => {
+    const parts = [];
+    if (roll3dTotal  > 0) parts.push(`원지 ${roll3dTotal - roll3dFail}/${roll3dTotal}통과`);
+    if (board3dTotal > 0) parts.push(`판지 ${board3dTotal - board3dFail}/${board3dTotal}통과`);
+    const allOk = (roll3dFail + board3dFail) === 0;
+    const color = allOk ? '#4ade80' : '#f87171';
+    return `<span style="font-size:11px;color:${color};font-weight:700;margin-left:4px">${allOk?'✅':'❌'} 3D검증 ${parts.join(' · ')}</span>`;
+  })() : '';
+
   const modal = document.createElement('div');
   modal.id = 'psd-auto-modal';
   modal.className = 'psd-modal-overlay';
@@ -10517,7 +10571,7 @@ function psdShowAutoResultModal(vehicles, objNm) {
       </div>
       <div style="padding:10px 20px;background:var(--th-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span style="font-size:12px;font-weight:700;color:var(--text)">차량 ${totalVeh}대 · 문서 ${totalDoc}건 · 총 ${psdFmtNum(totalKg)} KG</span>
-        ${typeSummary}${rollSummary}${addedSummary}${splitSummary}${ptnrWarnSummary}${deadlineSummary}${noForkSummary}
+        ${typeSummary}${rollSummary}${addedSummary}${splitSummary}${phys3dSummary}${ptnrWarnSummary}${deadlineSummary}${noForkSummary}
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-left:auto">${summaryBadges}</div>
       </div>
       <div class="psd-modal-body psd-auto-result">
