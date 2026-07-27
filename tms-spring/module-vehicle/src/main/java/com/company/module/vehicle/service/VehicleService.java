@@ -243,13 +243,27 @@ public class VehicleService {
 
             Optional<DsVehicle> existing = dsVehicleRepo.findById(carclassCd);
             if (existing.isPresent()) {
-                existing.get().update(
-                    req.getCartype(), req.getLengthM(), req.getWidthM(), req.getHeightM(),
-                    req.getLoadTon(), req.getSortSeq(), req.getPalletHeightM(),
-                    req.getPalletCnt(), req.getLongAxisYn(),
-                    req.getInch12Lt300(), req.getInch12Ge300(),
-                    req.getInch3Lt300(), req.getInch3Ge300(),
-                    req.getDefaultVehCnt(), nowdt, "WEB"
+                // ── 부분 업데이트(Partial Update) ──────────────────────────
+                // "가용차량대수(DEFAULT_VEH_CNT)"만 수정하는 단건 저장처럼
+                // 일부 필드만 전송되는 경우, 미전송(null) 필드는 기존 값을 보존해야
+                // 길이/폭/높이/톤수 등이 null로 덮어써지는 데이터 손상을 방지할 수 있다.
+                DsVehicle cur = existing.get();
+                cur.update(
+                    coalesce(req.getCartype(),       cur.getCartype()),
+                    coalesce(req.getLengthM(),        cur.getLengthM()),
+                    coalesce(req.getWidthM(),         cur.getWidthM()),
+                    coalesce(req.getHeightM(),        cur.getHeightM()),
+                    coalesce(req.getLoadTon(),        cur.getLoadTon()),
+                    coalesce(req.getSortSeq(),        cur.getSortSeq()),
+                    coalesce(req.getPalletHeightM(),  cur.getPalletHeightM()),
+                    coalesce(req.getPalletCnt(),      cur.getPalletCnt()),
+                    coalesce(req.getLongAxisYn(),     cur.getLongAxisYn()),
+                    coalesce(req.getInch12Lt300(),    cur.getInch12Lt300()),
+                    coalesce(req.getInch12Ge300(),    cur.getInch12Ge300()),
+                    coalesce(req.getInch3Lt300(),     cur.getInch3Lt300()),
+                    coalesce(req.getInch3Ge300(),     cur.getInch3Ge300()),
+                    coalesce(req.getDefaultVehCnt(),  cur.getDefaultVehCnt()),
+                    nowdt, "WEB"
                 );
             } else {
                 int nextSeq = dsVehicleRepo.nextSortSeq();
@@ -448,4 +462,7 @@ public class VehicleService {
     // ──────────────────────────────────────────────────────────────────────────
     private String str(Object o) { return o == null ? "" : o.toString().strip(); }
     private String nullIfBlank(String s) { return (s == null || s.isBlank()) ? null : s.strip(); }
+
+    /** 부분 업데이트용: 신규값이 null이면 기존값을 유지한다. */
+    private <T> T coalesce(T incoming, T current) { return incoming != null ? incoming : current; }
 }

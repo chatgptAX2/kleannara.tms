@@ -277,15 +277,29 @@ public class StrategyService {
                     today, today
                 );
             } else {
+                // ── 부분 업데이트(Partial Update) ──────────────────────────
+                // "가용차량대수(DEFAULT_VEH_CNT)"만 수정하는 단건 저장처럼 일부 컬럼만
+                // 전송되는 경우, body 에 포함된(=클라이언트가 실제로 보낸) 컬럼만 SET 한다.
+                // 전 컬럼을 무조건 SET 하던 기존 방식은 미전송 필드를 null 로 덮어써
+                // 길이/폭/높이/톤수 등 차량 제원이 유실되는 데이터 손상을 유발했다.
+                List<String> sets = new ArrayList<>();
+                List<Object> args = new ArrayList<>();
+                for (String col : new String[]{
+                        "CARTYPE", "LENGTH_M", "WIDTH_M", "HEIGHT_M", "LOAD_TON",
+                        "PALLET_HEIGHT_M", "SORT_SEQ", "PALLET_CNT", "LONG_AXIS_YN",
+                        "DEFAULT_VEH_CNT"}) {
+                    if (body.containsKey(col)) {
+                        sets.add(col + "=?");
+                        args.add(body.get(col));
+                    }
+                }
+                sets.add("LMODAT=?");
+                args.add(today);
+                args.add(carclassCd);
                 tmsJdbc.update(
-                    "UPDATE KNRAWMS.DS_VEHICLE SET CARTYPE=?, LENGTH_M=?, WIDTH_M=?, HEIGHT_M=?, " +
-                    "LOAD_TON=?, PALLET_HEIGHT_M=?, SORT_SEQ=?, PALLET_CNT=?, LONG_AXIS_YN=?, " +
-                    "DEFAULT_VEH_CNT=?, LMODAT=? WHERE CARCLASS_CD=?",
-                    body.get("CARTYPE"), body.get("LENGTH_M"), body.get("WIDTH_M"),
-                    body.get("HEIGHT_M"), body.get("LOAD_TON"), body.get("PALLET_HEIGHT_M"),
-                    body.getOrDefault("SORT_SEQ", 0), body.get("PALLET_CNT"),
-                    body.getOrDefault("LONG_AXIS_YN", "N"), body.getOrDefault("DEFAULT_VEH_CNT", 1),
-                    today, carclassCd
+                    "UPDATE KNRAWMS.DS_VEHICLE SET " + String.join(", ", sets) +
+                    " WHERE CARCLASS_CD=?",
+                    args.toArray()
                 );
             }
             return Map.of("ok", true, "CARCLASS_CD", carclassCd);
