@@ -19004,7 +19004,7 @@ async function renderDispatchConstraint() {
                 <div>항목을 클릭하면<br>설정값을 변경할 수 있습니다</div>
               </div>
               <!-- 항목 편집 폼 -->
-              <div id="dcon-ci-detail-form" style="display:none;padding:14px 12px;flex-direction:column;gap:0">
+              <div id="dcon-ci-detail-form" style="display:none;padding:14px 12px;gap:0;flex-direction:column;box-sizing:border-box">
                 <div class="dcon-ci-detail-hdr" id="dcon-ci-detail-title">✏️ 항목 수정</div>
 
                 <!-- 항목 메타 뱃지 -->
@@ -20105,9 +20105,11 @@ const DCON_PARAM_META = {
   ROLL_INCH_MIX_ALLOW:  { label:'인치/평량 혼합 허용',      unit:'Y/N',  hint:'Y=혼합 오더 허용' },
   ROLL_2D_PACK_ENGINE:  { label:'2D 바닥 패킹 연산',        unit:'Y/N',  hint:'Y=혼합 규격 시 2D 패킹 연산 적용' },
   ROLL_SAME_INCH_FORCE: { label:'동일 인치 강제',            unit:'Y/N',  hint:'Y=동일 인치만 혼적, N=혼재허용' },
-  ROLL_REF_12INCH:      { label:'12인치 기준수(통합)',       unit:'롤',   hint:'차종별 12인치 1단 적재 기준 수량 (평량 무관 통합값 — DS_INCH12 기본값 연동)' },
-  ROLL_REF_12INCH_LT300:{ label:'12인치/평량300미만 기준수',unit:'롤',   hint:'차종별 1단 적재 기준 수량' },
-  ROLL_REF_12INCH_GE300:{ label:'12인치/평량300이상 기준수',unit:'롤',   hint:'차종별 1단 적재 기준 수량' },
+  ROLL_REF_12INCH:      { label:'12인치 기준수(통합)',         unit:'롤',   hint:'차종별 12인치 1단 적재 기준 수량 (평량 무관 통합값 — DS_INCH12 기본값 연동)' },
+  ROLL_REF_12INCH_LT300:{ label:'12인치/평량300미만 기준수',  unit:'롤',   hint:'차종별 1단 적재 기준 수량 (12인치, 평량 300 미만)' },
+  ROLL_REF_12INCH_GE300:{ label:'12인치/평량300이상 기준수',  unit:'롤',   hint:'차종별 1단 적재 기준 수량 (12인치, 평량 300 이상)' },
+  ROLL_REF_3INCH_LT300: { label:'3인치/평량300미만 기준수',   unit:'롤',   hint:'차종별 1단 적재 기준 수량 (3인치, 평량 300 미만)' },
+  ROLL_REF_3INCH_GE300: { label:'3인치/평량300이상 기준수',   unit:'롤',   hint:'차종별 1단 적재 기준 수량 (3인치, 평량 300 이상)' },
   ROLL_3D_CHECK_YN:     { label:'3D 블록 검증 활성',        unit:'Y/N',  hint:'Y=원지 3D 검증 (Dead Space 포함)' },
   ROLL_3D_DEAD_SPACE_PCT:{ label:'Dead Space 허용비율',     unit:'%',    hint:'혼합 적재 시 Dead Space 최대 허용 (%)' },
   ROLL_OVERSIZE_ACTION: { label:'치수 초과 시 처리',         unit:'코드', hint:'SPLIT=분할 / REJECT=배차 제외' },
@@ -22598,6 +22600,18 @@ function _esc(v) {
   return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+/* ─ 행 hover 헬퍼 (인라인 따옴표 충돌 방지) ─ */
+function _dconCiRowHover(tr, isOver) {
+  if (isOver) {
+    tr.style.background = 'var(--tr-hover)';
+  } else {
+    const cid = parseInt(tr.dataset.cid, 10);
+    tr.style.background = (DCON._ciSelId === cid)
+      ? 'rgba(99,130,255,.12)'
+      : (tr.dataset.rowbg || '');
+  }
+}
+
 /* ─ 목록 테이블 렌더 ─ */
 function _dconCiRenderList() {
   const tbody = document.getElementById('dcon-ci-list');
@@ -22622,10 +22636,11 @@ function _dconCiRenderList() {
     const inSet = setId && DCON._ciSetItems[setId] && DCON._ciSetItems[setId].has(it.CONST_ID);
     const setDot = setId ? `<span style="font-size:9px;margin-right:3px;color:${inSet?'#16a34a':'#94a3b8'}" title="${inSet?'세트 포함':'세트 미포함'}">${inSet?'●':'○'}</span>` : '';
     const noteShort = it.NOTE ? (it.NOTE.length > 18 ? it.NOTE.substring(0,18)+'…' : it.NOTE) : '';
-    return `<tr id="dcon-ci-row-${it.CONST_ID}" style="background:${rowBg};cursor:pointer"
+    return `<tr id="dcon-ci-row-${it.CONST_ID}" data-rowbg="${rowBg}" data-cid="${it.CONST_ID}"
+      style="background:${rowBg};cursor:pointer"
       onclick="_dconCiSelectRow(${it.CONST_ID})"
-      onmouseover="this.style.background='var(--tr-hover)'"
-      onmouseout="this.style.background=(DCON._ciSelId===${it.CONST_ID}?'rgba(99,130,255,.12)':'${rowBg}')">
+      onmouseover="_dconCiRowHover(this,true)"
+      onmouseout="_dconCiRowHover(this,false)">
       <td style="padding:4px 6px;border:1px solid var(--border);text-align:center;color:var(--text3);font-size:10px">${it.CONST_ID}</td>
       <td style="padding:4px 6px;border:1px solid var(--border);text-align:center">
         <span style="background:${typeColor};color:#fff;border-radius:3px;padding:1px 4px;font-size:9px;font-weight:600">${_esc(it.CONST_TYPE)}</span>
@@ -22647,22 +22662,20 @@ function _dconCiRenderList() {
 
 /* ─ 행 클릭: 우측 패널에 설정값 변경 폼 표시 ─ */
 function _dconCiSelectRow(constId) {
-  DCON._ciSelId = constId;
-  /* 이전 선택 행 하이라이트 제거 */
+  DCON._ciSelId = parseInt(constId, 10);
+  /* 이전 선택 행 하이라이트 초기화 */
   document.querySelectorAll('[id^="dcon-ci-row-"]').forEach(tr => {
-    tr.style.background = tr.style.background;
+    const cid = parseInt(tr.dataset.cid, 10);
+    if (cid !== DCON._ciSelId) tr.style.background = tr.dataset.rowbg || '';
   });
   const selTr = document.getElementById(`dcon-ci-row-${constId}`);
   if (selTr) selTr.style.background = 'rgba(99,130,255,.12)';
 
   const it = DCON._ciItems.find(x => x.CONST_ID == constId);
-  if (!it) return;
+  if (!it) { console.warn('[dconCi] constId not found in _ciItems:', constId, DCON._ciItems.length); return; }
 
   /* 우측 패널 표시 */
-  const empty = document.getElementById('dcon-ci-detail-empty');
-  const form  = document.getElementById('dcon-ci-detail-form');
-  if (empty) empty.style.display = 'none';
-  if (form)  { form.style.display = 'flex'; form.style.flexDirection = 'column'; }
+  _dconCiShowDetailPanel(true);
 
   /* 메타 뱃지 */
   const typeColor = CI_TYPE_COLOR[it.CONST_TYPE] || '#64748b';
@@ -22713,10 +22726,7 @@ function _dconCiAddNew() {
     // 행 배경 초기화는 _dconCiRenderList 재호출로 대신
   });
 
-  const empty = document.getElementById('dcon-ci-detail-empty');
-  const form  = document.getElementById('dcon-ci-detail-form');
-  if (empty) empty.style.display = 'none';
-  if (form)  { form.style.display = 'flex'; form.style.flexDirection = 'column'; }
+  _dconCiShowDetailPanel(true);
 
   const badgesEl = document.getElementById('dcon-ci-detail-badges');
   if (badgesEl) badgesEl.innerHTML = '<span class="dcon-ci-detail-badge" style="background:#2563eb;color:#fff">신규</span>';
@@ -22738,13 +22748,23 @@ function _dconCiAddNew() {
   document.getElementById('dcon-ci-f-key').focus();
 }
 
+/* ─ 우측 패널 표시/숨김 헬퍼 (display 조작 단일화) ─ */
+function _dconCiShowDetailPanel(show) {
+  const empty = document.getElementById('dcon-ci-detail-empty');
+  const form  = document.getElementById('dcon-ci-detail-form');
+  if (show) {
+    if (empty) empty.style.display = 'none';
+    if (form)  { form.style.display = 'flex'; form.style.flexDirection = 'column'; }
+  } else {
+    if (empty) empty.style.display = 'flex';
+    if (form)  form.style.display  = 'none';
+  }
+}
+
 /* ─ 우측 패널 닫기 ─ */
 function _dconCiDetailClose() {
   DCON._ciSelId = null;
-  const empty = document.getElementById('dcon-ci-detail-empty');
-  const form  = document.getElementById('dcon-ci-detail-form');
-  if (empty) empty.style.display = 'flex';
-  if (form)  form.style.display  = 'none';
+  _dconCiShowDetailPanel(false);
   _dconCiRenderList();
 }
 
