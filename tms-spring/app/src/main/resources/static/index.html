@@ -10593,8 +10593,13 @@ async function psdSaveAutoResult(vehicles) {
       body: JSON.stringify({ vehicles })
     });
     const data = await res.json();
-    if (!data.ok) throw new Error(data.error);
-    showToast(`✅ 자동배차 ${data.saved}건 저장 완료 (${data.dispatch_nos.join(', ')})`);
+    // 응답 래퍼: { ok, success, code, message, data:{ saved, dispatch_nos } }
+    const ok = data.ok ?? data.success ?? res.ok;
+    if (!ok) throw new Error(data.message || data.error || `HTTP ${res.status}`);
+    const payload    = data.data || data;                 // 성공 데이터는 data.data 안에 위치
+    const savedCnt   = payload.saved ?? 0;
+    const dispatchNos = payload.dispatch_nos || [];
+    showToast(`✅ 자동배차 ${savedCnt}건 저장 완료 (${dispatchNos.join(', ')})`);
     // 상태 갱신
     psdState.selectedDocs.clear();
     await psdLoadVehicles();
@@ -15911,11 +15916,14 @@ async function psopSaveDispatch() {
       })) })
     });
     const data = await res.json();
-    if (!data.ok) throw new Error(data.error);
+    // 응답 래퍼: { ok, success, code, message, data:{ saved, dispatch_nos } }
+    const ok = data.ok ?? data.success ?? res.ok;
+    if (!ok) throw new Error(data.message || data.error || `HTTP ${res.status}`);
+    const payload = data.data || data;
 
     // ── 저장 성공: searchRows에 IS_SAVED=true, STDLNR 즉시 반영 ──
-    // data.dispatch_nos 순서 = vehs 순서와 동일
-    const dispNos = data.dispatch_nos || [];
+    // dispatch_nos 순서 = vehs 순서와 동일
+    const dispNos = payload.dispatch_nos || [];
     dispNos.forEach((dispNo, idx) => {
       const veh = vehs[idx];
       if (!veh) return;
@@ -15931,7 +15939,7 @@ async function psopSaveDispatch() {
       });
     });
 
-    showToast(`✅ 배차저장 ${data.saved}건 완료 (${dispNos.join(', ')})`);
+    showToast(`✅ 배차저장 ${payload.saved ?? dispNos.length}건 완료 (${dispNos.join(', ')})`);
     // 저장 후 인메모리 비우기
     psopState.vehicles = [];
     psopState.selectedVehicles.clear();

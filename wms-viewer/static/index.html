@@ -10364,8 +10364,13 @@ async function psdSaveAutoResult(vehicles) {
       body: JSON.stringify({ vehicles })
     });
     const data = await res.json();
-    if (!data.ok) throw new Error(data.error);
-    showToast(`✅ 자동배차 ${data.saved}건 저장 완료 (${data.dispatch_nos.join(', ')})`);
+    // 응답 래퍼: { ok, success, code, message, data:{ saved, dispatch_nos } }
+    const ok = data.ok ?? data.success ?? res.ok;
+    if (!ok) throw new Error(data.message || data.error || `HTTP ${res.status}`);
+    const payload    = data.data || data;                 // 성공 데이터는 data.data 안에 위치
+    const savedCnt   = payload.saved ?? 0;
+    const dispatchNos = payload.dispatch_nos || [];
+    showToast(`✅ 자동배차 ${savedCnt}건 저장 완료 (${dispatchNos.join(', ')})`);
     // 상태 갱신
     psdState.selectedDocs.clear();
     await psdLoadVehicles();

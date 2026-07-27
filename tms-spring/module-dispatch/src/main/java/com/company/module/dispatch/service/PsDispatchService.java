@@ -397,6 +397,20 @@ public class PsDispatchService {
             if (items != null) {
                 int seq = 1;
                 for (PsDispatchSaveRequest.ItemBlock it : items) {
+                    // ── SHPOKY / SHPOIT 검증 및 보정 ──────────────────────────────
+                    //  PS_DISPATCH_D.SHPOKY / SHPOIT 는 NOT NULL(Oracle).
+                    //  프론트 키 대소문자 불일치 등으로 null 이 들어오면 ORA-01400 발생.
+                    //  1) shpoky 가 비어있고 orgShpoky 가 있으면 원본 값으로 보정
+                    //  2) 그래도 비어있으면 어떤 항목이 잘못됐는지 명시하여 예외 → 전체 롤백
+                    String shpoky = firstNonBlank(it.getShpoky(), it.getOrgShpoky());
+                    String shpoit = firstNonBlank(it.getShpoit(), it.getOrgShpoit());
+                    if (isBlank(shpoky) || isBlank(shpoit)) {
+                        throw new IllegalArgumentException(
+                            "배차 항목에 납품문서번호(SHPOKY) 또는 품목순번(SHPOIT)이 없습니다. " +
+                            "[차량=" + dispatchNo + ", SKUKEY=" + str(it.getSkukey()) +
+                            ", SHPOKY=" + str(it.getShpoky()) + ", SHPOIT=" + str(it.getShpoit()) + "]");
+                    }
+
                     // PS_DISPATCH_D INSERT → MariaDB tmsEm
                     tmsEm.createNativeQuery("""
                         INSERT INTO KNRAWMS.PS_DISPATCH_D
@@ -407,8 +421,8 @@ public class PsDispatchService {
                         """)
                       .setParameter(1,  dispatchNo)
                       .setParameter(2,  seq++)
-                      .setParameter(3,  it.getShpoky())
-                      .setParameter(4,  it.getShpoit())
+                      .setParameter(3,  shpoky)
+                      .setParameter(4,  shpoit)
                       .setParameter(5,  it.getSkukey())
                       .setParameter(6,  it.getDesc01())
                       .setParameter(7,  it.getQtshpo() == null ? 0.0 : it.getQtshpo())
@@ -422,10 +436,8 @@ public class PsDispatchService {
                       .setParameter(15, it.getKgWeight() == null ? 0.0 : it.getKgWeight())
                       .executeUpdate();
 
-                    if (it.getShpoky() != null && it.getShpoit() != null) {
-                        shpdiKeys.add(new String[]{it.getShpoky(), it.getShpoit()});
-                    }
-                    if (it.getShpoky() != null) shpokySet.add(it.getShpoky());
+                    shpdiKeys.add(new String[]{shpoky, shpoit});
+                    shpokySet.add(shpoky);
                 }
             }
 
@@ -646,6 +658,20 @@ public class PsDispatchService {
     // ──────────────────────────────────────────────────────────────────────────
     private String str(Object o) {
         return o == null ? "" : o.toString().strip();
+    }
+
+    /** null 또는 공백 문자열 여부 */
+    private boolean isBlank(String s) {
+        return s == null || s.strip().isEmpty();
+    }
+
+    /** 앞에서부터 처음으로 non-blank 인 값을 반환(모두 blank 면 null) */
+    private String firstNonBlank(String... vals) {
+        if (vals == null) return null;
+        for (String v : vals) {
+            if (!isBlank(v)) return v.strip();
+        }
+        return null;
     }
 
     private double toDouble(Object o) {
