@@ -147,6 +147,13 @@ public class AutoDispatchService {
         }
 
         ConstraintParams cp = buildConstraintParams(C);
+        log.info("[AutoDispatch] 적용 제약 요약 — objective={}, entryTonLimit={}t, fixedVehPriority={}, " +
+                 "maxVehPerGroup={}, roll3dCheck={}, board3dCheck={}, boardCbmCheck={}, " +
+                 "boardMaxTonRatio={}, boardMaxCbmRatio={}, rollHeightMarginM={}, rollPalletApply={}({}m)",
+                 objective, cp.entryTonLimit, cp.fixedVehPriority, cp.maxVehPerGroup,
+                 cp.roll3dCheck, cp.board3dCheck, cp.boardCbmCheck,
+                 cp.boardMaxTonRatio, cp.boardMaxCbmRatio, cp.rollHeightMarginM,
+                 cp.rollPalletApply, cp.rollPalletDeductM);
 
         // 차량 마스터 로드
         List<Map<String, Object>> carOrder = loadCarOrder();
@@ -178,6 +185,9 @@ public class AutoDispatchService {
             String groupKey = entry.getKey();
             List<Map<String, Object>> grpItems = entry.getValue();
 
+            // 그룹 처리 전 차량 수 기록 (MAX_VEHICLES_PER_GROUP 검증용)
+            int vehCountBefore = allVehicles.size();
+
             boolean isMixedGroup = cp.allowMixedLoad && groupKey.startsWith("_ZIP_");
             String dptnky, dptnm;
             List<Map<String, Object>> validCars;
@@ -199,7 +209,7 @@ public class AutoDispatchService {
                 List<Map<String, Object>> firstValidCars = null;
                 for (String dk : mixedDks) {
                     List<Map<String, Object>> vc = getValidCars(dk, carOrder, vehInfo,
-                        allowedCartypes, ptnrInfoMap, Cbt);
+                        allowedCartypes, ptnrInfoMap, Cbt, cp);
                     Set<String> cts = vc.stream()
                         .map(c -> str(c.get("CARTYPE"))).collect(Collectors.toSet());
                     if (commonTypes == null) { commonTypes = cts; firstValidCars = vc; }
@@ -214,7 +224,7 @@ public class AutoDispatchService {
                 String[] parts = groupKey.split("\\|", -1);
                 dptnky = parts.length > 0 ? parts[0] : "";
                 dptnm  = parts.length > 1 ? parts[1] : "";
-                validCars = getValidCars(dptnky, carOrder, vehInfo, allowedCartypes, ptnrInfoMap, Cbt);
+                validCars = getValidCars(dptnky, carOrder, vehInfo, allowedCartypes, ptnrInfoMap, Cbt, cp);
             }
 
             if (validCars.isEmpty()) {
@@ -256,6 +266,24 @@ public class AutoDispatchService {
                 processOtherItems(otherItems, dptnky, dptnm, rqshpd, validCars, vehInfo,
                     routeCostMap, objective, cp, pid, prof, isDynBlocked, pi, allVehicles);
             }
+
+            // ── 그룹당 최대 배차 차량 수(MAX_VEHICLES_PER_GROUP) 검증 ──
+            int vehCountThisGroup = allVehicles.size() - vehCountBefore;
+            if (cp.maxVehPerGroup > 0 && vehCountThisGroup > cp.maxVehPerGroup) {
+                String warn = String.format(
+                    "[그룹차량수초과] %s: 배차 차량 %d대 > 제한 %d대(MAX_VEHICLES_PER_GROUP) — 수동 검토 필요",
+                    dptnm.isEmpty() ? dptnky : dptnm, vehCountThisGroup, cp.maxVehPerGroup);
+                log.warn("[AutoDispatch] {}", warn);
+                // 이 그룹에 속한 차량들에 경고 노트 부착
+                for (int vi = vehCountBefore; vi < allVehicles.size(); vi++) {
+                    Object notesObj = allVehicles.get(vi).get("notes");
+                    if (notesObj instanceof List) {
+                        @SuppressWarnings("unchecked")
+                        List<String> nlist = (List<String>) notesObj;
+                        nlist.add(warn);
+                    }
+                }
+            }
         }
 
         // 응답 필드 정규화
@@ -288,6 +316,30 @@ public class AutoDispatchService {
         result.put("profile_nm",          str(prof.get("PROFILE_NM")));
         result.put("applied_set_id",      setId);
         result.put("applied_set_nm",      appliedSetNm.isEmpty() ? null : appliedSetNm);
+
+        // 실제 적용된 제약조건 요약 (프론트/사용자 확인용)
+        Map<String, Object> appliedConstraints = new LinkedHashMap<>();
+        appliedConstraints.put("ENTRY_TON_LIMIT",       cp.entryTonLimit);
+        appliedConstraints.put("FIXED_VEH_PRIORITY",    cp.fixedVehPriority);
+        appliedConstraints.put("MAX_VEHICLES_PER_GROUP", cp.maxVehPerGroup);
+        appliedConstraints.put("MIN_FILL_RATIO",        round2(cp.minFill * 100));
+        appliedConstraints.put("MAX_FILL_RATIO",        round2(cp.maxFill * 100));
+        appliedConstraints.put("MAX_ROLL_STACK_TIER",   cp.maxStack);
+        appliedConstraints.put("MAX_BOARD_HEIGHT_M",    cp.maxBoardHeightM);
+        appliedConstraints.put("ROLL_3D_CHECK_YN",      cp.roll3dCheck);
+        appliedConstraints.put("BOARD_3D_CHECK_YN",     cp.board3dCheck);
+        appliedConstraints.put("BOARD_CBM_CHECK_YN",    cp.boardCbmCheck);
+        appliedConstraints.put("BOARD_MAX_TON_RATIO",   round2(cp.boardMaxTonRatio * 100));
+        appliedConstraints.put("BOARD_MAX_CBM_RATIO",   round2(cp.boardMaxCbmRatio * 100));
+        appliedConstraints.put("ROLL_3D_DEAD_SPACE_PCT",  cp.rollDeadSpacePct);
+        appliedConstraints.put("BOARD_3D_DEAD_SPACE_PCT", cp.boardDeadSpacePct);
+        appliedConstraints.put("ROLL_HEIGHT_MARGIN_M",  cp.rollHeightMarginM);
+        appliedConstraints.put("ROLL_PALLET_APPLY_YN",  cp.rollPalletApply);
+        appliedConstraints.put("ROLL_PALLET_DEDUCT_M",  cp.rollPalletDeductM);
+        appliedConstraints.put("ALLOW_SPLIT_ITEM",      cp.allowSplit);
+        appliedConstraints.put("ALLOW_MIXED_LOAD",      cp.allowMixedLoad);
+        result.put("applied_constraints", appliedConstraints);
+
         result.put("total_vehicles",      allVehicles.size());
         result.put("total_cost",          Math.round(totalCost));
         result.put("avg_fill_ratio",      round2(avgFill));
@@ -439,15 +491,16 @@ public class AutoDispatchService {
                 if (dmm == null) continue;
 
                 int    actualStack = Math.min(cp.maxStack, 3);
-                double stackH      = dmm / 1000.0 * actualStack;
-                double effH        = rollEffH(vehCar, pi.forkliftYn, vehInfo);
+                // 높이 안전 여유 마진(ROLL_HEIGHT_MARGIN_M) 반영: 적재 높이에 마진 가산
+                double stackH      = dmm / 1000.0 * actualStack + cp.rollHeightMarginM;
+                double effH        = rollEffH(vehCar, pi.forkliftYn, vehInfo, cp);
 
                 if (stackH > effH) {
                     boolean upgraded = false;
                     for (Map<String, Object> c : carOrder) {
                         String ct = str(c.get("CARTYPE"));
                         if (sortKey(ct, carOrder) >= sortKey(vehCar, carOrder)) continue;
-                        if (rollEffH(ct, pi.forkliftYn, vehInfo) >= stackH) {
+                        if (rollEffH(ct, pi.forkliftYn, vehInfo, cp) >= stackH) {
                             notes.add("[높이업그레이드] " + vehCar + "→" + ct);
                             vehCar = ct; upgraded = true; break;
                         }
@@ -459,14 +512,20 @@ public class AutoDispatchService {
                 }
             }
 
-            // ── 원지 3D 물리검증 ──────────────────────────────────────
+            // ── 원지 3D 물리검증 (ROLL_3D_CHECK_YN=N 이면 스킵) ────────
             VehInfo vi3d  = vehInfo.getOrDefault(vehCar, VehInfo.EMPTY);
-            RollPhysics3D rp3d = verifyRolls3D(b.items, skumaMap, vi3d, cp);
+            RollPhysics3D rp3d;
+            if (cp.roll3dCheck) {
+                rp3d = verifyRolls3D(b.items, skumaMap, vi3d, cp);
+            } else {
+                rp3d = RollPhysics3D.fail("[3D-원지검증] 비활성화(ROLL_3D_CHECK_YN=N) — 스킵");
+                rp3d.fits = true;  // 검증 스킵 시 업그레이드 로직 미동작하도록 통과 처리
+            }
             notes.add(rp3d.summary);
             notes.addAll(rp3d.layerNotes);
 
             // 3D 검증 결과 적재 불가 → 더 큰 차량으로 업그레이드 시도
-            if (!rp3d.fits && !rp3d.summary.contains("스킵")) {
+            if (cp.roll3dCheck && !rp3d.fits && !rp3d.summary.contains("스킵")) {
                 boolean upgraded3d = false;
                 for (Map<String, Object> c : carOrder) {
                     String ct = str(c.get("CARTYPE"));
@@ -556,6 +615,10 @@ public class AutoDispatchService {
         double bigCbm = bigVi.lengthM * bigVi.widthM * bigH;
 
         // Double-Threshold: 중량 OR CBM 초과 시 새 차량
+        // 상한 비율 반영: BOARD_MAX_TON_RATIO(중량), BOARD_MAX_CBM_RATIO(CBM)
+        // CBM 검증 토글: BOARD_CBM_CHECK_YN=N 이면 CBM 초과 판단 스킵(중량만 검사)
+        double capKgThreshold  = bigCap * cp.boardMaxTonRatio;
+        double capCbmThreshold = bigCbm * cp.boardMaxCbmRatio;
         List<BoardBin> vehListB = new ArrayList<>();
         List<Map<String, Object>> curB = new ArrayList<>();
         double curKg = 0, curH = 0, curCbm = 0;
@@ -565,8 +628,9 @@ public class AutoDispatchService {
             double itemH  = Math.min(calcBoardHeight(it, skumaMap), cp.maxBoardHeightM);
             double itemCbm = getItemCbm(it, skumaMap);
 
-            boolean ko = !curB.isEmpty() && (curKg + qtyKg > bigCap);
-            boolean co = !curB.isEmpty() && itemCbm > 0 && bigCbm > 0 && (curCbm + itemCbm > bigCbm);
+            boolean ko = !curB.isEmpty() && (curKg + qtyKg > capKgThreshold);
+            boolean co = cp.boardCbmCheck && !curB.isEmpty() && itemCbm > 0 && capCbmThreshold > 0
+                         && (curCbm + itemCbm > capCbmThreshold);
             if (ko || co) {
                 vehListB.add(new BoardBin(new ArrayList<>(curB), curKg, curH, curCbm, ko ? "중량초과" : "CBM초과"));
                 curB.clear(); curKg = 0; curH = 0; curCbm = 0;
@@ -614,13 +678,19 @@ public class AutoDispatchService {
                 notesB.add("[혼적-Y축] LIFO: 나중 하차→안쪽 / 먼저 하차→문 쪽");
             }
 
-            // ── 판지 3D 물리검증 ──────────────────────────────────────
-            BoardPhysics3D bp3d = verifyBoards3D(vb.items, skumaMap, vi, cp);
+            // ── 판지 3D 물리검증 (BOARD_3D_CHECK_YN=N 이면 스킵) ───────
+            BoardPhysics3D bp3d;
+            if (cp.board3dCheck) {
+                bp3d = verifyBoards3D(vb.items, skumaMap, vi, cp);
+            } else {
+                bp3d = BoardPhysics3D.fail("[3D-판지검증] 비활성화(BOARD_3D_CHECK_YN=N) — 스킵");
+                bp3d.fits = true;  // 검증 스킵 시 업그레이드 로직 미동작하도록 통과 처리
+            }
             notesB.add(bp3d.summary);
             notesB.addAll(bp3d.shelfNotes);
 
             // 3D 검증 실패 → 더 큰 차량으로 업그레이드 시도
-            if (!bp3d.fits && !bp3d.summary.contains("스킵")) {
+            if (cp.board3dCheck && !bp3d.fits && !bp3d.summary.contains("스킵")) {
                 boolean upgraded3d = false;
                 for (Map<String, Object> c : carOrder) {
                     String ct = str(c.get("CARTYPE"));
@@ -1070,7 +1140,8 @@ public class AutoDispatchService {
             Map<String, VehInfo> vehInfo,
             Set<String> allowedCartypes,
             Map<String, PtnrInfo> ptnrInfoMap,
-            Map<String, Map<String, Map<String, Object>>> Cbt) {
+            Map<String, Map<String, Map<String, Object>>> Cbt,
+            ConstraintParams cp) {
         List<Map<String, Object>> cars = carOrder.stream()
             .filter(c -> vehInfo.getOrDefault(str(c.get("CARTYPE")), VehInfo.EMPTY).loadKg > 0)
             .collect(Collectors.toList());
@@ -1081,6 +1152,16 @@ public class AutoDispatchService {
                 .collect(Collectors.toList());
         }
 
+        // ── 진입 톤수 제한 (ENTRY_TON_LIMIT): 설정값(ton) 초과 차량 후보 제외 ──
+        // 납품처 마스터(MAX_TON)와 별개로, 제약조건관리 화면의 전역 진입 제한을 적용
+        if (cp != null && cp.entryTonLimit > 0) {
+            double limitKg = cp.entryTonLimit * 1000.0;
+            List<Map<String, Object>> filtered = cars.stream()
+                .filter(c -> vehInfo.getOrDefault(str(c.get("CARTYPE")), VehInfo.EMPTY).loadKg <= limitKg)
+                .collect(Collectors.toList());
+            if (!filtered.isEmpty()) cars = filtered;
+        }
+
         if (!dptnky.isEmpty()) {
             PtnrInfo pi = ptnrInfoMap.getOrDefault(dptnky, PtnrInfo.EMPTY);
             if (pi.maxLoadKg > 0) {
@@ -1089,10 +1170,11 @@ public class AutoDispatchService {
                     .collect(Collectors.toList());
                 if (!filtered.isEmpty()) cars = filtered;
             }
-            // FORCE_CARTYPE 납품처별 제약
+            // FORCE_CARTYPE 납품처별 제약 (고정차량 지정)
+            // FIXED_VEH_PRIORITY=Y 일 때만 고정차량을 최우선(사전할당)으로 강제 적용
             Map<String, Object> forceCr = Cbt.getOrDefault(dptnky, Collections.emptyMap())
                                             .get("FORCE_CARTYPE");
-            if (forceCr != null) {
+            if (forceCr != null && (cp == null || cp.fixedVehPriority)) {
                 String forceCt = str(forceCr.get("CONST_VALUE"));
                 List<Map<String, Object>> forced = cars.stream()
                     .filter(c -> forceCt.equals(str(c.get("CARTYPE"))))
@@ -1319,9 +1401,16 @@ public class AutoDispatchService {
         return 999;
     }
 
-    private double rollEffH(String cartype, String forkliftYn, Map<String, VehInfo> vehInfo) {
+    private double rollEffH(String cartype, String forkliftYn, Map<String, VehInfo> vehInfo, ConstraintParams cp) {
         VehInfo vi = vehInfo.getOrDefault(cartype, VehInfo.EMPTY);
-        return "Y".equals(forkliftYn) ? vi.heightM : vi.effectiveHeightM;
+        // 포크리프트 보유 납품처: 전체 높이 사용 (파레트 불필요)
+        if ("Y".equals(forkliftYn)) return vi.heightM;
+        // 미보유: 유효높이 사용. 파레트 차감 적용 시 설정값(ROLL_PALLET_DEDUCT_M)만큼 추가 차감
+        double h = vi.effectiveHeightM;
+        if (cp != null && cp.rollPalletApply) {
+            h = Math.max(0, vi.heightM - cp.rollPalletDeductM);
+        }
+        return h;
     }
 
     private String boardQtyWarn(Map<String, Object> it, boolean boardInnerSplit) {
@@ -1351,11 +1440,59 @@ public class AutoDispatchService {
         cp.boardMinFill     = bMin >= 0 ? bMin / 100.0 : cp.minFill;
         cp.allowSplit       = cbool(C, "ALLOW_SPLIT_ITEM",          true);
         cp.allowMixedLoad   = cbool(C, "ALLOW_MIXED_LOAD",          false);
-        cp.maxStack         = (int) cfloat(C, "MAX_ROLL_STACK_TIER", 2.0);
-        cp.maxBoardHeightM  = cfloat(C, "MAX_BOARD_HEIGHT_M",       2.4);
+        // ── 롤 최대 적재 단수: MAX_ROLL_STACK_TIER 우선, 미설정 시 중복키 ROLL_MAX_TIER 폴백 ──
+        double maxStackVal  = cfloatMulti(C, 2.0, "MAX_ROLL_STACK_TIER", "ROLL_MAX_TIER");
+        cp.maxStack         = (int) maxStackVal;
+        // ── 판지 최대 높이: MAX_BOARD_HEIGHT_M 우선, 미설정 시 중복키 BOARD_HEIGHT_MAX_M 폴백 ──
+        cp.maxBoardHeightM  = cfloatMulti(C, 2.4, "MAX_BOARD_HEIGHT_M", "BOARD_HEIGHT_MAX_M");
         cp.boardBulkIntOnly = cbool(C, "BOARD_BULK_INTEGER_ONLY",   true);
         cp.boardInnerSplit  = cbool(C, "BOARD_INNER_SPLIT_ALLOW",   true);
+
+        // ══ 신규 반영 제약조건 ══════════════════════════════════════════
+
+        // 진입 톤수 제한 (COMMON §1-1): 0 = 제한없음, >0 = 해당 톤수 초과 차량 배차 후보 제외
+        cp.entryTonLimit    = cfloat(C, "ENTRY_TON_LIMIT",          0.0);
+
+        // 고정차량 최우선 배차 (COMMON §1-3): Y = 고정차량 매핑 오더 사전할당
+        cp.fixedVehPriority = cbool(C, "FIXED_VEH_PRIORITY",        false);
+
+        // 그룹당 최대 배차 차량 수 (GLOBAL): 0/99 = 제한없음
+        cp.maxVehPerGroup   = (int) cfloat(C, "MAX_VEHICLES_PER_GROUP", 99.0);
+
+        // 3D 물리검증 토글 (ROLL/BOARD/MIX §*-4): N = 3D 검증 스킵
+        cp.roll3dCheck      = cbool(C, "ROLL_3D_CHECK_YN",         true);
+        cp.board3dCheck     = cbool(C, "BOARD_3D_CHECK_YN",        true);
+        cp.mix3dCheck       = cbool(C, "MIX_3D_CHECK_YN",          true);
+        // Dead Space 허용 비율(%) — 3D 검증 시 여유 마진으로 반영 (0 = 허용안함)
+        cp.rollDeadSpacePct  = cfloat(C, "ROLL_3D_DEAD_SPACE_PCT",  0.0);
+        cp.boardDeadSpacePct = cfloat(C, "BOARD_3D_DEAD_SPACE_PCT", 0.0);
+
+        // 판지 CBM 검증 토글 (BOARD §3-1): N = CBM 이중검증(Double-Threshold) 스킵
+        cp.boardCbmCheck    = cbool(C, "BOARD_CBM_CHECK_YN",       true);
+        // 판지 CBM/중량 상한 비율(%) — Double-Threshold 임계치 (기본 100%)
+        cp.boardMaxCbmRatio = cfloat(C, "BOARD_MAX_CBM_RATIO",     100.0) / 100.0;
+        cp.boardMaxTonRatio = cfloat(C, "BOARD_MAX_TON_RATIO",     100.0) / 100.0;
+
+        // 원지 높이 안전 여유 마진(m) (ROLL §2-2)
+        cp.rollHeightMarginM = cfloat(C, "ROLL_HEIGHT_MARGIN_M",   0.0);
+        // 파레트 차감 적용 여부 + 차감값(m) (ROLL §2-2): FORKLIFT_YN=N 납품처에 적용
+        cp.rollPalletApply   = cbool(C, "ROLL_PALLET_APPLY_YN",    true);
+        cp.rollPalletDeductM = cfloat(C, "ROLL_PALLET_DEDUCT_M",   0.15);
+
         return cp;
+    }
+
+    /** 여러 CONST_KEY를 우선순위대로 검사하여 최초로 명시된 값을 반환(중복/별칭 키 폴백) */
+    private double cfloatMulti(Map<String, Map<String, Object>> C, double def, String... keys) {
+        for (String k : keys) {
+            Map<String, Object> r = C.get(k);
+            if (r != null && r.get("CONST_VALUE") != null
+                && !r.get("CONST_VALUE").toString().isBlank()) {
+                try { return Double.parseDouble(r.get("CONST_VALUE").toString()); }
+                catch (Exception ignored) { /* 다음 키 시도 */ }
+            }
+        }
+        return def;
     }
 
     private double cfloat(Map<String, Map<String, Object>> C, String key, double def) {
@@ -1446,6 +1583,22 @@ public class AutoDispatchService {
         int maxStack = 2;
         boolean allowSplit = true, allowMixedLoad = false;
         boolean boardBulkIntOnly = true, boardInnerSplit = true;
+
+        // ── 신규 반영 제약조건 ──
+        double  entryTonLimit    = 0.0;    // 진입 톤수 제한 (0=제한없음)
+        boolean fixedVehPriority = false;  // 고정차량 최우선 배차
+        int     maxVehPerGroup   = 99;     // 그룹당 최대 배차 차량 수
+        boolean roll3dCheck      = true;   // 원지 3D 검증 활성
+        boolean board3dCheck     = true;   // 판지 3D 검증 활성
+        boolean mix3dCheck       = true;   // 혼적 3D 검증 활성
+        double  rollDeadSpacePct  = 0.0;   // 원지 Dead Space 허용 비율(%)
+        double  boardDeadSpacePct = 0.0;   // 판지 Dead Space 허용 비율(%)
+        boolean boardCbmCheck    = true;   // 판지 CBM 이중검증 활성
+        double  boardMaxCbmRatio = 1.0;    // 판지 CBM 상한 비율 (기본 100%)
+        double  boardMaxTonRatio = 1.0;    // 판지 중량 상한 비율 (기본 100%)
+        double  rollHeightMarginM = 0.0;   // 원지 높이 안전 여유 마진(m)
+        boolean rollPalletApply   = true;  // 파레트 차감 적용 여부
+        double  rollPalletDeductM = 0.15;  // 파레트 차감값(m)
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -1600,7 +1753,9 @@ public class AutoDispatchService {
             .mapToDouble(l -> l.repDiamMm * Math.min(cp.maxStack, (int)(carHmm / l.repDiamMm)))
             .max().orElse(0) / 1000.0;
         result.usedFloorRatio = carLmm > 0 ? Math.min(100.0, usedLengthMm / carLmm * 100.0) : 0.0;
-        result.fits = (usedLengthMm <= carLmm * 1.02); // 2% 마진 허용
+        // Dead Space 허용 비율(ROLL_3D_DEAD_SPACE_PCT) 반영: 기본 2% + 설정 비율만큼 여유 허용
+        double rollMargin = 1.02 + (cp.rollDeadSpacePct / 100.0);
+        result.fits = (usedLengthMm <= carLmm * rollMargin);
 
         result.summary = String.format(
             "[3D-원지검증] %s / 총%d롤 / Y축점유%.0fmm/%.0fmm(%.0f%%) / 최고단높이%.2fm / %s",
@@ -1780,8 +1935,9 @@ public class AutoDispatchService {
         result.maxHeightM = maxZ / 1000.0;
         result.usedFloorRatio = carLmm > 0 ? Math.min(100.0, (curY + curShelfL) / carLmm * 100.0) : 0.0;
 
-        // 높이 초과 여부
-        if (maxZ > carHmm * 1.02) overflow = true;
+        // 높이 초과 여부 — Dead Space 허용 비율(BOARD_3D_DEAD_SPACE_PCT) 반영
+        double boardMargin = 1.02 + (cp.boardDeadSpacePct / 100.0);
+        if (maxZ > carHmm * boardMargin) overflow = true;
 
         result.fits = !overflow;
         result.summary = String.format(
