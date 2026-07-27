@@ -22662,14 +22662,13 @@ function _dconCiRenderList() {
 
 /* ─ 행 클릭: 우측 패널에 설정값 변경 폼 표시 ─ */
 function _dconCiSelectRow(constId) {
-  DCON._ciSelId = parseInt(constId, 10);
-  /* 이전 선택 행 하이라이트 초기화 */
+  const cid = parseInt(constId, 10);
+  DCON._ciSelId = cid;
+  /* 이전 선택 행 하이라이트 초기화 + 현재 선택 행 강조 */
   document.querySelectorAll('[id^="dcon-ci-row-"]').forEach(tr => {
-    const cid = parseInt(tr.dataset.cid, 10);
-    if (cid !== DCON._ciSelId) tr.style.background = tr.dataset.rowbg || '';
+    const trCid = parseInt(tr.dataset.cid, 10);
+    tr.style.background = (trCid === cid) ? 'rgba(99,130,255,.12)' : (tr.dataset.rowbg || '');
   });
-  const selTr = document.getElementById(`dcon-ci-row-${constId}`);
-  if (selTr) selTr.style.background = 'rgba(99,130,255,.12)';
 
   const it = DCON._ciItems.find(x => x.CONST_ID == constId);
   if (!it) { console.warn('[dconCi] constId not found in _ciItems:', constId, DCON._ciItems.length); return; }
