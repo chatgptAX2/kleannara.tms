@@ -18984,10 +18984,11 @@ async function renderDispatchConstraint() {
                   <tr style="background:var(--th-bg);position:sticky;top:0;z-index:2">
                     <th style="padding:5px 6px;border:1px solid var(--border);text-align:center;width:42px">ID</th>
                     <th style="padding:5px 6px;border:1px solid var(--border);text-align:center;width:66px">TYPE</th>
-                    <th style="padding:5px 6px;border:1px solid var(--border);text-align:left;min-width:140px">CONST_KEY</th>
+                    <th style="padding:5px 6px;border:1px solid var(--border);text-align:left;min-width:120px">CONST_KEY</th>
+                    <th style="padding:5px 6px;border:1px solid var(--border);text-align:left;min-width:100px">한글명</th>
                     <th style="padding:5px 6px;border:1px solid var(--border);text-align:center;width:46px">OP</th>
-                    <th style="padding:5px 6px;border:1px solid var(--border);text-align:left;min-width:80px">VALUE</th>
-                    <th style="padding:5px 6px;border:1px solid var(--border);text-align:left;min-width:80px">NOTE</th>
+                    <th style="padding:5px 6px;border:1px solid var(--border);text-align:left;min-width:70px">VALUE</th>
+                    <th style="padding:5px 6px;border:1px solid var(--border);text-align:left;min-width:70px">NOTE</th>
                     <th style="padding:5px 6px;border:1px solid var(--border);text-align:center;width:38px">활성</th>
                     <th style="padding:5px 6px;border:1px solid var(--border);text-align:center;width:72px">작업</th>
                   </tr>
@@ -22538,8 +22539,11 @@ async function _dconCiLoad() {
       fetch('/api/const-item/list').then(r => r.json()),
       fetch('/api/dispatch-const-set/list').then(r => r.json()),
     ]);
-    if (!rd.ok) throw new Error(rd.error);
-    DCON._ciItems = rd.rows || [];
+    if (!rd.ok) throw new Error(rd.error || '항목 목록 API 오류');
+    DCON._ciItems = (rd.rows || []).map(r => ({
+      ...r,
+      CONST_ID: Number(r.CONST_ID)   /* 타입 정규화: 숫자 보장 */
+    }));
 
     /* 세트 드롭다운 갱신 */
     const setRows = sd.ok ? (sd.rows || []) : [];
@@ -22566,7 +22570,9 @@ async function _dconCiLoad() {
 
     _dconCiFilter();
   } catch(e) {
+    console.error('[dconCiLoad] 로드 오류:', e);
     showToast(`❌ 항목 로드 실패: ${e.message}`, 'error');
+    _dconCiFilter();  /* 빈 목록이라도 렌더링 */
   }
 }
 
@@ -22622,7 +22628,7 @@ function _dconCiRenderList() {
   if (badge) badge.textContent = `${shown}/${total}건`;
 
   if (!shown) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text3);font-size:11px">등록된 제약조건 항목이 없습니다. 상단 [＋ 항목 추가]를 클릭하세요.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text3);font-size:11px">등록된 제약조건 항목이 없습니다. 상단 [＋ 항목 추가]를 클릭하세요.</td></tr>`;
     return;
   }
 
@@ -22636,6 +22642,8 @@ function _dconCiRenderList() {
     const inSet = setId && DCON._ciSetItems[setId] && DCON._ciSetItems[setId].has(it.CONST_ID);
     const setDot = setId ? `<span style="font-size:9px;margin-right:3px;color:${inSet?'#16a34a':'#94a3b8'}" title="${inSet?'세트 포함':'세트 미포함'}">${inSet?'●':'○'}</span>` : '';
     const noteShort = it.NOTE ? (it.NOTE.length > 18 ? it.NOTE.substring(0,18)+'…' : it.NOTE) : '';
+    const pm = (typeof DCON_PARAM_META !== 'undefined') ? (DCON_PARAM_META[it.CONST_KEY] || {}) : {};
+    const pmLabel = pm.label || '';
     return `<tr id="dcon-ci-row-${it.CONST_ID}" data-rowbg="${rowBg}" data-cid="${it.CONST_ID}"
       style="background:${rowBg};cursor:pointer"
       onclick="_dconCiSelectRow(${it.CONST_ID})"
@@ -22646,6 +22654,7 @@ function _dconCiRenderList() {
         <span style="background:${typeColor};color:#fff;border-radius:3px;padding:1px 4px;font-size:9px;font-weight:600">${_esc(it.CONST_TYPE)}</span>
       </td>
       <td style="padding:4px 6px;border:1px solid var(--border);font-family:monospace;font-weight:600;font-size:10px">${setDot}${_esc(it.CONST_KEY)}</td>
+      <td style="padding:4px 6px;border:1px solid var(--border);font-size:10px;color:#1a56db;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(pmLabel)}">${_esc(pmLabel)}</td>
       <td style="padding:4px 6px;border:1px solid var(--border);text-align:center;font-family:monospace;font-size:10px">${_esc(it.CONST_OP)}</td>
       <td style="padding:4px 6px;border:1px solid var(--border);font-size:10px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(it.CONST_VALUE)}">${_esc(it.CONST_VALUE)}</td>
       <td style="padding:4px 6px;border:1px solid var(--border);font-size:10px;color:var(--text3);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(it.NOTE)}">${_esc(noteShort)}</td>
@@ -22653,7 +22662,9 @@ function _dconCiRenderList() {
         <span style="background:${activeBg};color:${activeClr};border-radius:3px;padding:1px 4px;font-size:9px;font-weight:600">${_esc(it.ACTIVE_YN) || 'Y'}</span>
       </td>
       <td style="padding:4px 5px;border:1px solid var(--border);text-align:center;white-space:nowrap" onclick="event.stopPropagation()">
-        <button class="dcon-run-btn secondary" onclick="_dconCiDeleteItem(${it.CONST_ID},'${_esc(it.CONST_KEY)}')"
+        <button class="dcon-run-btn secondary"
+          data-del-id="${it.CONST_ID}" data-del-key="${_esc(it.CONST_KEY)}"
+          onclick="_dconCiDeleteItem(parseInt(this.dataset.delId),this.dataset.delKey)"
           style="padding:2px 6px;font-size:10px;color:var(--danger)">🗑</button>
       </td>
     </tr>`;
@@ -22662,16 +22673,26 @@ function _dconCiRenderList() {
 
 /* ─ 행 클릭: 우측 패널에 설정값 변경 폼 표시 ─ */
 function _dconCiSelectRow(constId) {
-  const cid = parseInt(constId, 10);
+  const cid = Number(constId);   /* parseInt 대신 Number() — 문자열/숫자 모두 동일하게 처리 */
   DCON._ciSelId = cid;
   /* 이전 선택 행 하이라이트 초기화 + 현재 선택 행 강조 */
   document.querySelectorAll('[id^="dcon-ci-row-"]').forEach(tr => {
-    const trCid = parseInt(tr.dataset.cid, 10);
+    const trCid = Number(tr.dataset.cid);
     tr.style.background = (trCid === cid) ? 'rgba(99,130,255,.12)' : (tr.dataset.rowbg || '');
   });
 
-  const it = DCON._ciItems.find(x => x.CONST_ID == constId);
-  if (!it) { console.warn('[dconCi] constId not found in _ciItems:', constId, DCON._ciItems.length); return; }
+  /* _ciItems에서 해당 행 찾기 — 숫자 타입으로 비교 */
+  const it = DCON._ciItems.find(x => Number(x.CONST_ID) === cid);
+  if (!it) {
+    console.warn('[dconCi] constId not found in _ciItems:', cid,
+      '| _ciItems length:', DCON._ciItems.length,
+      '| first few IDs:', DCON._ciItems.slice(0,3).map(x=>x.CONST_ID));
+    /* 항목을 못 찾아도 폼은 표시 (필드는 비움) */
+    _dconCiShowDetailPanel(true);
+    const titleEl = document.getElementById('dcon-ci-detail-title');
+    if (titleEl) titleEl.textContent = `⚠️ ID ${cid} 항목 정보를 불러올 수 없습니다`;
+    return;
+  }
 
   /* 우측 패널 표시 */
   _dconCiShowDetailPanel(true);
@@ -22702,18 +22723,19 @@ function _dconCiSelectRow(constId) {
   const titleEl = document.getElementById('dcon-ci-detail-title');
   if (titleEl) titleEl.textContent = `✏️ "${it.CONST_KEY}" 수정`;
 
-  /* 폼 필드 채우기 */
-  document.getElementById('dcon-ci-f-id').value     = constId;
-  document.getElementById('dcon-ci-f-key').value    = it.CONST_KEY   || '';
-  document.getElementById('dcon-ci-f-type').value   = it.CONST_TYPE  || 'GLOBAL';
-  document.getElementById('dcon-ci-f-op').value     = it.CONST_OP    || '=';
-  document.getElementById('dcon-ci-f-val').value    = it.CONST_VALUE || '';
-  document.getElementById('dcon-ci-f-tgtid').value  = it.TARGET_ID   || '';
-  document.getElementById('dcon-ci-f-tgtnm').value  = it.TARGET_NM   || '';
-  document.getElementById('dcon-ci-f-note').value   = it.NOTE        || '';
-  document.getElementById('dcon-ci-f-seq').value    = it.SORT_SEQ    ?? 0;
-  document.getElementById('dcon-ci-f-active').value = it.ACTIVE_YN   || 'Y';
-  document.getElementById('dcon-ci-f-key').focus();
+  /* 폼 필드 채우기 — 방어적으로 ?. 사용하여 null 에러 방지 */
+  const _sv = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  _sv('dcon-ci-f-id',     constId);
+  _sv('dcon-ci-f-key',    it.CONST_KEY   || '');
+  _sv('dcon-ci-f-type',   it.CONST_TYPE  || 'GLOBAL');
+  _sv('dcon-ci-f-op',     it.CONST_OP    || '=');
+  _sv('dcon-ci-f-val',    it.CONST_VALUE || '');
+  _sv('dcon-ci-f-tgtid',  it.TARGET_ID   || '');
+  _sv('dcon-ci-f-tgtnm',  it.TARGET_NM   || '');
+  _sv('dcon-ci-f-note',   it.NOTE        || '');
+  _sv('dcon-ci-f-seq',    it.SORT_SEQ    ?? 0);
+  _sv('dcon-ci-f-active', it.ACTIVE_YN   || 'Y');
+  document.getElementById('dcon-ci-f-key')?.focus();
 }
 
 /* ─ 신규 추가: 우측 패널을 빈 폼으로 열기 ─ */
@@ -22734,17 +22756,18 @@ function _dconCiAddNew() {
   const titleEl = document.getElementById('dcon-ci-detail-title');
   if (titleEl) titleEl.textContent = '＋ 새 제약조건 항목 추가';
 
-  document.getElementById('dcon-ci-f-id').value     = '';
-  document.getElementById('dcon-ci-f-key').value    = '';
-  document.getElementById('dcon-ci-f-type').value   = 'GLOBAL';
-  document.getElementById('dcon-ci-f-op').value     = '=';
-  document.getElementById('dcon-ci-f-val').value    = '';
-  document.getElementById('dcon-ci-f-tgtid').value  = '';
-  document.getElementById('dcon-ci-f-tgtnm').value  = '';
-  document.getElementById('dcon-ci-f-note').value   = '';
-  document.getElementById('dcon-ci-f-seq').value    = 0;
-  document.getElementById('dcon-ci-f-active').value = 'Y';
-  document.getElementById('dcon-ci-f-key').focus();
+  const _sv2 = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  _sv2('dcon-ci-f-id',     '');
+  _sv2('dcon-ci-f-key',    '');
+  _sv2('dcon-ci-f-type',   'GLOBAL');
+  _sv2('dcon-ci-f-op',     '=');
+  _sv2('dcon-ci-f-val',    '');
+  _sv2('dcon-ci-f-tgtid',  '');
+  _sv2('dcon-ci-f-tgtnm',  '');
+  _sv2('dcon-ci-f-note',   '');
+  _sv2('dcon-ci-f-seq',    0);
+  _sv2('dcon-ci-f-active', 'Y');
+  document.getElementById('dcon-ci-f-key')?.focus();
 }
 
 /* ─ 우측 패널 표시/숨김 헬퍼 (display 조작 단일화) ─ */
