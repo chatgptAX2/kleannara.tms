@@ -13374,9 +13374,46 @@ function psopShowDocSummary() {
 }
 
 /* ── 체크박스 선택 ────────────────────────────────── */
+/* ── 그룹 선택 헬퍼 ──────────────────────────────────
+   요청: 납품문서 체크박스 선택 시 "동일 납품일(RQSHPD) +
+   동일 납품처코드(DPTNKY)" 인 행들을 한 번에 선택/해제한다.
+   key = `${SHPOKY}|${SHPOIT}` 에서 원본 row 를 찾아 그룹 키를 산출하고,
+   searchRows 중 같은 그룹의 모든 key 를 반환. */
+function _psopFindRowByKey(key) {
+  const [shpoky, shpoit] = String(key).split('|');
+  return (psopState.searchRows || []).find(
+    r => String(r.SHPOKY) === shpoky && String(r.SHPOIT) === shpoit
+  );
+}
+function _psopGroupKeys(key) {
+  const base = _psopFindRowByKey(key);
+  if (!base) return [key];
+  const rq  = (base.RQSHPD ?? '') + '';
+  const dpt = (base.DPTNKY ?? '') + '';
+  // 납품일/납품처코드가 모두 비어있으면 그룹 확장하지 않음(단일 선택)
+  if (!rq && !dpt) return [key];
+  return (psopState.searchRows || [])
+    .filter(r => ((r.RQSHPD ?? '') + '') === rq && ((r.DPTNKY ?? '') + '') === dpt)
+    .map(r => `${r.SHPOKY}|${r.SHPOIT}`);
+}
+/* 그룹 내 행들의 DOM 체크박스/행 하이라이트를 selectedDocs 기준으로 동기화 */
+function _psopSyncGroupDom(keys) {
+  keys.forEach(k => {
+    const on  = psopState.selectedDocs.has(k);
+    const row = document.getElementById(`psop-row-${k.replace(/\|/g,'_')}`);
+    if (row) row.classList.toggle('selected-row', on);
+    const chk = row?.querySelector('.psd-doc-chk');
+    if (chk) chk.checked = on;
+  });
+}
 function psopChkDoc(key, checked) {
-  if (checked) psopState.selectedDocs.add(key);
-  else         psopState.selectedDocs.delete(key);
+  /* 동일 납품일+납품처코드 그룹 일괄 선택 */
+  const keys = _psopGroupKeys(key);
+  keys.forEach(k => {
+    if (checked) psopState.selectedDocs.add(k);
+    else         psopState.selectedDocs.delete(k);
+  });
+  _psopSyncGroupDom(keys);
   psopUpdateSelCnt();
   psopUpdateToolbar();
   /* 전체선택 체크박스 상태 동기화 (개별 체크 변경 시) */
@@ -13384,12 +13421,15 @@ function psopChkDoc(key, checked) {
 }
 function psopToggleDocSel(key, ev) {
   if (ev.target.tagName==='INPUT') return;
-  if (psopState.selectedDocs.has(key)) psopState.selectedDocs.delete(key);
-  else                                psopState.selectedDocs.add(key);
-  const row = document.getElementById(`psop-row-${key.replace(/\|/g,'_')}`);
-  if (row) row.classList.toggle('selected-row');
-  const chk = row?.querySelector('.psd-doc-chk');
-  if (chk) chk.checked = psopState.selectedDocs.has(key);
+  /* 동일 납품일+납품처코드 그룹 일괄 토글
+     — 클릭한 행의 현재 상태를 반전시킨 값으로 그룹 전체를 통일 */
+  const willSelect = !psopState.selectedDocs.has(key);
+  const keys = _psopGroupKeys(key);
+  keys.forEach(k => {
+    if (willSelect) psopState.selectedDocs.add(k);
+    else            psopState.selectedDocs.delete(k);
+  });
+  _psopSyncGroupDom(keys);
   psopUpdateSelCnt();
   psopUpdateToolbar();
   /* 전체선택 체크박스 상태 동기화 */
