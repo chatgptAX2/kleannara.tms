@@ -12583,9 +12583,17 @@ async function renderPsDispatchOpt() {
   // ── 이미 초기화된 경우: _doShowPage에서 이미 복원 처리됨 → 종료 ──
   if (psopState.initialized) return;
 
-  // 기본 날짜: SHPDI와 실제 조인 가능한 max_date 기준 (없으면 이번달 1일 ~ 오늘)
+  // 기본 날짜: 오늘 기준 FROM = -3일, TO = +1일 (요청 사양)
   const fmtD  = d => d.toISOString().slice(0,10);
   let defFrom, defTo, _psopDataRangeHint = '';
+  {
+    const today = new Date();
+    const fromD = new Date(today); fromD.setDate(fromD.getDate() - 3);
+    const toD   = new Date(today); toD.setDate(toD.getDate() + 1);
+    defFrom = fmtD(fromD);
+    defTo   = fmtD(toD);
+  }
+  // DB 실제 데이터 범위 힌트(안내용)만 부가 조회 — 기본 세팅값에는 영향 없음
   try {
     const _optsRes = await fetch('/api/shipment/schedule/filter-opts');
     const _optsJ   = await _optsRes.json();
@@ -12593,19 +12601,9 @@ async function renderPsDispatchOpt() {
     const _optsD   = (_optsJ && _optsJ.data) ? _optsJ.data : _optsJ;
     const _maxStr  = _optsD.maxDate  || _optsD.max_date || '';
     const _minStr  = _optsD.minDate  || _optsD.min_date || '';
-    if (_maxStr && _maxStr.length === 8) {
-      const maxD  = new Date(_maxStr.slice(0,4)+'-'+_maxStr.slice(4,6)+'-'+_maxStr.slice(6,8));
-      const fromD = new Date(maxD); fromD.setDate(fromD.getDate()-30);
-      defFrom = fmtD(fromD);
-      defTo   = fmtD(maxD);
-      const _fd = s => (s&&s.length===8) ? s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6,8) : '';
-      if (_minStr && _maxStr) _psopDataRangeHint = `DB 데이터 범위: ${_fd(_minStr)} ~ ${_fd(_maxStr)}`;
-    } else { throw new Error('no max_date'); }
-  } catch(_) {
-    const today = new Date();
-    defFrom = fmtD(new Date(today.getFullYear(), today.getMonth(), 1));
-    defTo   = fmtD(today);
-  }
+    const _fd = s => (s&&s.length===8) ? s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6,8) : '';
+    if (_minStr && _maxStr) _psopDataRangeHint = `DB 데이터 범위: ${_fd(_minStr)} ~ ${_fd(_maxStr)}`;
+  } catch(_) { /* 힌트 조회 실패해도 기본 날짜는 유지 */ }
 
   c.innerHTML = `
 <div class="psd-layout" id="psop-root">
