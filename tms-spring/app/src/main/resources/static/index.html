@@ -9225,24 +9225,46 @@ async function psdLoadVehicles() {
     if (vehStat)   p.set('status',  vehStat);
     if (vehDptnky) p.set('dptnky',  vehDptnky);
     const res  = await fetch(`/api/ps-dispatch/list?${p}`);
-    const data = await res.json();
-    if (!data.ok) return;
+    const resJson = await res.json();
+    /* 응답 래퍼 대응:
+       - ApiResponse: { success:true, data:[...] }  (현행 Spring)
+       - 구형/기타:   { ok:true, rows:[...] }
+       - 성공 판정은 success===true 또는 ok===true (둘 다 없으면 data/rows 존재로 판단) */
+    const _okFlag = (resJson.success === true) || (resJson.ok === true);
+    const _rows   = Array.isArray(resJson.data) ? resJson.data
+                  : Array.isArray(resJson.rows) ? resJson.rows
+                  : [];
+    if (!_okFlag && _rows.length === 0) return;
     // 선택 초기화 (재조회 시)
     psdState.selectedVehicles.clear();
     const allChkEl = document.getElementById('psd-veh-all-chk');
     if (allChkEl) { allChkEl.checked = false; allChkEl.indeterminate = false; }
-    psdState.vehicles = (data.rows||[]).map(h => ({
-      dispatch_no: h.DISPATCH_NO,
-      rqshpd:      h.RQSHPD,
-      dptnky:      h.DPTNKY,
-      dptnm:       h.DPTNM,
-      cartype:     h.CARTYPE,
-      status:      h.STATUS,
-      total_kg:    h.TOTAL_KG,
-      total_cnt:   h.TOTAL_CNT,
-      load_kg:     h.LOAD_KG,        // 적재가능중량 (LOAD_TON×1000)
-      ROLL_COUNT:  h.ROLL_COUNT || 0, // 원지 롤 수 합산 (서버 계산)
-      items:       h.items || [],
+    /* 서버 DTO 는 camelCase(dispatchNo …). 구형 대문자 키(DISPATCH_NO …)도 fallback 대응 */
+    psdState.vehicles = _rows.map(h => ({
+      dispatch_no: h.dispatchNo ?? h.DISPATCH_NO,
+      rqshpd:      h.rqshpd     ?? h.RQSHPD,
+      dptnky:      h.dptnky     ?? h.DPTNKY,
+      dptnm:       h.dptnm      ?? h.DPTNM,
+      cartype:     h.cartype    ?? h.CARTYPE,
+      status:      h.status     ?? h.STATUS,
+      total_kg:    h.totalKg    ?? h.TOTAL_KG,
+      total_cnt:   h.totalCnt   ?? h.TOTAL_CNT,
+      load_kg:     h.loadKg     ?? h.LOAD_KG,        // 적재가능중량 (LOAD_TON×1000)
+      ROLL_COUNT:  h.rollCount  ?? h.ROLL_COUNT ?? 0, // 원지 롤 수 합산 (서버 계산)
+      items:      (h.items || []).map(it => ({
+        // 렌더/드래그에서 대문자 키(it.SHPOKY 등)를 사용하므로 대문자로 정규화
+        SHPOKY:  it.shpoky   ?? it.SHPOKY,
+        SHPOIT:  it.shpoit   ?? it.SHPOIT,
+        SKUKEY:  it.skukey   ?? it.SKUKEY,
+        DESC01:  it.desc01   ?? it.DESC01,
+        QTSHPO:  it.qtshpo   ?? it.QTSHPO,
+        UOMKEY:  it.uomkey   ?? it.UOMKEY,
+        DPTNKY:  it.dptnky   ?? it.DPTNKY,
+        DPTNM:   it.dptnm    ?? it.DPTNM,
+        GRSWGT:  it.grswgt   ?? it.GRSWGT,
+        KG_WEIGHT: it.kgWeight ?? it.KG_WEIGHT,
+        ...it,   // 원본 필드도 함께 보존
+      })),
     }));
     psdRenderVehicleArea();
     psdUpdateToolbar();
