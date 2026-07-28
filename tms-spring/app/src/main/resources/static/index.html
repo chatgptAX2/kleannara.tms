@@ -13585,11 +13585,17 @@ function psopRenderVehicleArea() {
     const chked    = psopState.selectedVehicles.has(pid) ? 'checked' : '';
     const cartype  = v.cartype || '미정';
 
-    // 가선적번호: 저장 후 STDLNR, 저장 전 순번(#N) 표시
-    const shpnr = v.STDLNR || null;
+    // 가선적번호 표시 우선순위:
+    //  ① STDLNR(저장 완료) → 파란색 실선
+    //  ② _origDispatchNo(불러온 배차 · 미저장 편집중) → 원본번호 + '(편집중)' 표기
+    //  ③ 둘 다 없음(신규 배차) → 임시#N
+    const shpnr    = v.STDLNR || null;
+    const origNo   = v._origDispatchNo || null;
     const shpnrTxt = shpnr
       ? `<span style="font-size:10px;font-family:monospace;color:var(--primary);font-weight:600">${shpnr}</span>`
-      : `<span style="font-size:10px;color:var(--text3)">임시#${idx + 1}</span>`;
+      : origNo
+        ? `<span style="font-size:10px;font-family:monospace;color:var(--warning,#d97706);font-weight:600" title="불러온 배차 · 수정 후 배차저장 필요">${origNo} <span style="font-weight:400">(편집중)</span></span>`
+        : `<span style="font-size:10px;color:var(--text3)">임시#${idx + 1}</span>`;
 
     // 납품처
     const dptnm = v.dptnm || v.DPTNM || v.dptnky || v.DPTNKY || '-';
