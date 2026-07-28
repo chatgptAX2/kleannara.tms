@@ -451,10 +451,14 @@ public class PsDispatchService {
             }
 
             // SHPDH.VEHINO = carclass_cd (Oracle KNRAWMS.SHPDH 업데이트 → tmsEm, 위와 동일 사유)
+            // ※ SHPDH 의 VEHINO/CARTON/CARNO/DRIVER/DRIVERCEL 컬럼은 Oracle 에서 NOT NULL 제약이
+            //   걸려 있어 NULL 을 세팅하면 ORA-01407 이 발생한다.
+            //   → NVL(?, ' ') / 리터럴 ' ' 로 NULL 을 공백 1칸으로 치환하여 제약 위반을 방지한다.
             if (!shpokySet.isEmpty()) {
                 String ph = shpokySet.stream().map(x -> "?").collect(Collectors.joining(","));
                 var q = tmsEm.createNativeQuery(
-                    "UPDATE KNRAWMS.SHPDH SET VEHINO=?, CARTON=?, CARNO=NULL, DRIVER=NULL, DRIVERCEL=NULL," +
+                    "UPDATE KNRAWMS.SHPDH SET VEHINO=NVL(?, ' '), CARTON=NVL(?, ' ')," +
+                    " CARNO=' ', DRIVER=' ', DRIVERCEL=' '," +
                     " LMODAT=TO_CHAR(SYSDATE,'YYYYMMDD'), LMOUSR='WEB' WHERE SHPOKY IN (" + ph + ")"
                 );
                 q.setParameter(1, carclassCd.isEmpty() ? null : carclassCd);
