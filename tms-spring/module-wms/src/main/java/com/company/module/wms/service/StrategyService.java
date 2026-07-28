@@ -266,15 +266,16 @@ public class StrategyService {
                 "SELECT CARCLASS_CD FROM KNRAWMS.DS_VEHICLE WHERE CARCLASS_CD=?", carclassCd
             );
             if (exists.isEmpty()) {
+                // DS_VEHICLE 의 갱신일자 컬럼은 UPDDAT(+UPDUSR) 이며 CREDAT/LMODAT 컬럼은 없다.
                 tmsJdbc.update(
                     "INSERT INTO KNRAWMS.DS_VEHICLE (CARCLASS_CD, CARTYPE, LENGTH_M, WIDTH_M, HEIGHT_M, " +
-                    "LOAD_TON, PALLET_HEIGHT_M, SORT_SEQ, PALLET_CNT, LONG_AXIS_YN, DEFAULT_VEH_CNT, CREDAT, LMODAT) " +
+                    "LOAD_TON, PALLET_HEIGHT_M, SORT_SEQ, PALLET_CNT, LONG_AXIS_YN, DEFAULT_VEH_CNT, UPDDAT, UPDUSR) " +
                     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     carclassCd, body.get("CARTYPE"), body.get("LENGTH_M"), body.get("WIDTH_M"),
                     body.get("HEIGHT_M"), body.get("LOAD_TON"), body.get("PALLET_HEIGHT_M"),
                     body.getOrDefault("SORT_SEQ", 0), body.get("PALLET_CNT"),
                     body.getOrDefault("LONG_AXIS_YN", "N"), body.getOrDefault("DEFAULT_VEH_CNT", 1),
-                    today, today
+                    today, "WEB"
                 );
             } else {
                 // ── 부분 업데이트(Partial Update) ──────────────────────────
@@ -293,7 +294,8 @@ public class StrategyService {
                         args.add(body.get(col));
                     }
                 }
-                sets.add("LMODAT=?");
+                // DS_VEHICLE 갱신일자 컬럼명은 UPDDAT (LMODAT 컬럼 없음 → bad SQL grammar 원인)
+                sets.add("UPDDAT=?");
                 args.add(today);
                 args.add(carclassCd);
                 tmsJdbc.update(
