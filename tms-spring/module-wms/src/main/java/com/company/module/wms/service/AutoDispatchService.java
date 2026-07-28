@@ -717,6 +717,57 @@ public class AutoDispatchService {
             }
             // ─────────────────────────────────────────────────────────
 
+            // ── 판지 차량 다운사이즈(Right-Sizing) ──────────────────────
+            //  파주지점 18톤/1,234kg(적재율 6%)처럼 "선정 차량이 실제 적재량에 비해
+            //  과도하게 큰" 저적재 케이스 방지. MIN_FILL_RATIO 미설정(0%) 환경에서도
+            //  동작하도록, 선정 차보다 작은 차 중
+            //    ① 중량·CBM 한도를 모두 만족하고(cap >= 적재중량, cbmCap >= 적재부피)
+            //    ② 3D 물리검증(활성 시)을 통과하며
+            //    ③ 중량 적재율이 하한(MIN_FILL/BOARD_MIN_FILL) 이상인
+            //  "가장 작은" 차량으로 교체한다. 하한이 0이면 담을 수 있는 최소 차량을 선택.
+            {
+                double minFillPct = cp.boardMinFill * 100.0;  // processBoardItems 는 항상 판지(BOARD)
+                String dsCar = vehCar; VehInfo dsVi = vi;
+                double dsFill = fill;
+                for (Map<String, Object> c : carOrder) {
+                    String ct = str(c.get("CARTYPE"));
+                    // 현재 선정 차보다 작은 차만 후보 (sortKey 클수록 작은 차)
+                    if (sortKey(ct, carOrder) <= sortKey(dsCar, carOrder)) continue;
+                    VehInfo cvi = vehInfo.getOrDefault(ct, VehInfo.EMPTY);
+                    double ccap = cvi.loadKg;
+                    if (ccap <= 0 || ccap < vehKg) continue;                 // 중량 담기 가능?
+                    double ccbmCap = cvi.lengthM * cvi.widthM * cvi.effectiveHeightM;
+                    if (vb.totalCbm > 0 && ccbmCap > 0 && ccbmCap < vb.totalCbm) continue; // 부피 담기 가능?
+                    double cFill = ccap > 0 ? vehKg / ccap * 100 : 0;
+                    if (minFillPct > 0 && cFill < minFillPct) continue;      // 하한 미달 금지
+                    if (cp.board3dCheck) {                                    // 3D 배치 가능?
+                        BoardPhysics3D chk = verifyBoards3D(vb.items, skumaMap, cvi, cp);
+                        if (!chk.fits) continue;
+                    }
+                    // 더 작은(=적재율 더 높은) 차량 채택
+                    if (cFill > dsFill) { dsFill = cFill; dsCar = ct; dsVi = cvi; }
+                }
+                if (!dsCar.equals(vehCar)) {
+                    notesB.add(String.format("[판지-적정화] %s→%s (적재율 %.1f%%→%.1f%%, 과대차량 다운사이즈)",
+                            vehCar, dsCar, fill, dsFill));
+                    vehCar = dsCar; vi = dsVi;
+                    cap       = vi.loadKg;
+                    fill      = cap > 0 ? vehKg / cap * 100 : 0;
+                    vehEffH   = vi.effectiveHeightM;
+                    vehCbmCap = vi.lengthM * vi.widthM * vehEffH;
+                    cbmFill   = vehCbmCap > 0 ? vb.totalCbm / vehCbmCap * 100 : 0;
+                    costVal   = routeCostMap.getOrDefault(dptnky, Collections.emptyMap())
+                                            .getOrDefault(vehCar, 0.0);
+                }
+                // MIN_FILL_RATIO 미설정 안내 (저적재 원인 진단용)
+                if (minFillPct <= 0 && fill < 30.0) {
+                    notesB.add(String.format(
+                        "[적재율경고] 적재율 %.1f%% — MIN_FILL_RATIO(BOARD_MIN_FILL_RATIO) 미설정(0%%)으로 " +
+                        "최소적재 하한이 적용되지 않았습니다. 저적재 방지를 원하면 제약조건을 설정하세요.", fill));
+                }
+            }
+            // ─────────────────────────────────────────────────────────
+
             Map<String, Object> vrow = new LinkedHashMap<>();
             vrow.put("dptnky", dptnky); vrow.put("dptnm", dptnm); vrow.put("rqshpd", rqshpd);
             vrow.put("cartype", vehCar);
