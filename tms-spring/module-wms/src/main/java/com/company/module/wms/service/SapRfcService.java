@@ -298,31 +298,126 @@ public class SapRfcService {
     //  조회 API (DB 기반 — JCo 미사용)
     // ════════════════════════════════════════════════════════════════
 
+    /**
+     * 배차확정(SAP전송) 탭 — 가선적번호(STDLNR) 목록.
+     *
+     * ■ 조회 기준 (Flask api_ps_sap_list 이식)
+     *   SHPDI(SI).STATIT='NEW' AND TRIM(SI.STDLNR)!=''  → 가선적번호가 채번된 모든 배차
+     *   ※ STATUS(DRAFT/CONFIRMED/SAP_CREATED) 로 필터하지 않는다.
+     *     배차삭제·SAP 선적생성 대상에는 DRAFT 배차도 포함되어야 하기 때문.
+     *     (SAP 선적 생성 여부는 PH.STKNUM(SAP_STKNUM) 값 유무로 화면에서 구분)
+     *
+     * ■ 반환 필드 (프론트 _sapRenderLeft 기대 스키마)
+     *   STDLNR, SAP_STKNUM, SVBELN_CNT, SHPOKY_CNT, ITEM_CNT, TOTAL_KG,
+     *   RQSHPD_FROM, RQSHPD_TO, CARNO, VEHINO, DRIVER, DRIVERCEL, TDLNR, LMODAT,
+     *   DPTNKY, DPTNKYNM, CARTYPE(명칭), CARCLASS_CD(코드)
+     *
+     * ■ DataSource: SHPDI/SHPDH/SKUMA/BZPTN/CMCDV/PS_DISPATCH_H → Oracle KNRAWMS (wmsJdbc)
+     */
     public Map<String, Object> sapList(Map<String, Object> body) {
         try {
-            String dateFrom = str(body.get("dateFrom")).replace("-", "");
-            String dateTo   = str(body.get("dateTo")).replace("-", "");
-            String dptnky   = str(body.get("dptnky"));
+            // 프론트는 rqshpd_from/rqshpd_to/stknum/dptnky 로 전송 (dateFrom/dateTo 아님)
+            String rqFrom  = firstNonEmpty(str(body.get("rqshpd_from")), str(body.get("dateFrom"))).replace("-", "");
+            String rqTo    = firstNonEmpty(str(body.get("rqshpd_to")),   str(body.get("dateTo"))).replace("-", "");
+            String stknum  = str(body.get("stknum"));
+            String dptnky  = str(body.get("dptnky"));
 
-            // PS_DISPATCH_H / PS_DISPATCH_D → Oracle KNRAWMS (tmsJdbc)
-            // ※ ITEM_CNT 는 GROUP BY(ORA-00979 위험) 대신 상관 서브쿼리로 집계하여
-            //   헤더의 비집계 컬럼을 GROUP BY 에 나열할 필요가 없도록 한다.
-            StringBuilder sql = new StringBuilder(
-                "SELECT h.DISP_H_ID, h.DISPATCH_NO, h.DPTNKY, h.DPTNM, h.DISP_DATE, " +
-                "       h.STATUS, h.CARTYPE, h.DRIVER_NM, h.DRIVER_TEL, h.TKNUM, h.SVBELN, " +
-                "       (SELECT COUNT(*) FROM KNRAWMS.PS_DISPATCH_D d WHERE d.DISP_H_ID=h.DISP_H_ID) AS ITEM_CNT " +
-                "FROM KNRAWMS.PS_DISPATCH_H h " +
-                "WHERE h.STATUS IN ('CONFIRMED','SAP_CREATED') "
-            );
+            // ── 차량유형 코드↔명칭 맵 (CMCDV: CMCDKY='TMS_CARCLASS10') ──
+            Map<String, String> code2name = new HashMap<>(); // Z010 → 1톤
+            Map<String, String> name2code = new HashMap<>(); // 1톤 → Z010
+            for (Map<String, Object> cc : wmsJdbc.queryForList(
+                    "SELECT CMCDVL, CDESC1 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10'")) {
+                String code = str(cc.get("CMCDVL"));
+                String name = str(cc.get("CDESC1"));
+                if (!code.isEmpty()) code2name.put(code, name);
+                if (!name.isEmpty()) name2code.put(name, code);
+            }
+
+            // ── 동적 WHERE ──
+            List<String> where = new ArrayList<>();
+            where.add("SI.STATIT = 'NEW'");
+            where.add("TRIM(SI.STDLNR) != ''");
             List<Object> args = new ArrayList<>();
-            if (!dateFrom.isEmpty()) { sql.append("AND h.DISP_DATE>=? "); args.add(dateFrom); }
-            if (!dateTo.isEmpty())   { sql.append("AND h.DISP_DATE<=? "); args.add(dateTo); }
-            if (!dptnky.isEmpty())   { sql.append("AND h.DPTNKY=? ");     args.add(dptnky); }
-            sql.append("ORDER BY h.DISP_DATE DESC, h.DISPATCH_NO");
+            if (!rqFrom.isEmpty()) { where.add("SH.RQSHPD >= ?"); args.add(rqFrom); }
+            if (!rqTo.isEmpty())   { where.add("SH.RQSHPD <= ?"); args.add(rqTo); }
+            if (!stknum.isEmpty()) { where.add("SI.STDLNR LIKE ?"); args.add("%" + stknum + "%"); }
+            if (!dptnky.isEmpty()) {
+                where.add("(SH.DPTNKY LIKE ? OR CT.NAME01 LIKE ?)");
+                args.add("%" + dptnky + "%"); args.add("%" + dptnky + "%");
+            }
+            String whereSql = String.join(" AND ", where);
 
-            List<Map<String, Object>> rows = tmsJdbc.queryForList(sql.toString(), args.toArray());
-            return Map.of("ok", true, "rows", rows);
+            String sql =
+                "SELECT " +
+                "  SI.STDLNR AS STDLNR, " +
+                "  NULLIF(TRIM(COALESCE(PH.STKNUM, '')), '') AS SAP_STKNUM, " +
+                "  COUNT(DISTINCT SI.SVBELN) AS SVBELN_CNT, " +
+                "  COUNT(DISTINCT SI.SHPOKY) AS SHPOKY_CNT, " +
+                "  COUNT(*) AS ITEM_CNT, " +
+                "  COALESCE(MAX(PH.TOTAL_KG), ROUND(SUM(SI.QTSHPO * COALESCE(M.NETWGT,0)),1)) AS TOTAL_KG, " +
+                "  MIN(SH.RQSHPD) AS RQSHPD_FROM, " +
+                "  MAX(SH.RQSHPD) AS RQSHPD_TO, " +
+                "  MAX(NULLIF(TRIM(SH.CARTON),'')) AS CARTON, " +
+                "  MAX(NULLIF(TRIM(SH.CARNO),''))  AS CARNO, " +
+                "  MAX(NULLIF(TRIM(SH.VEHINO),'')) AS VEHINO, " +
+                "  MAX(NULLIF(TRIM(SH.DRIVER),'')) AS DRIVER, " +
+                "  MAX(NULLIF(TRIM(SH.DRIVERCEL),'')) AS DRIVERCEL, " +
+                "  MAX(NULLIF(TRIM(SH.TDLNR),'')) AS TDLNR, " +
+                "  MAX(SH.LMODAT) AS LMODAT, " +
+                "  MAX(PH.CARTYPE) AS PH_CARTYPE, " +
+                "  MAX(PH.STATUS)  AS PH_STATUS, " +
+                "  CASE WHEN COUNT(DISTINCT SH.DPTNKY) > 1 " +
+                "       THEN '(' || COUNT(DISTINCT SH.DPTNKY) || '개 납품처)' " +
+                "       ELSE MAX(SH.DPTNKY) END AS DPTNKY, " +
+                "  CASE WHEN COUNT(DISTINCT SH.DPTNKY) > 1 " +
+                "       THEN '(' || COUNT(DISTINCT SH.DPTNKY) || '개 납품처)' " +
+                "       ELSE MAX(COALESCE(CT.NAME01, SH.DPTNKY)) END AS DPTNKYNM " +
+                "FROM KNRAWMS.SHPDI SI " +
+                "JOIN KNRAWMS.SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
+                "LEFT JOIN KNRAWMS.SKUMA M  ON M.SKUKEY  = SI.SKUKEY " +
+                "LEFT JOIN KNRAWMS.BZPTN CT ON CT.PTNRKY = SH.DPTNKY AND CT.PTNRTY = 'CT' " +
+                "LEFT JOIN KNRAWMS.PS_DISPATCH_H PH ON PH.DISPATCH_NO = SI.STDLNR " +
+                "WHERE " + whereSql + " " +
+                "GROUP BY SI.STDLNR " +
+                "ORDER BY MIN(SH.RQSHPD) DESC, SI.STDLNR";
+
+            List<Map<String, Object>> rows = wmsJdbc.queryForList(sql, args.toArray());
+
+            // ── 차량유형 코드/명칭 정규화 (Flask 로직 이식) ──
+            for (Map<String, Object> d : rows) {
+                String cartype = "", carclassCd = "";
+
+                String phCartype = str(d.get("PH_CARTYPE"));
+                if (!phCartype.isEmpty()) {
+                    cartype = phCartype;
+                    carclassCd = name2code.getOrDefault(phCartype, "");
+                }
+                if (cartype.isEmpty()) {
+                    String carton = str(d.get("CARTON"));
+                    if (!carton.isEmpty()) {
+                        if (code2name.containsKey(carton))      { carclassCd = carton; cartype = code2name.get(carton); }
+                        else if (name2code.containsKey(carton)) { cartype = carton; carclassCd = name2code.get(carton); }
+                        else                                    { cartype = carton; carclassCd = ""; }
+                    }
+                }
+                if (cartype.isEmpty()) {
+                    String vehino = str(d.get("VEHINO"));
+                    if (!vehino.isEmpty()) {
+                        if (code2name.containsKey(vehino))      { carclassCd = vehino; cartype = code2name.get(vehino); }
+                        else if (name2code.containsKey(vehino)) { cartype = vehino; carclassCd = name2code.get(vehino); }
+                        else                                    { cartype = vehino; carclassCd = ""; }
+                    }
+                }
+                d.put("CARTYPE", cartype);
+                d.put("CARCLASS_CD", carclassCd);
+            }
+
+            return Map.of("ok", true, "rows", rows, "total", rows.size());
         } catch (Exception e) { return errMap(e); }
+    }
+
+    private String firstNonEmpty(String a, String b) {
+        return (a != null && !a.isEmpty()) ? a : (b == null ? "" : b);
     }
 
     public Map<String, Object> sapItems(Map<String, Object> body) {
