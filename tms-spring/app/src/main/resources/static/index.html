@@ -8737,28 +8737,15 @@ async function renderPsDispatch() {
   // ── 이미 초기화된 경우: _doShowPage에서 이미 복원 처리됨 → 종료 ──
   if (psdState.initialized) return;
 
-  // 기본 날짜: SHPDI와 실제 조인 가능한 max_date 기준 (없으면 이번달 1일 ~ 오늘)
+  // 기본 날짜: 오늘 기준 FROM = -3일, TO = +1일 (요청 사양)
   const fmtD  = d => d.toISOString().slice(0,10);
-  let defFrom, defTo, _psdDataRangeHint = '';
-  try {
-    const _optsRes = await fetch('/api/shipment/schedule/filter-opts');
-    const _optsJ   = await _optsRes.json();
-    /* ApiResponse 래퍼 { success, data: {...} } 대응 */
-    const _optsD   = (_optsJ && _optsJ.data) ? _optsJ.data : _optsJ;
-    const _maxStr  = _optsD.maxDate  || _optsD.max_date || '';
-    const _minStr  = _optsD.minDate  || _optsD.min_date || '';
-    if (_maxStr && _maxStr.length === 8) {
-      const maxD  = new Date(_maxStr.slice(0,4)+'-'+_maxStr.slice(4,6)+'-'+_maxStr.slice(6,8));
-      const fromD = new Date(maxD); fromD.setDate(fromD.getDate()-30);
-      defFrom = fmtD(fromD);
-      defTo   = fmtD(maxD);
-      const _fd = s => (s&&s.length===8) ? s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6,8) : '';
-      if (_minStr && _maxStr) _psdDataRangeHint = `DB 데이터 범위: ${_fd(_minStr)} ~ ${_fd(_maxStr)}`;
-    } else { throw new Error('no max_date'); }
-  } catch(_) {
+  let defFrom, defTo;
+  {
     const today = new Date();
-    defFrom = fmtD(new Date(today.getFullYear(), today.getMonth(), 1));
-    defTo   = fmtD(today);
+    const fromD = new Date(today); fromD.setDate(fromD.getDate() - 3);
+    const toD   = new Date(today); toD.setDate(toD.getDate() + 1);
+    defFrom = fmtD(fromD);
+    defTo   = fmtD(toD);
   }
 
   c.innerHTML = `
@@ -8766,7 +8753,6 @@ async function renderPsDispatch() {
   <!-- ① 검색조건 -->
   <div class="psd-searchbar">
     <div class="psd-search-title">■ 검색조건
-      ${_psdDataRangeHint ? `<span style="margin-left:auto;font-size:11px;font-weight:500;color:#d97706;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:2px 8px;">⚠ ${_psdDataRangeHint}</span>` : ''}
     </div>
     <div class="psd-search-row">
       <div class="psd-fg">
@@ -12585,7 +12571,7 @@ async function renderPsDispatchOpt() {
 
   // 기본 날짜: 오늘 기준 FROM = -3일, TO = +1일 (요청 사양)
   const fmtD  = d => d.toISOString().slice(0,10);
-  let defFrom, defTo, _psopDataRangeHint = '';
+  let defFrom, defTo;
   {
     const today = new Date();
     const fromD = new Date(today); fromD.setDate(fromD.getDate() - 3);
@@ -12593,17 +12579,6 @@ async function renderPsDispatchOpt() {
     defFrom = fmtD(fromD);
     defTo   = fmtD(toD);
   }
-  // DB 실제 데이터 범위 힌트(안내용)만 부가 조회 — 기본 세팅값에는 영향 없음
-  try {
-    const _optsRes = await fetch('/api/shipment/schedule/filter-opts');
-    const _optsJ   = await _optsRes.json();
-    /* ApiResponse 래퍼 { success, data: {...} } 대응 */
-    const _optsD   = (_optsJ && _optsJ.data) ? _optsJ.data : _optsJ;
-    const _maxStr  = _optsD.maxDate  || _optsD.max_date || '';
-    const _minStr  = _optsD.minDate  || _optsD.min_date || '';
-    const _fd = s => (s&&s.length===8) ? s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6,8) : '';
-    if (_minStr && _maxStr) _psopDataRangeHint = `DB 데이터 범위: ${_fd(_minStr)} ~ ${_fd(_maxStr)}`;
-  } catch(_) { /* 힌트 조회 실패해도 기본 날짜는 유지 */ }
 
   c.innerHTML = `
 <div class="psd-layout" id="psop-root">
@@ -12750,8 +12725,6 @@ async function renderPsDispatchOpt() {
         </div>
         <!-- 조회 버튼 -->
         <button class="psd-btn primary" onclick="psopSearch()">🔍 조회</button>
-        <!-- 데이터 범위 경고 -->
-        ${_psopDataRangeHint ? `<span style="font-size:10px;font-weight:500;color:#d97706;background:#fef3c7;border:1px solid #fde68a;border-radius:5px;padding:2px 7px;white-space:nowrap">⚠ ${_psopDataRangeHint}</span>` : ''}
         <div class="psd-sep-v"></div>
         <!-- 화면비율 -->
         <span style="font-size:10px;color:var(--text3);white-space:nowrap">화면비율</span>
@@ -16020,7 +15993,7 @@ async function renderShipSchedule() {
     try {
       const res = await fetch('/api/shipment/schedule/filter-opts');
       const d   = await res.json();
-      /* ApiResponse 래퍼: { success, data: { warekyList, statitList, skug05List, lota02List, maxDate } }
+      /* ApiResponse 래퍼: { success, data: { warekyList, statitList, skug05List, lota02List } }
          JS에서 접근하는 키명으로 정규화 */
       const raw = (d && d.data) ? d.data : d;
       shipScheduleState.filterOpts = {
@@ -16028,8 +16001,6 @@ async function renderShipSchedule() {
         statit:   raw.statitList  || raw.statit  || [],
         skug05:   raw.skug05List  || raw.skug05  || [],
         lota02:   raw.lota02List  || raw.lota02  || [],
-        max_date: raw.maxDate     || raw.max_date || '',
-        min_date: raw.minDate     || raw.min_date || '',
       };
       shipScheduleState.optsLoaded = true;
     } catch(e) { console.warn('filter-opts 로드 실패', e); }
@@ -16088,34 +16059,19 @@ async function renderShipSchedule() {
        <input type="checkbox" class="ss-shpmty" value="${o.v}" checked> ${o.l}(${o.v})
      </label>`).join('');
 
-  /* 기본 날짜: SHPDI와 실제 조인 가능한 max_date 기준 -30일 ~ max_date */
+  /* 기본 날짜: 오늘 기준 FROM = -3일, TO = +1일 (요청 사양) */
   const fmt8  = d => d.toISOString().slice(0,10).replace(/-/g,'');   /* YYYYMMDD */
   const fmtH  = d => d.toISOString().slice(0,10);                    /* YYYY-MM-DD (input[date]용) */
-  const _maxDateStr = opts.max_date || '';  /* YYYYMMDD, 실제 조인 가능 최대 날짜 */
-  const _minDateStr = opts.min_date || '';  /* YYYYMMDD, 실제 조인 가능 최소 날짜 */
   let defFrom, defTo, defFromH, defToH;
-  if (_maxDateStr && _maxDateStr.length === 8) {
-    /* 실제 조인 가능한 최신 날짜 기준 -30일 ~ max_date */
-    const maxD  = new Date(_maxDateStr.slice(0,4)+'-'+_maxDateStr.slice(4,6)+'-'+_maxDateStr.slice(6,8));
-    const fromD = new Date(maxD); fromD.setDate(fromD.getDate()-30);
-    defFrom  = fmt8(fromD);
-    defTo    = fmt8(maxD);
-    defFromH = fmtH(fromD);
-    defToH   = fmtH(maxD);
-  } else {
+  {
     const today = new Date();
-    const dM7 = new Date(today); dM7.setDate(dM7.getDate()-7);
-    const dP7 = new Date(today); dP7.setDate(dP7.getDate()+7);
-    defFrom  = fmt8(dM7);
-    defTo    = fmt8(dP7);
-    defFromH = fmtH(dM7);
-    defToH   = fmtH(dP7);
+    const fromD = new Date(today); fromD.setDate(fromD.getDate()-3);
+    const toD   = new Date(today); toD.setDate(toD.getDate()+1);
+    defFrom  = fmt8(fromD);
+    defTo    = fmt8(toD);
+    defFromH = fmtH(fromD);
+    defToH   = fmtH(toD);
   }
-  /* 조회 가능 범위 표시용 */
-  const _fmtDateDisp = s => (s && s.length===8) ? s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6,8) : '';
-  const _dataRangeHint = (_minDateStr && _maxDateStr)
-    ? `DB 데이터 범위: ${_fmtDateDisp(_minDateStr)} ~ ${_fmtDateDisp(_maxDateStr)}`
-    : '';
 
   c.innerHTML = `
 <div id="ss-root" style="flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">
@@ -16128,7 +16084,6 @@ async function renderShipSchedule() {
     <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:5px;display:flex;align-items:center;gap:6px;">
       🔍 검색조건
       <span style="font-weight:400;font-size:11px;color:var(--text3);">${_isShpdi ? '출고문서 아이템 — 출하요청일자 기준' : '출하요청일자 기준'}</span>
-      ${_dataRangeHint ? `<span style="margin-left:auto;font-size:11px;font-weight:500;color:#d97706;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:2px 8px;">⚠ ${_dataRangeHint}</span>` : ''}
     </div>
 
     <!-- ── 1행: [좌] 거점 | 출하요청일자 | 납품문서  [우] 출하유형 ── -->
@@ -16464,16 +16419,12 @@ function ssResizerDown(e) {
 function resetShipScheduleSearch() {
   const fmt8 = d => d.toISOString().slice(0,10).replace(/-/g,'');
   const fmtH = d => d.toISOString().slice(0,10);
-  /* DB 최신 날짜 기준으로 리셋 (없으면 오늘 D-7~D+7) */
-  const _maxStr = (shipScheduleState.filterOpts || {}).max_date || '';
+  /* 오늘 기준 FROM = -3일, TO = +1일로 리셋 (요청 사양) */
   let fromD, toD;
-  if (_maxStr && _maxStr.length === 8) {
-    toD   = new Date(_maxStr.slice(0,4)+'-'+_maxStr.slice(4,6)+'-'+_maxStr.slice(6,8));
-    fromD = new Date(toD); fromD.setDate(fromD.getDate()-30);
-  } else {
+  {
     const today = new Date();
-    fromD = new Date(today); fromD.setDate(fromD.getDate()-7);
-    toD   = new Date(today); toD.setDate(toD.getDate()+7);
+    fromD = new Date(today); fromD.setDate(fromD.getDate()-3);
+    toD   = new Date(today); toD.setDate(toD.getDate()+1);
   }
   const el = id => document.getElementById(id);
   if (el('ss-wareky'))          el('ss-wareky').value = '1100';
