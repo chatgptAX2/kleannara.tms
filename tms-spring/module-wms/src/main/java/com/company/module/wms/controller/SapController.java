@@ -78,6 +78,12 @@ public class SapController {
         return ResponseEntity.ok(sapService.shipmentDelete(body));
     }
 
+    // ── 배차 삭제 (선택 가선적번호의 가배차 이력 삭제 → 재배차 복원) ──
+    @PostMapping("/ps-sap/delete")
+    public ResponseEntity<Map<String, Object>> sapDelete(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(sapService.sapDelete(body));
+    }
+
     // ── ps-dispatch 추가 API (기존 Spring Boot 모듈 미구현 부분) ──
     // NOTE: GET /ps-dispatch/search 는 PsDispatchController 에서 처리 (중복 제거)
 

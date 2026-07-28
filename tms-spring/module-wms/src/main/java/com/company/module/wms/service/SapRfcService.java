@@ -9,6 +9,17 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -45,6 +56,27 @@ public class SapRfcService {
 
     private static final DateTimeFormatter YMDFORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final DateTimeFormatter HMSFORMAT = DateTimeFormatter.ofPattern("HHmmss");
+    private static final DateTimeFormatter LOG_TS   = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
+
+    /**
+     * RFC / WMS API 호출·에러 로그를 기록할 파일.
+     * -Dtms.stdout.log=/path/STDOUT.LOG 로 지정 가능. 미지정 시 작업 디렉터리 기준.
+     */
+    private static final String STDOUT_LOG_PATH =
+        System.getProperty("tms.stdout.log",
+            System.getenv().getOrDefault("TMS_STDOUT_LOG", "STDOUT.LOG"));
+
+    /** WMS 공통처리 API (선적생성/삭제 후 WMS 동기화) — 운영 */
+    private static final String WMS_IFC_URL_PROD =
+        "https://wms.kleannara.com/common/tmsApi/json/WMS_IFC301.data";
+    /** WMS 공통처리 API — 개발 */
+    private static final String WMS_IFC_URL_DEV  =
+        "https://wmsdev.kleannara.com/common/tmsApi/json/WMS_IFC301.data";
+
+    /** WMS_IFC301 호출용 HTTP 클라이언트 (JDK 내장) */
+    private static final HttpClient HTTP = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(5))
+        .build();
 
     // Mock 선적번호 채번용 카운터
     private static final AtomicLong MOCK_SEQ = new AtomicLong(
@@ -70,112 +102,324 @@ public class SapRfcService {
     //  선적 생성 (GUBUN='C')
     // ════════════════════════════════════════════════════════════════
 
+    /**
+     * SAP 선적생성 (I_GUBUN='C').
+     * Flask api_ps_sap_shipment_create 이식.
+     *
+     * body : { stknums: [STDLNR(=DISPATCH_NO), ...] }  ← 가선적번호 목록(1건 이상)
+     *   가선적번호(STDLNR) 단위로:
+     *     1) SHPDI 에서 SAP납품문서(SVBELN) 목록 조회 → T_VBELN
+     *     2) RFC Z_TMS_SHIPMENT_CRDL(I_GUBUN='C') 호출
+     *     3) RFC 성공 시 WMS_IFC301 공통처리 API 호출
+     *     4) PS_DISPATCH_H.STKNUM = E_TKNUM (SAP선적번호) 기록
+     *
+     * 반환 : { ok, results:[{stdlnr, ok, tknum, mock, message, svbeln_cnt, wms_result, db_update_err, env}], env }
+     */
     @Transactional
     public Map<String, Object> shipmentCreate(Map<String, Object> body) {
-        Long   dispHId = toLong(body.get("disp_h_id"));
-        if (dispHId == null) return err("disp_h_id 필수");
+        @SuppressWarnings("unchecked")
+        List<Object> stknumsRaw = (List<Object>) body.get("stknums");
+        if (stknumsRaw == null || stknumsRaw.isEmpty()) return err("stknums 필수");
 
-        // 1) 배차 헤더 조회 (MariaDB PS_DISPATCH_H → tmsJdbc)
-        List<Map<String, Object>> heads = tmsJdbc.queryForList(
-            "SELECT * FROM KNRAWMS.PS_DISPATCH_H WHERE DISP_H_ID=?", dispHId
-        );
-        if (heads.isEmpty()) return err("배차 문서 없음: disp_h_id=" + dispHId);
-        Map<String, Object> head = heads.get(0);
-
-        String status     = str(head.get("STATUS"));
-        String dispatchNo = str(head.get("DISPATCH_NO"));
-        String existTknum = str(head.get("TKNUM"));
-
-        if ("SAP_CREATED".equals(status) && !existTknum.isEmpty()) {
-            return Map.of("ok", true, "message", "이미 선적 생성됨", "tknum", existTknum, "mock", false);
-        }
-
-        // 2) 납품문서 목록 수집 (MariaDB PS_DISPATCH_D → tmsJdbc)
-        List<Map<String, Object>> details = tmsJdbc.queryForList(
-            "SELECT DISTINCT SHPOKY FROM KNRAWMS.PS_DISPATCH_D WHERE DISP_H_ID=?", dispHId
-        );
-        List<String> vbelnList = details.stream()
-            .map(r -> str(r.get("SHPOKY"))).filter(s -> !s.isEmpty())
-            .collect(Collectors.toList());
-
-        // 3) RFC 호출
-        Map<String, Object> rfcResult = callSapRfcShipment("C", vbelnList, "");
-        boolean rfcOk  = Boolean.TRUE.equals(rfcResult.get("ok"));
-        String  tknum  = str(rfcResult.get("E_TKNUM"));
-        boolean isMock = Boolean.TRUE.equals(rfcResult.get("mock"));
-
-        if (!rfcOk) {
-            log.warn("SAP RFC 선적생성 실패: dispHId={}, result={}", dispHId, rfcResult);
-            return Map.of("ok", false,
-                          "error", "SAP RFC 오류: " + rfcResult.get("E_RETURN"),
-                          "mock", isMock);
-        }
-
-        // 4) DB 업데이트
-        // 4) DB 업데이트 (MariaDB PS_DISPATCH_H → tmsJdbc)
+        String env   = detectEnv();
         String today = LocalDate.now().format(YMDFORMAT);
-        tmsJdbc.update(
-            "UPDATE KNRAWMS.PS_DISPATCH_H SET STATUS='SAP_CREATED', TKNUM=?, LMODAT=? WHERE DISP_H_ID=?",
-            tknum, today, dispHId
-        );
-        log.info("선적 생성 완료: dispHId={}, tknum={}, mock={}", dispHId, tknum, isMock);
+        List<Map<String, Object>> results = new ArrayList<>();
 
-        return Map.of(
-            "ok",      true,
-            "tknum",   tknum,
-            "mock",    isMock,
-            "message", isMock ? "[MOCK] 선적 생성 완료" : "SAP 선적 생성 완료"
-        );
+        for (Object o : stknumsRaw) {
+            String stdlnr = str(o);
+            if (stdlnr.isEmpty()) continue;
+
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("stdlnr", stdlnr);
+            row.put("env", env);
+
+            try {
+                // 1) 해당 가선적번호의 SAP납품문서(SVBELN) 목록 조회 (Oracle KNRAWMS → wmsJdbc)
+                List<Map<String, Object>> svbelnRows = wmsJdbc.queryForList(
+                    "SELECT DISTINCT SI.SVBELN FROM KNRAWMS.SHPDI SI " +
+                    "WHERE SI.STATIT='NEW' AND TRIM(SI.STDLNR)=? " +
+                    "AND TRIM(COALESCE(SI.SVBELN,''))<>'' ORDER BY SI.SVBELN",
+                    stdlnr
+                );
+                List<String> vbelnList = svbelnRows.stream()
+                    .map(r -> str(r.get("SVBELN"))).filter(s -> !s.isEmpty())
+                    .collect(Collectors.toList());
+
+                if (vbelnList.isEmpty()) {
+                    stdoutLog("[shipment-create][SKIP] stdlnr=" + stdlnr + " SVBELN 없음");
+                    row.put("ok", false);
+                    row.put("message", "SAP납품문서(SVBELN)가 없습니다.");
+                    results.add(row);
+                    continue;
+                }
+
+                // 2) RFC 호출 (I_GUBUN='C', T_VBELN=납품문서목록)
+                stdoutLog("[shipment-create][RFC-REQ] stdlnr=" + stdlnr
+                        + " gubun=C vbeln=" + vbelnList);
+                Map<String, Object> rfc = callSapRfcShipment("C", vbelnList, "");
+                boolean rfcOk  = Boolean.TRUE.equals(rfc.get("ok"));
+                String  tknum  = str(rfc.get("E_TKNUM"));
+                boolean isMock = Boolean.TRUE.equals(rfc.get("mock"));
+                String  msg    = rfcMessage(rfc);
+                stdoutLog("[shipment-create][RFC-RES] stdlnr=" + stdlnr
+                        + " ok=" + rfcOk + " tknum=" + tknum + " mock=" + isMock + " msg=" + msg);
+
+                row.put("ok", rfcOk);
+                row.put("tknum", tknum);
+                row.put("mock", isMock);
+                row.put("svbeln_cnt", vbelnList.size());
+
+                // 3) RFC 성공 시 WMS_IFC301 호출 + STKNUM 기록
+                if (rfcOk) {
+                    if (!tknum.isEmpty()) {
+                        Map<String, Object> wms = callWmsIfc301(stdlnr, tknum, "C", env);
+                        row.put("wms_result", wms);
+                        try {
+                            tmsJdbc.update(
+                                "UPDATE KNRAWMS.PS_DISPATCH_H SET STKNUM=?, UPDDAT=? WHERE DISPATCH_NO=?",
+                                tknum, today, stdlnr
+                            );
+                        } catch (Exception dbEx) {
+                            row.put("db_update_err", dbEx.getMessage());
+                            stdoutLog("[shipment-create][DB-ERR] stdlnr=" + stdlnr
+                                    + " tknum=" + tknum + " error=" + dbEx.getMessage());
+                            log.error("[shipment-create] DB STKNUM 업데이트 실패: {} / stdlnr={} tknum={}",
+                                dbEx.getMessage(), stdlnr, tknum);
+                        }
+                    } else {
+                        msg = (msg + " [경고: SAP TKNUM 미반환]").trim();
+                    }
+                }
+                row.put("message", msg);
+            } catch (Exception ex) {
+                stdoutLog("[shipment-create][EXC] stdlnr=" + stdlnr + " error=" + ex.getMessage());
+                log.error("선적생성 처리 오류: stdlnr={}, msg={}", stdlnr, ex.getMessage(), ex);
+                row.put("ok", false);
+                row.put("message", ex.getMessage());
+            }
+            results.add(row);
+        }
+
+        boolean allOk = !results.isEmpty() && results.stream().allMatch(r -> Boolean.TRUE.equals(r.get("ok")));
+        return Map.of("ok", allOk, "results", results, "env", env);
     }
 
     // ════════════════════════════════════════════════════════════════
     //  선적 삭제 (GUBUN='D')
     // ════════════════════════════════════════════════════════════════
 
+    /**
+     * SAP 선적삭제 (I_GUBUN='D').
+     * Flask api_ps_sap_shipment_delete 이식.
+     *
+     * body : { items: [{ stdlnr, tknum }, ...] }
+     *   - stdlnr : 가선적번호 (DISPATCH_NO)
+     *   - tknum  : SAP 선적번호 (= 선적목록의 "SAP 선적번호" 컬럼값, PS_DISPATCH_H.STKNUM)
+     *   가선적번호 단위로:
+     *     1) RFC Z_TMS_SHIPMENT_CRDL(I_GUBUN='D', I_TKNUM=선적번호) 호출
+     *     2) RFC 성공 시 WMS_IFC301 공통처리 API 호출
+     *     3) PS_DISPATCH_H.STKNUM = NULL 초기화
+     *
+     * 반환 : { ok, results:[{stdlnr, tknum, ok, mock, message, wms_result, db_update_err, env}], env }
+     */
     @Transactional
     public Map<String, Object> shipmentDelete(Map<String, Object> body) {
-        Long   dispHId = toLong(body.get("disp_h_id"));
-        if (dispHId == null) return err("disp_h_id 필수");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> items = (List<Map<String, Object>>) body.get("items");
+        if (items == null || items.isEmpty()) return err("items 필수 [{stdlnr, tknum}, ...]");
 
-        List<Map<String, Object>> heads = tmsJdbc.queryForList(
-            "SELECT * FROM KNRAWMS.PS_DISPATCH_H WHERE DISP_H_ID=?", dispHId
-        );
-        if (heads.isEmpty()) return err("배차 문서 없음: disp_h_id=" + dispHId);
-        Map<String, Object> head = heads.get(0);
-
-        String tknum      = str(head.get("TKNUM"));
-        String dispatchNo = str(head.get("DISPATCH_NO"));
-
-        if (tknum.isEmpty()) {
-            tmsJdbc.update("UPDATE KNRAWMS.PS_DISPATCH_H SET STATUS='CONFIRMED', LMODAT=? WHERE DISP_H_ID=?",
-                LocalDate.now().format(YMDFORMAT), dispHId);
-            return Map.of("ok", true, "message", "TKNUM 없음 — 상태만 CONFIRMED로 복원", "mock", false);
-        }
-
-        // RFC 호출 (삭제)
-        Map<String, Object> rfcResult = callSapRfcShipment("D", Collections.emptyList(), tknum);
-        boolean rfcOk  = Boolean.TRUE.equals(rfcResult.get("ok"));
-        boolean isMock = Boolean.TRUE.equals(rfcResult.get("mock"));
-
-        if (!rfcOk) {
-            log.warn("SAP RFC 선적삭제 실패: dispHId={}, tknum={}, result={}", dispHId, tknum, rfcResult);
-            return Map.of("ok", false,
-                          "error", "SAP RFC 오류: " + rfcResult.get("E_RETURN"),
-                          "mock", isMock);
-        }
-
+        String env   = detectEnv();
         String today = LocalDate.now().format(YMDFORMAT);
-        tmsJdbc.update(
-            "UPDATE KNRAWMS.PS_DISPATCH_H SET STATUS='CONFIRMED', TKNUM=NULL, SVBELN=NULL, LMODAT=? WHERE DISP_H_ID=?",
-            today, dispHId
-        );
-        log.info("선적 삭제 완료: dispHId={}, tknum={}, mock={}", dispHId, tknum, isMock);
+        List<Map<String, Object>> results = new ArrayList<>();
 
-        return Map.of(
-            "ok",      true,
-            "mock",    isMock,
-            "message", isMock ? "[MOCK] 선적 삭제 완료" : "SAP 선적 삭제 완료"
-        );
+        for (Map<String, Object> item : items) {
+            String stdlnr = str(item.get("stdlnr"));
+            String tknum  = str(item.get("tknum"));
+
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("stdlnr", stdlnr);
+            row.put("tknum", tknum);
+            row.put("env", env);
+
+            if (tknum.isEmpty()) {
+                row.put("ok", false);
+                row.put("message", "SAP 선적번호(TKNUM)가 없습니다. 선적생성 후 삭제하세요.");
+                results.add(row);
+                continue;
+            }
+
+            try {
+                // 1) RFC 호출 (I_GUBUN='D', I_TKNUM=선적번호)
+                stdoutLog("[shipment-delete][RFC-REQ] stdlnr=" + stdlnr + " gubun=D tknum=" + tknum);
+                Map<String, Object> rfc = callSapRfcShipment("D", Collections.emptyList(), tknum);
+                boolean rfcOk  = Boolean.TRUE.equals(rfc.get("ok"));
+                boolean isMock = Boolean.TRUE.equals(rfc.get("mock"));
+                String  msg    = rfcMessage(rfc);
+                stdoutLog("[shipment-delete][RFC-RES] stdlnr=" + stdlnr
+                        + " ok=" + rfcOk + " mock=" + isMock + " msg=" + msg);
+
+                row.put("ok", rfcOk);
+                row.put("mock", isMock);
+                row.put("message", msg);
+
+                // 2) RFC 성공 시 WMS_IFC301 호출 + STKNUM 초기화
+                if (rfcOk) {
+                    Map<String, Object> wms = callWmsIfc301(stdlnr, tknum, "D", env);
+                    row.put("wms_result", wms);
+                    try {
+                        tmsJdbc.update(
+                            "UPDATE KNRAWMS.PS_DISPATCH_H SET STKNUM=NULL, UPDDAT=? WHERE DISPATCH_NO=?",
+                            today, stdlnr
+                        );
+                    } catch (Exception dbEx) {
+                        row.put("db_update_err", dbEx.getMessage());
+                        stdoutLog("[shipment-delete][DB-ERR] stdlnr=" + stdlnr
+                                + " tknum=" + tknum + " error=" + dbEx.getMessage());
+                        log.error("[shipment-delete] DB STKNUM 초기화 실패: {} / stdlnr={} tknum={}",
+                            dbEx.getMessage(), stdlnr, tknum);
+                    }
+                }
+            } catch (Exception ex) {
+                stdoutLog("[shipment-delete][EXC] stdlnr=" + stdlnr + " tknum=" + tknum
+                        + " error=" + ex.getMessage());
+                log.error("선적삭제 처리 오류: stdlnr={}, tknum={}, msg={}", stdlnr, tknum, ex.getMessage(), ex);
+                row.put("ok", false);
+                row.put("message", ex.getMessage());
+            }
+            results.add(row);
+        }
+
+        boolean allOk = !results.isEmpty() && results.stream().allMatch(r -> Boolean.TRUE.equals(r.get("ok")));
+        return Map.of("ok", allOk, "results", results, "env", env);
+    }
+
+    /** RFC 결과 Map 에서 E_RETURN.MESSAGE 추출 */
+    @SuppressWarnings("unchecked")
+    private String rfcMessage(Map<String, Object> rfc) {
+        Object er = rfc.get("E_RETURN");
+        if (er instanceof Map) {
+            Object m = ((Map<String, Object>) er).get("MESSAGE");
+            if (m != null) return m.toString();
+        }
+        return "";
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  배차삭제 — 선택 가선적번호(STDLNR)의 가배차 이력 삭제 (재배차 대상 복원)
+    // ════════════════════════════════════════════════════════════════
+
+    /**
+     * 배차삭제: 선택한 가선적번호(STDLNR=DISPATCH_NO)의 가배차 이력을 삭제하여
+     *           미배차(재배차 대상) 상태로 복원한다.
+     * Flask api_ps_sap_delete 이식 (실운영 스키마 DISPATCH_NO / STKNUM 기준).
+     *
+     * body : { stknums: [STDLNR, ...] }
+     *   ① SHPDI.STDLNR = ' '  (가선적번호 초기화 — NOT NULL 제약이므로 공백)
+     *   ② SHPDH.VEHINO = NULL (배차 차량유형 초기화)
+     *   ③ PS_DISPATCH_H.STATUS = 'CANCELLED'
+     * 반환 : { ok, affected, stknums, restore_vehicles:[...] }  (배차탭 복원용)
+     */
+    @Transactional
+    public Map<String, Object> sapDelete(Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<Object> stknumsRaw = (List<Object>) body.get("stknums");
+        if (stknumsRaw == null || stknumsRaw.isEmpty()) return err("stknums 필수");
+
+        List<String> stknums = stknumsRaw.stream()
+            .map(this::str).filter(s -> !s.isEmpty()).collect(Collectors.toList());
+        if (stknums.isEmpty()) return err("stknums 필수");
+
+        try {
+            String inPh = String.join(",", Collections.nCopies(stknums.size(), "?"));
+            Object[] args = stknums.toArray();
+            String today = LocalDate.now().format(YMDFORMAT);
+
+            // ① 삭제 전 PS_DISPATCH_H + D 에서 복원용 데이터 조회 (PS_DISPATCH_* → tmsJdbc)
+            List<Map<String, Object>> dispRows = tmsJdbc.queryForList(
+                "SELECT h.DISPATCH_NO, h.CARTYPE, h.RQSHPD, h.DPTNKY, h.DPTNM, " +
+                "       h.TOTAL_KG, h.TOTAL_CNT " +
+                "FROM KNRAWMS.PS_DISPATCH_H h WHERE h.DISPATCH_NO IN (" + inPh + ")", args
+            );
+            List<Map<String, Object>> dispDetail = tmsJdbc.queryForList(
+                "SELECT d.DISPATCH_NO, d.SHPOKY, d.SHPOIT, d.SKUKEY, d.DESC01, " +
+                "       d.QTSHPO, d.UOMKEY, d.DPTNKY, d.DPTNM, d.GRSWGT, d.KG_WEIGHT " +
+                "FROM KNRAWMS.PS_DISPATCH_D d WHERE d.DISPATCH_NO IN (" + inPh + ") " +
+                "ORDER BY d.DISPATCH_NO, d.SEQ", args
+            );
+
+            Map<String, List<Map<String, Object>>> itemsMap = new LinkedHashMap<>();
+            for (Map<String, Object> r : dispDetail) {
+                itemsMap.computeIfAbsent(str(r.get("DISPATCH_NO")), k -> new ArrayList<>()).add(r);
+            }
+
+            List<Map<String, Object>> restoreVehicles = new ArrayList<>();
+            for (Map<String, Object> r : dispRows) {
+                String dn = str(r.get("DISPATCH_NO"));
+                Map<String, Object> v = new LinkedHashMap<>();
+                v.put("DISPATCH_NO", dn);
+                v.put("cartype",   str(r.get("CARTYPE")));
+                v.put("rqshpd",    str(r.get("RQSHPD")));
+                v.put("dptnky",    str(r.get("DPTNKY")));
+                v.put("dptnm",     str(r.get("DPTNM")));
+                v.put("total_kg",  r.get("TOTAL_KG"));
+                v.put("total_cnt", r.get("TOTAL_CNT"));
+                v.put("items",     itemsMap.getOrDefault(dn, Collections.emptyList()));
+                restoreVehicles.add(v);
+            }
+
+            // ② 삭제 대상 SHPOKY 수집 (SHPDH.VEHINO 초기화용, Oracle KNRAWMS → wmsJdbc)
+            List<Map<String, Object>> shpokyRows = wmsJdbc.queryForList(
+                "SELECT DISTINCT SHPOKY FROM KNRAWMS.SHPDI " +
+                "WHERE STATIT='NEW' AND STDLNR IN (" + inPh + ")", args
+            );
+            List<String> shpokyList = shpokyRows.stream()
+                .map(r -> str(r.get("SHPOKY"))).filter(s -> !s.isEmpty()).collect(Collectors.toList());
+
+            // ③ SHPDI.STDLNR → ' ' (기본값 공백 복원)
+            int affected = wmsJdbc.update(
+                "UPDATE KNRAWMS.SHPDI SET STDLNR=' ', LMODAT=?, LMOUSR='WEB' " +
+                "WHERE STATIT='NEW' AND STDLNR IN (" + inPh + ")",
+                concat(new Object[]{today}, args)
+            );
+
+            // ④ SHPDH.VEHINO → NULL
+            if (!shpokyList.isEmpty()) {
+                String inPh2 = String.join(",", Collections.nCopies(shpokyList.size(), "?"));
+                wmsJdbc.update(
+                    "UPDATE KNRAWMS.SHPDH SET VEHINO=NULL, LMODAT=?, LMOUSR='WEB' " +
+                    "WHERE SHPOKY IN (" + inPh2 + ")",
+                    concat(new Object[]{today}, shpokyList.toArray())
+                );
+            }
+
+            // ⑤ PS_DISPATCH_H.STATUS → 'CANCELLED' (PS_DISPATCH_H → tmsJdbc)
+            tmsJdbc.update(
+                "UPDATE KNRAWMS.PS_DISPATCH_H SET STATUS='CANCELLED', UPDDAT=? " +
+                "WHERE DISPATCH_NO IN (" + inPh + ")",
+                concat(new Object[]{today}, args)
+            );
+
+            stdoutLog("[ps-sap-delete] 배차삭제 완료 stknums=" + stknums + " affected=" + affected);
+            log.info("배차삭제 완료: stknums={}, affected={}", stknums, affected);
+
+            return Map.of(
+                "ok", true,
+                "affected", affected,
+                "stknums", stknums,
+                "restore_vehicles", restoreVehicles
+            );
+        } catch (Exception e) {
+            stdoutLog("[ps-sap-delete][ERR] stknums=" + stknums + " error=" + e.getMessage());
+            return errMap(e);
+        }
+    }
+
+    /** Object[] 앞에 헤드 인자를 이어붙인다 (SET ?, ... WHERE IN (?) 바인드 구성용) */
+    private Object[] concat(Object[] head, Object[] tail) {
+        Object[] out = new Object[head.length + tail.length];
+        System.arraycopy(head, 0, out, 0, head.length);
+        System.arraycopy(tail, 0, out, head.length, tail.length);
+        return out;
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -194,9 +438,13 @@ public class SapRfcService {
                                                    String tknum) {
         // Mock 모드
         if (jcoProps.isMock()) {
+            stdoutLog("[Z_TMS_SHIPMENT_CRDL][MOCK] gubun=" + gubun + " tknum=" + tknum
+                    + " vbeln=" + vbelnList);
             return sapRfcMock(gubun, tknum, "mock=true");
         }
 
+        stdoutLog("[Z_TMS_SHIPMENT_CRDL][REQ] gubun=" + gubun + " tknum=" + tknum
+                + " vbeln=" + vbelnList);
         try {
             // 1) Destination 획득 (커넥션 풀에서 연결 대여)
             JCoDestination dest = JCoDestinationManager.getDestination(SapJcoConfig.DEST_NAME);
@@ -239,6 +487,8 @@ public class SapRfcService {
             boolean ok = "S".equals(retType) || "I".equals(retType);
             log.info("SAP RFC {} 결과: type={}, code={}, tknum={}, msg={}",
                      gubun, retType, retCode, eTknum, retMsg);
+            stdoutLog("[Z_TMS_SHIPMENT_CRDL][RES] gubun=" + gubun + " ok=" + ok
+                    + " type=" + retType + " code=" + retCode + " tknum=" + eTknum + " msg=" + retMsg);
 
             Map<String, Object> eReturnMap = new LinkedHashMap<>();
             eReturnMap.put("TYPE",    retType);
@@ -255,6 +505,8 @@ public class SapRfcService {
         } catch (JCoException e) {
             log.error("SAP JCo RFC 호출 실패: gubun={}, key={}, msg={}",
                       gubun, e.getKey(), e.getMessage(), e);
+            stdoutLog("[Z_TMS_SHIPMENT_CRDL][ERR] gubun=" + gubun + " key=" + e.getKey()
+                    + " msg=" + e.getMessage());
             return Map.of(
                 "ok",       false,
                 "E_RETURN", Map.of("TYPE", "E", "CODE", e.getKey(), "MESSAGE", e.getMessage()),
@@ -496,6 +748,89 @@ public class SapRfcService {
             );
             return Map.of("ok", true);
         } catch (Exception e) { return errMap(e); }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  WMS_IFC301 공통처리 API 호출 / 환경 감지 / STDOUT.LOG
+    // ════════════════════════════════════════════════════════════════
+
+    /**
+     * 실행 환경 감지.
+     *   시스템프로퍼티/환경변수 APP_ENV|SPRING_PROFILES_ACTIVE 가 production/prod → 'prod'
+     *   그 외 → 'dev'
+     */
+    private String detectEnv() {
+        String v = firstNonEmpty(
+            System.getProperty("app.env"),
+            firstNonEmpty(System.getenv("APP_ENV"),
+                firstNonEmpty(System.getProperty("spring.profiles.active"),
+                    System.getenv("SPRING_PROFILES_ACTIVE")))).toLowerCase();
+        return (v.contains("prod")) ? "prod" : "dev";
+    }
+
+    private String wmsIfcUrl(String env) {
+        return "prod".equals(env) ? WMS_IFC_URL_PROD : WMS_IFC_URL_DEV;
+    }
+
+    /**
+     * 선적생성/삭제 후 WMS_IFC301 공통처리 API 호출.
+     *   payload: { GUBUN, STDLNR, TKNUM }
+     */
+    private Map<String, Object> callWmsIfc301(String stdlnr, String tknum, String gubun, String env) {
+        String url = wmsIfcUrl(env);
+        String payload = String.format(
+            "{\"GUBUN\":\"%s\",\"STDLNR\":\"%s\",\"TKNUM\":\"%s\"}",
+            jsonEsc(gubun), jsonEsc(stdlnr), jsonEsc(tknum));
+        stdoutLog(String.format("[WMS_IFC301][REQ] env=%s url=%s payload=%s", env, url, payload));
+        try {
+            HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(10))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
+                .build();
+            HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            int sc = resp.statusCode();
+            String bodyText = resp.body() == null ? "" : resp.body();
+            String snippet = bodyText.length() > 500 ? bodyText.substring(0, 500) : bodyText;
+            boolean ok = sc >= 200 && sc < 300;
+            stdoutLog(String.format("[WMS_IFC301][RES] ok=%s status=%d body=%s", ok, sc, snippet));
+            log.info("WMS_IFC301 호출: ok={}, status={}, stdlnr={}, tknum={}, gubun={}", ok, sc, stdlnr, tknum, gubun);
+            Map<String, Object> r = new LinkedHashMap<>();
+            r.put("ok", ok);
+            r.put("status_code", sc);
+            r.put("body", snippet);
+            return r;
+        } catch (IOException | InterruptedException ex) {
+            if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
+            stdoutLog(String.format("[WMS_IFC301][ERR] stdlnr=%s tknum=%s gubun=%s error=%s",
+                stdlnr, tknum, gubun, ex.getMessage()));
+            log.error("WMS_IFC301 호출 실패: stdlnr={}, tknum={}, msg={}", stdlnr, tknum, ex.getMessage(), ex);
+            Map<String, Object> r = new LinkedHashMap<>();
+            r.put("ok", false);
+            r.put("error", ex.getMessage());
+            return r;
+        }
+    }
+
+    /** RFC / API 호출·에러 로그를 STDOUT.LOG 파일에 추가 기록 (실패해도 예외 미전파) */
+    private synchronized void stdoutLog(String line) {
+        String stamp = "[" + LocalDateTime.now().format(LOG_TS) + "] " + line + System.lineSeparator();
+        try {
+            Path p = Paths.get(STDOUT_LOG_PATH);
+            if (p.getParent() != null) Files.createDirectories(p.getParent());
+            Files.writeString(p, stamp, StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (Exception e) {
+            // 파일 로깅 실패 시 표준 로거로만 남김 (기능 흐름 방해 금지)
+            log.warn("STDOUT.LOG 기록 실패({}): {}", STDOUT_LOG_PATH, e.getMessage());
+        }
+    }
+
+    private String jsonEsc(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", "\\n").replace("\r", "\\r");
     }
 
     // ════════════════════════════════════════════════════════════════
