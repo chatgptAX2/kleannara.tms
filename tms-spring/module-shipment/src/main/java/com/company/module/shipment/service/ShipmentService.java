@@ -1,7 +1,6 @@
 package com.company.module.shipment.service;
 
 import com.company.module.shipment.dto.*;
-import com.company.module.shipment.repository.ShpdHRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
@@ -34,8 +33,6 @@ public class ShipmentService {
     private static final Logger qlog = LoggerFactory.getLogger("TMS_QUERY_LOG");
 
     private static final double PLT_CAP_KG = 1200.0;
-
-    private final ShpdHRepository shpdHRepository;
 
     @PersistenceContext(unitName = "wmsPU")
     private EntityManager em;
@@ -359,15 +356,14 @@ public class ShipmentService {
                 .value(str(row[0])).label(str(row[1])).build())
             .collect(Collectors.toList());
 
-        // 최대 납품요청일
-        String maxDate = shpdHRepository.findMaxRqshpd().orElse("");
+        // 최대 납품요청일(maxDate) 조회 로직 제거 — 기본 날짜 범위는 프론트에서 오늘 기준(-3, +1)으로 계산.
+        //   (기존 findMaxRqshpd() 지연 쿼리 제거로 filter-opts 응답 지연 해소)
 
         return ShipmentFilterOptsResponse.builder()
             .warekyList(warekyList)
             .statitList(statitList)
             .skug05List(skug05List)
             .lota02List(lota02List)
-            .maxDate(maxDate)
             .build();
     }
 
