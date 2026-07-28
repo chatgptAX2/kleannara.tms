@@ -73,6 +73,13 @@ public class SapService {
         } catch (Exception e) { return errMap(e); }
     }
 
+    // ── 배차 삭제(가배차 이력 삭제) — SapRfcService 로 위임 ─────────
+    public Map<String, Object> sapDelete(Map<String, Object> body) {
+        try {
+            return sapRfc.sapDelete(body);
+        } catch (Exception e) { return errMap(e); }
+    }
+
     // ── SAP 차량 검색 — SapRfcService 로 위임 ─────────────────────
     public Map<String, Object> vehicleSearch(Map<String, Object> body) {
         try { return sapRfc.vehicleSearch(body); } catch (Exception e) { return errMap(e); }
