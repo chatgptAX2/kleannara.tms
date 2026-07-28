@@ -14,8 +14,18 @@ import java.util.Map;
 
 /**
  * 차량유형 / 차량마스터 Controller
- * Flask: /api/carclass, /api/ds-vehicle, /api/vehicle/* 대응
- * URL prefix: /vehicle-api
+ * URL prefix: /vehicle-api (+ /api 의 VHCMA 전용 엔드포인트)
+ *
+ * NOTE: 차종(DS_VEHICLE/CMCDV) 조회·저장 엔드포인트
+ *   GET  /api/carclass, /api/carclass-by-product, /api/ds-vehicle
+ *   POST /api/carclass/save
+ * 는 {@link com.company.module.wms.controller.StrategyController} 에도 동일하게
+ * 매핑되어 있어 Spring 기동/요청 시
+ * "Ambiguous handler methods mapped for '/api/carclass/save'" 예외가 발생했다.
+ * 프론트엔드(index.html)는 응답의 최상위 {@code ok}/{@code vehicles} 필드를 직접 참조하는
+ * Flask 호환 형식을 기대하므로, 해당 형식을 그대로 반환하는 StrategyController 쪽을
+ * 정식 핸들러로 유지하고, 본 컨트롤러의 중복 매핑(carclass/ds-vehicle 계열)은 제거한다.
+ * (본 컨트롤러는 VHCMA 차량마스터 전용 기능만 담당)
  */
 @RestController
 @RequestMapping({"/vehicle-api", "/api"})
@@ -23,34 +33,6 @@ import java.util.Map;
 public class VehicleController {
 
     private final VehicleService vehicleService;
-
-    /** DS_VEHICLE 목록 – Flask: GET /api/ds-vehicle */
-    @GetMapping("/ds-vehicle")
-    public ResponseEntity<ApiResponse<Object>> getDsVehicle() {
-        List<DsVehicleResponse> list = vehicleService.getDsVehicleList();
-        return ResponseEntity.ok(ApiResponse.success(Map.of("ok", true, "vehicles", list)));
-    }
-
-    /** Carclass 통합 조회 – Flask: GET /api/carclass */
-    @GetMapping("/carclass")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getCarclass() {
-        return ResponseEntity.ok(ApiResponse.success(vehicleService.getCarclass()));
-    }
-
-    /** 제품군별 차량 톤수 – Flask: GET /api/carclass-by-product */
-    @GetMapping("/carclass-by-product")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getCarclassByProduct(
-            @RequestParam(required = false) String productGroup) {
-        return ResponseEntity.ok(ApiResponse.success(vehicleService.getCarclassByProduct(productGroup)));
-    }
-
-    /** Carclass/DS_VEHICLE 저장 – Flask: POST /api/carclass/save */
-    @PostMapping("/carclass/save")
-    public ResponseEntity<ApiResponse<Object>> saveCarclass(
-            @RequestBody VehicleSaveRequest req) {
-        vehicleService.saveCarclass(req);
-        return ResponseEntity.ok(ApiResponse.success(Map.of("ok", true)));
-    }
 
     /** VHCMA 차량 목록 – Flask: GET /api/vehicle/list */
     @GetMapping("/vehicle/list")
