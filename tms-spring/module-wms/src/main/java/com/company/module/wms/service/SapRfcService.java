@@ -434,17 +434,38 @@ public class SapRfcService {
         } catch (Exception e) { return errMap(e); }
     }
 
+    /**
+     * 선택한 가선적번호(STDLNR)에 매핑된 납품문서 상세 목록.
+     * Flask: api_ps_sap_docs 이식.
+     *   입력 : { stknum }  (= SHPDI.STDLNR 값)
+     *   기준 : SI.STATIT='NEW' AND SI.STDLNR = ?   (STATUS 무관 → DRAFT 포함)
+     *   반환 : 프론트 _sapDocColDefs 기대 컬럼
+     *          (SVBELN/SHPOKY/SHPOIT/RQSHPD/DPTNKYNM/SKUKEY/DESC01/QTSHPO/UOMKEY/LINE_KG 등)
+     *
+     * ■ DataSource: SHPDI/SHPDH/SKUMA/BZPTN → Oracle KNRAWMS (wmsJdbc)
+     */
     public Map<String, Object> sapDocs(Map<String, Object> body) {
-        Long dispHId = toLong(body.get("disp_h_id"));
-        if (dispHId == null) return err("disp_h_id 필수");
+        String stknum = str(body.get("stknum"));   // UI에서 STKNUM 키로 전달 (= STDLNR 값)
+        if (stknum.isEmpty()) return err("stknum 필수");
         try {
-            // DOC_FILE → MariaDB tmsJdbc
-            List<Map<String, Object>> rows = tmsJdbc.queryForList(
-                "SELECT * FROM KNRAWMS.DOC_FILE WHERE DEL_YN='N' " +
-                "AND FILE_NM LIKE CONCAT('%',?,'%') ORDER BY CREDAT DESC, FILE_ID DESC",
-                dispHId.toString()
-            );
-            return Map.of("ok", true, "rows", rows);
+            String sql =
+                "SELECT " +
+                "  SI.STDLNR AS STKNUM, " +
+                "  SI.SVBELN, SI.SHPOKY, SI.SHPOIT, SI.STATIT, SI.SKUKEY, SI.DESC01, " +
+                "  SI.QTSHPO, SI.UOMKEY, SI.QTSHPD, " +
+                "  ROUND(SI.QTSHPO * COALESCE(M.NETWGT,0), 1) AS LINE_KG, " +
+                "  COALESCE(M.NETWGT, 0) AS NETWGT, " +
+                "  SH.RQSHPD, SH.DPTNKY, " +
+                "  COALESCE(CT.NAME01, SH.DPTNKY) AS DPTNKYNM, " +
+                "  SH.SHPMTY, SH.CARTON, SH.CARNO, SH.VEHINO, SH.DRIVER, SH.DRIVERCEL " +
+                "FROM KNRAWMS.SHPDI SI " +
+                "JOIN KNRAWMS.SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
+                "LEFT JOIN KNRAWMS.SKUMA M  ON M.SKUKEY  = SI.SKUKEY " +
+                "LEFT JOIN KNRAWMS.BZPTN CT ON CT.PTNRKY = SH.DPTNKY " +
+                "WHERE SI.STATIT = 'NEW' AND SI.STDLNR = ? " +
+                "ORDER BY SI.SVBELN, SI.SHPOKY, CAST(SI.SHPOIT AS INTEGER)";
+            List<Map<String, Object>> rows = wmsJdbc.queryForList(sql, stknum);
+            return Map.of("ok", true, "rows", rows, "total", rows.size());
         } catch (Exception e) { return errMap(e); }
     }
 
