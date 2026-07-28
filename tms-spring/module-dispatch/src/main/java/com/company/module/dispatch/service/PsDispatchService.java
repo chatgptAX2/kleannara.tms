@@ -436,13 +436,17 @@ public class PsDispatchService {
             //   트랜잭션이 없어 TransactionRequiredException 이 발생한다.
             //   SHPDI/SHPDH/PS_DISPATCH_* 는 모두 동일한 Oracle KNRAWMS DB에 존재하므로,
             //   활성 트랜잭션(tmsPU)에 속한 tmsEm 으로 갱신하여 단일 트랜잭션 일관성을 확보한다.
+            // ※ 가선적 성공 시, 요청에 포함된 SHPDI(SHPOKY, SHPOIT) 행의 STDLNR 에
+            //   가선적번호(dispatchNo)를 반드시 기록해야 한다.
+            //   기존 'STATIT = ''NEW''' 조건은 이미 상태가 전이된 행의 STDLNR 갱신을
+            //   누락시키므로 제거하고, 요청 키(SHPOKY+SHPOIT) 기준으로 갱신한다.
             for (String[] key : shpdiKeys) {
                 tmsEm.createNativeQuery("""
                     UPDATE KNRAWMS.SHPDI
                     SET STDLNR  = ?,
                         LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
                         LMOUSR  = 'WEB'
-                    WHERE SHPOKY = ? AND SHPOIT = ? AND STATIT = 'NEW'
+                    WHERE SHPOKY = ? AND SHPOIT = ?
                     """)
                   .setParameter(1, dispatchNo)
                   .setParameter(2, key[0])
