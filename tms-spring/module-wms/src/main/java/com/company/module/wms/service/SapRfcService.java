@@ -336,7 +336,7 @@ public class SapRfcService {
             // ── 동적 WHERE ──
             List<String> where = new ArrayList<>();
             where.add("SI.STATIT = 'NEW'");
-            where.add("TRIM(SI.STDLNR) != ''");
+            where.add("SI.STDLNR != ' '");
             List<Object> args = new ArrayList<>();
             if (!rqFrom.isEmpty()) { where.add("SH.RQSHPD >= ?"); args.add(rqFrom); }
             if (!rqTo.isEmpty())   { where.add("SH.RQSHPD <= ?"); args.add(rqTo); }
@@ -350,7 +350,7 @@ public class SapRfcService {
             String sql =
                 "SELECT " +
                 "  SI.STDLNR AS STDLNR, " +
-                "  NULLIF(TRIM(COALESCE(PH.STKNUM, '')), '') AS SAP_STKNUM, " +
+                "  NULLIF(TRIM(COALESCE(SI.STKNUM, '')), '') AS SAP_STKNUM, " +
                 "  COUNT(DISTINCT SI.SVBELN) AS SVBELN_CNT, " +
                 "  COUNT(DISTINCT SI.SHPOKY) AS SHPOKY_CNT, " +
                 "  COUNT(*) AS ITEM_CNT, " +
@@ -378,7 +378,7 @@ public class SapRfcService {
                 "LEFT JOIN KNRAWMS.BZPTN CT ON CT.PTNRKY = SH.DPTNKY AND CT.PTNRTY = 'CT' " +
                 "LEFT JOIN KNRAWMS.PS_DISPATCH_H PH ON PH.DISPATCH_NO = SI.STDLNR " +
                 "WHERE " + whereSql + " " +
-                "GROUP BY SI.STDLNR " +
+                "GROUP BY SI.STDLNR, NULLIF(TRIM(COALESCE(SI.STKNUM, '')), '') " +
                 "ORDER BY MIN(SH.RQSHPD) DESC, SI.STDLNR";
 
             List<Map<String, Object>> rows = wmsJdbc.queryForList(sql, args.toArray());
