@@ -4,7 +4,6 @@ import com.company.module.shipment.dto.*;
 import com.company.module.shipment.repository.ShpdHRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
-import jakarta.persistence.Query;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,44 +43,27 @@ public class ShipmentService {
     // ──────────────────────────────────────────────────────────────────────────
     // 출고진행현황 조회
     //
-    // ■ 소프트파싱(Soft Parsing) 설계
-    //   고정 SQL 텍스트 + (? IS NULL OR col ...) 패턴 사용
-    //   → 동일 파라미터 조합 재호출 시 Oracle Shared Pool 히트 → 소프트파싱
+    // ■ 동적 WHERE 설계 (소프트파싱용 '? IS NULL OR ...' 고정조건 제거)
+    //   기존에는 모든 조건을 (? IS NULL OR col ...) 형태로 항상 SQL 에 포함했으나,
+    //   값이 존재하는 조건만 WHERE 절 + 바인드 파라미터로 추가하도록 전환.
     // ■ shpmty / ptnrky 다중선택은 동적 IN 절로 SQL 문자열에 직접 삽입
     // ──────────────────────────────────────────────────────────────────────────
 
-    /**
-     * 출고현황 COUNT SQL (고정 텍스트)
-     * p1,p2: wareky   (? IS NULL OR SH.WAREKY = ?)
-     * p3,p4: dateFrom (? IS NULL OR SH.RQSHPD >= ?)
-     * p5,p6: dateTo   (? IS NULL OR SH.RQSHPD <= ?)
-     * p7,p8: statdo   (? IS NULL OR SH.STATDO = ?)
-     * p9,p10: skug05  (? IS NULL OR SI.SKUG05 = ?)
-     * p11,p12: lota02 (? IS NULL OR INSTR(',' || ? || ',', ',' || SI.LOTA02 || ',') > 0)
-     * p13,p14,p15: keyword (? IS NULL OR SI.SKUKEY LIKE ? OR SI.DESC01 LIKE ?)
-     * p16,p17: ptnrky (? IS NULL OR SH.DPTNKY = ?)
-     * p18,p19: svbeln (? IS NULL OR INSTR(',' || ? || ',', ',' || SI.SVBELN || ',') > 0)
-     * ※ shpmty IN 조건은 동적으로 SQL 문자열에 직접 삽입 (가변 목록이므로 고정 파라미터 불가)
-     */
-    private static final String SCHEDULE_COUNT_SQL =
+    /** 출고현황 COUNT SQL BASE (WHERE 는 동적 구성) */
+    private static final String SCHEDULE_COUNT_BASE_SQL =
         "SELECT COUNT(*)" +
         " FROM KNRAWMS.SHPDI SI" +
         " INNER JOIN KNRAWMS.SHPDH SH ON SH.SHPOKY = SI.SHPOKY" +
-        " LEFT  JOIN KNRAWMS.SKUMA M  ON SI.SKUKEY = M.SKUKEY AND SH.OWNRKY = M.OWNRKY" +
-        " WHERE (? IS NULL OR SH.WAREKY = ?)" +
-        "   AND (? IS NULL OR SH.RQSHPD >= ?)" +
-        "   AND (? IS NULL OR SH.RQSHPD <= ?)" +
-        "   AND (? IS NULL OR SH.STATDO = ?)" +
-        "   AND (? IS NULL OR SI.SKUG05 = ?)" +
-        "   AND (? IS NULL OR INSTR(',' || ? || ',', ',' || SI.LOTA02 || ',') > 0)" +
-        "   AND (? IS NULL OR SI.SKUKEY LIKE ? OR SI.DESC01 LIKE ?)" +
-        "   AND (? IS NULL OR SH.DPTNKY = ?)" +
-        "   AND (? IS NULL OR INSTR(',' || ? || ',', ',' || SI.SVBELN || ',') > 0)";
+        " LEFT  JOIN KNRAWMS.SKUMA M  ON SI.SKUKEY = M.SKUKEY AND SH.OWNRKY = M.OWNRKY";
+
+    /** 출고현황 본문 SQL ORDER BY */
+    private static final String SCHEDULE_DATA_ORDER_BY =
+        " ORDER BY SI.SVBELN, SI.SHPOKY, SI.SHPOIT";
 
     /**
-     * 출고현황 본문 SQL (고정 텍스트, 동일한 19개 파라미터 + OFFSET/FETCH 2개)
+     * 출고현황 본문 SQL BASE (SELECT + JOIN, WHERE 는 동적 구성)
      */
-    private static final String SCHEDULE_DATA_SQL =
+    private static final String SCHEDULE_DATA_BASE_SQL =
         "SELECT" +
         "    SI.SHPOKY, SI.SHPOIT, SI.SKUKEY, SI.DESC01," +
         "    TRIM(COALESCE(SI.SKUG05,''))  AS SKUG05," +
@@ -135,18 +117,7 @@ public class ShipmentService {
         " LEFT  JOIN KNRAWMS.BZPTN VD ON VD.OWNRKY=SH.OWNRKY AND VD.PTNRTY='VD' AND VD.PTNRKY=SH.PTRCVR" +
         " LEFT  JOIN KNRAWMS.CMCDV ST ON ST.CMCDKY='STATDO' AND ST.CMCDVL=SH.STATDO" +
         " LEFT  JOIN KNRAWMS.CMCDV CD ON CD.CMCDKY='SKUG05' AND CD.CMCDVL=SI.SKUG05" +
-        " LEFT  JOIN KNRAWMS.SKUMA M  ON SI.SKUKEY=M.SKUKEY AND SH.OWNRKY=M.OWNRKY" +
-        " WHERE (? IS NULL OR SH.WAREKY = ?)" +
-        "   AND (? IS NULL OR SH.RQSHPD >= ?)" +
-        "   AND (? IS NULL OR SH.RQSHPD <= ?)" +
-        "   AND (? IS NULL OR SH.STATDO = ?)" +
-        "   AND (? IS NULL OR SI.SKUG05 = ?)" +
-        "   AND (? IS NULL OR INSTR(',' || ? || ',', ',' || SI.LOTA02 || ',') > 0)" +
-        "   AND (? IS NULL OR SI.SKUKEY LIKE ? OR SI.DESC01 LIKE ?)" +
-        "   AND (? IS NULL OR SH.DPTNKY = ?)" +
-        "   AND (? IS NULL OR INSTR(',' || ? || ',', ',' || SI.SVBELN || ',') > 0)" +
-        " ORDER BY SI.SVBELN, SI.SHPOKY, SI.SHPOIT" +
-        " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";    // p20,p21: offset, size
+        " LEFT  JOIN KNRAWMS.SKUMA M  ON SI.SKUKEY=M.SKUKEY AND SH.OWNRKY=M.OWNRKY";
 
     // ── shpmty IN절 동적 생성 헬퍼 (리터럴 삽입 — 가변 목록) ────────────────
     private String buildShpmtyClause(List<String> list) {
@@ -160,88 +131,135 @@ public class ShipmentService {
         return inVals.isEmpty() ? "" : " AND SH.SHPMTY IN (" + inVals + ")";
     }
 
-    public Map<String, Object> getSchedule(ShipmentSearchRequest req) {
-
-        // ── 바인드 파라미터 결정 (null = 조건 스킵) ──────────────────────────
+    /**
+     * 동적 WHERE 구성 — 값이 존재하는 조건만 WHERE 절 + 바인드 파라미터(params)로 추가한다.
+     * IN 절(shpmty / ptnrky 다중선택)은 가변 목록이므로 리터럴로 직접 삽입한다.
+     */
+    private String buildScheduleWhere(ShipmentSearchRequest req, List<Object> params) {
         String df = req.normalizedDateFrom();
         String dt = req.normalizedDateTo();
 
-        String p1Wareky   = hasText(req.getWareky())   ? req.getWareky().strip()         : null;
-        String p3DateFrom = hasText(df)               ? df                               : null;
-        String p5DateTo   = hasText(dt)               ? dt                               : null;
-        String p7Statdo   = hasText(req.getStatdo())  ? req.getStatdo().strip()          : null;
-        String p9Skug05   = hasText(req.getSkug05())  ? req.getSkug05().strip()          : null;
+        String wareky   = hasText(req.getWareky())  ? req.getWareky().strip()  : null;
+        String dateFrom = hasText(df)               ? df                       : null;
+        String dateTo   = hasText(dt)               ? dt                       : null;
+        String statdo   = hasText(req.getStatdo())  ? req.getStatdo().strip()  : null;
+        String skug05   = hasText(req.getSkug05())  ? req.getSkug05().strip()  : null;
         // lota02 IN → 쉼표 구분 문자열 (INSTR 패턴)
-        String p11Lota02  = (req.getLota02List() != null && !req.getLota02List().isEmpty())
-                            ? "," + String.join(",", req.getLota02List()) + "," : null;
+        String lota02   = (req.getLota02List() != null && !req.getLota02List().isEmpty())
+                          ? "," + String.join(",", req.getLota02List()) + "," : null;
         // keyword LIKE
-        String p13Keyword = hasText(req.getKeyword()) ? "%" + req.getKeyword().trim() + "%" : null;
+        String keyword  = hasText(req.getKeyword()) ? "%" + req.getKeyword().trim() + "%" : null;
         // ptnrky: 다중선택(ptnrkyList) 우선, 없으면 단건 ptnrky 사용
         List<String> ptnrkyListReq = req.getPtnrkyList();
         boolean ptnrkyMulti = ptnrkyListReq != null && ptnrkyListReq.size() > 1;
-        String p16Ptnrky;
+        String ptnrky;
         if (ptnrkyMulti) {
-            p16Ptnrky = null; // 아래 IN절 별도 처리
+            ptnrky = null; // 아래 IN절 별도 처리
         } else if (ptnrkyListReq != null && ptnrkyListReq.size() == 1) {
-            p16Ptnrky = ptnrkyListReq.get(0).strip();
+            ptnrky = ptnrkyListReq.get(0).strip();
         } else {
-            p16Ptnrky = hasText(req.getPtnrky()) ? req.getPtnrky().strip() : null;
+            ptnrky = hasText(req.getPtnrky()) ? req.getPtnrky().strip() : null;
         }
         // svbeln 다중값 → INSTR 패턴용 쉼표 구분 문자열
-        String p18Svbeln  = (req.getSvbeln() != null && !req.getSvbeln().isEmpty())
-                            ? "," + req.getSvbeln().stream()
-                                .map(String::strip)
-                                .filter(s -> !s.isEmpty())
-                                .collect(Collectors.joining(",")) + ","
-                            : null;
-        if (p18Svbeln != null && p18Svbeln.equals(",,")) p18Svbeln = null;
+        String svbeln  = (req.getSvbeln() != null && !req.getSvbeln().isEmpty())
+                          ? "," + req.getSvbeln().stream()
+                              .map(String::strip)
+                              .filter(s -> !s.isEmpty())
+                              .collect(Collectors.joining(",")) + ","
+                          : null;
+        if (svbeln != null && svbeln.equals(",,")) svbeln = null;
 
-        // ── 납품처 다중선택 IN절 동적 생성 ───────────────────────────────────
-        List<String> ptnrkyInList = null;
-        if (ptnrkyMulti) {
-            ptnrkyInList = ptnrkyListReq.stream()
-                .map(String::strip)
-                .filter(s -> !s.isEmpty())
-                .distinct()
-                .collect(Collectors.toList());
+        StringBuilder where = new StringBuilder();
+        if (wareky != null) {
+            where.append(where.length() == 0 ? " WHERE" : " AND").append(" SH.WAREKY = ?");
+            params.add(wareky);
         }
-        final String ptnrkyInClause = (ptnrkyInList != null && !ptnrkyInList.isEmpty())
-            ? " AND SH.DPTNKY IN (" + ptnrkyInList.stream()
-                .map(s -> "'" + s.replace("'","''") + "'")
-                .collect(Collectors.joining(",")) + ")"
-            : "";
+        if (dateFrom != null) {
+            where.append(where.length() == 0 ? " WHERE" : " AND").append(" SH.RQSHPD >= ?");
+            params.add(dateFrom);
+        }
+        if (dateTo != null) {
+            where.append(where.length() == 0 ? " WHERE" : " AND").append(" SH.RQSHPD <= ?");
+            params.add(dateTo);
+        }
+        if (statdo != null) {
+            where.append(where.length() == 0 ? " WHERE" : " AND").append(" SH.STATDO = ?");
+            params.add(statdo);
+        }
+        if (skug05 != null) {
+            where.append(where.length() == 0 ? " WHERE" : " AND").append(" SI.SKUG05 = ?");
+            params.add(skug05);
+        }
+        if (lota02 != null) {
+            where.append(where.length() == 0 ? " WHERE" : " AND")
+                 .append(" INSTR(',' || ? || ',', ',' || SI.LOTA02 || ',') > 0");
+            params.add(lota02);
+        }
+        if (keyword != null) {
+            where.append(where.length() == 0 ? " WHERE" : " AND")
+                 .append(" (SI.SKUKEY LIKE ? OR SI.DESC01 LIKE ?)");
+            params.add(keyword);
+            params.add(keyword);
+        }
+        if (ptnrky != null) {
+            where.append(where.length() == 0 ? " WHERE" : " AND").append(" SH.DPTNKY = ?");
+            params.add(ptnrky);
+        }
+        if (svbeln != null) {
+            where.append(where.length() == 0 ? " WHERE" : " AND")
+                 .append(" INSTR(',' || ? || ',', ',' || SI.SVBELN || ',') > 0");
+            params.add(svbeln);
+        }
 
-        // ── 출하유형(shpmty) IN절 동적 생성 ──────────────────────────────────
-        final String shpmtyClause = buildShpmtyClause(req.getShpmtyList());
+        // ── 납품처 다중선택 IN절 (리터럴 삽입) ───────────────────────────────
+        if (ptnrkyMulti) {
+            List<String> ptnrkyInList = ptnrkyListReq.stream()
+                .map(String::strip).filter(s -> !s.isEmpty()).distinct()
+                .collect(Collectors.toList());
+            if (!ptnrkyInList.isEmpty()) {
+                where.append(where.length() == 0 ? " WHERE" : " AND")
+                     .append(" SH.DPTNKY IN (")
+                     .append(ptnrkyInList.stream()
+                        .map(s -> "'" + s.replace("'", "''") + "'")
+                        .collect(Collectors.joining(",")))
+                     .append(")");
+            }
+        }
+        // ── 출하유형(shpmty) IN절 (리터럴 삽입) ──────────────────────────────
+        String shpmtyClause = buildShpmtyClause(req.getShpmtyList());
+        if (!shpmtyClause.isEmpty()) {
+            // buildShpmtyClause 는 " AND ..." 로 시작 → WHERE 가 비어있으면 접두 보정
+            where.append(where.length() == 0 ? shpmtyClause.replaceFirst(" AND", " WHERE") : shpmtyClause);
+        }
+        return where.toString();
+    }
 
-        // ── 추가 절 합산 (ORDER BY 앞에 삽입) ────────────────────────────────
-        final String extraClauses = ptnrkyInClause + shpmtyClause;
+    public Map<String, Object> getSchedule(ShipmentSearchRequest req) {
+
+        // ── 동적 WHERE + 바인드 파라미터 구성 ────────────────────────────────
+        List<Object> params = new ArrayList<>();
+        String whereSql = buildScheduleWhere(req, params);
 
         // ── 전체 건수 ─────────────────────────────────────────────────────────
-        String countSql = SCHEDULE_COUNT_SQL + extraClauses;
+        String countSql = SCHEDULE_COUNT_BASE_SQL + whereSql;
         var countQuery = em.createNativeQuery(countSql);
-        setScheduleParams(countQuery, p1Wareky, p3DateFrom, p5DateTo,
-                          p7Statdo, p9Skug05, p11Lota02, p13Keyword, p16Ptnrky, p18Svbeln);
+        for (int i = 0; i < params.size(); i++) countQuery.setParameter(i + 1, params.get(i));
         long total = ((Number) countQuery.getSingleResult()).longValue();
 
         // ── 본문 쿼리 ─────────────────────────────────────────────────────────
         int size   = Math.max(1, Math.min(req.getSize(), 99999));
         int offset = (req.getPage() - 1) * size;   // 1-based page → 0-based offset
 
-        String dataSql = extraClauses.isEmpty() ? SCHEDULE_DATA_SQL
-            : SCHEDULE_DATA_SQL.replace(
-                " ORDER BY SI.SVBELN",
-                extraClauses + " ORDER BY SI.SVBELN");
+        String dataSql = SCHEDULE_DATA_BASE_SQL + whereSql + SCHEDULE_DATA_ORDER_BY
+            + " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
         var dataQuery = em.createNativeQuery(dataSql);
-        setScheduleParams(dataQuery, p1Wareky, p3DateFrom, p5DateTo,
-                          p7Statdo, p9Skug05, p11Lota02, p13Keyword, p16Ptnrky, p18Svbeln);
-        dataQuery.setParameter(20, offset);  // OFFSET ? ROWS
-        dataQuery.setParameter(21, size);    // FETCH NEXT ? ROWS ONLY
+        int bi = 0;
+        for (; bi < params.size(); bi++) dataQuery.setParameter(bi + 1, params.get(bi));
+        dataQuery.setParameter(bi + 1, offset);  // OFFSET ? ROWS
+        dataQuery.setParameter(bi + 2, size);    // FETCH NEXT ? ROWS ONLY
 
         // ── 완성쿼리 로그 출력 (stdout.log) ──────────────────────────────────
-        logBoundQuery(dataSql, p1Wareky, p3DateFrom, p5DateTo, p7Statdo, p9Skug05,
-                      p11Lota02, p13Keyword, p16Ptnrky, p18Svbeln, offset, size,
-                      req.getShpmtyList(), req.getPtnrkyList());
+        logBoundQuery(dataSql, params, offset, size);
 
         @SuppressWarnings("unchecked")
         List<Object[]> rows = dataQuery.getResultList();
@@ -262,55 +280,26 @@ public class ShipmentService {
     // ──────────────────────────────────────────────────────────────────────────
     // 완성쿼리 로그 — stdout.log 에 [BOUND-SQL] 태그로 기록
     // ──────────────────────────────────────────────────────────────────────────
-    private void logBoundQuery(String sql,
-                               String wareky, String dateFrom, String dateTo,
-                               String statdo, String skug05, String lota02,
-                               String keyword, String ptnrky, String svbeln,
-                               int offset, int size,
-                               List<String> shpmtyList, List<String> ptnrkyList) {
+    private void logBoundQuery(String sql, List<Object> params, int offset, int size) {
         try {
-            // 파라미터 요약 로그
-            Map<String, String> params = new LinkedHashMap<>();
-            params.put("wareky",   wareky   != null ? wareky   : "(ALL)");
-            params.put("dateFrom", dateFrom != null ? dateFrom : "(ALL)");
-            params.put("dateTo",   dateTo   != null ? dateTo   : "(ALL)");
-            params.put("statdo",   statdo   != null ? statdo   : "(ALL)");
-            params.put("skug05",   skug05   != null ? skug05   : "(ALL)");
-            params.put("lota02",   lota02   != null ? lota02   : "(ALL)");
-            params.put("keyword",  keyword  != null ? keyword  : "(ALL)");
-            params.put("ptnrky",   ptnrky  != null ? ptnrky
-                : (ptnrkyList != null && !ptnrkyList.isEmpty() ? ptnrkyList.toString() : "(ALL)"));
-            params.put("svbeln",   svbeln   != null ? svbeln   : "(ALL)");
-            params.put("shpmty",   shpmtyList != null && !shpmtyList.isEmpty()
-                ? shpmtyList.toString() : "(ALL)");
-            params.put("offset",   String.valueOf(offset));
-            params.put("size",     String.valueOf(size));
-
             // ? 를 순서대로 실제 값으로 치환하여 완성쿼리 생성
-            String[] bindVals = {
-                q(wareky),   q(wareky),
-                q(dateFrom), q(dateFrom),
-                q(dateTo),   q(dateTo),
-                q(statdo),   q(statdo),
-                q(skug05),   q(skug05),
-                q(lota02),   q(lota02),
-                q(keyword),  q(keyword),  q(keyword),
-                q(ptnrky),   q(ptnrky),
-                q(svbeln),   q(svbeln),
-                String.valueOf(offset),
-                String.valueOf(size)
-            };
+            //   동적 WHERE 파라미터(params) + OFFSET/SIZE 2개
+            List<String> bindVals = new ArrayList<>();
+            for (Object p : params) bindVals.add(q(p == null ? null : p.toString()));
+            bindVals.add(String.valueOf(offset));
+            bindVals.add(String.valueOf(size));
+
             StringBuilder bound = new StringBuilder();
             int bi = 0;
             for (char c : sql.toCharArray()) {
-                if (c == '?' && bi < bindVals.length) {
-                    bound.append(bindVals[bi++]);
+                if (c == '?' && bi < bindVals.size()) {
+                    bound.append(bindVals.get(bi++));
                 } else {
                     bound.append(c);
                 }
             }
 
-            qlog.info("[QUERY-PARAMS] {}", params);
+            qlog.info("[QUERY-PARAMS] bound-count={}, values={}", bindVals.size(), bindVals);
             qlog.info("[BOUND-SQL]\n{}", bound);
         } catch (Exception e) {
             qlog.warn("[BOUND-SQL] 로그 출력 실패: {}", e.getMessage());
@@ -505,34 +494,4 @@ public class ShipmentService {
     }
 
     private double round4(double v) { return Math.round(v * 10000.0) / 10000.0; }
-
-    /**
-     * 출고현황 고정 SQL 공통 파라미터 바인딩 헬퍼
-     * COUNT SQL / DATA SQL 동일한 1~19번 파라미터 구조 공유
-     * DATA SQL은 추가로 p20=offset, p21=size 필요
-     *
-     * p1,p2:     wareky  — (? IS NULL OR SH.WAREKY = ?)
-     * p3,p4:     dateFrom— (? IS NULL OR SH.RQSHPD >= ?)
-     * p5,p6:     dateTo  — (? IS NULL OR SH.RQSHPD <= ?)
-     * p7,p8:     statdo  — (? IS NULL OR SH.STATDO = ?)
-     * p9,p10:    skug05  — (? IS NULL OR SI.SKUG05 = ?)
-     * p11,p12:   lota02  — (? IS NULL OR INSTR(','||?||',', ','||SI.LOTA02||',') > 0)
-     * p13,p14,p15: keyword — (? IS NULL OR SI.SKUKEY LIKE ? OR SI.DESC01 LIKE ?)
-     * p16,p17:   ptnrky  — (? IS NULL OR SH.DPTNKY = ?)
-     * p18,p19:   svbeln  — (? IS NULL OR INSTR(','||?||',', ','||SI.SVBELN||',') > 0)
-     */
-    private void setScheduleParams(Query q,
-                                   String wareky, String dateFrom, String dateTo,
-                                   String statdo, String skug05, String lota02,
-                                   String keyword, String ptnrky, String svbeln) {
-        q.setParameter(1,  wareky);   q.setParameter(2,  wareky);
-        q.setParameter(3,  dateFrom); q.setParameter(4,  dateFrom);
-        q.setParameter(5,  dateTo);   q.setParameter(6,  dateTo);
-        q.setParameter(7,  statdo);   q.setParameter(8,  statdo);
-        q.setParameter(9,  skug05);   q.setParameter(10, skug05);
-        q.setParameter(11, lota02);   q.setParameter(12, lota02);
-        q.setParameter(13, keyword);  q.setParameter(14, keyword);  q.setParameter(15, keyword);
-        q.setParameter(16, ptnrky);   q.setParameter(17, ptnrky);
-        q.setParameter(18, svbeln);   q.setParameter(19, svbeln);
-    }
 }

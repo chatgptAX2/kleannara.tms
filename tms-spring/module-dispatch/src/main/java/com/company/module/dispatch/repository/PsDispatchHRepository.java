@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface PsDispatchHRepository extends JpaRepository<PsDispatchH, String> {
+public interface PsDispatchHRepository extends JpaRepository<PsDispatchH, String>, PsDispatchHRepositoryCustom {
 
     /** 배차번호 PREFIX 기반 당일 최대번호 조회 (채번용) */
     @Query(value = """
@@ -20,26 +20,8 @@ public interface PsDispatchHRepository extends JpaRepository<PsDispatchH, String
         """, nativeQuery = true)
     Optional<String> findMaxDispatchNoByPrefix(@Param("prefix") String prefix);
 
-    /** 검색 조건 기반 목록 조회 */
-    @Query(value = """
-        SELECT h.*, COALESCE(v.LOAD_TON, 0) AS LOAD_TON
-        FROM KNRAWMS.PS_DISPATCH_H h
-        LEFT JOIN KNRAWMS.DS_VEHICLE v ON v.CARTYPE = h.CARTYPE
-        WHERE (:dateFrom IS NULL OR h.RQSHPD >= :dateFrom)
-          AND (:dateTo   IS NULL OR h.RQSHPD <= :dateTo)
-          AND (:dptnky   IS NULL OR h.DPTNKY LIKE '%' || :dptnky || '%'
-                                 OR h.DPTNM  LIKE '%' || :dptnky || '%')
-          AND (:status   IS NULL OR h.STATUS = :status)
-          AND (:dispatchNo IS NULL OR h.DISPATCH_NO LIKE '%' || :dispatchNo || '%')
-        ORDER BY h.RQSHPD DESC, h.DISPATCH_NO
-        """, nativeQuery = true)
-    List<Object[]> searchList(
-        @Param("dateFrom")   String dateFrom,
-        @Param("dateTo")     String dateTo,
-        @Param("dptnky")     String dptnky,
-        @Param("status")     String status,
-        @Param("dispatchNo") String dispatchNo
-    );
+    // 검색 조건 기반 목록 조회(searchList)는 소프트파싱 제거를 위해
+    // PsDispatchHRepositoryImpl 의 동적 WHERE 로 이관됨.
 
     /** 납품요청일 + 납품처 기준 조회 (자동배차 중복 체크용) */
     List<PsDispatchH> findByRqshpdAndDptnkyAndStatCdNot(
