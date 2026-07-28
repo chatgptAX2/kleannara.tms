@@ -304,19 +304,21 @@ public class SapRfcService {
             String dateTo   = str(body.get("dateTo")).replace("-", "");
             String dptnky   = str(body.get("dptnky"));
 
-            // PS_DISPATCH_H / PS_DISPATCH_D → MariaDB tmsJdbc
+            // PS_DISPATCH_H / PS_DISPATCH_D → Oracle KNRAWMS (tmsJdbc)
+            // ※ ITEM_CNT 는 GROUP BY(ORA-00979 위험) 대신 상관 서브쿼리로 집계하여
+            //   헤더의 비집계 컬럼을 GROUP BY 에 나열할 필요가 없도록 한다.
             StringBuilder sql = new StringBuilder(
                 "SELECT h.DISP_H_ID, h.DISPATCH_NO, h.DPTNKY, h.DPTNM, h.DISP_DATE, " +
                 "       h.STATUS, h.CARTYPE, h.DRIVER_NM, h.DRIVER_TEL, h.TKNUM, h.SVBELN, " +
-                "       COUNT(d.DISP_D_ID) AS ITEM_CNT " +
-                "FROM KNRAWMS.PS_DISPATCH_H h LEFT JOIN KNRAWMS.PS_DISPATCH_D d ON d.DISP_H_ID=h.DISP_H_ID " +
+                "       (SELECT COUNT(*) FROM KNRAWMS.PS_DISPATCH_D d WHERE d.DISP_H_ID=h.DISP_H_ID) AS ITEM_CNT " +
+                "FROM KNRAWMS.PS_DISPATCH_H h " +
                 "WHERE h.STATUS IN ('CONFIRMED','SAP_CREATED') "
             );
             List<Object> args = new ArrayList<>();
             if (!dateFrom.isEmpty()) { sql.append("AND h.DISP_DATE>=? "); args.add(dateFrom); }
             if (!dateTo.isEmpty())   { sql.append("AND h.DISP_DATE<=? "); args.add(dateTo); }
             if (!dptnky.isEmpty())   { sql.append("AND h.DPTNKY=? ");     args.add(dptnky); }
-            sql.append("GROUP BY h.DISP_H_ID ORDER BY h.DISP_DATE DESC, h.DISPATCH_NO");
+            sql.append("ORDER BY h.DISP_DATE DESC, h.DISPATCH_NO");
 
             List<Map<String, Object>> rows = tmsJdbc.queryForList(sql.toString(), args.toArray());
             return Map.of("ok", true, "rows", rows);
