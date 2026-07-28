@@ -2,8 +2,6 @@ package com.company.module.delivery.repository.tms;
 
 import com.company.module.delivery.entity.tms.RouteCost;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -16,35 +14,12 @@ import java.util.List;
  *     WAREKY→SHPPT, PTNRKY→PTNRKY, CARTYPE→CARCLASS,
  *     COST_AMT→COST, DIST_KM→DIST_KM, EFF_DATE→DATE_START, EXP_DATE→DATE_END
  *
- * ■ Oracle 주의사항
- *   - CONCAT()은 인수 2개만 허용 → LIKE '%'||:param||'%' 패턴 사용
- *   - NULL 소프트파싱: (:param IS NULL OR col LIKE '%'||:param||'%')
+ * ■ 소프트파싱 제거
+ *   - 기존 (:param IS NULL OR col ...) 고정조건 → RouteCostRepositoryImpl 의
+ *     동적 WHERE(값 있을 때만 조건 추가) 로 전환.
  */
 @Repository
-public interface RouteCostRepository extends JpaRepository<RouteCost, Long> {
+public interface RouteCostRepository extends JpaRepository<RouteCost, Long>, RouteCostRepositoryCustom {
 
     List<RouteCost> findByWarekyAndPtnrky(String wareky, String ptnrky);
-
-    @Query(value = """
-        SELECT
-          COST_ID,
-          WAREKY        AS SHPPT,
-          PTNRKY        AS PTNRKY,
-          CARTYPE       AS CARCLASS,
-          COST_AMT      AS COST,
-          DIST_KM       AS DIST_KM,
-          EFF_DATE      AS DATE_START,
-          EXP_DATE      AS DATE_END,
-          'KRW'         AS UNIT
-        FROM KNRAWMS.ROUTE_COST
-        WHERE (:wareky   IS NULL OR WAREKY  = :wareky)
-          AND (:ptnrky   IS NULL OR PTNRKY  LIKE '%' || :ptnrky  || '%')
-          AND (:carclass IS NULL OR CARTYPE LIKE '%' || :carclass || '%')
-        ORDER BY WAREKY, PTNRKY, CARTYPE
-        """, nativeQuery = true)
-    List<Object[]> searchList(
-        @Param("wareky")   String wareky,
-        @Param("ptnrky")   String ptnrky,
-        @Param("carclass") String carclass
-    );
 }

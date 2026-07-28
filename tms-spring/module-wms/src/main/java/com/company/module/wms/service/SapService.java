@@ -102,28 +102,28 @@ public class SapService {
 
     public Map<String, Object> psSearch(String dateFrom, String dateTo, String dptnky, String shpoky, String status) {
         try {
-            // ■ 소프트파싱: 고정 SQL + (? IS NULL OR col ...) 패턴
-            // p1,p2: dateFrom (? IS NULL OR h.RQSHPD>=?)
-            // p3,p4: dateTo   (? IS NULL OR h.RQSHPD<=?)
-            // p5,p6: dptnky   (? IS NULL OR h.DPTNKY=?)
-            // p7,p8: shpoky   (? IS NULL OR h.SHPOKY=?)
+            // ■ 동적 WHERE (소프트파싱용 '? IS NULL OR ...' 고정조건 제거)
+            //   값이 존재하는 조건만 WHERE 절 + 바인드 파라미터로 추가한다.
+            String p1 = (dateFrom != null && !dateFrom.isBlank()) ? dateFrom.replace("-", "") : null;
+            String p3 = (dateTo   != null && !dateTo.isBlank())   ? dateTo.replace("-", "")   : null;
+            String p5 = (dptnky   != null && !dptnky.isBlank())   ? dptnky                    : null;
+            String p7 = (shpoky   != null && !shpoky.isBlank())   ? shpoky                    : null;
+
+            StringBuilder where = new StringBuilder();
+            List<Object> params = new ArrayList<>();
+            if (p1 != null) { where.append(where.length() == 0 ? " WHERE" : " AND").append(" h.RQSHPD>=?"); params.add(p1); }
+            if (p3 != null) { where.append(where.length() == 0 ? " WHERE" : " AND").append(" h.RQSHPD<=?"); params.add(p3); }
+            if (p5 != null) { where.append(where.length() == 0 ? " WHERE" : " AND").append(" h.DPTNKY=?");  params.add(p5); }
+            if (p7 != null) { where.append(where.length() == 0 ? " WHERE" : " AND").append(" h.SHPOKY=?");  params.add(p7); }
+
             final String sql =
                 "SELECT h.SHPOKY, h.DPTNKY, COALESCE(b.NAME01,h.DPTNKY) AS DPTNM, " +
                 "       h.RQSHPD, COUNT(i.SHPOIT) AS ITEM_CNT, SUM(i.QTSHPO) AS TOTAL_QTY " +
                 "FROM KNRAWMS.SHPDH h JOIN KNRAWMS.SHPDI i ON h.SHPOKY=i.SHPOKY " +
-                "LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT' " +
-                "WHERE (? IS NULL OR h.RQSHPD>=?) " +
-                "  AND (? IS NULL OR h.RQSHPD<=?) " +
-                "  AND (? IS NULL OR h.DPTNKY=?) " +
-                "  AND (? IS NULL OR h.SHPOKY=?) " +
-                "GROUP BY h.SHPOKY, h.DPTNKY, b.NAME01, h.RQSHPD ORDER BY h.RQSHPD, h.DPTNKY";
-            String p1 = (dateFrom != null && !dateFrom.isBlank()) ? dateFrom.replace("-", "") : null;
-            String p3 = (dateTo   != null && !dateTo.isBlank())   ? dateTo.replace("-", "")   : null;
-            String p5 = (dptnky   != null && !dptnky.isBlank())   ? dptnky                   : null;
-            String p7 = (shpoky   != null && !shpoky.isBlank())   ? shpoky                   : null;
-            List<Map<String, Object>> rows = wmsJdbc.queryForList(
-                sql, p1, p1, p3, p3, p5, p5, p7, p7
-            );
+                "LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT'" +
+                where +
+                " GROUP BY h.SHPOKY, h.DPTNKY, b.NAME01, h.RQSHPD ORDER BY h.RQSHPD, h.DPTNKY";
+            List<Map<String, Object>> rows = wmsJdbc.queryForList(sql, params.toArray());
             return Map.of("ok", true, "rows", rows);
         } catch (Exception e) { return errMap(e); }
     }
