@@ -14879,14 +14879,15 @@ async function psopLoadModalSearch() {
 
     const res  = await fetch(`/api/ps-dispatch/list?${params}`);
     const data = await res.json();
-    if (!data.ok) throw new Error(data.error);
+    // Spring ApiResponse 래퍼 {success, code, message, data} 및 구(舊) {ok, rows} 모두 대응
+    if (data.success === false || data.ok === false) throw new Error(data.error || data.message || '조회 실패');
 
-    _psopLoadModalRows = data.rows || [];
-    // 이미 현재 vehicles에 있는 DISPATCH_NO는 표시 제외
+    _psopLoadModalRows = Array.isArray(data.data) ? data.data : (data.rows || []);
+    // 이미 현재 vehicles에 있는 DISPATCH_NO는 표시 제외 (camelCase 우선)
     const existingNos = new Set(
       psopState.vehicles.map(v => v.STDLNR || v._origDispatchNo).filter(Boolean)
     );
-    const rows = _psopLoadModalRows.filter(r => !existingNos.has(r.DISPATCH_NO));
+    const rows = _psopLoadModalRows.filter(r => !existingNos.has(r.dispatchNo ?? r.DISPATCH_NO));
 
     document.getElementById('psop-load-result-cnt').textContent =
       `${rows.length}건${existingNos.size ? ` (이미 로드된 ${existingNos.size}건 제외)` : ''}`;
@@ -14903,22 +14904,33 @@ async function psopLoadModalSearch() {
     };
 
     tbody.innerHTML = rows.map(r => {
-      const rqshpd  = r.RQSHPD ? r.RQSHPD.replace(/(\d{4})(\d{2})(\d{2})/,'$1-$2-$3') : '-';
-      const credat  = r.CREDAT ? r.CREDAT.replace(/(\d{4})(\d{2})(\d{2})/,'$1-$2-$3') : '-';
-      const totalKg = r.TOTAL_KG != null ? Number(r.TOTAL_KG).toLocaleString() : '-';
-      const chked   = _psopLoadModalChecked.has(r.DISPATCH_NO) ? 'checked' : '';
-      return `<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="psopLoadModalRowClick('${r.DISPATCH_NO}',event)">
-        <td style="text-align:center;padding:6px 4px"><input type="checkbox" ${chked} data-no="${r.DISPATCH_NO}" onclick="event.stopPropagation();psopLoadModalToggle('${r.DISPATCH_NO}',this.checked)"></td>
-        <td style="padding:6px 8px;font-family:monospace;font-size:10px;white-space:nowrap">${r.DISPATCH_NO}</td>
+      // camelCase(Spring DTO) 우선, UPPERCASE(구 Flask) fallback
+      const dispatchNo = r.dispatchNo ?? r.DISPATCH_NO ?? '';
+      const rqshpdRaw  = r.rqshpd     ?? r.RQSHPD;
+      const credatRaw  = r.credat     ?? r.CREDAT;
+      const totalKgRaw = r.totalKg    ?? r.TOTAL_KG;
+      const totalCnt   = r.totalCnt   ?? r.TOTAL_CNT ?? 0;
+      const cartype    = r.cartype    ?? r.CARTYPE   ?? '-';
+      const dptnky     = r.dptnky     ?? r.DPTNKY    ?? '-';
+      const dptnm      = r.dptnm      ?? r.DPTNM     ?? '-';
+      const status     = r.status     ?? r.STATUS;
+
+      const rqshpd  = rqshpdRaw ? String(rqshpdRaw).replace(/(\d{4})(\d{2})(\d{2})/,'$1-$2-$3') : '-';
+      const credat  = credatRaw ? String(credatRaw).replace(/(\d{4})(\d{2})(\d{2})/,'$1-$2-$3') : '-';
+      const totalKg = totalKgRaw != null ? Number(totalKgRaw).toLocaleString() : '-';
+      const chked   = _psopLoadModalChecked.has(dispatchNo) ? 'checked' : '';
+      return `<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="psopLoadModalRowClick('${dispatchNo}',event)">
+        <td style="text-align:center;padding:6px 4px"><input type="checkbox" ${chked} data-no="${dispatchNo}" onclick="event.stopPropagation();psopLoadModalToggle('${dispatchNo}',this.checked)"></td>
+        <td style="padding:6px 8px;font-family:monospace;font-size:10px;white-space:nowrap">${dispatchNo}</td>
         <td style="padding:6px 8px;white-space:nowrap">${rqshpd}</td>
         <td style="padding:6px 8px;white-space:nowrap">
-          <span style="background:var(--surface2);border:1px solid var(--border);padding:1px 6px;border-radius:4px;font-size:10px">${r.CARTYPE||'-'}</span>
+          <span style="background:var(--surface2);border:1px solid var(--border);padding:1px 6px;border-radius:4px;font-size:10px">${cartype||'-'}</span>
         </td>
-        <td style="padding:6px 8px;font-size:10px;white-space:nowrap">${r.DPTNKY||'-'}</td>
-        <td style="padding:6px 8px;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px" title="${r.DPTNM||''}">${r.DPTNM||'-'}</td>
+        <td style="padding:6px 8px;font-size:10px;white-space:nowrap">${dptnky||'-'}</td>
+        <td style="padding:6px 8px;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px" title="${dptnm||''}">${dptnm||'-'}</td>
         <td style="padding:6px 8px;text-align:right;font-size:10px;white-space:nowrap">${totalKg}</td>
-        <td style="padding:6px 8px;text-align:center;font-size:10px">${r.TOTAL_CNT||0}</td>
-        <td style="padding:6px 8px;text-align:center">${statusBadge(r.STATUS)}</td>
+        <td style="padding:6px 8px;text-align:center;font-size:10px">${totalCnt||0}</td>
+        <td style="padding:6px 8px;text-align:center">${statusBadge(status)}</td>
         <td style="padding:6px 8px;text-align:center;font-size:10px;white-space:nowrap">${credat}</td>
       </tr>`;
     }).join('');
@@ -14985,14 +14997,18 @@ async function psopLoadModalConfirm() {
       body: JSON.stringify({ dispatch_nos: nos })
     });
     const data = await res.json();
-    if (!data.ok) throw new Error(data.error || '불러오기 실패');
+    if (data.ok === false || data.success === false) throw new Error(data.error || data.message || '불러오기 실패');
 
-    // vehicles → psopState에 추가
-    psopMergeRestoredVehicles(data.vehicles || [], data.search_rows || []);
+    // vehicles → psopState에 추가 (Spring ApiResponse 래퍼 및 구 형식 모두 대응)
+    const payload   = (data.data && typeof data.data === 'object') ? data.data : data;
+    const vehicles  = payload.vehicles    || data.vehicles    || [];
+    const searchRows= payload.search_rows || data.search_rows || [];
+    psopMergeRestoredVehicles(vehicles, searchRows);
 
     psopCloseLoadModal();
     psopSwitchTab('dispatch');
-    showToast(`✅ ${data.count}건 배차 불러오기 완료 — 수정 후 배차저장을 눌러 반영하세요`);
+    const loadedCnt = payload.count ?? data.count ?? vehicles.length;
+    showToast(`✅ ${loadedCnt}건 배차 불러오기 완료 — 수정 후 배차저장을 눌러 반영하세요`);
   } catch(e) {
     showToast(`❌ 불러오기 실패: ${e.message}`, 'error');
     btn.disabled = false;
@@ -15115,36 +15131,41 @@ function psopMergeRestoredVehicles(vehicles, searchRows) {
 
   // 2. vehicles 추가
   vehicles.forEach(v => {
+    // 백엔드 UPPERCASE(DISPATCH_NO) / camelCase(dispatchNo) 모두 대응
+    const dispatchNo = v.DISPATCH_NO ?? v.dispatchNo;
     // 이미 같은 DISPATCH_NO가 로드돼 있으면 스킵
     const alreadyExists = psopState.vehicles.some(
-      ev => ev._origDispatchNo === v.DISPATCH_NO || ev.STDLNR === v.DISPATCH_NO
+      ev => ev._origDispatchNo === dispatchNo || ev.STDLNR === dispatchNo
     );
     if (alreadyExists) return;
 
     psopState._pendingSeq = (psopState._pendingSeq || 0) + 1;
     const pid = `_pending_${psopState._pendingSeq}`;
 
+    const items = v.items || [];
     // items에 DISPATCHED 플래그 기반으로 searchRows 업데이트
-    (v.items || []).forEach(it => {
+    items.forEach(it => {
+      const shpoky = it.SHPOKY ?? it.shpoky;
+      const shpoit = it.SHPOIT ?? it.shpoit;
       const row = psopState.searchRows.find(
-        r => r.SHPOKY === it.SHPOKY && r.SHPOIT === it.SHPOIT
+        r => (r.SHPOKY ?? r.shpoky) === shpoky && (r.SHPOIT ?? r.shpoit) === shpoit
       );
       if (row) row.DISPATCHED = true;
     });
 
     psopState.vehicles.push({
       _pendingId:       pid,
-      _origDispatchNo:  v.DISPATCH_NO,   // 원본 배차번호 (이력 추적)
+      _origDispatchNo:  dispatchNo,      // 원본 배차번호 (이력 추적)
       STDLNR:           null,            // 미저장 상태로 전환
-      cartype:          v.cartype      || '',
-      carclass_cd:      v.carclass_cd  || '',
-      rqshpd:           v.rqshpd       || '',
-      dptnky:           v.dptnky       || '',
-      dptnm:            v.dptnm        || '',
-      total_kg:         v.total_kg     || 0,
-      total_cnt:        v.total_cnt    || 0,
-      load_kg:          v.load_kg      || null,
-      items:            v.items        || [],
+      cartype:          v.cartype      ?? v.CARTYPE   ?? '',
+      carclass_cd:      v.carclass_cd  ?? '',
+      rqshpd:           v.rqshpd       ?? v.RQSHPD    ?? '',
+      dptnky:           v.dptnky       ?? v.DPTNKY    ?? '',
+      dptnm:            v.dptnm        ?? v.DPTNM     ?? '',
+      total_kg:         v.total_kg     ?? v.totalKg   ?? 0,
+      total_cnt:        v.total_cnt    ?? v.totalCnt  ?? 0,
+      load_kg:          v.load_kg      ?? v.loadKg    ?? null,
+      items:            items,
     });
   });
 
