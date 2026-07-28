@@ -655,6 +655,102 @@ public class PsDispatchService {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
+    // 저장배차 불러오기 (편집용)
+    // Flask: POST /api/ps-dispatch/load-for-edit
+    //   입력 : { dispatch_nos: ["260728001T", ...] }
+    //   출력 : { ok, count, vehicles:[...], search_rows:[...] }
+    //
+    // ※ 프론트(psopMergeRestoredVehicles / psopBuildVehicleCard)는 UPPERCASE 키를
+    //    사용하므로 여기서 대문자 키 Map 으로 조립하여 반환한다.
+    // ──────────────────────────────────────────────────────────────────────────
+    public Map<String, Object> loadForEdit(List<String> dispatchNos) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Map<String, Object>> vehicles   = new ArrayList<>();
+        List<Map<String, Object>> searchRows = new ArrayList<>();
+
+        if (dispatchNos == null || dispatchNos.isEmpty()) {
+            out.put("ok", true);
+            out.put("count", 0);
+            out.put("vehicles", vehicles);
+            out.put("search_rows", searchRows);
+            return out;
+        }
+
+        for (String no : dispatchNos) {
+            if (no == null || no.isBlank()) continue;
+
+            // getList() 재활용 — dispatchNo 정확 일치 조회
+            PsDispatchListRequest req = new PsDispatchListRequest();
+            req.setDispatchNo(no.strip());
+            List<PsDispatchListResponse> found = getList(req);
+
+            // getList 는 LIKE 검색이므로 정확히 일치하는 건만 선별
+            PsDispatchListResponse h = found.stream()
+                .filter(x -> no.strip().equals(x.getDispatchNo()))
+                .findFirst().orElse(null);
+            if (h == null) continue;
+
+            // ── items → UPPERCASE 키 Map 리스트 ──
+            List<Map<String, Object>> items = new ArrayList<>();
+            if (h.getItems() != null) {
+                for (PsDispatchListResponse.ItemDetail it : h.getItems()) {
+                    Map<String, Object> im = new LinkedHashMap<>();
+                    im.put("SHPOKY",     it.getShpoky());
+                    im.put("SHPOIT",     it.getShpoit());
+                    im.put("SKUKEY",     it.getSkukey());
+                    im.put("DESC01",     it.getDesc01());
+                    im.put("QTSHPO",     it.getQtshpo());
+                    im.put("UOMKEY",     it.getUomkey());
+                    im.put("DPTNKY",     it.getDptnky());
+                    im.put("DPTNM",      it.getDptnm());
+                    im.put("IS_SPLIT",   it.getIsSplit());
+                    im.put("ORG_SHPOKY", it.getOrgShpoky());
+                    im.put("ORG_SHPOIT", it.getOrgShpoit());
+                    im.put("GRSWGT",     it.getGrswgt());
+                    im.put("KG_WEIGHT",  it.getKgWeight());
+                    im.put("UNIT_WEIGHT",it.getUnitWeight());
+                    items.add(im);
+
+                    // search_rows (미배차 문서 테이블 동기화용)
+                    Map<String, Object> sr = new LinkedHashMap<>();
+                    sr.put("SHPOKY",     it.getShpoky());
+                    sr.put("SHPOIT",     it.getShpoit());
+                    sr.put("SKUKEY",     it.getSkukey());
+                    sr.put("DESC01",     it.getDesc01());
+                    sr.put("QTSHPO",     it.getQtshpo());
+                    sr.put("UOMKEY",     it.getUomkey());
+                    sr.put("DPTNKY",     it.getDptnky());
+                    sr.put("DPTNM",      it.getDptnm());
+                    sr.put("KG_WEIGHT",  it.getKgWeight());
+                    sr.put("DISPATCHED", true);
+                    searchRows.add(sr);
+                }
+            }
+
+            // ── vehicle 헤더 → UPPERCASE 키 Map ──
+            Map<String, Object> v = new LinkedHashMap<>();
+            v.put("DISPATCH_NO", h.getDispatchNo());
+            v.put("cartype",     h.getCartype());
+            v.put("carclass_cd", "");
+            v.put("rqshpd",      h.getRqshpd());
+            v.put("dptnky",      h.getDptnky());
+            v.put("dptnm",       h.getDptnm());
+            v.put("total_kg",    h.getTotalKg());
+            v.put("total_cnt",   h.getTotalCnt());
+            v.put("load_kg",     h.getLoadKg());
+            v.put("status",      h.getStatus());
+            v.put("items",       items);
+            vehicles.add(v);
+        }
+
+        out.put("ok", true);
+        out.put("count", vehicles.size());
+        out.put("vehicles", vehicles);
+        out.put("search_rows", searchRows);
+        return out;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
     // 내부 유틸
     // ──────────────────────────────────────────────────────────────────────────
     private String str(Object o) {

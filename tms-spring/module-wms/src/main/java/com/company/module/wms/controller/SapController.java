@@ -86,10 +86,8 @@ public class SapController {
         return ResponseEntity.ok(sapService.psAuto(body));
     }
 
-    @PostMapping("/ps-dispatch/load-for-edit")
-    public ResponseEntity<Map<String, Object>> psLoadForEdit(@RequestBody Map<String, Object> body) {
-        return ResponseEntity.ok(sapService.psLoadForEdit(body));
-    }
+    // NOTE: POST /ps-dispatch/load-for-edit 는 PsDispatchController 에서 처리
+    //       (실제 운영 스키마 DISPATCH_NO 기반, dispatch_nos 입력 / vehicles·search_rows 반환)
 
     @PostMapping("/ps-dispatch/delete")
     public ResponseEntity<Map<String, Object>> psDelete(@RequestBody Map<String, Object> body) {

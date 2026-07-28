@@ -74,18 +74,21 @@ public class PsDispatchController {
      */
     @GetMapping("/list")
     public ResponseEntity<ApiResponse<List<PsDispatchListResponse>>> list(
-            @RequestParam(required = false) String dateFrom,
-            @RequestParam(required = false) String dateTo,
+            @RequestParam(name = "dateFrom",    required = false) String dateFrom,
+            @RequestParam(name = "date_from",   required = false) String dateFromAlt,
+            @RequestParam(name = "dateTo",      required = false) String dateTo,
+            @RequestParam(name = "date_to",     required = false) String dateToAlt,
             @RequestParam(required = false) String dptnky,
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) String dispatchNo) {
+            @RequestParam(name = "dispatchNo",  required = false) String dispatchNo,
+            @RequestParam(name = "dispatch_no", required = false) String dispatchNoAlt) {
 
         PsDispatchListRequest req = new PsDispatchListRequest();
-        req.setDateFrom(dateFrom);
-        req.setDateTo(dateTo);
+        req.setDateFrom(dateFrom != null ? dateFrom : dateFromAlt);
+        req.setDateTo(dateTo     != null ? dateTo   : dateToAlt);
         req.setDptnky(dptnky);
         req.setStatus(status);
-        req.setDispatchNo(dispatchNo);
+        req.setDispatchNo(dispatchNo != null ? dispatchNo : dispatchNoAlt);
 
         List<PsDispatchListResponse> rows = psDispatchService.getList(req);
         return ResponseEntity.ok(ApiResponse.success(rows));
@@ -103,5 +106,26 @@ public class PsDispatchController {
         return ResponseEntity.ok(ApiResponse.success(
             java.util.Map.of("confirmed", cnt)
         ));
+    }
+
+    /**
+     * 저장배차 불러오기 (편집용)
+     * Flask: POST /api/ps-dispatch/load-for-edit
+     *   입력 : { dispatch_nos: ["260728001T", ...] }
+     *   출력 : { ok, count, vehicles:[...], search_rows:[...] }  (프론트 psopMergeRestoredVehicles 대응)
+     *
+     * ※ 프론트가 {ok, vehicles, search_rows} 를 직접 소비하므로 ApiResponse 로 감싸지 않고
+     *    Map 그대로 반환한다.
+     */
+    @PostMapping("/load-for-edit")
+    public ResponseEntity<java.util.Map<String, Object>> loadForEdit(
+            @RequestBody java.util.Map<String, Object> body) {
+
+        @SuppressWarnings("unchecked")
+        List<String> nos = body.get("dispatch_nos") instanceof List
+            ? (List<String>) body.get("dispatch_nos")
+            : java.util.Collections.emptyList();
+
+        return ResponseEntity.ok(psDispatchService.loadForEdit(nos));
     }
 }
