@@ -402,8 +402,10 @@ public class SapRfcService {
             }
 
             // ⑤ PS_DISPATCH_H.STATUS → 'CANCELLED' (PS_DISPATCH_H → tmsJdbc)
+            //  ※ 버그수정: PS_DISPATCH_H 에는 UPDDAT 컬럼이 없음(bad SQL grammar).
+            //    최종수정일 컬럼은 LMODAT (INSERT 시에도 DISPATCH_NO,…,CREDAT,CRETIM,LMODAT 사용).
             tmsJdbc.update(
-                "UPDATE KNRAWMS.PS_DISPATCH_H SET STATUS='CANCELLED', UPDDAT=? " +
+                "UPDATE KNRAWMS.PS_DISPATCH_H SET STATUS='CANCELLED', LMODAT=? " +
                 "WHERE DISPATCH_NO IN (" + inPh + ")",
                 concat(new Object[]{today}, args)
             );
