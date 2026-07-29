@@ -314,8 +314,8 @@ public class SapRfcService {
      * Flask api_ps_sap_delete 이식 (실운영 스키마 DISPATCH_NO / STKNUM 기준).
      *
      * body : { stknums: [STDLNR, ...] }
-     *   ① SHPDI.STDLNR = ' '  (가선적번호 초기화 — NOT NULL 제약이므로 공백)
-     *   ② SHPDH.VEHINO = NULL (배차 차량유형 초기화)
+     *   ① SHPDI.STDLNR = ' '            (가선적번호 초기화 — NOT NULL 제약이므로 공백)
+     *   ② SHPDH.VEHINO = ' ', CARTON=' ' (배차 차량유형 초기화 — NOT NULL 제약이므로 공백)
      *   ③ PS_DISPATCH_H.STATUS = 'CANCELLED'
      * 반환 : { ok, affected, stknums, restore_vehicles:[...] }  (배차탭 복원용)
      */
@@ -382,11 +382,14 @@ public class SapRfcService {
                 concat(new Object[]{today}, args)
             );
 
-            // ④ SHPDH.VEHINO → NULL
+            // ④ SHPDH.VEHINO / CARTON → ' ' (배차 차량유형 초기화)
+            // ※ SHPDH 의 VEHINO/CARTON/CARNO/DRIVER/DRIVERCEL 컬럼은 Oracle 에서 NOT NULL 제약이라
+            //   NULL 을 세팅하면 ORA-01407 이 발생한다. 배차저장(PsDispatchService) 과 동일하게
+            //   NULL 대신 공백 1칸(' ')으로 복원한다. (SHPDI.STDLNR=' ' 복원과 동일 패턴)
             if (!shpokyList.isEmpty()) {
                 String inPh2 = String.join(",", Collections.nCopies(shpokyList.size(), "?"));
                 wmsJdbc.update(
-                    "UPDATE KNRAWMS.SHPDH SET VEHINO=NULL, LMODAT=?, LMOUSR='WEB' " +
+                    "UPDATE KNRAWMS.SHPDH SET VEHINO=' ', CARTON=' ', LMODAT=?, LMOUSR='WEB' " +
                     "WHERE SHPOKY IN (" + inPh2 + ")",
                     concat(new Object[]{today}, shpokyList.toArray())
                 );
@@ -602,7 +605,9 @@ public class SapRfcService {
             String sql =
                 "SELECT " +
                 "  SI.STDLNR AS STDLNR, " +
-                "  NULLIF(TRIM(COALESCE(SI.STKNUM, '')), '') AS SAP_STKNUM, " +
+                // SAP 선적번호: RFC 선적생성 후 PS_DISPATCH_H.STKNUM 에 저장된 E_TKNUM.
+                // (PH 는 PH.DISPATCH_NO = SI.STDLNR 1:1 조인이므로 MAX 집계로 안전하게 추출)
+                "  NULLIF(TRIM(COALESCE(MAX(PH.STKNUM), '')), '') AS SAP_STKNUM, " +
                 "  COUNT(DISTINCT SI.SVBELN) AS SVBELN_CNT, " +
                 "  COUNT(DISTINCT SI.SHPOKY) AS SHPOKY_CNT, " +
                 "  COUNT(*) AS ITEM_CNT, " +
@@ -630,7 +635,7 @@ public class SapRfcService {
                 "LEFT JOIN KNRAWMS.BZPTN CT ON CT.PTNRKY = SH.DPTNKY AND CT.PTNRTY = 'CT' " +
                 "LEFT JOIN KNRAWMS.PS_DISPATCH_H PH ON PH.DISPATCH_NO = SI.STDLNR " +
                 "WHERE " + whereSql + " " +
-                "GROUP BY SI.STDLNR, NULLIF(TRIM(COALESCE(SI.STKNUM, '')), '') " +
+                "GROUP BY SI.STDLNR " +
                 "ORDER BY MIN(SH.RQSHPD) DESC, SI.STDLNR";
 
             List<Map<String, Object>> rows = wmsJdbc.queryForList(sql, args.toArray());
