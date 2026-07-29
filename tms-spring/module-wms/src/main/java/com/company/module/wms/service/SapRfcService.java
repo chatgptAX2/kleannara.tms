@@ -687,10 +687,49 @@ public class SapRfcService {
     }
 
     public Map<String, Object> sapItems(Map<String, Object> body) {
+        // ── 우선순위1: stknum(=SHPDI.STDLNR) 기반 적재뷰용 아이템 + 차량제원 ──
+        //   프론트 _sapShowLoadImage 계약: {stknum, cartype} → {ok, items[], veh}
+        //   (적재 시각화 2D/3D 렌더러가 대문자 SKU 아이템 스키마를 기대)
+        String stknum = str(body.get("stknum"));
+        if (!stknum.isEmpty()) {
+            try {
+                String sql =
+                    "SELECT SI.SHPOKY, SI.SHPOIT, SI.SKUKEY, SI.DESC01, " +
+                    "  SI.QTSHPO, SI.UOMKEY, " +
+                    "  ROUND(SI.QTSHPO * COALESCE(M.NETWGT,0), 1) AS KG_WEIGHT, " +
+                    "  COALESCE(M.NETWGT, 0) AS GRSWGT, " +
+                    "  SH.DPTNKY, COALESCE(CT.NAME01, SH.DPTNKY) AS DPTNM " +
+                    "FROM KNRAWMS.SHPDI SI " +
+                    "JOIN KNRAWMS.SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
+                    "LEFT JOIN KNRAWMS.SKUMA M  ON M.SKUKEY  = SI.SKUKEY " +
+                    "LEFT JOIN KNRAWMS.BZPTN CT ON CT.PTNRKY = SH.DPTNKY " +
+                    "WHERE SI.STATIT = 'NEW' AND SI.STDLNR = ? " +
+                    "ORDER BY SI.SVBELN, SI.SHPOKY, CAST(SI.SHPOIT AS INTEGER)";
+                List<Map<String, Object>> items = wmsJdbc.queryForList(sql, stknum);
+
+                // 차량 제원(veh): cartype 기준 DS_VEHICLE(MariaDB) 1건
+                Map<String, Object> veh = null;
+                String cartype = str(body.get("cartype"));
+                if (!cartype.isEmpty()) {
+                    try {
+                        List<Map<String, Object>> vs = tmsJdbc.queryForList(
+                            "SELECT CARTYPE, LENGTH_M, WIDTH_M, HEIGHT_M, LOAD_TON, PALLET_HEIGHT_M " +
+                            "FROM KNRAWMS.DS_VEHICLE WHERE CARTYPE=? FETCH FIRST 1 ROWS ONLY", cartype);
+                        if (!vs.isEmpty()) veh = vs.get(0);
+                    } catch (Exception ignore) { /* veh 없으면 프론트 기본치수 */ }
+                }
+                Map<String, Object> out = new LinkedHashMap<>();
+                out.put("ok", true);
+                out.put("items", items);
+                out.put("veh", veh);
+                return out;
+            } catch (Exception e) { return errMap(e); }
+        }
+
+        // ── 우선순위2(하위호환): disp_h_id 기반 PS_DISPATCH_D 원시행 ──
         Long dispHId = toLong(body.get("disp_h_id"));
-        if (dispHId == null) return err("disp_h_id 필수");
+        if (dispHId == null) return err("stknum 또는 disp_h_id 필수");
         try {
-            // PS_DISPATCH_D / PS_DISPATCH_H → MariaDB tmsJdbc
             List<Map<String, Object>> rows = tmsJdbc.queryForList(
                 "SELECT d.*, h.CARTYPE, h.DISP_DATE FROM KNRAWMS.PS_DISPATCH_D d " +
                 "JOIN KNRAWMS.PS_DISPATCH_H h ON h.DISP_H_ID=d.DISP_H_ID " +

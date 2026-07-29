@@ -11930,22 +11930,65 @@ async function _sapShowLoadImage(stknum, cartype, carclassCd) {
 
   // 캐시 없으면 API 호출
   if (!_sapLoadItemsCache[stknum]) {
+    /* 차량 제원(veh)은 항상 DS_VEHICLE 캐시에서 확보 (응답 veh 유무와 무관) */
+    let vehObj = null;
+    try {
+      const vi = await _psdGetVehInfo();
+      if (vi && cartype) vehObj = vi[cartype] || null;
+    } catch(e) { /* veh 없으면 기본치수로 렌더 */ }
+
+    let items = null, lastErr = '';
+
+    /* 1차: /api/ps-sap/items — {stknum,cartype} → {ok, items[]} */
     try {
       const res  = await fetch('/api/ps-sap/items', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ stknum, cartype })
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || '조회 실패');
-      _sapLoadItemsCache[stknum] = { items: data.items || [], veh: data.veh, cartype };
-    } catch(e) {
+      if (data && data.ok) {
+        const raw = data.items || data.rows || [];
+        if (raw.length) { items = raw; if (data.veh) vehObj = vehObj || data.veh; }
+      } else { lastErr = (data && data.error) || 'items 조회 실패'; }
+    } catch(e) { lastErr = e.message; }
+
+    /* 2차 폴백: /api/ps-sap/docs — {stknum} → {ok, rows[]} (SKU 상세 행)
+       배포 서버의 items 엔드포인트 계약 불일치(disp_v_id 필수 등) 대비.
+       docs 행을 렌더러가 기대하는 대문자 아이템 스키마로 매핑. */
+    if (!items || !items.length) {
+      try {
+        const res2 = await fetch('/api/ps-sap/docs', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ stknum })
+        });
+        const d2 = await res2.json();
+        if (d2 && d2.ok && (d2.rows || d2.items)) {
+          const rows = d2.rows || d2.items;
+          items = rows.map(r => ({
+            SHPOKY:  r.SHPOKY || r.SVBELN || '',
+            SHPOIT:  r.SHPOIT || '',
+            SKUKEY:  r.SKUKEY || '',
+            DESC01:  r.DESC01 || r.SKUKEY || '',
+            QTSHPO:  r.QTSHPO ?? r.QTSHPD ?? 0,
+            UOMKEY:  r.UOMKEY || '',
+            KG_WEIGHT: r.LINE_KG ?? r.KG_WEIGHT ?? 0,
+            GRSWGT:  r.GRSWGT ?? r.NETWGT ?? 0,
+            DPTNKY:  r.DPTNKY || '',
+            DPTNM:   r.DPTNKYNM || r.DPTNKY || '',
+          }));
+        } else if (d2 && d2.error) { lastErr = d2.error; }
+      } catch(e) { lastErr = e.message; }
+    }
+
+    if (!items || !items.length) {
       spinner.style.display = 'none';
       content.style.display = 'flex';
       document.getElementById('sap-load-legend').innerHTML =
-        `<span style="color:#f87171">⚠ 품목 데이터 로딩 실패: ${e.message}</span>`;
+        `<span style="color:#f87171">⚠ 품목 데이터 로딩 실패: ${lastErr || '품목 없음'}</span>`;
       document.getElementById('sap-load-summary').innerHTML = '';
       return;
     }
+    _sapLoadItemsCache[stknum] = { items, veh: vehObj, cartype };
   }
 
   spinner.style.display = 'none';
