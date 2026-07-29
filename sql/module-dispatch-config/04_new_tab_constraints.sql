@@ -36,6 +36,7 @@ VALUES
   (1, 'ROLL_STACK', 'ROLL_PALLET_DEDUCT_M',  '0.15', '=', '', '', 'Y', '파레트 높이 차감값 (m) — 0.15m 기본',                  1110, DATE_FORMAT(NOW(),'%Y%m%d'), DATE_FORMAT(NOW(),'%Y%m%d')),
   (1, 'ROLL_STACK', 'ROLL_PALLET_APPLY_YN',  'Y',    '=', '', '', 'Y', '파레트 차감 적용 여부 (납품처 FORKLIFT_YN=N 시 적용)', 1120, DATE_FORMAT(NOW(),'%Y%m%d'), DATE_FORMAT(NOW(),'%Y%m%d')),
   (1, 'ROLL_STACK', 'ROLL_HEIGHT_MARGIN_M',  '0',    '=', '', '', 'Y', '적재 높이 안전 여유 마진 (m)',                          1130, DATE_FORMAT(NOW(),'%Y%m%d'), DATE_FORMAT(NOW(),'%Y%m%d')),
+  (1, 'ROLL_STACK', 'ROLL_MAX_HEIGHT_M',     '0',    '<=','', '', 'Y', '원지 다단 적재높이 상한(m) — 0=차량 톤수별 높이 연동',   1140, DATE_FORMAT(NOW(),'%Y%m%d'), DATE_FORMAT(NOW(),'%Y%m%d')),
 
   -- ── 원지③ 인치·평량 혼합 (ROLL_INCH_MIX) ── 엑셀§2-3
   (1, 'ROLL_INCH_MIX', 'ROLL_INCH_MIX_ALLOW',   'Y',               '=', '', '', 'Y', '인치/평량 혼합 오더 허용 (엑셀§2-3)',               1200, DATE_FORMAT(NOW(),'%Y%m%d'), DATE_FORMAT(NOW(),'%Y%m%d')),

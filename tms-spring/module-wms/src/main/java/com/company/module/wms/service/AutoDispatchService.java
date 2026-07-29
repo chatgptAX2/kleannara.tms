@@ -325,7 +325,9 @@ public class AutoDispatchService {
         appliedConstraints.put("MIN_FILL_RATIO",        round2(cp.minFill * 100));
         appliedConstraints.put("MAX_FILL_RATIO",        round2(cp.maxFill * 100));
         appliedConstraints.put("MAX_ROLL_STACK_TIER",   cp.maxStack);
+        appliedConstraints.put("ROLL_MAX_HEIGHT_M",     cp.rollMaxHeightM);
         appliedConstraints.put("MAX_BOARD_HEIGHT_M",    cp.maxBoardHeightM);
+        appliedConstraints.put("BOARD_HEIGHT_VEH_LINK_YN", cp.boardHeightVehLink);
         appliedConstraints.put("ROLL_3D_CHECK_YN",      cp.roll3dCheck);
         appliedConstraints.put("BOARD_3D_CHECK_YN",     cp.board3dCheck);
         appliedConstraints.put("BOARD_CBM_CHECK_YN",    cp.boardCbmCheck);
@@ -494,6 +496,9 @@ public class AutoDispatchService {
                 // 높이 안전 여유 마진(ROLL_HEIGHT_MARGIN_M) 반영: 적재 높이에 마진 가산
                 double stackH      = dmm / 1000.0 * actualStack + cp.rollHeightMarginM;
                 double effH        = rollEffH(vehCar, pi.forkliftYn, vehInfo, cp);
+                // ── 원지 다단 적재높이 상한(ROLL_MAX_HEIGHT_M) 차량높이 연동 ──
+                //  설정값이 있으면 차량 가용높이와 min() 하여 실제 적용 상한으로 사용.
+                if (cp.rollMaxHeightM > 0) effH = Math.min(effH, cp.rollMaxHeightM);
 
                 if (stackH > effH) {
                     boolean upgraded = false;
@@ -1530,6 +1535,12 @@ public class AutoDispatchService {
         cp.rollPalletApply   = cbool(C, "ROLL_PALLET_APPLY_YN",    true);
         cp.rollPalletDeductM = cfloat(C, "ROLL_PALLET_DEDUCT_M",   0.15);
 
+        // ── 원지 다단 적재높이 상한(m) (ROLL §2-2) — 신규 ──
+        //  0 = 미설정(차량 가용높이만 사용). 자동배차 시 차량 톤수별 높이와 min() 연동.
+        cp.rollMaxHeightM    = cfloatMulti(C, 0.0, "ROLL_MAX_HEIGHT_M", "MAX_ROLL_HEIGHT_M");
+        // ── 판지 최대높이 차량연동 여부 (기본 Y) ──
+        cp.boardHeightVehLink = cbool(C, "BOARD_HEIGHT_VEH_LINK_YN", true);
+
         return cp;
     }
 
@@ -1650,6 +1661,13 @@ public class AutoDispatchService {
         double  rollHeightMarginM = 0.0;   // 원지 높이 안전 여유 마진(m)
         boolean rollPalletApply   = true;  // 파레트 차감 적용 여부
         double  rollPalletDeductM = 0.15;  // 파레트 차감값(m)
+        // ── 원지 다단 적재높이 상한(m) (ROLL §2-2) ──
+        //  0 = 미설정(차량 가용높이만 사용). >0 = 차량 가용높이와 min() 적용.
+        //  실제 적용 시 차량유형관리(DS_VEHICLE) 톤수별 높이값과 연동(min)됨.
+        double  rollMaxHeightM   = 0.0;    // 원지 다단 적재 최대높이(m), 0=차량높이만
+        // ── 판지 최대높이 차량연동 여부 ──
+        //  Y = MAX_BOARD_HEIGHT_M/BOARD_HEIGHT_MAX_M 을 차량 톤수별 가용높이와 min() 연동
+        boolean boardHeightVehLink = true; // 판지 최대높이 차량연동(기본 Y)
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -1717,9 +1735,16 @@ public class AutoDispatchService {
                                          VehInfo vi, ConstraintParams cp) {
         double carWmm = vi.widthM  * 1000.0;   // 차량 너비 (mm)
         double carLmm = vi.lengthM * 1000.0;   // 차량 길이 (mm)
+        // ── 원지 다단 적재 최고높이 = 차량 톤수별 가용높이(effectiveHeightM) ──
+        //  ROLL_MAX_HEIGHT_M(원지 다단 적재높이)이 설정되어 있으면 차량 가용높이와
+        //  min() 연동 → 실제 자동배차 단수(tier) 계산 시 이 상한 내로 제한.
         double carHmm = vi.effectiveHeightM * 1000.0; // 차량 가용 높이 (mm)
+        double heightCapMm = carHmm;
+        if (cp.rollMaxHeightM > 0) {
+            heightCapMm = Math.min(carHmm, cp.rollMaxHeightM * 1000.0);
+        }
 
-        if (carWmm <= 0 || carLmm <= 0 || carHmm <= 0)
+        if (carWmm <= 0 || carLmm <= 0 || heightCapMm <= 0)
             return RollPhysics3D.fail("차량 치수 정보 없음 — 3D검증 스킵");
 
         // ── 1. 아이템별 원통 블록 파라미터 추출 ──────────────────────
@@ -1782,7 +1807,7 @@ public class AutoDispatchService {
             double widthMm = layer.repWidthMm;
 
             int cols     = Math.max(1, (int)(carWmm / diamMm));
-            int maxTiers = Math.max(1, Math.min(cp.maxStack, (int)(carHmm / diamMm)));
+            int maxTiers = Math.max(1, Math.min(cp.maxStack, (int)(heightCapMm / diamMm)));
             int perRow   = cols; // 한 행(X×Z 단면)에 세울 수 있는 개수 = cols × 1tier에서 추가로 높이 방향 = cols × maxTiers
             int perSlice = cols * maxTiers; // 너비 1 widthMm 깊이 점유 슬라이스당 수용 롤 수
 
@@ -1799,9 +1824,10 @@ public class AutoDispatchService {
                 (int)diamMm, layer.totalRolls, cols, maxTiers, rows, layerLengthMm));
         }
 
+        final double heightCapFinal = heightCapMm; // 람다 캡처용
         result.maxCapacity  = totalCap;
         result.stackHeightM = layerMap.values().stream()
-            .mapToDouble(l -> l.repDiamMm * Math.min(cp.maxStack, (int)(carHmm / l.repDiamMm)))
+            .mapToDouble(l -> l.repDiamMm * Math.max(1, Math.min(cp.maxStack, (int)(heightCapFinal / l.repDiamMm))))
             .max().orElse(0) / 1000.0;
         result.usedFloorRatio = carLmm > 0 ? Math.min(100.0, usedLengthMm / carLmm * 100.0) : 0.0;
         // Dead Space 허용 비율(ROLL_3D_DEAD_SPACE_PCT) 반영: 기본 2% + 설정 비율만큼 여유 허용
@@ -1809,10 +1835,10 @@ public class AutoDispatchService {
         result.fits = (usedLengthMm <= carLmm * rollMargin);
 
         result.summary = String.format(
-            "[3D-원지검증] %s / 총%d롤 / Y축점유%.0fmm/%.0fmm(%.0f%%) / 최고단높이%.2fm / %s",
+            "[3D-원지검증] %s / 총%d롤 / Y축점유%.0fmm/%.0fmm(%.0f%%) / 최고단높이%.2fm(상한%.2fm) / %s",
             result.fits ? "적재가능" : "적재불가(차량업그레이드필요)",
             totalRolls, usedLengthMm, carLmm, result.usedFloorRatio,
-            result.stackHeightM, result.fits ? "OK" : "OVERFLOW");
+            result.stackHeightM, heightCapMm / 1000.0, result.fits ? "OK" : "OVERFLOW");
         return result;
     }
 
@@ -1856,9 +1882,19 @@ public class AutoDispatchService {
                                            VehInfo vi, ConstraintParams cp) {
         double carWmm = vi.widthM  * 1000.0;
         double carLmm = vi.lengthM * 1000.0;
+        // ── 적재 가능 최고높이 = 차량 톤수별 가용높이(effectiveHeightM) ──
+        //  PS제약조건관리 판지 3D 물리검증 최대높이(MAX_BOARD_HEIGHT_M/BOARD_HEIGHT_MAX_M)가
+        //  설정되어 있고 차량연동(boardHeightVehLink)이 켜져 있으면 차량높이와 min() 연동.
         double carHmm = vi.effectiveHeightM * 1000.0;
+        double heightCapMm = carHmm;
+        if (cp.maxBoardHeightM > 0) {
+            double cfgMm = cp.maxBoardHeightM * 1000.0;
+            // 차량연동 ON: 차량 가용높이와 설정 최대높이 중 작은 값(둘 다 만족해야 함)
+            // 차량연동 OFF: 설정 최대높이만 상한으로 사용
+            heightCapMm = cp.boardHeightVehLink ? Math.min(carHmm, cfgMm) : cfgMm;
+        }
 
-        if (carWmm <= 0 || carLmm <= 0 || carHmm <= 0)
+        if (carWmm <= 0 || carLmm <= 0 || heightCapMm <= 0)
             return BoardPhysics3D.fail("차량 치수 정보 없음 — 3D검증 스킵");
 
         // ── 1. 아이템별 번들 블록 추출 ────────────────────────────────
@@ -1911,22 +1947,31 @@ public class AutoDispatchService {
         result.totalBundles = totalBundles;
         result.usedVolM3    = totalVolMm3 / 1e9;
 
-        // Shelf 상태: 현재 Y 위치, 현재 X 사용량, 현재 Shelf 최대 높이
-        double curY       = 0.0;  // 현재 Shelf Y 시작 위치
+        // ── Shelf(선반) + Z축 다단 적층 배치 시뮬레이션 ──────────────────
+        //  * X축(차량 너비): 번들 폭(bw)만큼 열(col) 채움
+        //  * Y축(차량 길이): X가 다 차면 다음 Shelf 행으로 전진(curY += bl)
+        //  * Z축(차량 높이): ★신규★ 각 (X열 × Shelf행) 바닥 셀마다 tiers 단 적층
+        //                    tiers = floor(heightCapMm / blk.hMm) (최소 1)
+        //  기존 버그: Z축 적층이 전혀 없어 얇고 넓은 판지 번들을 전부 1단으로만
+        //  깔아 Y축(바닥)이 항상 초과 → 불필요한 차량 업그레이드 발생.
+        double curY       = 0.0;  // 현재 Shelf Y 시작 위치(누적 바닥 점유 길이)
         double curX       = 0.0;  // 현재 Shelf X 사용량
         double curShelfL  = 0.0;  // 현재 Shelf 길이(L 방향)
-        double curShelfH  = 0.0;  // 현재 Shelf 최대 높이
-        double maxZ       = 0.0;  // 전체 최고 높이
+        double maxZ       = 0.0;  // 전체 실제 최고 적층 높이
         boolean overflow  = false;
 
         for (BoardBlock blk : blocks) {
             int remaining = blk.count;
+
+            // ★ Z축 적층 단수: 차량 가용높이/설정최대높이 상한 내에서 stack
+            int tiers = Math.max(1, (int)(heightCapMm / Math.max(1.0, blk.hMm)));
+            double stackHmm = blk.hMm * tiers;                 // 실제 적층 높이
+            maxZ = Math.max(maxZ, stackHmm);
+
             while (remaining > 0) {
-                // 블록 방향 선택: w를 X방향, l을 Y방향 / 또는 l을 X방향, w를 Y방향
-                // → 차량 너비(X)에 더 잘 맞는 방향 선택
+                // 블록 방향 선택: 차량 너비(X)에 더 잘 맞는 방향
                 double bw, bl;
                 if (blk.wMm <= carWmm && blk.lMm <= carWmm) {
-                    // 둘 다 가능: 너비 낭비가 적은 방향
                     double rem1 = carWmm - (Math.floor(carWmm / blk.wMm) * blk.wMm);
                     double rem2 = carWmm - (Math.floor(carWmm / blk.lMm) * blk.lMm);
                     bw = rem1 <= rem2 ? blk.wMm : blk.lMm;
@@ -1936,7 +1981,6 @@ public class AutoDispatchService {
                 } else if (blk.lMm <= carWmm) {
                     bw = blk.lMm; bl = blk.wMm;
                 } else {
-                    // 블록 단면이 차량 너비보다 큼 → 배치 불가
                     result.shelfNotes.add(String.format(
                         "[3D-판지] %s 번들크기(%.0f×%.0fmm)가 차량너비(%.0fmm) 초과 → 수동검토", blk.skukey, blk.wMm, blk.lMm, carWmm));
                     overflow = true;
@@ -1944,20 +1988,18 @@ public class AutoDispatchService {
                     continue;
                 }
 
-                // 현재 Shelf에 X방향으로 몇 개 들어가는지
+                // 현재 Shelf에 X방향으로 몇 개 열(col)이 들어가는지
                 int colsInShelf = (int)(carWmm / bw);
                 if (colsInShelf <= 0) { overflow = true; remaining = 0; continue; }
 
-                // 새 Shelf가 필요한가? (X 다 찼거나, 첫 배치)
+                // 새 Shelf 행이 필요한가? (X 다 찼거나, 첫 배치)
                 if (curX + bw > carWmm + 0.5) {
-                    // 다음 Shelf 행으로
                     curY += curShelfL;
-                    maxZ = Math.max(maxZ, curShelfH);
-                    curX = 0; curShelfL = bl; curShelfH = blk.hMm;
+                    curX = 0; curShelfL = bl;
                 }
                 if (curShelfL <= 0) curShelfL = bl;
 
-                // Y축 범위 초과 검사
+                // Y축 범위 초과 검사 (바닥 길이)
                 if (curY + bl > carLmm + 0.5) {
                     overflow = true;
                     result.shelfNotes.add(String.format(
@@ -1966,36 +2008,37 @@ public class AutoDispatchService {
                     continue;
                 }
 
-                // 이 Shelf에 배치 가능한 수량
-                int canPlace = colsInShelf;
-                int place    = Math.min(canPlace, remaining);
-                curX += bw * place;
-                curShelfH = Math.max(curShelfH, blk.hMm);
+                // ★ 이 Shelf 행 배치 가능 수량 = 남은 X열 수 × Z축 단수(tiers)
+                int colsAvail = (int)((carWmm - curX) / bw);
+                if (colsAvail <= 0) colsAvail = colsInShelf;
+                int cellCap  = colsAvail * tiers;
+                int place    = Math.min(cellCap, remaining);
+                int colsUsed = (int) Math.ceil((double) place / tiers); // 소비한 X열 수(올림)
+                curX += bw * colsUsed;
                 remaining -= place;
 
-                // X 가득 찬 경우 다음 Shelf 준비
+                // X 가득 찬 경우 다음 Shelf 행 준비
                 if (curX + bw > carWmm + 0.5 && remaining > 0) {
                     curY += curShelfL;
-                    maxZ = Math.max(maxZ, curShelfH);
-                    curX = 0; curShelfL = bl; curShelfH = blk.hMm;
+                    curX = 0; curShelfL = bl;
                 }
             }
         }
-        maxZ = Math.max(maxZ, curShelfH);
 
         result.maxHeightM = maxZ / 1000.0;
         result.usedFloorRatio = carLmm > 0 ? Math.min(100.0, (curY + curShelfL) / carLmm * 100.0) : 0.0;
 
         // 높이 초과 여부 — Dead Space 허용 비율(BOARD_3D_DEAD_SPACE_PCT) 반영
+        //  적층 높이(maxZ)는 heightCapMm 상한 내에서 산출되므로 통상 초과 없음.
         double boardMargin = 1.02 + (cp.boardDeadSpacePct / 100.0);
-        if (maxZ > carHmm * boardMargin) overflow = true;
+        if (maxZ > heightCapMm * boardMargin) overflow = true;
 
         result.fits = !overflow;
         result.summary = String.format(
-            "[3D-판지검증] %s / 총%d번들 / Y축점유%.0fmm/%.0fmm / 최고높이%.2fm/%.2fm / 바닥점유%.0f%% / %s",
+            "[3D-판지검증] %s / 총%d번들 / Y축점유%.0fmm/%.0fmm / 최고높이%.2fm/%.2fm(상한%.2fm) / 바닥점유%.0f%% / %s",
             result.fits ? "적재가능" : "적재불가(차량업그레이드필요)",
             totalBundles, curY + curShelfL, carLmm,
-            result.maxHeightM, vi.effectiveHeightM,
+            result.maxHeightM, vi.effectiveHeightM, heightCapMm / 1000.0,
             result.usedFloorRatio, result.fits ? "OK" : "OVERFLOW");
         return result;
     }
