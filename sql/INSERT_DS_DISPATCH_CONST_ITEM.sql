@@ -40,6 +40,8 @@ VALUES
      160, '혼합 규격 시 2D 바닥 패킹 연산 적용', '§2-3', 'Y', NULL, CURDATE(), CURDATE()),
     ('ROLL_HEIGHT_MARGIN_M', '적재 높이 안전 여유 마진 (m)', 'ROLL', 'NUM', '0', 'm', '=',
      160, '적재 높이 안전 여유 마진 (m)', '§2-2', 'Y', NULL, CURDATE(), CURDATE()),
+    ('ROLL_MAX_HEIGHT_M', '원지 다단 적재높이 (m) — 0=차량 톤수별 높이 연동', 'ROLL', 'NUM', '0', 'm', '<=',
+     165, '원지 다단 적재 최대높이(m). 0=차량유형관리 톤수별 높이 자동연동, >0=설정값과 차량높이 중 작은값 적용', '§2-2', 'Y', NULL, CURDATE(), CURDATE()),
     ('ROLL_3D_CHECK_YN', '원지 3D 블록 검증 활성 (Dead Space 포함)', 'ROLL', 'YN', 'Y', '', '=',
      170, '원지 3D 블록 검증 활성 (Dead Space 포함)', '§2-4', 'Y', NULL, CURDATE(), CURDATE()),
     ('ROLL_SAME_INCH_FORCE', '동일 인치 강제 여부 (N=혼재허용)', 'ROLL', 'YN', 'N', '', '=',
