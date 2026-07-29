@@ -169,21 +169,24 @@ public class SapRfcService {
                 row.put("mock", isMock);
                 row.put("svbeln_cnt", vbelnList.size());
 
-                // 3) RFC 성공 시 WMS_IFC301 호출 + STKNUM 기록
+                // 3) RFC 성공 시 WMS_IFC301 호출 + SAP 선적번호(SHPDI.STKNUM) 기록
+                // ※ SAP 선적번호는 SHPDI.STKNUM 에 저장한다. (운영 PS_DISPATCH_H 에는
+                //   STKNUM 컬럼이 없어 조회/저장 모두 SHPDI.STKNUM 을 사용)
                 if (rfcOk) {
                     if (!tknum.isEmpty()) {
                         Map<String, Object> wms = callWmsIfc301(stdlnr, tknum, "C", env);
                         row.put("wms_result", wms);
                         try {
-                            tmsJdbc.update(
-                                "UPDATE KNRAWMS.PS_DISPATCH_H SET STKNUM=?, UPDDAT=? WHERE DISPATCH_NO=?",
+                            wmsJdbc.update(
+                                "UPDATE KNRAWMS.SHPDI SET STKNUM=?, LMODAT=?, LMOUSR='WEB' " +
+                                "WHERE STATIT='NEW' AND STDLNR=?",
                                 tknum, today, stdlnr
                             );
                         } catch (Exception dbEx) {
                             row.put("db_update_err", dbEx.getMessage());
                             stdoutLog("[shipment-create][DB-ERR] stdlnr=" + stdlnr
                                     + " tknum=" + tknum + " error=" + dbEx.getMessage());
-                            log.error("[shipment-create] DB STKNUM 업데이트 실패: {} / stdlnr={} tknum={}",
+                            log.error("[shipment-create] SHPDI STKNUM 업데이트 실패: {} / stdlnr={} tknum={}",
                                 dbEx.getMessage(), stdlnr, tknum);
                         }
                     } else {
@@ -262,20 +265,23 @@ public class SapRfcService {
                 row.put("mock", isMock);
                 row.put("message", msg);
 
-                // 2) RFC 성공 시 WMS_IFC301 호출 + STKNUM 초기화
+                // 2) RFC 성공 시 WMS_IFC301 호출 + SAP 선적번호(SHPDI.STKNUM) 초기화
+                // ※ SAP 선적번호는 SHPDI.STKNUM 에 저장/초기화한다. (운영 PS_DISPATCH_H 에
+                //   STKNUM 컬럼이 없어 조회/저장 모두 SHPDI.STKNUM 을 사용)
                 if (rfcOk) {
                     Map<String, Object> wms = callWmsIfc301(stdlnr, tknum, "D", env);
                     row.put("wms_result", wms);
                     try {
-                        tmsJdbc.update(
-                            "UPDATE KNRAWMS.PS_DISPATCH_H SET STKNUM=NULL, UPDDAT=? WHERE DISPATCH_NO=?",
+                        wmsJdbc.update(
+                            "UPDATE KNRAWMS.SHPDI SET STKNUM=' ', LMODAT=?, LMOUSR='WEB' " +
+                            "WHERE STATIT='NEW' AND STDLNR=?",
                             today, stdlnr
                         );
                     } catch (Exception dbEx) {
                         row.put("db_update_err", dbEx.getMessage());
                         stdoutLog("[shipment-delete][DB-ERR] stdlnr=" + stdlnr
                                 + " tknum=" + tknum + " error=" + dbEx.getMessage());
-                        log.error("[shipment-delete] DB STKNUM 초기화 실패: {} / stdlnr={} tknum={}",
+                        log.error("[shipment-delete] SHPDI STKNUM 초기화 실패: {} / stdlnr={} tknum={}",
                             dbEx.getMessage(), stdlnr, tknum);
                     }
                 }
@@ -605,9 +611,12 @@ public class SapRfcService {
             String sql =
                 "SELECT " +
                 "  SI.STDLNR AS STDLNR, " +
-                // SAP 선적번호: RFC 선적생성 후 PS_DISPATCH_H.STKNUM 에 저장된 E_TKNUM.
-                // (PH 는 PH.DISPATCH_NO = SI.STDLNR 1:1 조인이므로 MAX 집계로 안전하게 추출)
-                "  NULLIF(TRIM(COALESCE(MAX(PH.STKNUM), '')), '') AS SAP_STKNUM, " +
+                // SAP 선적번호: RFC 선적생성 후 SHPDI.STKNUM 에 저장된 E_TKNUM.
+                // ※ 운영 DB 의 PS_DISPATCH_H 에는 STKNUM 컬럼이 없어 PH.STKNUM 참조 시
+                //   ORA-00904(bad SQL grammar) 가 발생한다. 확실히 존재하는 SHPDI.STKNUM 을
+                //   SAP 선적번호 저장소로 사용한다. (선적생성/삭제도 동일하게 SHPDI.STKNUM 갱신)
+                //   SHPDI 는 STDLNR 당 여러 행 → MAX 집계 (GROUP BY SI.STDLNR 유지)
+                "  NULLIF(TRIM(COALESCE(MAX(SI.STKNUM), '')), '') AS SAP_STKNUM, " +
                 "  COUNT(DISTINCT SI.SVBELN) AS SVBELN_CNT, " +
                 "  COUNT(DISTINCT SI.SHPOKY) AS SHPOKY_CNT, " +
                 "  COUNT(*) AS ITEM_CNT, " +
