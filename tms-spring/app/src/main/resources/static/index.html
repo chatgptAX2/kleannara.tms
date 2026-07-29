@@ -2131,7 +2131,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psd-load-canvas-wrap canvas{display:block;max-width:100%;height:auto}
 /* 3D 시뮬레이션 */
 .psd-load-3d-wrap{width:100%}
-.psd-load-3d-wrap #psd-load-3d,.psd-load-3d-wrap>div[id$="-load-3d"]{width:100%;height:460px;border-radius:8px;overflow:hidden;background:#0f172a}
+.psd-load-3d-wrap #psd-load-3d,.psd-load-3d-wrap>div[id$="-load-3d"]{width:100%;height:min(72vh,680px);min-height:520px;border-radius:8px;overflow:hidden;background:#0f172a}
 .lv-3d-hint{margin-top:6px;font-size:11px;color:#94a3b8;text-align:center}
 /* 범례 */
 .psd-load-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:10px}
@@ -3088,7 +3088,7 @@ thead th:hover .th-drag-handle{opacity:.8}
       </div>
       <!-- ★ 3D 시뮬레이션 컨테이너 (기본 숨김) -->
       <div class="psd-load-3d-wrap" id="psd-load-3d-wrap" style="display:none">
-        <div id="psd-load-3d" style="width:100%;height:460px;border-radius:8px;overflow:hidden;background:#0f172a"></div>
+        <div id="psd-load-3d" style="width:100%;height:min(72vh,680px);min-height:520px;border-radius:8px;overflow:hidden;background:#0f172a"></div>
         <div class="lv-3d-hint">🖱 드래그: 회전 · 휠: 확대/축소 · 우클릭 드래그: 이동 &nbsp;|&nbsp; 실제 3D 검증 배치 좌표 기준</div>
       </div>
       <div class="psd-load-legend" id="psd-load-legend"></div>
@@ -3117,7 +3117,7 @@ thead th:hover .th-drag-handle{opacity:.8}
         </div>
         <!-- ★ 3D 시뮬레이션 컨테이너 (기본 숨김) -->
         <div class="psd-load-3d-wrap" id="sap-load-3d-wrap" style="display:none">
-          <div id="sap-load-3d" style="width:100%;height:460px;border-radius:8px;overflow:hidden;background:#0f172a"></div>
+          <div id="sap-load-3d" style="width:100%;height:min(72vh,680px);min-height:520px;border-radius:8px;overflow:hidden;background:#0f172a"></div>
           <div class="lv-3d-hint">🖱 드래그: 회전 · 휠: 확대/축소 · 우클릭 드래그: 이동 &nbsp;|&nbsp; 실제 3D 검증 배치 좌표 기준</div>
         </div>
         <div class="psd-load-legend" id="sap-load-legend"></div>
@@ -9773,9 +9773,32 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
     }
   });
 
+  /* ── 파렛트 footprint 산출 (요청1: 파렛트 너비 = 화물 너비) ──
+     화물이 실제 점유한 X(너비)/Y(길이) 범위를 구해 그 위에만 파렛트를 깔고,
+     화물은 파렛트 높이(palHgt)만큼 위로 들어올린다(파렛트 위에 적재). */
+  const palHgtMm = (dims.palHgt || 0) * 1000.0;
+  let pallet = null;
+  if (blocks.length > 0) {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    blocks.forEach(b => {
+      minX = Math.min(minX, b.x);           maxX = Math.max(maxX, b.x + b.w);
+      minY = Math.min(minY, b.y);           maxY = Math.max(maxY, b.y + b.l);
+    });
+    pallet = {
+      x: Math.max(0, minX),
+      y: Math.max(0, minY),
+      w: Math.min(carWmm, maxX) - Math.max(0, minX),   // 화물 너비와 동일
+      l: Math.min(carLmm, maxY) - Math.max(0, minY),   // 화물 길이와 동일
+      h: palHgtMm
+    };
+    // 화물을 파렛트 위로 올림 (Z += palHgt)
+    if (palHgtMm > 0) blocks.forEach(b => { b.z = (b.z || 0) + palHgtMm; });
+  }
+
   return {
     blocks,
-    car: { L: carLmm, W: carWmm, H: carHmm },
+    pallet,
+    car: { L: carLmm, W: carWmm, H: carHmm, palHgt: palHgtMm, fullH: (dims.hgt||0)*1000.0 },
     meta: { rollMaxHeightM: rollCapMm/1000, boardMaxHeightM: boardCapMm/1000 }
   };
 }
@@ -9830,7 +9853,8 @@ function _lvRender3D(containerId, placement, opts) {
   const S = 0.001;
   const carL = placement.car.L * S;  // 길이(Y)
   const carW = placement.car.W * S;  // 너비(X)
-  const carH = placement.car.H * S;  // 높이(Z)
+  const palH = (placement.car.palHgt || 0) * S;                 // 파렛트 높이(m)
+  const carH = placement.car.H * S + palH;                      // 유효높이 + 파렛트 = 전체 프레임 높이
 
   // ── Scene ──
   const scene = new THREE.Scene();
@@ -9839,7 +9863,8 @@ function _lvRender3D(containerId, placement, opts) {
   // ── Camera (원근/아이소메트릭 느낌) ──
   const camera = new THREE.PerspectiveCamera(45, W/H, 0.05, 200);
   const diag = Math.max(carL, carW, carH);
-  camera.position.set(carW*0.9 + diag*0.9, carH + diag*1.1, carL*0.9 + diag*0.9);
+  /* 요청2: 시뮬레이션 결과를 화면에 맞춰 크게 — 카메라를 적재함에 더 가깝게 배치 */
+  camera.position.set(carW*0.55 + diag*0.62, carH*0.9 + diag*0.72, carL*0.55 + diag*0.62);
 
   // ── Renderer ──
   const renderer = new THREE.WebGLRenderer({ antialias:true });
@@ -9874,6 +9899,25 @@ function _lvRender3D(containerId, placement, opts) {
   const frame  = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color:'#64748b' }));
   frame.position.set(carW/2, carH/2, carL/2);
   grp.add(frame);
+
+  // ── 파렛트 (요청1: 화물 footprint 너비/길이와 동일, 화물은 그 위에 적재) ──
+  if (placement.pallet && palH > 0 && placement.pallet.w > 0 && placement.pallet.l > 0) {
+    const pw = placement.pallet.w * S;
+    const pl = placement.pallet.l * S;
+    const px = placement.pallet.x * S;
+    const py = placement.pallet.y * S;
+    const palGeo = new THREE.BoxGeometry(pw, palH, pl);
+    const palMat = new THREE.MeshLambertMaterial({ color:'#8a5a2b' });   // 목재 파렛트 톤
+    const palMesh = new THREE.Mesh(palGeo, palMat);
+    palMesh.position.set(px + pw/2, palH/2, py + pl/2);
+    grp.add(palMesh);
+    const palEg = new THREE.LineSegments(
+      new THREE.EdgesGeometry(palGeo),
+      new THREE.LineBasicMaterial({ color:'#5c3a17' })
+    );
+    palEg.position.copy(palMesh.position);
+    grp.add(palEg);
+  }
 
   // ── 블록 배치 ──
   (placement.blocks || []).forEach(b => {
@@ -9930,11 +9974,11 @@ function _lvRender3D(containerId, placement, opts) {
   let controls = null;
   if (THREE.OrbitControls) {
     controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, carH*0.4, 0);
+    controls.target.set(0, carH*0.3, 0);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.maxDistance = diag*6;
-    controls.minDistance = diag*0.4;
+    controls.minDistance = diag*0.25;
     controls.update();
   } else {
     camera.lookAt(0, carH*0.4, 0);
@@ -9960,6 +10004,32 @@ function _lvRender3D(containerId, placement, opts) {
     renderer.render(scene, camera);
   }
   tick();
+}
+
+/* 2D 바닥층(1층) 화물 점유 폭(px) 산출 — 파렛트 너비 = 화물 너비 반영용.
+   렌더 루프와 동일한 좌→우 채움/래핑 규칙을 모사하여 바닥층에 실제로
+   놓이는 화물들의 폭 합을 구한다. (rolls: 개당 폭, boards: 1블록 폭, other: 막대폭) */
+function _psdBottomFootprintPx(vizItems, isFront, SCALE, boxW) {
+  let x = 0, botW = 0, wrapped = false;
+  const add = (wpx) => {
+    if (wrapped) return;
+    if (x + wpx > boxW + 0.5 && x > 0) { wrapped = true; return; }
+    x += wpx; botW = Math.max(botW, x);
+  };
+  (vizItems || []).forEach(it => {
+    if (wrapped) return;
+    if (it.type === 'roll') {
+      const wpx = isFront ? (it.diamMm/1000)*SCALE : (it.widMm/1000)*SCALE;
+      for (let i=0; i<it.rollCount && !wrapped; i++) add(wpx);
+    } else if (it.type === 'board') {
+      const wpx = isFront ? (it.widMm/1000)*SCALE : (it.lenMm/1000)*SCALE;
+      add(wpx);
+    } else {
+      const kg = it.totalKg || 0;
+      add(Math.max(30, Math.min(boxW*0.3, (kg/1000)*SCALE*2)));
+    }
+  });
+  return Math.min(botW, boxW);
 }
 
 /* ══════════════════════════════════════════════════
@@ -10037,10 +10107,12 @@ function _psdRenderLoadCanvas(v, veh) {
   const isFront = _psdLoadView === 'front';
   // 뷰 기준 치수
   const axisX_m = isFront ? carWid : carLen;   // 가로축(m)
-  const axisY_m = effHgt;                       // 세로축(m)
+  // 세로축 = 유효높이 + 파렛트높이 (파렛트가 화물 아래에 위치)
+  const axisY_m = effHgt + palHgt;              // 세로축(m)
   const MARGIN = 44;
-  const MAX_W = Math.min(880, wrap.clientWidth - 8);
-  const SCALE = Math.min((MAX_W - MARGIN*2) / axisX_m, 340 / axisY_m);
+  /* 요청2: 시뮬레이션 이미지 확대 — 최대 폭/높이 상향 */
+  const MAX_W = Math.min(1280, (wrap.clientWidth||1000) - 8);
+  const SCALE = Math.min((MAX_W - MARGIN*2) / axisX_m, 560 / axisY_m);
   const canW  = Math.round(axisX_m * SCALE + MARGIN*2);
   const canH  = Math.round(axisY_m * SCALE + MARGIN*2 + 28);  // 28 = 아래 축 레이블
   canvas.width  = canW;
@@ -10074,22 +10146,30 @@ function _psdRenderLoadCanvas(v, veh) {
     ctx.beginPath(); ctx.moveTo(ox,y); ctx.lineTo(ox+boxW,y); ctx.stroke();
   }
 
-  /* 팔레트 영역 표시 */
-  if (palHgt > 0) {
-    const palPx = palHgt * SCALE;
-    ctx.fillStyle = 'rgba(120,53,15,.35)';
-    ctx.fillRect(ox+1, oy+boxH-palPx, boxW-2, palPx-1);
-    ctx.fillStyle = '#d97706';
+  /* ── 파렛트 footprint(바닥층 화물 점유폭) 사전 계산 ──
+     ★ 요청1: 파렛트는 화물 아래에 깔리고 너비 = 화물(바닥층) 너비. */
+  const palPx = palHgt * SCALE;      // 파렛트 두께(px)
+  const _footWidthPx = _psdBottomFootprintPx(vizItems, isFront, SCALE, boxW);
+
+  /* 파렛트 밴드 (화물 footprint 폭만큼, 화물 아래) */
+  if (palHgt > 0 && _footWidthPx > 0) {
+    ctx.fillStyle = 'rgba(138,90,43,.6)';
+    ctx.fillRect(ox+1, oy+boxH-palPx, _footWidthPx-1, palPx-1);
+    ctx.strokeStyle = '#5c3a17'; ctx.lineWidth = 1;
+    ctx.strokeRect(ox+1, oy+boxH-palPx, _footWidthPx-1, palPx-1);
+    ctx.fillStyle = '#f5deb3';
     ctx.font = '9px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('팔레트 ' + (palHgt*100).toFixed(0)+'cm', ox+boxW/2, oy+boxH-palPx/2+3);
+    if (_footWidthPx > 60)
+      ctx.fillText('파렛트 ' + (palHgt*100).toFixed(0)+'cm', ox+_footWidthPx/2, oy+boxH-palPx/2+3);
   }
 
   /* ── 아이템 배치 ── */
   // 간단한 행 배치: x 위치 진행, 넘치면 다음 높이 레이어로
-  let curX = ox;          // 현재 x (px)
-  let floorY = oy+boxH;   // 현재 층 바닥 (px, 위로 쌓임)
-  let layerMaxH = 0;       // 현재 층 최대 높이(px)
+  let curX = ox;                    // 현재 x (px)
+  const baseFloorY = oy+boxH-palPx; // 화물 바닥 = 파렛트 윗면
+  let floorY = baseFloorY;          // 현재 층 바닥 (px, 위로 쌓임)
+  let layerMaxH = 0;                // 현재 층 최대 높이(px)
 
   const legendItems = [];
 
@@ -12138,10 +12218,11 @@ function _sapRenderLoadCanvas() {
   /* ── Canvas 크기 설정 ── */
   const isFront  = _sapLoadView === 'front';
   const axisX_m  = isFront ? carWid : carLen;
-  const axisY_m  = effHgt;
+  const axisY_m  = effHgt + palHgt;   // 유효높이 + 파렛트(화물 아래)
   const MARGIN   = 44;
-  const MAX_W    = Math.min(940, wrap.clientWidth - 8);
-  const SCALE    = Math.min((MAX_W - MARGIN*2) / axisX_m, 340 / axisY_m);
+  /* 요청2: 시뮬레이션 이미지 확대 */
+  const MAX_W    = Math.min(1280, (wrap.clientWidth||1000) - 8);
+  const SCALE    = Math.min((MAX_W - MARGIN*2) / axisX_m, 560 / axisY_m);
   const canW     = Math.round(axisX_m * SCALE + MARGIN*2);
   const canH     = Math.round(axisY_m * SCALE + MARGIN*2 + 28);
   canvas.width   = canW;
@@ -12171,17 +12252,24 @@ function _sapRenderLoadCanvas() {
     ctx.beginPath(); ctx.moveTo(ox,y); ctx.lineTo(ox+boxW,y); ctx.stroke();
   }
 
-  /* 팔레트 바닥 */
-  if (palHgt > 0) {
-    const palPx = palHgt * SCALE;
-    ctx.fillStyle = 'rgba(120,53,15,.35)';
-    ctx.fillRect(ox+1, oy+boxH-palPx, boxW-2, palPx-1);
-    ctx.fillStyle = '#d97706'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('팔레트 '+(palHgt*100).toFixed(0)+'cm', ox+boxW/2, oy+boxH-palPx/2+3);
+  /* ── 파렛트 footprint(바닥층 화물 점유폭) 사전 계산 (요청1) ── */
+  const palPx = palHgt * SCALE;
+  const _footWidthPx = _psdBottomFootprintPx(vizItems, isFront, SCALE, boxW);
+
+  /* 파렛트 밴드 (화물 footprint 폭만큼, 화물 아래) */
+  if (palHgt > 0 && _footWidthPx > 0) {
+    ctx.fillStyle = 'rgba(138,90,43,.6)';
+    ctx.fillRect(ox+1, oy+boxH-palPx, _footWidthPx-1, palPx-1);
+    ctx.strokeStyle = '#5c3a17'; ctx.lineWidth = 1;
+    ctx.strokeRect(ox+1, oy+boxH-palPx, _footWidthPx-1, palPx-1);
+    ctx.fillStyle = '#f5deb3'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+    if (_footWidthPx > 60)
+      ctx.fillText('파렛트 '+(palHgt*100).toFixed(0)+'cm', ox+_footWidthPx/2, oy+boxH-palPx/2+3);
   }
 
   /* ── 아이템 배치 ── */
-  let curX = ox, floorY = oy+boxH, layerMaxH = 0;
+  const baseFloorY = oy+boxH-palPx;   // 화물 바닥 = 파렛트 윗면
+  let curX = ox, floorY = baseFloorY, layerMaxH = 0;
   const legendItems = [];
 
   vizItems.forEach((it) => {
@@ -14639,10 +14727,11 @@ function _psopRenderLoadCanvas(v, veh) {
   const isFront = _psopLoadView === 'front';
   // 뷰 기준 치수
   const axisX_m = isFront ? carWid : carLen;   // 가로축(m)
-  const axisY_m = effHgt;                       // 세로축(m)
+  const axisY_m = effHgt + palHgt;              // 유효높이 + 파렛트(화물 아래)
   const MARGIN = 44;
-  const MAX_W = Math.min(880, wrap.clientWidth - 8);
-  const SCALE = Math.min((MAX_W - MARGIN*2) / axisX_m, 340 / axisY_m);
+  /* 요청2: 시뮬레이션 이미지 확대 */
+  const MAX_W = Math.min(1280, (wrap.clientWidth||1000) - 8);
+  const SCALE = Math.min((MAX_W - MARGIN*2) / axisX_m, 560 / axisY_m);
   const canW  = Math.round(axisX_m * SCALE + MARGIN*2);
   const canH  = Math.round(axisY_m * SCALE + MARGIN*2 + 28);  // 28 = 아래 축 레이블
   canvas.width  = canW;
@@ -14676,22 +14765,30 @@ function _psopRenderLoadCanvas(v, veh) {
     ctx.beginPath(); ctx.moveTo(ox,y); ctx.lineTo(ox+boxW,y); ctx.stroke();
   }
 
-  /* 팔레트 영역 표시 */
-  if (palHgt > 0) {
-    const palPx = palHgt * SCALE;
-    ctx.fillStyle = 'rgba(120,53,15,.35)';
-    ctx.fillRect(ox+1, oy+boxH-palPx, boxW-2, palPx-1);
-    ctx.fillStyle = '#d97706';
+  /* ── 파렛트 footprint(바닥층 화물 점유폭) 사전 계산 ──
+     ★ 요청1: 파렛트는 화물 아래에 깔리고 너비 = 화물(바닥층) 너비. */
+  const palPx = palHgt * SCALE;      // 파렛트 두께(px)
+  const _footWidthPx = _psdBottomFootprintPx(vizItems, isFront, SCALE, boxW);
+
+  /* 파렛트 밴드 (화물 footprint 폭만큼, 화물 아래) */
+  if (palHgt > 0 && _footWidthPx > 0) {
+    ctx.fillStyle = 'rgba(138,90,43,.6)';
+    ctx.fillRect(ox+1, oy+boxH-palPx, _footWidthPx-1, palPx-1);
+    ctx.strokeStyle = '#5c3a17'; ctx.lineWidth = 1;
+    ctx.strokeRect(ox+1, oy+boxH-palPx, _footWidthPx-1, palPx-1);
+    ctx.fillStyle = '#f5deb3';
     ctx.font = '9px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('팔레트 ' + (palHgt*100).toFixed(0)+'cm', ox+boxW/2, oy+boxH-palPx/2+3);
+    if (_footWidthPx > 60)
+      ctx.fillText('파렛트 ' + (palHgt*100).toFixed(0)+'cm', ox+_footWidthPx/2, oy+boxH-palPx/2+3);
   }
 
   /* ── 아이템 배치 ── */
   // 간단한 행 배치: x 위치 진행, 넘치면 다음 높이 레이어로
-  let curX = ox;          // 현재 x (px)
-  let floorY = oy+boxH;   // 현재 층 바닥 (px, 위로 쌓임)
-  let layerMaxH = 0;       // 현재 층 최대 높이(px)
+  let curX = ox;                    // 현재 x (px)
+  const baseFloorY = oy+boxH-palPx; // 화물 바닥 = 파렛트 윗면
+  let floorY = baseFloorY;          // 현재 층 바닥 (px, 위로 쌓임)
+  let layerMaxH = 0;                // 현재 층 최대 높이(px)
 
   const legendItems = [];
 
