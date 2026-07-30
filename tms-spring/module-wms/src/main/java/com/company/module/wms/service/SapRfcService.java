@@ -966,20 +966,68 @@ public class SapRfcService {
             return r;
         } catch (IOException | InterruptedException ex) {
             if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
+            String diag = diagnoseWmsNetworkError(url, ex);
             StringBuilder errLog = new StringBuilder();
             errLog.append(System.lineSeparator());
             errLog.append("┌──────────────── WMS API 오류 (WMS_IFC301) ────────────────").append(System.lineSeparator());
             errLog.append("│ URL     : ").append(url).append(System.lineSeparator());
             errLog.append("│ STDLNR  : ").append(stdlnr).append(" / TKNUM : ").append(tknum).append(" / GUBUN : ").append(gubun).append(System.lineSeparator());
+            errLog.append("│ 예외유형 : ").append(ex.getClass().getName()).append(System.lineSeparator());
             errLog.append("│ ERROR   : ").append(ex.getMessage()).append(System.lineSeparator());
+            errLog.append("│ ▶ 진단  : ").append(diag).append(System.lineSeparator());
             errLog.append("└────────────────────────────────────────────────────────────");
             stdoutLog(errLog.toString());
             log.error("WMS_IFC301 호출 실패: stdlnr={}, tknum={}, msg={}", stdlnr, tknum, ex.getMessage(), ex);
             Map<String, Object> r = new LinkedHashMap<>();
             r.put("ok", false);
             r.put("error", ex.getMessage());
+            r.put("diagnosis", diag);
             return r;
         }
+    }
+
+    /**
+     * WMS_IFC301 호출 실패(네트워크 예외) 시, 예외 유형별로 운영자가 취해야 할
+     * 점검/조치 방향을 한국어 힌트로 반환한다. (로그·응답에 함께 노출)
+     *
+     * ※ 대부분의 원인은 TMS 코드가 아니라 서버 간 네트워크 도달성(방화벽/포트/DNS)이다.
+     *   - connect timed out : TCP 연결(3-way handshake) 자체가 안 됨
+     *                         → 방화벽에서 TMS서버 IP → WMS서버 443 포트가 막혔거나,
+     *                           WMS서버가 443 포트로 리스닝하지 않음(포트 미오픈)
+     *   - UnknownHostException : DNS 이름 해석 실패 (hosts/DNS 등록 필요)
+     *   - ConnectException(refused) : 서버는 도달하나 해당 포트에 서비스 없음
+     *   - read/response timeout : 연결은 됐으나 WMS 서버 응답이 느림/무응답
+     */
+    private String diagnoseWmsNetworkError(String url, Exception ex) {
+        String cls = ex.getClass().getName();
+        String msg = ex.getMessage() == null ? "" : ex.getMessage().toLowerCase();
+        String host = "";
+        try { host = URI.create(url).getHost(); } catch (Exception ignore) { }
+
+        if (cls.contains("HttpConnectTimeoutException") || msg.contains("connect timed out")) {
+            return "TCP 연결 자체가 수립되지 않음(connect timeout). "
+                 + "① 방화벽에서 TMS서버 IP → " + host + ":443 아웃바운드가 허용됐는지, "
+                 + "② WMS서버가 443 포트로 정상 리스닝(포트 오픈) 중인지 점검 필요. "
+                 + "서버에서 `curl -kv " + url + "` / `nc -zv " + host + " 443` 로 도달성 확인.";
+        }
+        if (ex instanceof java.net.UnknownHostException || cls.contains("UnknownHostException")) {
+            return "DNS 이름 해석 실패(호스트 '" + host + "' 를 찾을 수 없음). "
+                 + "① DNS 서버에 등록됐는지, ② 없으면 서버 /etc/hosts 에 WMS서버 IP 를 등록. "
+                 + "`nslookup " + host + "` 로 확인.";
+        }
+        if (cls.contains("ConnectException") || msg.contains("connection refused") || msg.contains("refused")) {
+            return "연결 거부(connection refused) — 서버에는 도달하나 443 포트에 서비스가 없음. "
+                 + "WMS 웹서버(https 443) 기동 상태 및 포트 확인 필요.";
+        }
+        if (msg.contains("timed out") || cls.contains("HttpTimeoutException")) {
+            return "연결은 됐으나 WMS 서버 응답이 지연/무응답(read timeout). "
+                 + "WMS_IFC301 처리 로직/DB 지연 여부를 WMS 측에서 점검 필요.";
+        }
+        if (cls.contains("SSL") || msg.contains("ssl") || msg.contains("certificate") || msg.contains("handshake")) {
+            return "SSL/TLS 핸드셰이크 오류. 현재 인증서 검증은 생략(trust-all) 설정이므로, "
+                 + "프로토콜/암호화 스위트 불일치 또는 프록시 중간개입 가능성 점검 필요.";
+        }
+        return "알 수 없는 네트워크 오류. 서버에서 `curl -kv " + url + "` 로 직접 도달성/응답 확인 필요.";
     }
 
     /**
