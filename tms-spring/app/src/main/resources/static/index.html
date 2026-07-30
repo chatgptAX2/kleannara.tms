@@ -4401,6 +4401,8 @@ const _sapLeftColDefs = [
   { id:'carno',   label:'차량번호',      w:88  },
   { id:'driver',  label:'기사명',        w:66  },
   { id:'drivercel',label:'연락처',       w:96  },
+  { id:'qtshpo',  label:'납품수량',      w:78  },
+  { id:'uomkey',  label:'단위',          w:52  },
   { id:'totalkg', label:'총중량(kg)',    w:68  },
   { id:'svbeln',  label:'문서수',        w:42  },
   { id:'loadview',label:'적재뷰',        w:62  },
@@ -11965,6 +11967,11 @@ async function _sapRenderLeft() {
     const rqTo      = _sapFmtDate(r.RQSHPD_TO);
     const rqTxt     = rqFrom === rqTo ? rqFrom : `${rqFrom}~${rqTo}`;
     const kg        = r.TOTAL_KG ? Number(r.TOTAL_KG).toLocaleString() : '0';
+    // 납품수량: 정수면 정수로, 소수면 최대 3자리까지 표기 / 단위(UOMKEY)
+    const qtyRaw    = (r.QTSHPO_SUM != null) ? Number(r.QTSHPO_SUM) : null;
+    const qtyTxt    = (qtyRaw == null || isNaN(qtyRaw)) ? '-'
+                        : qtyRaw.toLocaleString(undefined, { maximumFractionDigits: 3 });
+    const uomTxt    = (r.UOMKEY && String(r.UOMKEY).trim()) ? String(r.UOMKEY).trim() : '-';
     const sapStk    = r.SAP_STKNUM || '-';
     const dptnky    = r.DPTNKY  || '';
     const dptnkynm  = r.DPTNKYNM || dptnky;
@@ -11987,6 +11994,8 @@ async function _sapRenderLeft() {
       carno:    `<td class="center">${carnoCell}</td>`,
       driver:   `<td style="white-space:nowrap">${driver}</td>`,
       drivercel:`<td style="white-space:nowrap">${drvcel}</td>`,
+      qtshpo:   `<td class="num" style="white-space:nowrap">${qtyTxt}</td>`,
+      uomkey:   `<td class="center" style="white-space:nowrap">${uomTxt}</td>`,
       totalkg:  `<td class="num" style="white-space:nowrap">${kg}</td>`,
       svbeln:   `<td class="center"><span class="psd-car-badge" style="background:#37474f;color:#b0bec5">${r.SVBELN_CNT}건</span></td>`,
       loadview: `<td class="center"><button class="psd-img-btn" title="적재 3D 시각화"
@@ -12003,6 +12012,7 @@ async function _sapRenderLeft() {
   const sumKg      = rows.reduce((s, r) => s + (Number(r.TOTAL_KG) || 0), 0);
   const sumItems   = rows.reduce((s, r) => s + (Number(r.ITEM_CNT) || 0), 0);
   const sumSvbeln  = rows.reduce((s, r) => s + (Number(r.SVBELN_CNT) || 0), 0);
+  const sumQty     = rows.reduce((s, r) => s + (Number(r.QTSHPO_SUM) || 0), 0);
   const tfootMap = {
     chk:      `<td class="center">-</td>`,
     stdlnr:   `<td style="font-weight:700">합계</td>`,
@@ -12013,6 +12023,8 @@ async function _sapRenderLeft() {
     carno:    `<td>-</td>`,
     driver:   `<td>-</td>`,
     drivercel:`<td>-</td>`,
+    qtshpo:   `<td class="num" style="font-weight:700">${sumQty.toLocaleString(undefined,{maximumFractionDigits:3})}</td>`,
+    uomkey:   `<td class="center">-</td>`,
     totalkg:  `<td class="num">${sumKg.toLocaleString(undefined,{maximumFractionDigits:1})} kg</td>`,
     svbeln:   `<td class="center" style="font-weight:700">${sumSvbeln}건</td>`,
     loadview: `<td>-</td>`,
