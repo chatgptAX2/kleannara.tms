@@ -12726,20 +12726,35 @@ async function psopSapDelete() {
    SAP 선적생성 — /api/ps-sap/shipment-create
 ══════════════════════════════════════════════════ */
 async function psopSapShipmentCreate() {
+  console.log('[SAP선적생성] 버튼 클릭 → psopSapShipmentCreate() 진입, 선택수=' + _sapState.checkedSet.size);
   const stdlnrs = [..._sapState.checkedSet];
-  if (!stdlnrs.length) return;
-  if (!confirm(`선택한 ${stdlnrs.length}건의 가선적번호에 대해 SAP 선적을 생성하시겠습니까?`)) return;
+  if (!stdlnrs.length) {
+    // 선택된 행이 없으면 조용히 끝나지 않고 사용자에게 안내 (네트워크 요청 없음의 원인)
+    showToast('⚠️ 선적번호 목록에서 생성할 가선적번호를 먼저 체크하세요.', 'warning');
+    return;
+  }
+  if (!confirm(`선택한 ${stdlnrs.length}건의 가선적번호에 대해 SAP 선적을 생성하시겠습니까?`)) {
+    console.log('[SAP선적생성] 사용자가 확인 대화상자를 취소함 → 요청 미전송');
+    return;
+  }
 
   // 버튼 비활성화 (중복 클릭 방지)
   const btn = document.getElementById('sap-btn-create');
   if (btn) btn.disabled = true;
+  showToast(`🚢 SAP 선적생성 요청 중… (${stdlnrs.length}건)`, 'info');
 
   try {
+    console.log('[SAP선적생성] POST /api/ps-sap/shipment-create', stdlnrs);
     const res = await fetch('/api/ps-sap/shipment-create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ stknums: stdlnrs })
     });
+    console.log('[SAP선적생성] 응답 status=' + res.status);
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status} ${res.statusText}${text ? ' — ' + text.slice(0, 200) : ''}`);
+    }
     const data = await res.json();
 
     // 결과 모달 표시
@@ -12750,6 +12765,7 @@ async function psopSapShipmentCreate() {
       await psopLoadSapList();
     }
   } catch(e) {
+    console.error('[SAP선적생성] 오류', e);
     showToast(`❌ SAP 선적생성 오류: ${e.message}`, 'error');
   } finally {
     _sapSyncButtons();
