@@ -982,8 +982,16 @@ public class SapRfcService {
         }
     }
 
-    /** RFC / API 호출·에러 로그를 STDOUT.LOG 파일에 추가 기록 (실패해도 예외 미전파) */
+    /**
+     * RFC / API 호출·에러 로그를 기록.
+     * (1) 애플리케이션 표준 로거(SLF4J/logback)에 INFO 로 남겨 콘솔/앱 로그에서 바로 확인
+     * (2) 추가로 STDOUT.LOG 파일에도 append (파일 기록 실패해도 예외 미전파)
+     */
     private synchronized void stdoutLog(String line) {
+        // (1) 표준 로거 — 사용자가 보는 콘솔/logback 로그에 그대로 노출
+        log.info("{}", line);
+
+        // (2) 별도 STDOUT.LOG 파일에도 타임스탬프와 함께 기록
         String stamp = "[" + LocalDateTime.now().format(LOG_TS) + "] " + line + System.lineSeparator();
         try {
             Path p = Paths.get(STDOUT_LOG_PATH);
@@ -991,8 +999,8 @@ public class SapRfcService {
             Files.writeString(p, stamp, StandardCharsets.UTF_8,
                 StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (Exception e) {
-            // 파일 로깅 실패 시 표준 로거로만 남김 (기능 흐름 방해 금지)
-            log.warn("STDOUT.LOG 기록 실패({}): {}", STDOUT_LOG_PATH, e.getMessage());
+            // 파일 로깅 실패는 무시 (표준 로거에는 이미 남았으므로 흐름 방해 금지)
+            log.warn("STDOUT.LOG 파일 기록 실패({}): {}", STDOUT_LOG_PATH, e.getMessage());
         }
     }
 
