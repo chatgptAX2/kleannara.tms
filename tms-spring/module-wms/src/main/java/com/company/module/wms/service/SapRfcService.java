@@ -494,23 +494,23 @@ public class SapRfcService {
             }
 
             // 3) IMPORT 파라미터 설정
-            //    SAP 담당자 스펙: I_GUBUN C(1) 'C'=생성/'D'=삭제, I_TKNUM C(10) 선적번호
-            //    (I_VBELN 은 공식 스펙에 없는 레거시 파라미터 → 함수 메타데이터에 존재할 때만 설정)
+            //    실제 RFC 인터페이스(Z_TMS_SHIPMENT_CRDL ABAP 소스 기준):
+            //      IMPORTING  I_GUBUN(ZGUBUN3 OPTIONAL) 'C'=생성/'D'=삭제
+            //                 I_TKNUM(TKNUM   OPTIONAL) 선적번호(삭제 시 사용)
+            //                 I_VBELN(VBELN_VL OPTIONAL) 단건 납품문서(생성/삭제 로직에서 미사용)
+            //      TABLES     T_VBELN(STRUCTURE ZSDS109) 납품번호 목록(생성 시 사용)
+            //    → 생성(C): T_VBELN 만 사용, I_TKNUM/I_VBELN 은 미사용
+            //      삭제(D): I_TKNUM 만 사용, T_VBELN/I_VBELN 은 미사용
             String iTknum = (tknum != null ? tknum : "");
             JCoParameterList imports = function.getImportParameterList();
             imports.setValue("I_GUBUN", gubun);
             imports.setValue("I_TKNUM", iTknum);
-            // I_VBELN 은 SAP 공식 스펙에 없는 레거시 파라미터 → 함수에 존재할 때만 세팅
-            // (존재하지 않으면 JCoRuntimeException 발생하므로 안전하게 무시)
-            try {
-                imports.setValue("I_VBELN", "");
-            } catch (JCoRuntimeException ignore) {
-                stdoutLog("[Z_TMS_SHIPMENT_CRDL][INFO] I_VBELN 파라미터 없음 → 생략");
-            }
+            // I_VBELN 은 실제 RFC 로직에서 사용되지 않는 OPTIONAL 파라미터 → 세팅하지 않음
+            // (과거 코드가 공백을 넣던 부분 제거: 스펙상 불필요. 함수에 필드가 있어도 무해)
 
             // 4) TABLE T_VBELN 설정 (선적 생성 시만)
-            //    SAP 담당자 스펙: T_VBELN-VBELN TYPE C(10) 납품번호
-            //    문자 10자리 왼쪽 '0' 패딩(숫자 파싱으로 값 손상 방지)
+            //    실제 소스: LOOP AT T_VBELN → LT_DELIV-VBELN = T_VBELN-VBELN (LIKP-VBELN=VBELN_VL, CHAR10)
+            //    VBELN_VL 은 앞자리 0 채움(우측정렬) → 문자 10자리 왼쪽 '0' 패딩
             List<String> tVbelnRows = new ArrayList<>();   // 로깅용 실제 전송 VBELN 값
             if ("C".equals(gubun) && vbelnList != null && !vbelnList.isEmpty()) {
                 JCoTable tVbeln = function.getTableParameterList().getTable("T_VBELN");
@@ -1084,8 +1084,8 @@ public class SapRfcService {
         sb.append("│ [IMPORT]").append(System.lineSeparator());
         sb.append("│   I_GUBUN = '").append(gubun).append("'").append(System.lineSeparator());
         sb.append("│   I_TKNUM = '").append(iTknum).append("'").append(System.lineSeparator());
-        sb.append("│   I_VBELN = ''").append(System.lineSeparator());
-        sb.append("│ [TABLE] T_VBELN  (").append(tVbelnRows.size()).append("건)").append(System.lineSeparator());
+        sb.append("│   I_VBELN = (미전송, OPTIONAL 미사용)").append(System.lineSeparator());
+        sb.append("│ [TABLE] T_VBELN  (STRUCTURE ZSDS109, ").append(tVbelnRows.size()).append("건)").append(System.lineSeparator());
         if (tVbelnRows.isEmpty()) {
             sb.append("│   (없음)").append(System.lineSeparator());
         } else {
@@ -1112,13 +1112,47 @@ public class SapRfcService {
         sb.append("│ [EXPORT]").append(System.lineSeparator());
         sb.append("│   E_TKNUM = '").append(eTknum != null ? eTknum : "").append("'").append(System.lineSeparator());
         sb.append("│ [EXPORT] E_RETURN").append(System.lineSeparator());
+        String retMsg = "";
         for (String f : List.of("TYPE","CODE","MESSAGE","MESSAGE_V1","MESSAGE_V2","MESSAGE_V3","MESSAGE_V4")) {
             String v;
             try { v = eReturn.getString(f); } catch (JCoRuntimeException ex) { v = "(필드없음)"; }
+            if ("MESSAGE".equals(f)) retMsg = nullSafe(v);
             sb.append(String.format("│   %-11s = '%s'%n", f, nullSafe(v)));
+        }
+        // ── 실패 시 진단 힌트 (실제 RFC 소스 분석 기반) ──
+        if (!ok) {
+            String hint = diagnoseRfcError(retMsg);
+            if (!hint.isEmpty()) {
+                sb.append("│ ▶ 진단힌트 : ").append(hint).append(System.lineSeparator());
+            }
         }
         sb.append("└───────────────────────────────────────────────");
         stdoutLog(sb.toString());
+    }
+
+    /**
+     * SAP RFC(Z_TMS_SHIPMENT_CRDL) 오류 메시지에 대한 진단 힌트.
+     * 실제 ABAP 소스의 오류 분기 및 BAPI_SHIPMENT_CREATE 동작을 근거로,
+     * WMS/TMS 코드가 아니라 SAP 마스터/업무 데이터 이슈임을 운영자에게 안내한다.
+     */
+    private String diagnoseRfcError(String msg) {
+        if (msg == null) return "";
+        String m = msg;
+        if (m.contains("선적유형"))
+            return "SAP가 선적유형(SHTYP)을 결정하지 못함. 실제 RFC 로직상 선행 판매오더의 유통경로(VBAK-VTWEG)가 '10'/'30'이 아니거나 미조회 시 SHTYP 공란→BAPI_SHIPMENT_CREATE 실패. 해당 납품문서의 VTWEG/출하지점(VSTEL) 마스터를 SAP 담당과 확인 필요";
+        if (m.contains("출하지점을 찾을수 없") )
+            return "납품문서(LIKP)의 출하지점(VSTEL) 미설정. SAP 납품문서 확인 필요";
+        if (m.contains("출하지점이 서로 다른"))
+            return "선택한 납품문서들의 출하지점(VSTEL)이 상이함. 동일 출하지점 납품문서끼리만 선적 가능";
+        if (m.contains("운송경로를 찾을수 없"))
+            return "납품문서(LIKP)의 운송경로(ROUTE) 미설정. SAP 납품문서 확인 필요";
+        if (m.contains("운송경로는 직접 지정"))
+            return "복수 운송경로 존재로 자동결정 불가. SAP측 운송경로 지정 필요";
+        if (m.contains("선적문서가 생성된 납품문서"))
+            return "이미 선적문서(VTTP)가 존재하는 납품문서. 중복 생성 불가";
+        if (m.contains("납품문서가 없"))
+            return "T_VBELN 이 비어 전송됨. WMS SHPDI.SVBELN 조회결과 확인 필요";
+        return "";
     }
 
     private Map<String, Object> err(String msg) {
