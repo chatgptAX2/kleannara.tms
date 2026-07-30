@@ -113,11 +113,17 @@ public class SapRfcService {
             System.setProperty("jdk.internal.httpclient.disableHostnameVerification", "true");
             return HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
+                // 리다이렉트(3xx) 를 클라이언트가 자동 추종하면 POST → GET 으로 바뀌어
+                // WMS 측에 'GET not supported' 오류가 발생하므로 자동 추종 금지.
+                .followRedirects(HttpClient.Redirect.NEVER)
                 .sslContext(sc)
                 .build();
         } catch (Exception e) {
             // SSLContext 구성 실패 시 기본 클라이언트로 폴백
-            return HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+            return HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .build();
         }
     }
 
@@ -956,21 +962,31 @@ public class SapRfcService {
                 .uri(URI.create(url))
                 .timeout(Duration.ofSeconds(10))
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
+                .header("Accept", "application/json")
+                // POST 방식 명시 (WMS_IFC301 은 POST 만 지원 — GET 은 'method not supported' 오류)
+                .method("POST", HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
                 .build();
             HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             int sc = resp.statusCode();
             String bodyText = resp.body() == null ? "" : resp.body();
             String snippet = bodyText.length() > 500 ? bodyText.substring(0, 500) : bodyText;
             boolean ok = sc >= 200 && sc < 300;
+            // 리다이렉트(3xx) 감지 — WMS 앞단(L4/L7) 이 리다이렉트하면 POST 가 유실될 수 있음
+            String location = resp.headers().firstValue("Location").orElse("");
+            boolean redirected = sc >= 300 && sc < 400;
 
             // ── WMS_IFC301 응답 상세 로그 ──
             StringBuilder resLog = new StringBuilder();
             resLog.append(System.lineSeparator());
             resLog.append("┌──────────────── WMS API 응답 (WMS_IFC301) ────────────────").append(System.lineSeparator());
             resLog.append("│ URL     : ").append(url).append(System.lineSeparator());
+            resLog.append("│ METHOD  : POST").append(System.lineSeparator());
             resLog.append("│ 성공여부 : ").append(ok ? "성공" : "실패").append(System.lineSeparator());
             resLog.append("│ STATUS  : ").append(sc).append(System.lineSeparator());
+            if (redirected) {
+                resLog.append("│ ▶ 경고  : 3xx 리다이렉트 감지 → Location='").append(location).append("'").append(System.lineSeparator());
+                resLog.append("│           (리다이렉트 추종 시 POST→GET 변환되어 실패하므로 자동추종 금지됨. WMS 앞단 설정 확인 필요)").append(System.lineSeparator());
+            }
             resLog.append("│ BODY    : ").append(snippet.isEmpty() ? "(없음)" : snippet).append(System.lineSeparator());
             resLog.append("└────────────────────────────────────────────────────────────");
             stdoutLog(resLog.toString());
