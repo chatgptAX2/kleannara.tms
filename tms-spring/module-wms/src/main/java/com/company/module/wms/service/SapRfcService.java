@@ -494,20 +494,29 @@ public class SapRfcService {
             }
 
             // 3) IMPORT 파라미터 설정
+            //    SAP 담당자 스펙: I_GUBUN C(1) 'C'=생성/'D'=삭제, I_TKNUM C(10) 선적번호
+            //    (I_VBELN 은 공식 스펙에 없는 레거시 파라미터 → 함수 메타데이터에 존재할 때만 설정)
             String iTknum = (tknum != null ? tknum : "");
             JCoParameterList imports = function.getImportParameterList();
             imports.setValue("I_GUBUN", gubun);
             imports.setValue("I_TKNUM", iTknum);
-            imports.setValue("I_VBELN", "");
+            // I_VBELN 은 SAP 공식 스펙에 없는 레거시 파라미터 → 함수에 존재할 때만 세팅
+            // (존재하지 않으면 JCoRuntimeException 발생하므로 안전하게 무시)
+            try {
+                imports.setValue("I_VBELN", "");
+            } catch (JCoRuntimeException ignore) {
+                stdoutLog("[Z_TMS_SHIPMENT_CRDL][INFO] I_VBELN 파라미터 없음 → 생략");
+            }
 
             // 4) TABLE T_VBELN 설정 (선적 생성 시만)
+            //    SAP 담당자 스펙: T_VBELN-VBELN TYPE C(10) 납품번호
+            //    문자 10자리 왼쪽 '0' 패딩(숫자 파싱으로 값 손상 방지)
             List<String> tVbelnRows = new ArrayList<>();   // 로깅용 실제 전송 VBELN 값
             if ("C".equals(gubun) && vbelnList != null && !vbelnList.isEmpty()) {
                 JCoTable tVbeln = function.getTableParameterList().getTable("T_VBELN");
                 for (String vbeln : vbelnList) {
                     tVbeln.appendRow();
-                    // 납품문서번호 10자리 zero-padding
-                    String vPadded = String.format("%010d", safeParseLong(vbeln));
+                    String vPadded = padVbeln10(vbeln);
                     tVbeln.setValue("VBELN", vPadded);
                     tVbelnRows.add(vPadded);
                 }
@@ -908,10 +917,24 @@ public class SapRfcService {
      */
     private Map<String, Object> callWmsIfc301(String stdlnr, String tknum, String gubun, String env) {
         String url = wmsIfcUrl(env);
+        String gubunLabel = "C".equals(gubun) ? "선적생성" : ("D".equals(gubun) ? "선적삭제" : gubun);
         String payload = String.format(
             "{\"GUBUN\":\"%s\",\"STDLNR\":\"%s\",\"TKNUM\":\"%s\"}",
             jsonEsc(gubun), jsonEsc(stdlnr), jsonEsc(tknum));
-        stdoutLog(String.format("[WMS_IFC301][REQ] env=%s url=%s payload=%s", env, url, payload));
+
+        // ── WMS_IFC301 요청 상세 로그 (가독성 좋게 STDOUT.LOG 기록) ──
+        StringBuilder reqLog = new StringBuilder();
+        reqLog.append(System.lineSeparator());
+        reqLog.append("┌──────────────── WMS API 요청 (WMS_IFC301) ────────────────").append(System.lineSeparator());
+        reqLog.append("│ ENV     : ").append(env).append(System.lineSeparator());
+        reqLog.append("│ METHOD  : POST").append(System.lineSeparator());
+        reqLog.append("│ URL     : ").append(url).append(System.lineSeparator());
+        reqLog.append("│ [BODY]").append(System.lineSeparator());
+        reqLog.append("│   GUBUN  = '").append(gubun).append("' (").append(gubunLabel).append(")").append(System.lineSeparator());
+        reqLog.append("│   STDLNR = '").append(stdlnr).append("'  (가선적번호)").append(System.lineSeparator());
+        reqLog.append("│   TKNUM  = '").append(tknum).append("'  (SAP 선적번호)").append(System.lineSeparator());
+        reqLog.append("└────────────────────────────────────────────────────────────");
+        stdoutLog(reqLog.toString());
         try {
             HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -924,7 +947,17 @@ public class SapRfcService {
             String bodyText = resp.body() == null ? "" : resp.body();
             String snippet = bodyText.length() > 500 ? bodyText.substring(0, 500) : bodyText;
             boolean ok = sc >= 200 && sc < 300;
-            stdoutLog(String.format("[WMS_IFC301][RES] ok=%s status=%d body=%s", ok, sc, snippet));
+
+            // ── WMS_IFC301 응답 상세 로그 ──
+            StringBuilder resLog = new StringBuilder();
+            resLog.append(System.lineSeparator());
+            resLog.append("┌──────────────── WMS API 응답 (WMS_IFC301) ────────────────").append(System.lineSeparator());
+            resLog.append("│ URL     : ").append(url).append(System.lineSeparator());
+            resLog.append("│ 성공여부 : ").append(ok ? "성공" : "실패").append(System.lineSeparator());
+            resLog.append("│ STATUS  : ").append(sc).append(System.lineSeparator());
+            resLog.append("│ BODY    : ").append(snippet.isEmpty() ? "(없음)" : snippet).append(System.lineSeparator());
+            resLog.append("└────────────────────────────────────────────────────────────");
+            stdoutLog(resLog.toString());
             log.info("WMS_IFC301 호출: ok={}, status={}, stdlnr={}, tknum={}, gubun={}", ok, sc, stdlnr, tknum, gubun);
             Map<String, Object> r = new LinkedHashMap<>();
             r.put("ok", ok);
@@ -933,8 +966,14 @@ public class SapRfcService {
             return r;
         } catch (IOException | InterruptedException ex) {
             if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
-            stdoutLog(String.format("[WMS_IFC301][ERR] stdlnr=%s tknum=%s gubun=%s error=%s",
-                stdlnr, tknum, gubun, ex.getMessage()));
+            StringBuilder errLog = new StringBuilder();
+            errLog.append(System.lineSeparator());
+            errLog.append("┌──────────────── WMS API 오류 (WMS_IFC301) ────────────────").append(System.lineSeparator());
+            errLog.append("│ URL     : ").append(url).append(System.lineSeparator());
+            errLog.append("│ STDLNR  : ").append(stdlnr).append(" / TKNUM : ").append(tknum).append(" / GUBUN : ").append(gubun).append(System.lineSeparator());
+            errLog.append("│ ERROR   : ").append(ex.getMessage()).append(System.lineSeparator());
+            errLog.append("└────────────────────────────────────────────────────────────");
+            stdoutLog(errLog.toString());
             log.error("WMS_IFC301 호출 실패: stdlnr={}, tknum={}, msg={}", stdlnr, tknum, ex.getMessage(), ex);
             Map<String, Object> r = new LinkedHashMap<>();
             r.put("ok", false);
@@ -1007,6 +1046,20 @@ public class SapRfcService {
 
     private long safeParseLong(String s) {
         try { return Long.parseLong(s.trim()); } catch (Exception e) { return 0L; }
+    }
+
+    /**
+     * 납품번호(VBELN)를 SAP 스펙(C(10))에 맞춰 10자리 문자로 정규화.
+     * - 앞뒤 공백 제거 후 왼쪽 '0' 패딩 (SAP는 납품번호를 우측정렬 0-패딩 저장)
+     * - 이미 10자리 이상이면 그대로 사용(값 손상 방지: 숫자 파싱하지 않음)
+     */
+    private String padVbeln10(String vbeln) {
+        String v = (vbeln == null) ? "" : vbeln.trim();
+        if (v.length() >= 10) return v;
+        StringBuilder sb = new StringBuilder();
+        for (int i = v.length(); i < 10; i++) sb.append('0');
+        sb.append(v);
+        return sb.toString();
     }
 
     /**
