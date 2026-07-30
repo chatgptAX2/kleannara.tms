@@ -2029,6 +2029,46 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 #psop-panel-sap .psd-right .psd-panel-hdr{background:linear-gradient(135deg,#4ade80 0%,#22c55e 100%);border-bottom:2px solid #15803d}
 #psop-panel-sap .psd-right .psd-panel-hdr .psd-panel-hdr-title{color:#0b3d1a;font-weight:800}
 #psop-panel-sap .psd-right .psd-panel-hdr .psd-panel-hdr-info{color:#052e16}
+/* ══ 배차확정(SAP선적) 탭 — 글자크기/폰트/굵기 통일 ══ */
+/* 탭 전체 기본 폰트패밀리 통일 (숫자/영문 포함 동일 sans-serif) */
+#psop-panel-sap,
+#psop-panel-sap input,
+#psop-panel-sap button,
+#psop-panel-sap select{
+  font-family:'Inter','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+/* 툴바 텍스트/라벨 통일 (라벨·입력·통계 모두 12px) */
+#psop-panel-sap .psd-toolbar{font-size:12px}
+#psop-panel-sap .psd-toolbar span,
+#psop-panel-sap .psd-toolbar input{font-size:12px !important}
+/* 툴바 버튼 통일 */
+#psop-panel-sap .psd-btn{font-size:12px !important;font-weight:600 !important}
+/* 툴바 우측 통계(선적/총중량/선택) — 라벨 normal, 숫자만 bold 통일 */
+#psop-panel-sap .psd-toolbar span > b{font-weight:700}
+/* 패널 헤더 제목/뱃지/부가정보 크기 통일 */
+#psop-panel-sap .psd-panel-hdr-title{font-size:13px;font-weight:800}
+#psop-panel-sap .psd-panel-hdr-info{font-size:11px;font-weight:500}
+#psop-panel-sap .psd-sel-badge{font-size:11px;font-weight:700}
+/* 데이터 테이블 헤더 — 좌/우 동일 (12px / 700) */
+#psop-panel-sap .sap-left-tbl thead th,
+#psop-panel-sap .sap-doc-tbl thead th{font-size:12px !important;font-weight:700 !important}
+/* 데이터 테이블 본문 셀 — 좌/우 동일 (12px / normal), 인라인 font-size 무력화 */
+#psop-panel-sap .sap-left-tbl tbody td,
+#psop-panel-sap .sap-doc-tbl tbody td,
+#psop-panel-sap .sap-left-tbl tbody td *,
+#psop-panel-sap .sap-doc-tbl tbody td *{font-size:12px !important;font-weight:400 !important}
+/* 합계(tfoot) 행 — 좌/우 동일 (12px / 700) */
+#psop-panel-sap .sap-left-tbl tfoot td,
+#psop-panel-sap .sap-doc-tbl tfoot td,
+#psop-panel-sap .sap-left-tbl tfoot td *,
+#psop-panel-sap .sap-doc-tbl tfoot td *{font-size:12px !important;font-weight:700 !important}
+/* ID/번호 계열 셀만 등폭(monospace) 유지하되 크기는 본문과 동일 */
+#psop-panel-sap .sap-left-tbl tbody td[style*="monospace"],
+#psop-panel-sap .sap-doc-tbl tbody td[style*="monospace"]{
+  font-family:'Consolas','Menlo',monospace !important;font-size:12px !important;
+}
+/* 차량/문서수 뱃지 — 굵기 통일(본문보다 약간 강조: 600) */
+#psop-panel-sap .sap-left-tbl tbody td .psd-car-badge{font-weight:600 !important;font-size:11px !important}
 /* PS배차(최적화) 납품문서 패널 헤더 — 흰색 */
 #psop-left .psd-panel-hdr{background:#ffffff !important;border-bottom:1px solid var(--border) !important}
 #psop-left .psd-panel-hdr .psd-panel-hdr-title{color:var(--text) !important;font-weight:700}
