@@ -622,6 +622,12 @@ public class SapRfcService {
                 "  COUNT(DISTINCT SI.SVBELN) AS SVBELN_CNT, " +
                 "  COUNT(DISTINCT SI.SHPOKY) AS SHPOKY_CNT, " +
                 "  COUNT(*) AS ITEM_CNT, " +
+                // 납품수량: 선적(STDLNR) 내 전체 아이템 출고수량 합계
+                "  ROUND(SUM(COALESCE(SI.QTSHPO,0)),3) AS QTSHPO_SUM, " +
+                // 단위: 선적 내 단위가 단일이면 그 값, 복수면 '(혼합)' 표기
+                "  CASE WHEN COUNT(DISTINCT NULLIF(TRIM(SI.UOMKEY),'')) > 1 " +
+                "       THEN '(혼합)' " +
+                "       ELSE MAX(NULLIF(TRIM(SI.UOMKEY),'')) END AS UOMKEY, " +
                 "  COALESCE(MAX(PH.TOTAL_KG), ROUND(SUM(SI.QTSHPO * COALESCE(M.NETWGT,0)),1)) AS TOTAL_KG, " +
                 "  MIN(SH.RQSHPD) AS RQSHPD_FROM, " +
                 "  MAX(SH.RQSHPD) AS RQSHPD_TO, " +
