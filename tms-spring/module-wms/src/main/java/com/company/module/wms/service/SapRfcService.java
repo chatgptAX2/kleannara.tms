@@ -164,8 +164,8 @@ public class SapRfcService {
                 // 1) 해당 가선적번호의 SAP납품문서(SVBELN) 목록 조회 (Oracle KNRAWMS → wmsJdbc)
                 List<Map<String, Object>> svbelnRows = wmsJdbc.queryForList(
                     "SELECT DISTINCT SI.SVBELN FROM KNRAWMS.SHPDI SI " +
-                    "WHERE SI.STATIT='NEW' AND TRIM(SI.STDLNR)=? " +
-                    "AND TRIM(COALESCE(SI.SVBELN,''))<>'' ORDER BY SI.SVBELN",
+                    "WHERE SI.STATIT='NEW' AND SI.STDLNR=? " +
+                    "AND SI.SVBELN <> ' ' ORDER BY SI.SVBELN",
                     stdlnr
                 );
                 List<String> vbelnList = svbelnRows.stream()
