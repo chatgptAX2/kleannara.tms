@@ -66,12 +66,28 @@ public class SapRfcService {
         System.getProperty("tms.stdout.log",
             System.getenv().getOrDefault("TMS_STDOUT_LOG", "STDOUT.LOG"));
 
-    /** WMS 공통처리 API (선적생성/삭제 후 WMS 동기화) — 운영 */
+    /**
+     * WMS 공통처리 API URL (선적생성/삭제 후 WMS 동기화).
+     *
+     * ※ 개발환경: 도메인(https://wmsdev.kleannara.com, 443)은 WAS 서버(10.2.14.x)에서
+     *   방화벽 차단되어 connect timeout 발생함(2026-07 확인).
+     *   실제 도달 가능한 주소인 http://10.2.14.190:8182 (= wmsdev 도메인 실서버, HTTP/8182)
+     *   를 기본값으로 사용한다.
+     *   → 추후 방화벽에서 443 이 개방되면 -Dtms.wms.ifc.url.dev=... 로 도메인으로 되돌릴 수 있음.
+     *
+     * 오버라이드:
+     *   -Dtms.wms.ifc.url.prod=<url>  / 환경변수 TMS_WMS_IFC_URL_PROD
+     *   -Dtms.wms.ifc.url.dev=<url>   / 환경변수 TMS_WMS_IFC_URL_DEV
+     */
     private static final String WMS_IFC_URL_PROD =
-        "https://wms.kleannara.com/common/tmsApi/json/WMS_IFC301.data";
-    /** WMS 공통처리 API — 개발 */
+        System.getProperty("tms.wms.ifc.url.prod",
+            System.getenv().getOrDefault("TMS_WMS_IFC_URL_PROD",
+                "https://wms.kleannara.com/common/tmsApi/json/WMS_IFC301.data"));
+    /** WMS 공통처리 API — 개발 (도메인 443 방화벽 차단 → 도달 가능한 IP:8182 사용) */
     private static final String WMS_IFC_URL_DEV  =
-        "https://wmsdev.kleannara.com/common/tmsApi/json/WMS_IFC301.data";
+        System.getProperty("tms.wms.ifc.url.dev",
+            System.getenv().getOrDefault("TMS_WMS_IFC_URL_DEV",
+                "http://10.2.14.190:8182/common/tmsApi/json/WMS_IFC301.data"));
 
     /**
      * WMS_IFC301 호출용 HTTP 클라이언트 (JDK 내장).
