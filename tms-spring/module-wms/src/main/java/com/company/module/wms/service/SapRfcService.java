@@ -494,20 +494,27 @@ public class SapRfcService {
             }
 
             // 3) IMPORT 파라미터 설정
+            String iTknum = (tknum != null ? tknum : "");
             JCoParameterList imports = function.getImportParameterList();
             imports.setValue("I_GUBUN", gubun);
-            imports.setValue("I_TKNUM", tknum != null ? tknum : "");
+            imports.setValue("I_TKNUM", iTknum);
             imports.setValue("I_VBELN", "");
 
             // 4) TABLE T_VBELN 설정 (선적 생성 시만)
+            List<String> tVbelnRows = new ArrayList<>();   // 로깅용 실제 전송 VBELN 값
             if ("C".equals(gubun) && vbelnList != null && !vbelnList.isEmpty()) {
                 JCoTable tVbeln = function.getTableParameterList().getTable("T_VBELN");
                 for (String vbeln : vbelnList) {
                     tVbeln.appendRow();
                     // 납품문서번호 10자리 zero-padding
-                    tVbeln.setValue("VBELN", String.format("%010d", safeParseLong(vbeln)));
+                    String vPadded = String.format("%010d", safeParseLong(vbeln));
+                    tVbeln.setValue("VBELN", vPadded);
+                    tVbelnRows.add(vPadded);
                 }
             }
+
+            // ── SAP RFC 요청 상세 로그 (가독성 좋게 STDOUT.LOG 기록) ──
+            logRfcRequest(gubun, iTknum, tVbelnRows);
 
             // 5) RFC 실행
             function.execute(dest);
@@ -525,8 +532,9 @@ public class SapRfcService {
             boolean ok = "S".equals(retType) || "I".equals(retType);
             log.info("SAP RFC {} 결과: type={}, code={}, tknum={}, msg={}",
                      gubun, retType, retCode, eTknum, retMsg);
-            stdoutLog("[Z_TMS_SHIPMENT_CRDL][RES] gubun=" + gubun + " ok=" + ok
-                    + " type=" + retType + " code=" + retCode + " tknum=" + eTknum + " msg=" + retMsg);
+
+            // ── SAP RFC 응답 상세 로그 (E_RETURN 전체 필드 + E_TKNUM) ──
+            logRfcResponse(gubun, ok, eTknum, eReturn);
 
             Map<String, Object> eReturnMap = new LinkedHashMap<>();
             eReturnMap.put("TYPE",    retType);
@@ -999,6 +1007,57 @@ public class SapRfcService {
 
     private long safeParseLong(String s) {
         try { return Long.parseLong(s.trim()); } catch (Exception e) { return 0L; }
+    }
+
+    /**
+     * SAP RFC 요청 상세를 가독성 좋게 STDOUT.LOG 에 기록.
+     * RFC 함수명 / IMPORT 파라미터 / TABLE(T_VBELN) 전송 내용을 한 블록으로 남긴다.
+     */
+    private void logRfcRequest(String gubun, String iTknum, List<String> tVbelnRows) {
+        String gubunLabel = "C".equals(gubun) ? "선적생성" : ("D".equals(gubun) ? "선적삭제" : gubun);
+        StringBuilder sb = new StringBuilder();
+        sb.append(System.lineSeparator());
+        sb.append("┌──────────────── SAP RFC 요청 ────────────────").append(System.lineSeparator());
+        sb.append("│ FUNCTION : ").append(RFC_SHIPMENT).append(System.lineSeparator());
+        sb.append("│ 구분      : ").append(gubun).append(" (").append(gubunLabel).append(")").append(System.lineSeparator());
+        sb.append("│ [IMPORT]").append(System.lineSeparator());
+        sb.append("│   I_GUBUN = '").append(gubun).append("'").append(System.lineSeparator());
+        sb.append("│   I_TKNUM = '").append(iTknum).append("'").append(System.lineSeparator());
+        sb.append("│   I_VBELN = ''").append(System.lineSeparator());
+        sb.append("│ [TABLE] T_VBELN  (").append(tVbelnRows.size()).append("건)").append(System.lineSeparator());
+        if (tVbelnRows.isEmpty()) {
+            sb.append("│   (없음)").append(System.lineSeparator());
+        } else {
+            int i = 1;
+            for (String v : tVbelnRows) {
+                sb.append(String.format("│   %02d) VBELN = '%s'%n", i++, v));
+            }
+        }
+        sb.append("└───────────────────────────────────────────────");
+        stdoutLog(sb.toString());
+    }
+
+    /**
+     * SAP RFC 응답 상세를 가독성 좋게 STDOUT.LOG 에 기록.
+     * E_TKNUM 및 E_RETURN 구조체(TYPE/CODE/MESSAGE/MESSAGE_V1~V4)를 전부 남겨
+     * "선적유형 는(은) 없습니다" 같은 메시지 치환변수(V1~V4) 원인 파악을 돕는다.
+     */
+    private void logRfcResponse(String gubun, boolean ok, String eTknum, JCoStructure eReturn) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(System.lineSeparator());
+        sb.append("┌──────────────── SAP RFC 응답 ────────────────").append(System.lineSeparator());
+        sb.append("│ FUNCTION : ").append(RFC_SHIPMENT).append(" (구분 ").append(gubun).append(")").append(System.lineSeparator());
+        sb.append("│ 성공여부  : ").append(ok ? "성공(S/I)" : "실패").append(System.lineSeparator());
+        sb.append("│ [EXPORT]").append(System.lineSeparator());
+        sb.append("│   E_TKNUM = '").append(eTknum != null ? eTknum : "").append("'").append(System.lineSeparator());
+        sb.append("│ [EXPORT] E_RETURN").append(System.lineSeparator());
+        for (String f : List.of("TYPE","CODE","MESSAGE","MESSAGE_V1","MESSAGE_V2","MESSAGE_V3","MESSAGE_V4")) {
+            String v;
+            try { v = eReturn.getString(f); } catch (JCoRuntimeException ex) { v = "(필드없음)"; }
+            sb.append(String.format("│   %-11s = '%s'%n", f, nullSafe(v)));
+        }
+        sb.append("└───────────────────────────────────────────────");
+        stdoutLog(sb.toString());
     }
 
     private Map<String, Object> err(String msg) {
