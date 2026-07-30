@@ -73,10 +73,37 @@ public class SapRfcService {
     private static final String WMS_IFC_URL_DEV  =
         "https://wmsdev.kleannara.com/common/tmsApi/json/WMS_IFC301.data";
 
-    /** WMS_IFC301 호출용 HTTP 클라이언트 (JDK 내장) */
-    private static final HttpClient HTTP = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(5))
-        .build();
+    /**
+     * WMS_IFC301 호출용 HTTP 클라이언트 (JDK 내장).
+     * ※ WMS 서버(https, 사내 IP/자체서명 인증서)와 통신하므로
+     *   Flask 의 requests(verify=False) 와 동일하게 인증서 검증을 생략한 SSLContext 를 사용한다.
+     *   (사내 폐쇄망 전용 인터페이스 — 외부 노출 없음)
+     */
+    private static final HttpClient HTTP = buildInsecureHttpClient();
+
+    /** 자체서명 인증서 허용(verify=False 상당) HTTP 클라이언트 생성 */
+    private static HttpClient buildInsecureHttpClient() {
+        try {
+            javax.net.ssl.TrustManager[] trustAll = new javax.net.ssl.TrustManager[] {
+                new javax.net.ssl.X509TrustManager() {
+                    public java.security.cert.X509Certificate[] getAcceptedIssuers() { return new java.security.cert.X509Certificate[0]; }
+                    public void checkClientTrusted(java.security.cert.X509Certificate[] c, String a) { }
+                    public void checkServerTrusted(java.security.cert.X509Certificate[] c, String a) { }
+                }
+            };
+            javax.net.ssl.SSLContext sc = javax.net.ssl.SSLContext.getInstance("TLS");
+            sc.init(null, trustAll, new java.security.SecureRandom());
+            // 호스트네임 검증도 완화 (사내 IP 접속 대응)
+            System.setProperty("jdk.internal.httpclient.disableHostnameVerification", "true");
+            return HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .sslContext(sc)
+                .build();
+        } catch (Exception e) {
+            // SSLContext 구성 실패 시 기본 클라이언트로 폴백
+            return HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+        }
+    }
 
     // Mock 선적번호 채번용 카운터
     private static final AtomicLong MOCK_SEQ = new AtomicLong(
@@ -514,17 +541,51 @@ public class SapRfcService {
             );
 
         } catch (JCoException e) {
-            log.error("SAP JCo RFC 호출 실패: gubun={}, key={}, msg={}",
-                      gubun, e.getKey(), e.getMessage(), e);
-            stdoutLog("[Z_TMS_SHIPMENT_CRDL][ERR] gubun=" + gubun + " key=" + e.getKey()
-                    + " msg=" + e.getMessage());
+            // ── RFC 예외 처리 (Flask _call_sap_rfc_shipment 동작 이식) ──
+            //  네트워크/연결/로그온 오류  → mock fallback (기능이 끊기지 않도록)
+            //  ABAP 예외 등 RFC 자체 오류 → 하드 에러 반환
+            String key = e.getKey() != null ? e.getKey() : "";
+            String msg = e.getMessage() != null ? e.getMessage() : "";
+            log.error("SAP JCo RFC 호출 실패: gubun={}, key={}, msg={}", gubun, key, msg, e);
+            stdoutLog("[Z_TMS_SHIPMENT_CRDL][ERR] gubun=" + gubun + " key=" + key + " msg=" + msg);
+
+            if (isConnError(key + " " + msg)) {
+                stdoutLog("[Z_TMS_SHIPMENT_CRDL][MOCK-FALLBACK] gubun=" + gubun
+                        + " 사유(연결오류)=" + key);
+                return sapRfcMock(gubun, tknum, "conn_error: "
+                        + (msg.length() > 120 ? msg.substring(0, 120) : msg));
+            }
             return Map.of(
                 "ok",       false,
-                "E_RETURN", Map.of("TYPE", "E", "CODE", e.getKey(), "MESSAGE", e.getMessage()),
+                "E_RETURN", Map.of("TYPE", "E", "CODE", key, "MESSAGE", msg),
                 "E_TKNUM",  "",
                 "mock",     false
             );
+        } catch (Throwable t) {
+            // JCo 네이티브 라이브러리(libsapjco3.so) 미로딩 시 발생하는
+            //  NoClassDefFoundError / UnsatisfiedLinkError / ExceptionInInitializerError 등.
+            //  (catch(Exception) 으로는 Error 계층을 잡지 못하므로 Throwable 로 확장)
+            //  → 연결 불가와 동일하게 mock fallback 하여 기능 흐름을 유지한다.
+            String msg = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
+            log.error("SAP JCo RFC 호출 실패(런타임/네이티브): gubun={}, msg={}", gubun, msg, t);
+            stdoutLog("[Z_TMS_SHIPMENT_CRDL][ERR-NATIVE] gubun=" + gubun + " msg=" + msg);
+            stdoutLog("[Z_TMS_SHIPMENT_CRDL][MOCK-FALLBACK] gubun=" + gubun
+                    + " 사유(JCo 라이브러리 미로딩)");
+            return sapRfcMock(gubun, tknum, "jco_unavailable: "
+                    + (msg.length() > 120 ? msg.substring(0, 120) : msg));
         }
+    }
+
+    /** RFC 오류 문자열이 네트워크/연결/로그온 계열인지 판정 (Flask is_conn_err 이식) */
+    private boolean isConnError(String errText) {
+        if (errText == null) return false;
+        String s = errText.toLowerCase();
+        String[] keys = { "connection", "timeout", "unreachable", "refused",
+                          "network", "logon", "communication", "host",
+                          "jco_communication_failure", "jco_system_failure",
+                          "partner", "connect to" };
+        for (String k : keys) if (s.contains(k)) return true;
+        return false;
     }
 
     // ════════════════════════════════════════════════════════════════
