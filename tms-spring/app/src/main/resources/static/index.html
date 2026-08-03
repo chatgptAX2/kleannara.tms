@@ -2083,12 +2083,20 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 /* ── PS배차(최적화) 테이블 컬럼명(헤더) 가독성 개선 ── */
 /* 납품문서 목록 테이블 헤더 — 스틸 블루 배경 + 진한 네이비 텍스트 */
 #psop-left .psd-doc-tbl thead th{
-  background:#c8d8ed !important;
-  color:#1a3558 !important;
-  border-bottom:2px solid #7096c0 !important;
+  background:#a9c4e6 !important;            /* 헤더 배경 더 짙게 (기존 #c8d8ed → #a9c4e6) */
+  color:#12294a !important;                /* 대비 확보 위해 텍스트도 살짝 진하게 */
+  border-bottom:2px solid #5c85b8 !important;
   font-size:11px !important;
   font-weight:700 !important;
   letter-spacing:.3px !important;
+  /* 컬럼명 항상 가로·세로 가운데 정렬 (resize 핸들로 인한 좌측 치우침 보정) */
+  text-align:center !important;
+  vertical-align:middle !important;
+  padding:6px 13px !important;             /* 좌우 대칭 여백 → 실제 중앙 정렬 */
+}
+/* 체크박스 컬럼(첫 컬럼)은 좁은 폭 유지하며 중앙 정렬 */
+#psop-left .psd-doc-tbl thead th:first-child{
+  padding:6px 4px !important;
 }
 /* 선적목록(차량) 테이블 헤더 — 블루 배경 + 진한 네이비 텍스트 */
 #psop-vehicle-area .psd-sap-tbl thead th,
