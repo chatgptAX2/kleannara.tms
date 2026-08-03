@@ -23,7 +23,10 @@ public class PsDispatchDocResponse {
     private String shpoit;          // 납품문서 아이템번호
 
     @JsonProperty("SVBELN")
-    private String svbeln;          // SAP 납품문서번호
+    private String svbeln;          // SAP 납품문서번호 (SAP 오더번호)
+
+    @JsonProperty("SPOSNR")
+    private String sposnr;          // SAP 오더 아이템번호
 
     // ── 품목 ───────────────────────────────────────────────────
     @JsonProperty("SKUKEY")

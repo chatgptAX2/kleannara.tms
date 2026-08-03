@@ -156,7 +156,8 @@ public class PsDispatchService {
         "       TRIM(COALESCE(i.LOTA03,'')) AS LOTA03," +
         "       (SELECT COALESCE(MAX(rd.QTYRCV), 0)" +
         "        FROM KNRAWMS.RECDI rd" +
-        "        WHERE rd.SKUKEY = i.SKUKEY) AS UNIT_WEIGHT" +
+        "        WHERE rd.SKUKEY = i.SKUKEY) AS UNIT_WEIGHT," +
+        "       TRIM(COALESCE(i.SPOSNR,'')) AS SPOSNR" +
         " FROM KNRAWMS.SHPDI i" +
         " JOIN KNRAWMS.SHPDH h ON i.SHPOKY = h.SHPOKY" +
         " LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY = h.DPTNKY AND b.PTNRTY = 'CT'" +
@@ -317,6 +318,7 @@ public class PsDispatchService {
                 .skukey(sk)
                 .desc01(str(r[3]))
                 .svbeln(svbeln)
+                .sposnr(str(r[17]))
                 .uomkey(uomkey)
                 .qtshpo(qtshpo)
                 .grswgt(grswgt)

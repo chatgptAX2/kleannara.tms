@@ -1018,6 +1018,216 @@ public class SapRfcService {
         }
     }
 
+    // ════════════════════════════════════════════════════════════════
+    //  납품분할 (PS배차 > 납품분할) — SAP RFC(개발중) + WMS API 호출
+    // ════════════════════════════════════════════════════════════════
+
+    /**
+     * 납품분할 처리 — <b>납품문서(SVBELN) 단위 1회 호출</b>.
+     *
+     * <pre>
+     * 처리 순서
+     *   1) 입력(splits) 로 RFC 입력 파라메터 목록 구성
+     *        [ {"SVBELN","SPOSNR","SKUKEY","SPLIT_QTY"}, ... ]  (아이템 복수, 요청은 1회)
+     *   2) SAP RFC 호출 (납품문서 단위 1회)
+     *        ※ RFC 는 개발단계 — 확정 전까지 실제 호출하지 않도록 if(false) 로 게이트.
+     *          (RFC 명/파라메터가 확정되면 if(true) 로 전환)
+     *          현재는 RFC 성공으로 간주하고 다음 단계 진행.
+     *   3) RFC 성공 시 WMS_IFC301 API 호출
+     *        ※ 개발환경 도메인(https://wmsdev.kleannara.com, 443)은 WAS 서버에서 방화벽 차단 →
+     *          도달 가능한 IP(http://10.2.14.190:8182) 로 호출 (wmsIfcUrl(env) 기본값에 반영됨).
+     * </pre>
+     *
+     * @param svbeln 납품문서번호 (SVBELN)
+     * @param splits [{SVBELN,SPOSNR,skukey,desc01,org_qty,split_qty}, ...]
+     * @return { ok, splits }
+     */
+    public Map<String, Object> shipmentSplit(String svbeln, List<Map<String, Object>> splits) {
+        if (svbeln == null || svbeln.isBlank()) return err("납품문서(SVBELN) 필수");
+        if (splits == null || splits.isEmpty())  return err("splits 필수");
+
+        // ── 1) RFC 입력 파라메터 구성: [{SVBELN,SPOSNR,SKUKEY,SPLIT_QTY}, ...] ──
+        List<Map<String, Object>> rfcParams = new ArrayList<>();
+        for (Map<String, Object> s : splits) {
+            String sVbeln  = firstNonEmpty(str(s.get("SVBELN")), svbeln);
+            String sPosnr  = str(s.get("SPOSNR"));
+            String sSkukey = firstNonEmpty(str(s.get("SKUKEY")), str(s.get("skukey")));
+            long   splitQty = toLongOr0(s.get("split_qty") != null ? s.get("split_qty") : s.get("SPLIT_QTY"));
+            Map<String, Object> p = new LinkedHashMap<>();
+            p.put("SVBELN",    sVbeln);
+            p.put("SPOSNR",    sPosnr);
+            p.put("SKUKEY",    sSkukey);
+            p.put("SPLIT_QTY", splitQty);
+            rfcParams.add(p);
+        }
+
+        // ── 요청 로그 (가독성) ──
+        StringBuilder reqLog = new StringBuilder();
+        reqLog.append(System.lineSeparator());
+        reqLog.append("┌──────────────── 납품분할 요청 (SAP RFC 입력) ────────────────").append(System.lineSeparator());
+        reqLog.append("│ SVBELN  : ").append(svbeln).append("  (납품문서 단위 1회 호출)").append(System.lineSeparator());
+        reqLog.append("│ 아이템수 : ").append(rfcParams.size()).append(System.lineSeparator());
+        for (Map<String, Object> p : rfcParams) {
+            reqLog.append("│   - SPOSNR=").append(p.get("SPOSNR"))
+                  .append(", SKUKEY=").append(p.get("SKUKEY"))
+                  .append(", SPLIT_QTY=").append(p.get("SPLIT_QTY")).append(System.lineSeparator());
+        }
+        reqLog.append("└────────────────────────────────────────────────────────────");
+        stdoutLog(reqLog.toString());
+
+        // ── 2) SAP RFC 호출 (개발중 → if(false) 로 비활성화) ──
+        boolean rfcOk = true;   // RFC 미확정 상태에서는 성공으로 간주하고 진행
+        String  rfcMsg = "RFC 미호출(개발중) — 성공으로 간주";
+        // TODO: RFC 확정 시 아래 if(false) → if(true) 로 전환하고 실제 호출 활성화
+        if (false) {
+            try {
+                // ── 납품분할 RFC 실제 호출 로직(확정 전 임시) ─────────────────
+                //   RFC 명은 미확정. 확정되면 아래 RFC_SPLIT 상수/파라메터 매핑을 교체한다.
+                //   입력: 납품문서 단위 1회, 아이템 라인(rfcParams) 을 테이블 파라메터로 전달.
+                //
+                //   예시(확정 시 실제 코드로 교체):
+                //   JCoFunction fn = getFunction("Z_TMS_SHIPMENT_SPLIT");
+                //   JCoTable t = fn.getTableParameterList().getTable("T_SPLIT");
+                //   for (Map<String,Object> p : rfcParams) {
+                //       t.appendRow();
+                //       t.setValue("SVBELN",    str(p.get("SVBELN")));
+                //       t.setValue("SPOSNR",    str(p.get("SPOSNR")));
+                //       t.setValue("SKUKEY",    str(p.get("SKUKEY")));
+                //       t.setValue("SPLIT_QTY", String.valueOf(p.get("SPLIT_QTY")));
+                //   }
+                //   fn.execute(getDestination());
+                //   String eReturn = fn.getExportParameterList().getString("E_RETURN");
+                //   rfcOk = ... ; rfcMsg = eReturn;
+                rfcOk = true;
+            } catch (Exception ex) {
+                stdoutLog("납품분할 RFC 호출 오류: " + ex.getMessage());
+                return errMap(ex);
+            }
+        }
+
+        if (!rfcOk) {
+            stdoutLog("납품분할 SAP RFC 실패 → WMS API 미호출: " + rfcMsg);
+            Map<String, Object> r = new LinkedHashMap<>();
+            r.put("ok", false);
+            r.put("error", "SAP RFC 실패: " + rfcMsg);
+            r.put("splits", rfcParams);
+            return r;
+        }
+
+        // ── 3) RFC 성공 → WMS_IFC301 API 호출 (개발환경 IP URL 사용) ──
+        String env = detectEnv();
+        Map<String, Object> wmsResult = callWmsIfc301Split(svbeln, rfcParams, env);
+
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("ok", Boolean.TRUE.equals(wmsResult.get("ok")));
+        r.put("rfc_msg", rfcMsg);
+        r.put("wms", wmsResult);
+        r.put("splits", rfcParams);
+        return r;
+    }
+
+    /**
+     * 납품분할 확정 후 WMS_IFC301 공통처리 API 호출.
+     *   payload: { GUBUN:"S"(분할), SVBELN, SPLITS:[{SVBELN,SPOSNR,SKUKEY,SPLIT_QTY}, ...] }
+     *   URL   : wmsIfcUrl(env)  (개발환경은 IP http://10.2.14.190:8182 사용)
+     */
+    private Map<String, Object> callWmsIfc301Split(String svbeln, List<Map<String, Object>> rfcParams, String env) {
+        String url = wmsIfcUrl(env);
+
+        // payload JSON 구성: {"GUBUN":"S","SVBELN":"...","SPLITS":[{...}, ...]}
+        StringBuilder items = new StringBuilder();
+        for (int i = 0; i < rfcParams.size(); i++) {
+            Map<String, Object> p = rfcParams.get(i);
+            if (i > 0) items.append(",");
+            items.append(String.format(
+                "{\"SVBELN\":\"%s\",\"SPOSNR\":\"%s\",\"SKUKEY\":\"%s\",\"SPLIT_QTY\":%d}",
+                jsonEsc(str(p.get("SVBELN"))), jsonEsc(str(p.get("SPOSNR"))),
+                jsonEsc(str(p.get("SKUKEY"))), toLongOr0(p.get("SPLIT_QTY"))));
+        }
+        String payload = String.format(
+            "{\"GUBUN\":\"S\",\"SVBELN\":\"%s\",\"SPLITS\":[%s]}",
+            jsonEsc(svbeln), items.toString());
+
+        // ── 요청 로그 ──
+        StringBuilder reqLog = new StringBuilder();
+        reqLog.append(System.lineSeparator());
+        reqLog.append("┌──────────────── WMS API 요청 (WMS_IFC301 / 납품분할) ────────────────").append(System.lineSeparator());
+        reqLog.append("│ ENV     : ").append(env).append(System.lineSeparator());
+        reqLog.append("│ METHOD  : POST").append(System.lineSeparator());
+        reqLog.append("│ URL     : ").append(url).append(System.lineSeparator());
+        reqLog.append("│ [BODY]").append(System.lineSeparator());
+        reqLog.append("│   GUBUN  = 'S' (납품분할)").append(System.lineSeparator());
+        reqLog.append("│   SVBELN = '").append(svbeln).append("'").append(System.lineSeparator());
+        reqLog.append("│   SPLITS = ").append(rfcParams.size()).append("건").append(System.lineSeparator());
+        reqLog.append("└────────────────────────────────────────────────────────────");
+        stdoutLog(reqLog.toString());
+        try {
+            HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(10))
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                // POST 방식 명시 (WMS_IFC301 은 POST 만 지원)
+                .method("POST", HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
+                .build();
+            HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            int sc = resp.statusCode();
+            String bodyText = resp.body() == null ? "" : resp.body();
+            String snippet = bodyText.length() > 500 ? bodyText.substring(0, 500) : bodyText;
+            boolean ok = sc >= 200 && sc < 300;
+            String location = resp.headers().firstValue("Location").orElse("");
+            boolean redirected = sc >= 300 && sc < 400;
+
+            StringBuilder resLog = new StringBuilder();
+            resLog.append(System.lineSeparator());
+            resLog.append("┌──────────────── WMS API 응답 (WMS_IFC301 / 납품분할) ────────────────").append(System.lineSeparator());
+            resLog.append("│ URL     : ").append(url).append(System.lineSeparator());
+            resLog.append("│ METHOD  : POST").append(System.lineSeparator());
+            resLog.append("│ 성공여부 : ").append(ok ? "성공" : "실패").append(System.lineSeparator());
+            resLog.append("│ STATUS  : ").append(sc).append(System.lineSeparator());
+            if (redirected) {
+                resLog.append("│ ▶ 경고  : 3xx 리다이렉트 감지 → Location='").append(location).append("'").append(System.lineSeparator());
+                resLog.append("│           (리다이렉트 추종 시 POST→GET 변환되어 실패하므로 자동추종 금지됨. WMS 앞단 설정 확인 필요)").append(System.lineSeparator());
+            }
+            resLog.append("│ BODY    : ").append(snippet.isEmpty() ? "(없음)" : snippet).append(System.lineSeparator());
+            resLog.append("└────────────────────────────────────────────────────────────");
+            stdoutLog(resLog.toString());
+            log.info("WMS_IFC301(납품분할) 호출: ok={}, status={}, svbeln={}, splits={}", ok, sc, svbeln, rfcParams.size());
+            Map<String, Object> r = new LinkedHashMap<>();
+            r.put("ok", ok);
+            r.put("status_code", sc);
+            r.put("body", snippet);
+            return r;
+        } catch (IOException | InterruptedException ex) {
+            if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
+            String diag = diagnoseWmsNetworkError(url, ex);
+            StringBuilder errLog = new StringBuilder();
+            errLog.append(System.lineSeparator());
+            errLog.append("┌──────────────── WMS API 오류 (WMS_IFC301 / 납품분할) ────────────────").append(System.lineSeparator());
+            errLog.append("│ URL     : ").append(url).append(System.lineSeparator());
+            errLog.append("│ SVBELN  : ").append(svbeln).append(System.lineSeparator());
+            errLog.append("│ 예외유형 : ").append(ex.getClass().getName()).append(System.lineSeparator());
+            errLog.append("│ ERROR   : ").append(ex.getMessage()).append(System.lineSeparator());
+            errLog.append("│ ▶ 진단  : ").append(diag).append(System.lineSeparator());
+            errLog.append("└────────────────────────────────────────────────────────────");
+            stdoutLog(errLog.toString());
+            log.error("WMS_IFC301(납품분할) 호출 실패: svbeln={}, msg={}", svbeln, ex.getMessage(), ex);
+            Map<String, Object> r = new LinkedHashMap<>();
+            r.put("ok", false);
+            r.put("error", ex.getMessage());
+            r.put("diagnosis", diag);
+            return r;
+        }
+    }
+
+    /** null/비숫자 안전 long 변환 (0 기본값) */
+    private long toLongOr0(Object v) {
+        if (v == null) return 0L;
+        if (v instanceof Number) return ((Number) v).longValue();
+        try { return (long) Double.parseDouble(v.toString().trim()); }
+        catch (Exception e) { return 0L; }
+    }
+
     /**
      * WMS_IFC301 호출 실패(네트워크 예외) 시, 예외 유형별로 운영자가 취해야 할
      * 점검/조치 방향을 한국어 힌트로 반환한다. (로그·응답에 함께 노출)
