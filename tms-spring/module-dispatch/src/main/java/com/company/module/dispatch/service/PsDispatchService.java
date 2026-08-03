@@ -208,10 +208,11 @@ public class PsDispatchService {
             params.add(like);
         }
         if (shpoky != null && !shpoky.isEmpty()) {
-            where.append(" AND (i.SHPOKY LIKE ? OR i.SVBELN LIKE ?)");
-            String like = "%" + shpoky + "%";
-            params.add(like);
-            params.add(like);
+            // 납품문서 검색 조건: 기존 (SHPOKY LIKE %..% OR SVBELN LIKE %..%) 는
+            // 선행 와일드카드로 인덱스를 타지 못해 성능이 느림 →
+            // SVBELN(납품문서번호) 정확일치(=)로 변경하여 인덱스 사용 유도.
+            where.append(" AND i.SVBELN = ?");
+            params.add(shpoky.trim());
         }
         if (shpmtyList != null && !shpmtyList.isEmpty()) {
             // shpmty IN (...) : 가변 개수를 플레이스홀더로 전개
