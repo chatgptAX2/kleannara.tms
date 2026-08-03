@@ -16479,42 +16479,26 @@ function psopOpenSplit() {
 /* ═══════════════════════════════════════════════════
    납품분할 모달
 ═══════════════════════════════════════════════════ */
+// 납품분할 대상 아이템 목록(모달 open 시 저장) — 행 추가/삭제 시 참조
+let psopSplitItems = [];
+// 분할 입력행 고유 id 시퀀스
+let psopSplitSeq = 0;
+
 function psopOpenSplitModal(items) {
   const existing = document.getElementById('psop-split-modal');
   if (existing) existing.remove();
 
-  // 각 아이템에 대해 분할 수량 입력 행 생성
-  const rowsHtml = items.map((it, idx) => {
-    const orgQty = parseFloat(it.QTSHPO||0);
-    // ★ 납품문서 = SVBELN(SAP오더번호) / 아이템 = SPOSNR(SAP오더아이템번호)
-    const svbeln = it.SVBELN || it.SHPOKY || '';
-    const sposnr = it.SPOSNR || it.SHPOIT || '';
-    return `
-    <tr id="psop-split-row-${idx}">
-      <td><input type="checkbox" class="psd-split-chk" data-idx="${idx}" checked></td>
-      <td class="left" style="font-family:monospace;font-size:11px">${svbeln}</td>
-      <td class="left" style="font-family:monospace;font-size:11px">${sposnr}</td>
-      <td class="left" style="max-width:160px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${it.DESC01||''}">${it.DESC01||it.SKUKEY||''}</td>
-      <td class="split-narrow" style="text-align:right;font-weight:600">${psopFmtNum(orgQty)}</td>
-      <td class="split-narrow">${it.UOMKEY||'KG'}</td>
-      <td>
-        <input type="number" class="psd-split-qty-input" data-idx="${idx}"
-               data-org="${orgQty}" data-svbeln="${svbeln}" data-sposnr="${sposnr}"
-               data-shpoky="${it.SHPOKY||''}" data-shpoit="${it.SHPOIT||''}"
-               data-skukey="${it.SKUKEY||''}" data-desc="${(it.DESC01||'').replace(/"/g,'&quot;')}"
-               placeholder="분할수량" min="1" max="${orgQty-1}" step="1"
-               oninput="psopSplitCalcRem(${idx},${orgQty})">
-      </td>
-      <td class="split-narrow" style="text-align:right;color:var(--text3)" id="psop-split-rem-${idx}">-</td>
-      <td class="split-narrow">${it.UOMKEY||'KG'}</td>
-    </tr>`;
-  }).join('');
+  psopSplitItems = items.slice();
+  psopSplitSeq = 0;
+
+  // 각 아이템에 대해 최초 분할수량 입력행 1개 생성
+  const rowsHtml = items.map((it, idx) => psopBuildSplitRow(it, idx, true)).join('');
 
   const modal = document.createElement('div');
   modal.id = 'psop-split-modal';
   modal.className = 'psd-modal-overlay';
   modal.innerHTML = `
-    <div class="psd-modal" style="width:960px;max-width:96vw">
+    <div class="psd-modal" style="width:1000px;max-width:96vw">
       <div class="psd-modal-hdr">
         <h3>✂️ 납품분할</h3>
         <button class="psd-modal-close" onclick="document.getElementById('psop-split-modal').remove()">✕</button>
@@ -16522,6 +16506,7 @@ function psopOpenSplitModal(items) {
       <div class="psd-modal-body">
         <div style="margin-bottom:12px;font-size:12px;color:var(--text3)">
           분할할 납품문서를 선택하고 분할수량을 입력하세요.<br>
+          한 아이템을 <b>여러 수량으로 동시 분할</b>하려면 <b>＋추가</b> 버튼으로 분할수량 행을 추가하세요.<br>
           분할 후 원본 문서는 <b>잔량</b>으로 유지되고, 분할된 수량은 <b>신규 납품문서번호</b>로 채번됩니다.<br>
           <span style="color:var(--primary);font-size:10px">예) 2004335315 → 2004335315-S01, S02 ...</span>
         </div>
@@ -16534,14 +16519,16 @@ function psopOpenSplitModal(items) {
                 <th class="split-narrow" style="text-align:right">원수량</th><th class="split-narrow">단위</th>
                 <th style="text-align:center">분할수량</th>
                 <th class="split-narrow" style="text-align:right">잔량</th><th class="split-narrow">단위</th>
+                <th style="width:74px;text-align:center">추가/삭제</th>
               </tr>
             </thead>
-            <tbody>${rowsHtml}</tbody>
+            <tbody id="psop-split-tbody">${rowsHtml}</tbody>
           </table>
         </div>
         <div style="margin-top:12px;padding:10px;background:var(--surface2);border-radius:6px;font-size:11px;color:var(--text3)">
           💡 <b>아이템 분할</b>: 동일 납품문서의 여러 품목을 개별 납품문서로 분리<br>
-          💡 <b>수량 분할</b>: 하나의 품목의 수량을 지정하여 분리 (분할수량 입력 필수)
+          💡 <b>수량 분할</b>: 하나의 품목의 수량을 지정하여 분리 (분할수량 입력 필수)<br>
+          💡 <b>다중 분할</b>: <b>＋추가</b> 로 분할수량 행을 여러 개 추가하면 한 번에 여러 개로 분할됩니다 (잔량 = 원수량 − 분할수량 합계)
         </div>
       </div>
       <div class="psd-modal-foot">
@@ -16552,14 +16539,105 @@ function psopOpenSplitModal(items) {
   document.body.appendChild(modal);
 }
 
-function psopSplitCalcRem(idx, orgQty) {
-  const inp = document.querySelector(`.psd-split-qty-input[data-idx="${idx}"]`);
-  const rem = document.getElementById(`psop-split-rem-${idx}`);
-  if (!inp || !rem) return;
-  const v = parseFloat(inp.value||0);
-  const r = orgQty - v;
-  rem.textContent = r > 0 ? psopFmtNum(r) : '⚠️ 초과';
-  rem.style.color  = r > 0 ? 'var(--text3)' : 'var(--danger)';
+/**
+ * 분할수량 입력행 1개 생성.
+ * @param it       아이템 데이터(searchRows row)
+ * @param idx      아이템 인덱스
+ * @param isFirst  아이템의 첫 행 여부(true 면 납품문서/아이템/품목명/원수량 셀 표시, 체크박스 표시)
+ */
+function psopBuildSplitRow(it, idx, isFirst) {
+  const orgQty = parseFloat(it.QTSHPO||0);
+  const svbeln = it.SVBELN || it.SHPOKY || '';
+  const sposnr = it.SPOSNR || it.SHPOIT || '';
+  const uom    = it.UOMKEY || 'KG';
+  const sid    = ++psopSplitSeq;   // 분할행 고유 id
+
+  // 첫 행: 납품문서/아이템/품목명/원수량 표시 + 체크박스
+  // 추가 행: 좌측 셀들은 비우고 '↳ 분할' 표시
+  const leftCells = isFirst
+    ? `<td><input type="checkbox" class="psd-split-chk" data-idx="${idx}" checked></td>
+       <td class="left" style="font-family:monospace;font-size:11px">${svbeln}</td>
+       <td class="left" style="font-family:monospace;font-size:11px">${sposnr}</td>
+       <td class="left" style="max-width:160px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${it.DESC01||''}">${it.DESC01||it.SKUKEY||''}</td>
+       <td class="split-narrow" style="text-align:right;font-weight:600">${psopFmtNum(orgQty)}</td>
+       <td class="split-narrow">${uom}</td>`
+    : `<td></td>
+       <td class="left" style="color:var(--text3);font-size:11px">↳</td>
+       <td></td>
+       <td class="left" style="color:var(--text3);font-size:11px">추가 분할</td>
+       <td class="split-narrow"></td>
+       <td class="split-narrow"></td>`;
+
+  // 추가 버튼(첫 행) / 삭제 버튼(추가 행)
+  const actionCell = isFirst
+    ? `<td style="text-align:center">
+         <button type="button" class="psd-btn" style="padding:2px 8px;font-size:11px"
+                 title="이 아이템에 분할수량 행 추가" onclick="psopAddSplitRow(${idx})">＋추가</button>
+       </td>`
+    : `<td style="text-align:center">
+         <button type="button" class="psd-btn danger" style="padding:2px 8px;font-size:11px"
+                 title="이 분할수량 행 삭제" onclick="psopRemoveSplitRow(this,${idx})">－삭제</button>
+       </td>`;
+
+  return `
+    <tr class="psop-split-row" data-idx="${idx}" data-sid="${sid}">
+      ${leftCells}
+      <td>
+        <input type="number" class="psd-split-qty-input" data-idx="${idx}" data-sid="${sid}"
+               data-org="${orgQty}" data-svbeln="${svbeln}" data-sposnr="${sposnr}"
+               data-shpoky="${it.SHPOKY||''}" data-shpoit="${it.SHPOIT||''}"
+               data-skukey="${it.SKUKEY||''}" data-desc="${(it.DESC01||'').replace(/"/g,'&quot;')}"
+               data-uom="${uom}"
+               placeholder="분할수량" min="1" max="${orgQty-1}" step="1"
+               oninput="psopSplitCalcRem(${idx})">
+      </td>
+      <td class="split-narrow" style="text-align:right;color:var(--text3)" data-rem-idx="${idx}">-</td>
+      <td class="split-narrow">${uom}</td>
+      ${actionCell}
+    </tr>`;
+}
+
+/** 아이템(idx)에 분할수량 입력행 1개 추가 */
+function psopAddSplitRow(idx) {
+  const it = psopSplitItems[idx];
+  if (!it) return;
+  const tbody = document.getElementById('psop-split-tbody');
+  if (!tbody) return;
+  // 같은 idx 의 마지막 행 뒤에 삽입
+  const sameRows = [...tbody.querySelectorAll(`tr.psop-split-row[data-idx="${idx}"]`)];
+  const lastRow  = sameRows[sameRows.length - 1];
+  const tmp = document.createElement('tbody');
+  tmp.innerHTML = psopBuildSplitRow(it, idx, false).trim();
+  const newRow = tmp.firstElementChild;
+  if (lastRow && lastRow.nextSibling) lastRow.parentNode.insertBefore(newRow, lastRow.nextSibling);
+  else tbody.appendChild(newRow);
+  psopSplitCalcRem(idx);
+}
+
+/** 분할수량 입력행 삭제(추가 행만 삭제 가능) */
+function psopRemoveSplitRow(btn, idx) {
+  const tr = btn.closest('tr.psop-split-row');
+  if (tr) tr.remove();
+  psopSplitCalcRem(idx);
+}
+
+/**
+ * 아이템(idx)의 잔량 재계산.
+ * 잔량 = 원수량 − (해당 아이템의 모든 분할수량 합계).
+ * 같은 아이템의 모든 행의 잔량 셀을 동일 값으로 갱신한다.
+ */
+function psopSplitCalcRem(idx) {
+  const inputs = [...document.querySelectorAll(`.psd-split-qty-input[data-idx="${idx}"]`)];
+  if (!inputs.length) return;
+  const orgQty = parseFloat(inputs[0].dataset.org||0);
+  let sum = 0;
+  inputs.forEach(inp => { sum += parseFloat(inp.value||0) || 0; });
+  const rem = orgQty - sum;
+  const cells = [...document.querySelectorAll(`[data-rem-idx="${idx}"]`)];
+  cells.forEach(c => {
+    c.textContent = rem > 0 ? psopFmtNum(rem) : (rem === 0 ? '0' : '⚠️ 초과');
+    c.style.color = rem >= 0 ? 'var(--text3)' : 'var(--danger)';
+  });
 }
 
 async function psopExecuteSplit() {
@@ -16567,33 +16645,55 @@ async function psopExecuteSplit() {
   const checked = document.querySelectorAll('.psd-split-chk:checked');
   const checkedIdxs = new Set([...checked].map(c => parseInt(c.dataset.idx)));
 
-  // 입력값 수집 (체크 + 분할수량 유효 항목만)
-  const splitRows = [];
-  let hasError = false;
+  // ── 1) 아이템(idx) 단위로 분할수량 입력 수집 (한 아이템에 여러 분할행 가능) ──
+  //    한 아이템의 분할수량 '합계'가 원수량 미만이어야 함 (원본 잔량 ≥ 1).
+  const byIdx = new Map();   // idx → { org_qty, svbeln, sposnr, skukey, desc01, _shpoky, _shpoit, qtys:[] }
   inputs.forEach(inp => {
     const idx = parseInt(inp.dataset.idx);
     if (!checkedIdxs.has(idx)) return;
     const splitQty = parseFloat(inp.value||0);
-    if (splitQty <= 0) return;
-    const orgQty = parseFloat(inp.dataset.org||0);
-    if (splitQty >= orgQty) { showToast(`분할수량이 원수량 이상입니다 (아이템 ${inp.dataset.sposnr||idx})`); hasError = true; return; }
-    splitRows.push({
-      SVBELN:    inp.dataset.svbeln,
-      SPOSNR:    inp.dataset.sposnr,
-      skukey:    inp.dataset.skukey,
-      desc01:    inp.dataset.desc,
-      org_qty:   orgQty,
-      split_qty: splitQty,
-      // 내부 갱신용 (SHPOKY/SHPOIT 는 searchRows 매칭에 사용)
-      _shpoky:   inp.dataset.shpoky,
-      _shpoit:   inp.dataset.shpoit,
-    });
+    if (!(splitQty > 0)) return;   // 빈 값/0 은 건너뜀
+    if (!byIdx.has(idx)) {
+      byIdx.set(idx, {
+        org_qty: parseFloat(inp.dataset.org||0),
+        svbeln:  inp.dataset.svbeln,
+        sposnr:  inp.dataset.sposnr,
+        skukey:  inp.dataset.skukey,
+        desc01:  inp.dataset.desc,
+        _shpoky: inp.dataset.shpoky,
+        _shpoit: inp.dataset.shpoit,
+        qtys:    [],
+      });
+    }
+    byIdx.get(idx).qtys.push(splitQty);
   });
 
-  if (hasError) return;
-  if (!splitRows.length) { showToast('분할할 항목을 입력하세요.'); return; }
+  if (!byIdx.size) { showToast('분할할 항목을 입력하세요.'); return; }
 
-  // ── 납품문서(SVBELN) 단위로 그룹핑 ────────────────────────────
+  // ── 2) 아이템별 검증: 분할수량 합계 < 원수량 ──
+  const splitRows = [];   // {SVBELN,SPOSNR,skukey,desc01,org_qty,split_qty,_shpoky,_shpoit}
+  for (const [idx, g] of byIdx.entries()) {
+    const sum = g.qtys.reduce((a,b)=>a+b, 0);
+    if (sum >= g.org_qty) {
+      showToast(`아이템 ${g.sposnr||idx}: 분할수량 합계(${psopFmtNum(sum)})가 원수량(${psopFmtNum(g.org_qty)}) 이상입니다.`);
+      return;
+    }
+    // 각 분할수량을 개별 split 로우로 전개
+    g.qtys.forEach(q => {
+      splitRows.push({
+        SVBELN:    g.svbeln,
+        SPOSNR:    g.sposnr,
+        skukey:    g.skukey,
+        desc01:    g.desc01,
+        org_qty:   g.org_qty,
+        split_qty: q,
+        _shpoky:   g._shpoky,
+        _shpoit:   g._shpoit,
+      });
+    });
+  }
+
+  // ── 3) 납품문서(SVBELN) 단위로 그룹핑 후 문서 단위 1회 호출 ──
   const bySvbeln = new Map();
   for (const r of splitRows) {
     const key = r.SVBELN || '';
@@ -16601,8 +16701,8 @@ async function psopExecuteSplit() {
     bySvbeln.get(key).push(r);
   }
 
-  // ── SVBELN 단위로 1회씩 API 호출 (요청 형식: {SVBELN, splits:[...]}) ──
   let successCnt = 0;
+  let splitItemCnt = 0;
   for (const [svbeln, rows] of bySvbeln.entries()) {
     // 요청 payload 의 splits 는 지정된 형식({SVBELN,SPOSNR,skukey,desc01,org_qty,split_qty})만 포함
     const splits = rows.map(r => ({
@@ -16621,11 +16721,22 @@ async function psopExecuteSplit() {
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
-      // 로컬 searchRows 갱신: 원본 잔량 반영 + 신규 분할 아이템 추가
+      // 로컬 searchRows 갱신: 원본 잔량(합계 차감) 반영 + 신규 분할 아이템 추가
       const newItems = data.splits || [];
+      // 원본 QTSHPO 는 (SHPOKY|SHPOIT) 별 1회만 차감 — 합계 사용
+      const decByKey = new Map();
+      rows.forEach(r => {
+        const k = r._shpoky + '|' + r._shpoit;
+        decByKey.set(k, (decByKey.get(k)||0) + r.split_qty);
+      });
+      decByKey.forEach((dec, k) => {
+        const [sk, sit] = k.split('|');
+        const orig = psopState.searchRows.find(x => x.SHPOKY===sk && x.SHPOIT===sit);
+        if (orig) orig.QTSHPO = parseFloat(orig.QTSHPO||0) - dec;
+      });
+      // 신규 분할문서 추가
       rows.forEach((r, i) => {
         const orig = psopState.searchRows.find(x => x.SHPOKY===r._shpoky && x.SHPOIT===r._shpoit);
-        if (orig) orig.QTSHPO = r.org_qty - r.split_qty;
         const ni = newItems[i];
         if (ni) {
           psopState.searchRows.push({
@@ -16653,6 +16764,7 @@ async function psopExecuteSplit() {
         }
       });
       successCnt++;
+      splitItemCnt += rows.length;
     } catch(e) {
       showToast(`❌ 분할 실패 (납품문서 ${svbeln}): ${e.message}`);
     }
@@ -16660,7 +16772,7 @@ async function psopExecuteSplit() {
 
   document.getElementById('psop-split-modal')?.remove();
   if (successCnt) {
-    showToast(`✅ 납품분할 ${successCnt}건(납품문서 단위) 완료`);
+    showToast(`✅ 납품분할 완료 — 납품문서 ${successCnt}건 / 분할 ${splitItemCnt}건`);
     psopState.selectedDocs.clear();
     psopRenderDocTable();
     psopUpdateToolbar();
