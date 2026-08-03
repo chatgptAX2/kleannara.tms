@@ -2069,6 +2069,49 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 }
 /* 차량/문서수 뱃지 — 굵기 통일(본문보다 약간 강조: 600) */
 #psop-panel-sap .sap-left-tbl tbody td .psd-car-badge{font-weight:600 !important;font-size:11px !important}
+
+/* ══ PS배차(최적화) 검색조건 바탕색 — 첨부 스틸블루(#0d5e96) 적용 ══ */
+/* 배차 탭 검색바(.psd-searchbar) + 배차확정(SAP선적) 탭 검색바(.psd-toolbar) 공통 */
+#psop-panel-dispatch .psd-searchbar,
+#psop-panel-sap .psd-toolbar{
+  background:linear-gradient(135deg,#0d5e96 0%,#0a4d7d 100%) !important;
+  border-bottom:2px solid #08395c !important;
+  box-shadow:0 2px 8px rgba(13,94,150,.25) !important;
+}
+/* 검색조건 타이틀·라벨·안내 텍스트 → 밝은 색으로 대비 확보 */
+#psop-panel-dispatch .psd-searchbar .psd-search-title,
+#psop-panel-dispatch .psd-searchbar .psop-cond-title{
+  color:#ffffff !important;
+  border-bottom-color:rgba(255,255,255,.25) !important;
+}
+#psop-panel-dispatch .psd-searchbar .psd-fg label{
+  color:#dbeafe !important;
+}
+#psop-panel-dispatch .psd-searchbar .psd-fg label span{
+  color:#93c5fd !important;
+}
+/* 수직 구분선 → 반투명 흰색 */
+#psop-panel-dispatch .psd-searchbar .psd-sep-v{
+  background:rgba(255,255,255,.3) !important;
+}
+/* SAP선적 탭 툴바 라벨/구분자/안내문구 → 밝은 색 */
+#psop-panel-sap .psd-toolbar > span,
+#psop-panel-sap .psd-toolbar span[style*="color:var(--text3)"],
+#psop-panel-sap .psd-toolbar span[style*="color:var(--text2)"]{
+  color:#dbeafe !important;
+}
+#psop-panel-sap .psd-toolbar .psd-sep{
+  background:rgba(255,255,255,.3) !important;
+}
+/* 입력창(date/text)은 흰 배경 유지 → 가독성 */
+#psop-panel-dispatch .psd-searchbar .psd-fg input,
+#psop-panel-dispatch .psd-searchbar .psd-fg select,
+#psop-panel-sap .psd-toolbar input{
+  background:#ffffff !important;
+  color:#0f172a !important;
+  border-color:#cbd5e1 !important;
+}
+
 /* PS배차(최적화) 납품문서 패널 헤더 — 흰색 */
 #psop-left .psd-panel-hdr{background:#ffffff !important;border-bottom:1px solid var(--border) !important}
 #psop-left .psd-panel-hdr .psd-panel-hdr-title{color:var(--text) !important;font-weight:700}
