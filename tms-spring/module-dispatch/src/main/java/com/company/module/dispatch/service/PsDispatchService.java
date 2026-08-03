@@ -227,17 +227,11 @@ public class PsDispatchService {
                  " dptnky={}, shpoky={}, shpmty={}, status={}",
                  vWareky, vSkug05, dateFrom, dateTo, dptnky, shpoky, shpmtyList, dispStat);
 
-        // 배차완료 키 목록 (Oracle KNRAWMS.SHPDI → em)
-        // Oracle CONCAT()은 인수 2개만 허용 → || 연산자 사용
-        @SuppressWarnings("unchecked")
-        List<String> dispatchedKeys = em.createNativeQuery(
-            "SELECT SHPOKY || '|' || SHPOIT" +
-            " FROM KNRAWMS.SHPDI" +
-            " WHERE STATIT='NEW' AND STDLNR IS NOT NULL AND STDLNR <> ' '"
-        ).getResultList();
-        Set<String> dispatchedSet = new HashSet<>(dispatchedKeys);
-
         // ── 동적 SQL 실행 (값 있는 필터만 WHERE 에 반영) ─────────────────────
+        //   ※ 배차완료 키(dispatchedSet) 조회를 메인 검색 뒤로 이동:
+        //     기존에는 SHPDI 전체(WAREKY/일자/문서 필터 없음)를 매번 풀스캔하여
+        //     실제 검색결과가 2건이어도 17초 이상 소요됐음.
+        //     → 메인 검색 결과의 SHPOKY 목록으로만 배차여부를 조회(인덱스 IN)하도록 변경.
         log.info("[PsDispatch] ==== SQL BEGIN ====\n{}", searchSql);
         log.info("[PsDispatch] params: {}", params);
 
@@ -250,6 +244,10 @@ public class PsDispatchService {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = query.getResultList();
         log.info("[PsDispatch] DB \uc870\ud68c \uacb0\uacfc: {}건 (dispStat={})", rows.size(), dispStat);
+
+        // ── 배차완료 키(SHPOKY|SHPOIT) 조회: 검색결과의 SHPOKY 로만 스코프 ──
+        //   (SHPDI 전체 풀스캔 방지 — 결과 문서번호로만 IN 조회)
+        Set<String> dispatchedSet = loadDispatchedKeys(rows);
         List<PsDispatchDocResponse> result = new ArrayList<>();
 
         for (Object[] r : rows) {
@@ -344,6 +342,49 @@ public class PsDispatchService {
                 .build());
         }
         return result;
+    }
+
+    /**
+     * 배차완료 키(SHPOKY|SHPOIT) 집합 조회.
+     *
+     * <p>기존에는 {@code KNRAWMS.SHPDI} 전체(WAREKY/일자/문서번호 필터 없음)를 매번 스캔하여
+     * 배차완료 키 전체를 가져왔다. 이 때문에 실제 검색결과가 소량(예: 2건)이어도
+     * 대용량 테이블 풀스캔으로 17초 이상 소요되는 성능 병목이 있었다.</p>
+     *
+     * <p>배차여부(isDisp)는 <b>검색결과 행에 대해서만</b> 필요하므로,
+     * 검색결과의 SHPOKY(납품문서번호) 목록으로만 스코프하여 인덱스 IN 조회로 대체한다.
+     * 검색결과가 없으면 조회 자체를 생략한다.</p>
+     *
+     * @param rows 메인 검색 결과 (r[0]=SHPOKY, r[1]=SHPOIT)
+     * @return "SHPOKY|SHPOIT" 형식의 배차완료 키 집합
+     */
+    private Set<String> loadDispatchedKeys(List<Object[]> rows) {
+        if (rows == null || rows.isEmpty()) return java.util.Collections.emptySet();
+
+        // 검색결과에 등장한 SHPOKY(납품문서번호) 만 distinct 수집
+        LinkedHashSet<String> shpokySet = new LinkedHashSet<>();
+        for (Object[] r : rows) {
+            String shpoky = str(r[0]);
+            if (!shpoky.isEmpty()) shpokySet.add(shpoky);
+        }
+        if (shpokySet.isEmpty()) return java.util.Collections.emptySet();
+
+        List<String> shpokys = new ArrayList<>(shpokySet);
+        // IN 절 플레이스홀더 전개 (SHPOKY 는 검색결과 문서 수만큼으로 소량)
+        String ph = shpokys.stream().map(x -> "?").collect(Collectors.joining(","));
+        String sql =
+            "SELECT SHPOKY || '|' || SHPOIT" +
+            " FROM KNRAWMS.SHPDI" +
+            " WHERE STATIT='NEW' AND STDLNR IS NOT NULL AND STDLNR <> ' '" +
+            "   AND SHPOKY IN (" + ph + ")";
+
+        var q = em.createNativeQuery(sql);
+        for (int i = 0; i < shpokys.size(); i++) {
+            q.setParameter(i + 1, shpokys.get(i));
+        }
+        @SuppressWarnings("unchecked")
+        List<String> keys = q.getResultList();
+        return new HashSet<>(keys);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
