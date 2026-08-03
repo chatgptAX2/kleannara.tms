@@ -172,26 +172,44 @@ public class SapService {
     }
 
     @Transactional
+    /**
+     * 납품분할 저장 — 납품문서(SVBELN) 단위 요청.
+     *
+     * 요청 형식(프론트 psdExecuteSplit):
+     *   {
+     *     "SVBELN": "0823932282",
+     *     "splits": [
+     *       {"SVBELN":"0823932282","SPOSNR":"000010","skukey":"...","desc01":"...","org_qty":498,"split_qty":98},
+     *       {"SVBELN":"0823932282","SPOSNR":"000020","skukey":"...","desc01":"...","org_qty":677,"split_qty":77}
+     *     ]
+     *   }
+     *
+     * 처리 흐름:
+     *   1) splits 검증
+     *   2) SAP RFC 호출 (납품문서 단위 1회) — SapRfcService.shipmentSplit 로 위임
+     *      ※ RFC 개발 진행중 → 실제 호출은 SapRfcService 내부에서 if(false) 로 비활성화됨.
+     *   3) RFC 성공 시 WMS API(WMS_IFC301) 호출 (SapRfcService 내부에서 수행)
+     */
     public Map<String, Object> psSplit(Map<String, Object> body) {
-        Long dispHId = toLong(body.get("disp_h_id"));
-        if (dispHId == null) return Map.of("ok", false, "error", "disp_h_id 필수");
-        String today = LocalDate.now().format(YMDFORMAT);
-        String now   = LocalDateTime.now().format(HMSFORMAT);
         try {
+            String svbeln = str(body.get("SVBELN"));
+            if (svbeln.isBlank()) svbeln = str(body.get("svbeln"));
+
             @SuppressWarnings("unchecked")
-            List<Map<String, Object>> splitItems = (List<Map<String, Object>>) body.get("split_items");
-            if (splitItems == null) return Map.of("ok", false, "error", "split_items 필수");
-            int saved = 0;
-            for (Map<String, Object> it : splitItems) {
-                // PS_DISPATCH_SPLIT → MariaDB tmsJdbc
-                tmsJdbc.update(
-                    "INSERT INTO KNRAWMS.PS_DISPATCH_SPLIT (DISP_H_ID,ORIG_ITEM,SPLIT_SEQ,SKUKEY,QTSHPO,KG_WEIGHT,NOTE,CREDAT,CRETIM) VALUES (?,?,?,?,?,?,?,?,?)",
-                    dispHId, it.get("orig_item"), it.get("split_seq"), it.get("skukey"),
-                    it.get("qtshpo"), it.get("kg_weight"), it.get("note"), today, now
-                );
-                saved++;
+            List<Map<String, Object>> splits =
+                (List<Map<String, Object>>) (body.get("splits") != null ? body.get("splits") : body.get("split_items"));
+            if (splits == null || splits.isEmpty())
+                return Map.of("ok", false, "error", "splits 필수");
+            if (svbeln.isBlank()) {
+                // SVBELN 미전달 시 splits 첫 항목에서 유추
+                svbeln = str(splits.get(0).get("SVBELN"));
             }
-            return Map.of("ok", true, "saved", saved);
+            if (svbeln.isBlank())
+                return Map.of("ok", false, "error", "납품문서(SVBELN) 필수");
+
+            // ── SAP RFC(납품문서 단위) + RFC 성공 시 WMS API 호출을 SapRfcService 로 위임 ──
+            //    RFC 개발 완료 전까지 실제 RFC 호출은 SapRfcService 내부 if(false) 로 비활성화.
+            return sapRfc.shipmentSplit(svbeln, splits);
         } catch (Exception e) { return errMap(e); }
     }
 
