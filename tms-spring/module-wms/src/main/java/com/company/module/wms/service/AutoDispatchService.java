@@ -492,9 +492,12 @@ public class AutoDispatchService {
                 Double dmm = calcRollDiameter(cp.rollSingleKg, sk);
                 if (dmm == null) continue;
 
+                // ── 원지 세워 적재(수직) : 1단 높이 = 원지 폭(widthMm), 직경 아님 ──
+                //  실제 상차와 동일하게 원통을 세워 적재하므로 다단 높이는 폭 기준.
+                double rollWmm = rollWidthMm(it, skumaMap, sk);
                 int    actualStack = Math.min(cp.maxStack, 3);
                 // 높이 안전 여유 마진(ROLL_HEIGHT_MARGIN_M) 반영: 적재 높이에 마진 가산
-                double stackH      = dmm / 1000.0 * actualStack + cp.rollHeightMarginM;
+                double stackH      = rollWmm / 1000.0 * actualStack + cp.rollHeightMarginM;
                 double effH        = rollEffH(vehCar, pi.forkliftYn, vehInfo, cp);
                 // ── 원지 다단 적재높이 상한(ROLL_MAX_HEIGHT_M) 차량높이 연동 ──
                 //  설정값이 있으면 차량 가용높이와 min() 하여 실제 적용 상한으로 사용.
@@ -511,8 +514,8 @@ public class AutoDispatchService {
                         }
                     }
                     if (!upgraded) {
-                        notes.add(String.format("[높이초과-수동확인] %s 롤직경%.0fmm×%d단=%.2fm > 차량가용%.2fm",
-                            sk, dmm, actualStack, stackH, effH));
+                        notes.add(String.format("[높이초과-수동확인] %s 원지폭%.0fmm(세워적재)×%d단=%.2fm > 차량가용%.2fm",
+                            sk, rollWmm, actualStack, stackH, effH));
                     }
                 }
             }
@@ -1321,6 +1324,22 @@ public class AutoDispatchService {
         } catch (Exception e) { return null; }
     }
 
+    /** 원지 폭(mm) 해석 — SHPDI.WIDTH_MM → SKUMA.wMm → SKUKEY 파싱 → fallback 1000mm.
+     *  원지를 세워 적재할 때 1단 높이 = 이 폭(축길이) 이 된다. */
+    private double rollWidthMm(Map<String, Object> it, Map<String, SkuInfo> skumaMap, String sk) {
+        double widthMm = dbl(it.get("WIDTH_MM"));
+        if (widthMm <= 0) {
+            SkuInfo sm = skumaMap.getOrDefault(sk, new SkuInfo());
+            widthMm = sm.wMm > 0 ? sm.wMm : 0;
+        }
+        if (widthMm <= 0) {
+            int[] dims = parseSkyueyDims(sk);
+            if (dims != null && dims.length > 1) widthMm = dims[1];
+        }
+        if (widthMm <= 0) widthMm = 1000.0;
+        return widthMm;
+    }
+
     private double calcBoardHeight(Map<String, Object> it, Map<String, SkuInfo> skumaMap) {
         String sk  = str(it.get("SKUKEY"));
         SkuInfo sm = skumaMap.getOrDefault(sk, new SkuInfo());
@@ -1748,7 +1767,8 @@ public class AutoDispatchService {
             return RollPhysics3D.fail("차량 치수 정보 없음 — 3D검증 스킵");
 
         // ── 1. 아이템별 원통 블록 파라미터 추출 ──────────────────────
-        // 원통 축 = 차량 길이(Y) 방향으로 눕혀 적재
+        // 원통 축 = 수직(Z) — 실제 상차와 동일하게 세워 적재
+        //   바닥 footprint = 직경 D × 직경 D (원), 세운 높이 = 너비(축길이) W_roll
         // 직경 D, 너비(축 길이) W_roll
         //   W_roll: SHPDI.WIDTH_MM(=WIDTHW) → fallback: SKUMA.wMm → fallback: SKUKEY 파싱
         //   직경 D:  gsm/밀도/중량 역산 calcRollDiameter
@@ -1790,11 +1810,11 @@ public class AutoDispatchService {
 
         if (totalRolls == 0) return RollPhysics3D.fail("원통형 롤 없음");
 
-        // ── 2. 레이어별 적재 계획 ─────────────────────────────────────
-        // 차량 길이 방향(Y축): 너비 widthMm 만큼 점유
+        // ── 2. 레이어별 적재 계획 (세워 적재 = 수직 원통) ──────────────
         // 차량 너비 방향(X축): 직경 diamMm 만큼 열 점유 → cols = floor(carWmm / diamMm)
-        // 차량 높이 방향(Z축): 직경 diamMm 만큼 단 점유 → maxTiers = min(cp.maxStack, floor(carHmm / diamMm))
-        // 길이 점유: ceil(rolls / cols) 행 × widthMm → 총 길이 Σ
+        // 차량 길이 방향(Y축): 직경 diamMm 만큼 슬라이스 점유(원 footprint)
+        // 차량 높이 방향(Z축): 원지 폭 widthMm 만큼 단 점유 → maxTiers = min(cp.maxStack, floor(heightCap / widthMm))
+        // 길이 점유: ceil(rolls / perSlice) 행 × diamMm → 총 길이 Σ
         RollPhysics3D result = new RollPhysics3D();
         result.totalRolls = totalRolls;
 
@@ -1807,27 +1827,28 @@ public class AutoDispatchService {
             double widthMm = layer.repWidthMm;
 
             int cols     = Math.max(1, (int)(carWmm / diamMm));
-            int maxTiers = Math.max(1, Math.min(cp.maxStack, (int)(heightCapMm / diamMm)));
-            int perRow   = cols; // 한 행(X×Z 단면)에 세울 수 있는 개수 = cols × 1tier에서 추가로 높이 방향 = cols × maxTiers
-            int perSlice = cols * maxTiers; // 너비 1 widthMm 깊이 점유 슬라이스당 수용 롤 수
+            // 세워 적재: 1단 높이 = 원지 폭(widthMm). 폭이 차량 가용높이보다 작아야 2단 이상 가능.
+            int maxTiers = Math.max(1, Math.min(cp.maxStack, (int)(heightCapMm / widthMm)));
+            int perSlice = cols * maxTiers; // diamMm 깊이 슬라이스당 수용 롤 수 = 열 × 단
 
-            // 이 레이어에 필요한 길이(Y) = ceil(layer.totalRolls / perSlice) × widthMm
+            // 이 레이어에 필요한 길이(Y) = ceil(layer.totalRolls / perSlice) × diamMm(원 footprint)
             int rows = (int) Math.ceil((double) layer.totalRolls / perSlice);
-            double layerLengthMm = rows * widthMm;
+            double layerLengthMm = rows * diamMm;
             usedLengthMm += layerLengthMm;
 
             int layerCap = rows * perSlice;
             totalCap += layerCap;
 
             result.layerNotes.add(String.format(
-                "[3D-원지] 직경그룹%dmm: 롤%d개 / 차량내 배치=%d열×%d단×%d행 / Y축점유=%.0fmm",
-                (int)diamMm, layer.totalRolls, cols, maxTiers, rows, layerLengthMm));
+                "[3D-원지(세워적재)] 직경그룹%dmm/폭%dmm: 롤%d개 / 배치=%d열×%d단(폭기준)×%d행 / Y축점유=%.0fmm",
+                (int)diamMm, (int)widthMm, layer.totalRolls, cols, maxTiers, rows, layerLengthMm));
         }
 
         final double heightCapFinal = heightCapMm; // 람다 캡처용
         result.maxCapacity  = totalCap;
+        // 최고 적재 높이 = 원지 폭 × 단수 (세워 적재)
         result.stackHeightM = layerMap.values().stream()
-            .mapToDouble(l -> l.repDiamMm * Math.max(1, Math.min(cp.maxStack, (int)(heightCapFinal / l.repDiamMm))))
+            .mapToDouble(l -> l.repWidthMm * Math.max(1, Math.min(cp.maxStack, (int)(heightCapFinal / l.repWidthMm))))
             .max().orElse(0) / 1000.0;
         result.usedFloorRatio = carLmm > 0 ? Math.min(100.0, usedLengthMm / carLmm * 100.0) : 0.0;
         // Dead Space 허용 비율(ROLL_3D_DEAD_SPACE_PCT) 반영: 기본 2% + 설정 비율만큼 여유 허용

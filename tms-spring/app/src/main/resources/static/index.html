@@ -9875,9 +9875,11 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
   const FALLBACK_UNIT_W = 600;
   const GAP = 20; // mm, 블록 사이 시각적 간격
 
-  // ── 원지(원통) 배치: Y축(길이)으로 눕혀 적재 ──────────────
-  //  cols = floor(carW / diam) (X), tiers = min(maxStack, floor(rollCap/diam)) (Z)
-  //  롤 축 길이 = widthMm → Y 방향 점유. 행이 늘어나며 Y 전진.
+  // ── 원지(원통) 배치: Z축(높이)으로 세워서 적재 ──────────────
+  //  실제 상차와 동일하게 원통을 세로로 세워 적재(눕히면 2단 적재 불가).
+  //  바닥 footprint = diam×diam(원 지름), 높이 = 폭(widthMm=원지 축길이).
+  //  cols = floor(carW / diam) (X), rows = Y 방향 진행(diam 씩),
+  //  tiers = min(maxStack, floor(rollCap / width)) (Z, 폭 기준 다단).
   let rollY = 0;           // 원지 Y 진행 커서(mm)
   // ── 판지 배치는 원지 뒤(Y)부터 이어서: shelf 커서 별도 ──
 
@@ -9898,29 +9900,30 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
       const rollCount = uom==='R' ? Math.round(qty) : (kg>0 ? Math.ceil(kg/single_w) : 0);
       const oneKg     = uom==='R' ? single_w : (rollCount>0 ? kg/rollCount : single_w);
       const gsm       = sdims.gsm || 100;
-      const widMm     = sdims.widthMm || 1400;
+      const widMm     = sdims.widthMm || 1400;   // 원지 폭 = 세워 적재 시 높이
       const diamMm    = _lvRollDiameter(oneKg, gsm, widMm) || 800;
-      const cols      = Math.max(1, Math.floor(carWmm / diamMm));
-      const tiers     = Math.max(1, Math.min(maxStack, Math.floor(rollCapMm / diamMm)));
+      const cols      = Math.max(1, Math.floor(carWmm / diamMm));   // X: 지름 기준
+      // Z(높이) 다단 = 원지 폭(widMm) 기준. 세워 적재해야 2단(이상) 가능.
+      const tiers     = Math.max(1, Math.min(maxStack, Math.floor(rollCapMm / widMm)));
       let remaining = rollCount, placed = 0;
       while (remaining > 0) {
-        // 한 행(Y=widMm 슬라이스): cols × tiers 개
+        // 한 행(Y=diamMm 슬라이스): cols × tiers 개 (세로 적재)
         const rowStartY = rollY;
+        if (rowStartY + diamMm > carLmm + 0.5) break;   // Y 초과 → 중단
         for (let ci = 0; ci < cols && remaining > 0; ci++) {
           for (let ti = 0; ti < tiers && remaining > 0; ti++) {
             const x = ci * diamMm;
-            const z = ti * diamMm;
-            if (rowStartY + widMm > carLmm + 0.5) { remaining = 0; break; }
+            const z = ti * widMm;               // 세워 쌓음 → 폭만큼 위로
             blocks.push({
               x, y: rowStartY, z,
-              w: diamMm, l: widMm, h: diamMm,
+              w: diamMm, l: diamMm, h: widMm,    // 바닥 원(diam×diam), 높이=폭
               color, type:'roll', label, idx,
-              cyl: true, diamMm, rollNo: placed+1
+              cyl: true, vertical: true, diamMm, widMm, rollNo: placed+1
             });
             remaining--; placed++;
           }
         }
-        rollY = rowStartY + widMm + GAP;
+        rollY = rowStartY + diamMm + GAP;        // Y 는 지름만큼 전진
         if (rollY > carLmm) break;
       }
     }
@@ -10153,15 +10156,14 @@ function _lvRender3D(containerId, placement, opts) {
     const col = _lvHexToThreeColor(b.color);
     let mesh;
     if (b.cyl) {
-      // 원지: 실린더 (축=Y=길이 방향으로 눕힘)
-      const r = Math.max(b.diamMm*S/2, 0.02);
-      const len = bl;
+      // 원지: 실린더 (세워 적재 → 축=Y(수직), 회전 없음)
+      const r   = Math.max(b.diamMm*S/2, 0.02);
+      const len = bh;   // 세워 적재 → 높이 = 원지 폭(widMm) = b.h
       const geo = new THREE.CylinderGeometry(r, r, len, 20);
       const mat = new THREE.MeshLambertMaterial({ color: col });
       mesh = new THREE.Mesh(geo, mat);
-      // 실린더 기본축은 Y → X축으로 눕히면 폭방향, 여기선 Y(길이)축으로 눕힘
-      mesh.rotation.x = Math.PI/2;   // 축을 Z→Y 로 회전
-      mesh.position.set(b.x*S + r, b.z*S + r, b.y*S + len/2);
+      // 실린더 기본축은 Y(수직) → 회전하지 않고 그대로 세워 배치
+      mesh.position.set(b.x*S + r, b.z*S + len/2, b.y*S + r);
     } else {
       const geo = new THREE.BoxGeometry(bw, bh, bl);
       const mat = new THREE.MeshLambertMaterial({ color: col });
@@ -10245,7 +10247,8 @@ function _psdBottomFootprintPx(vizItems, isFront, SCALE, boxW) {
   (vizItems || []).forEach(it => {
     if (wrapped) return;
     if (it.type === 'roll') {
-      const wpx = isFront ? (it.diamMm/1000)*SCALE : (it.widMm/1000)*SCALE;
+      // 세워 적재: 정면/측면 모두 footprint 폭 = 지름(diamMm)
+      const wpx = (it.diamMm/1000)*SCALE;
       for (let i=0; i<it.rollCount && !wrapped; i++) add(wpx);
     } else if (it.type === 'board') {
       const wpx = isFront ? (it.widMm/1000)*SCALE : (it.lenMm/1000)*SCALE;
@@ -10401,68 +10404,57 @@ function _psdRenderLoadCanvas(v, veh) {
 
   vizItems.forEach((it, idx) => {
     if (it.type === 'roll') {
-      /* 원지 롤: 각 롤을 원형(정면) 또는 직사각형(측면)으로 */
-      const r_px  = (it.diamMm / 1000 / 2) * SCALE;   // 반지름(px)
-      const w_px  = (it.widMm / 1000) * SCALE;         // 너비(px)
+      /* 원지 롤: 세워 적재 → 정면/측면 모두 세운 원통(직사각형+타원 상/하단) 으로.
+         너비 = 지름(diamMm), 높이 = 원지 폭(widMm). 세워야 2단 적재 가능. */
+      const rectW = (it.diamMm / 1000) * SCALE;   // 너비 = 지름(px)
+      const rectH = (it.widMm  / 1000) * SCALE;   // 높이 = 원지 폭(px)
+      const capH  = Math.min(rectW * 0.18, rectH * 0.30);  // 상/하단 타원 캡 높이
 
       for (let ri=0; ri<it.rollCount; ri++) {
-        if (isFront) {
-          /* 정면: 원 */
-          const cx = curX + r_px;
-          const by = floorY;           // 바닥 y
-          const cy = by - r_px;
-          /* 적재함 넘침 처리: x가 넘으면 새 층 */
-          if (cx + r_px > ox+boxW && ri>0) {
-            floorY -= layerMaxH;
-            layerMaxH = 0;
-            curX = ox;
-          }
-          if (cy - r_px < oy) break;   // 높이 초과 → 표시 중단
-          /* 롤 그라디언트 */
-          const grd = ctx.createRadialGradient(cx-r_px*.25, cy-r_px*.25, r_px*.1, cx, cy, r_px);
-          grd.addColorStop(0, _psdLighten(it.color, .55));
-          grd.addColorStop(1, it.color);
-          ctx.beginPath();
-          ctx.arc(cx, cy, r_px, 0, Math.PI*2);
-          ctx.fillStyle = grd;
-          ctx.fill();
-          ctx.strokeStyle = _psdDarken(it.color,.3);
-          ctx.lineWidth = 1;
-          ctx.stroke();
-          /* 롤 번호 */
-          if (r_px > 12) {
-            ctx.fillStyle='rgba(255,255,255,.85)';
-            ctx.font = `bold ${Math.min(11,r_px*.6)}px sans-serif`;
-            ctx.textAlign='center';
-            ctx.fillText(ri+1, cx, cy+Math.min(4,r_px*.2));
-          }
-          curX = cx + r_px;
-          layerMaxH = Math.max(layerMaxH, r_px*2);
-        } else {
-          /* 측면: 직사각형 (너비×직경) */
-          const rectW = w_px;
-          const rectH = (it.diamMm / 1000) * SCALE;
-          if (curX + rectW > ox+boxW) {
-            floorY -= layerMaxH;
-            layerMaxH = 0;
-            curX = ox;
-          }
-          if (floorY - rectH < oy) break;
-          ctx.fillStyle = it.color;
-          ctx.fillRect(curX+1, floorY-rectH+1, rectW-2, rectH-2);
-          ctx.strokeStyle = _psdDarken(it.color,.3);
-          ctx.lineWidth = 1;
-          ctx.strokeRect(curX+1, floorY-rectH+1, rectW-2, rectH-2);
-          /* 라벨 */
-          if (rectW > 30 && rectH > 14) {
-            ctx.fillStyle='rgba(255,255,255,.85)';
-            ctx.font = '9px sans-serif';
-            ctx.textAlign='center';
-            ctx.fillText(ri+1, curX+rectW/2, floorY-rectH/2+3);
-          }
-          curX += rectW;
-          layerMaxH = Math.max(layerMaxH, rectH);
+        if (curX + rectW > ox+boxW && ri>0) {
+          floorY -= layerMaxH;
+          layerMaxH = 0;
+          curX = ox;
         }
+        if (floorY - rectH < oy) break;   // 높이 초과 → 표시 중단
+        const x0 = curX + 1, w0 = rectW - 2;
+        const yTop = floorY - rectH + 1, h0 = rectH - 2;
+        const cxc = x0 + w0/2;
+        /* 세워진 원통: 세로 그라디언트(좌→우 명암)로 곡면감 */
+        const grd = ctx.createLinearGradient(x0, 0, x0+w0, 0);
+        grd.addColorStop(0,   _psdDarken(it.color, .15));
+        grd.addColorStop(0.4, _psdLighten(it.color, .55));
+        grd.addColorStop(1,   _psdDarken(it.color, .25));
+        ctx.fillStyle = grd;
+        /* 몸통(직사각형) */
+        ctx.fillRect(x0, yTop+capH, w0, h0-capH*2);
+        /* 하단 타원 캡 */
+        ctx.beginPath();
+        ctx.ellipse(cxc, yTop+h0-capH, w0/2, capH, 0, 0, Math.PI*2);
+        ctx.fill();
+        /* 상단 타원 캡(윗면 = 약간 밝게) */
+        ctx.beginPath();
+        ctx.ellipse(cxc, yTop+capH, w0/2, capH, 0, 0, Math.PI*2);
+        ctx.fillStyle = _psdLighten(it.color, .35);
+        ctx.fill();
+        /* 외곽선 */
+        ctx.strokeStyle = _psdDarken(it.color, .35);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x0, yTop+capH); ctx.lineTo(x0, yTop+h0-capH);
+        ctx.moveTo(x0+w0, yTop+capH); ctx.lineTo(x0+w0, yTop+h0-capH);
+        ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(cxc, yTop+capH, w0/2, capH, 0, 0, Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(cxc, yTop+h0-capH, w0/2, capH, 0, 0, Math.PI); ctx.stroke();
+        /* 롤 번호 */
+        if (rectW > 24 && rectH > 20) {
+          ctx.fillStyle='rgba(255,255,255,.9)';
+          ctx.font = `bold ${Math.min(11, rectW*.35)}px sans-serif`;
+          ctx.textAlign='center';
+          ctx.fillText(ri+1, cxc, yTop+h0/2+3);
+        }
+        curX += rectW;
+        layerMaxH = Math.max(layerMaxH, rectH);
       }
       if (it.rollCount > 0) legendItems.push({ color:it.color, label:`${it.label} (롤×${it.rollCount}, Ø${(it.diamMm/10).toFixed(0)}cm)` });
     } else if (it.type === 'board') {
