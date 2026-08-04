@@ -10213,7 +10213,7 @@ function _lvRender3D(containerId, placement, opts) {
       grp.add(rim);
       // ── 단수 라벨 스프라이트 (2단 이상일 때만) ──
       if ((b.totalTiers||1) > 1) {
-        const tl = _lvTierSprite(`${b.tier}/${b.totalTiers}단`);
+        const tl = _lvTierSprite(`${b.tier}단`);
         tl.position.set(cxm, cym, czm + r*0.98);
         tl.scale.set(carW*0.16, carW*0.06, 1);
         grp.add(tl);
@@ -10232,7 +10232,7 @@ function _lvRender3D(containerId, placement, opts) {
       eg.position.copy(mesh.position);
       grp.add(eg);
       if ((b.totalTiers||1) > 1) {
-        const tl = _lvTierSprite(`${b.tier}/${b.totalTiers}단`);
+        const tl = _lvTierSprite(`${b.tier}단`);
         tl.position.set(cxm, cym, czm + bl*0.5 + 0.001);
         tl.scale.set(carW*0.16, carW*0.06, 1);
         grp.add(tl);
@@ -10439,99 +10439,84 @@ function _lvRenderLoadCanvas2D(canvas, wrap, items, veh, view) {
     }
   }
 
-  /* ── 블록 투영 렌더 (평면 2D / 파렛트식) ──
-     요청: 2D 이므로 정면(폭×높이)·측면(길이×높이) 모두 "겹쳐 보이는 안쪽 품목은
-     표시하지 않고" 앞면 기준 평면으로만 그린다. 원기둥 캡/입체감(그라데이션) 없이
-     단순 사각형으로 표현하고, 단(段) 사이는 여백이 아닌 선(구분선)으로 나눈다.
-     정면: 화면가로=X, 측면: 화면가로=Y. 세로=높이(z).
-     ── 평면화 방법 (겹침 방지) ──
-     1) 화면 가로축(정면=X, 측면=Y)을 품목 footprint 단위로 "컬럼"으로 나누고,
-        각 컬럼(가로 구간)이 겹치면 앞쪽(depth 작은) 블록만 대표로 남긴다
-        → 옆 품목/뒤 품목과의 겹침 제거.
-     2) 컬럼별로 1단→상위단을 파렛트 위(palHmm)부터 여백 없이 붙여 쌓고,
-        단 경계에는 구분선을 그어 단수를 구분(TIER_GAP 여백 제거). */
+  /* ── 블록 투영 렌더 (평면 2D / 적재 프로파일) ──
+     실제 배치(_lvComputePlacement)는 품목을 Y(깊이)로 줄지어 놓되 X 는 모두 0 부터
+     시작한다. 그래서 정면(X 투영)으로 그대로 겹쳐 그리면 서로 다른 품목이 화면에서
+     겹쳐 보이고, z=0 부터 그리면 파렛트와도 겹친다.
+     → 2D 뷰는 "각 품목이 실제 점유하는 footprint(폭/길이) × 단수(높이)" 를 겹치지
+        않게 화면 가로축을 따라 나란히 배치하는 '적재 프로파일'로 표현한다.
+       · 정면뷰: 가로축 = 폭 점유(원지 지름 / 판지 폭)
+       · 측면뷰: 가로축 = 길이 점유(원지 지름 / 판지 길이)
+       · 세로축 = 높이. 각 품목은 파렛트 위(palHmm)부터 단(段)을 여백 없이 붙여 쌓고
+         단 경계는 구분선으로 구분. 품목/파렛트/옆품목 어디와도 겹치지 않는다. */
   const legendItems = [];
-  const seenLegend = {};
 
-  const maxTierByItem = {};
-  (placement.blocks||[]).forEach(b=>{ maxTierByItem[b.idx]=Math.max(maxTierByItem[b.idx]||0, b.tier||1); });
-
-  /* 1) 단 간격(TIER_GAP) 여백 제거 → 시각 z 재계산
-     각 (품목, 가로위치, 깊이) "기둥"에서 1단부터 파렛트 위(palHmm)에 붙여 쌓는다.
-     기둥 키 = idx + 가로시작(x또는y) + 깊이(y또는x). 같은 기둥 내 tier 오름차순 누적. */
-  const colKeyOf = b => b.idx + '|' + Math.round(b.x) + '|' + Math.round(b.y);
-  const colBottom = new Map();   // colKey → 현재까지 누적된 시각 바닥(mm)
-  const sameCol = new Map();     // colKey → 정렬용 tier 리스트
-  (placement.blocks||[]).slice().sort((a,b)=>(a.tier||1)-(b.tier||1)).forEach(b => {
-    const k = colKeyOf(b);
-    const base = colBottom.has(k) ? colBottom.get(k) : palHmm;   // ★ 파렛트 위부터
-    b._visZ   = base;            // 시각 바닥(z)
-    b._visTop = base + b.h;      // 시각 상단(z)
-    colBottom.set(k, b._visTop);
+  // 품목(idx)별 통계: footprint(가로 점유 mm), 단수, 단당 높이(mm)
+  const byItem = new Map();   // idx → {idx,color,cyl,footMm,tierH,tiers}
+  (placement.blocks||[]).forEach(b => {
+    const footMm = isFront ? b.w : b.l;   // 화면 가로 점유
+    let s = byItem.get(b.idx);
+    if (!s) { s = { idx:b.idx, color:b.color, cyl:!!b.cyl, footMm, tierH:b.h, tiers:0 }; byItem.set(b.idx, s); }
+    s.footMm = Math.max(s.footMm, footMm);
+    s.tierH  = Math.max(s.tierH, b.h);
+    s.tiers  = Math.max(s.tiers, b.tier||1);
   });
 
-  /* 2) painter's algorithm — 뒤(깊이 큰) → 앞(깊이 작은) 순으로 그려
-     앞쪽 품목이 뒤쪽을 덮어 "안쪽(가려진) 품목은 안 보이게" 한다.
-     정면뷰: 깊이=Y, 측면뷰: 깊이=X. 같은 깊이면 아래 단(z작은)부터. */
-  const order = (placement.blocks||[]).slice();
-  const depthOf = b => isFront ? b.y : b.x;
-  order.sort((a,b)=> (depthOf(b)-depthOf(a)) || ((a._visZ||0)-(b._visZ||0)));
-
+  // 품목을 가로축으로 나란히 누적 배치(겹침 방지). 품목 사이 GAP_MM 간격.
+  const GAP_MM = 40;
   const drawn = [];
-  order.forEach(b => {
-    const gStart = isFront ? b.x : b.y;
-    const gLen   = isFront ? b.w : b.l;
-    const x0 = sx(gStart)+1, w0 = Math.max(2, gLen*SCALE-2);
-    const zTop = b._visTop, h0 = Math.max(2, b.h*SCALE-1);
-    const yTop = syTop(zTop)+0.5;
-    const cxc = x0 + w0/2, cyc = yTop + h0/2;
+  let cursorMm = 0;
+  Array.from(byItem.keys()).sort((a,b)=>a-b).forEach(idx => {
+    const s = byItem.get(idx);
+    const gStart = cursorMm;
+    const x0 = sx(gStart)+1, w0 = Math.max(2, s.footMm*SCALE-2);
+    let stackZ = palHmm;   // ★ 파렛트 위부터 적재 → 파렛트와 겹침 방지
+    for (let t = 1; t <= s.tiers; t++) {
+      const zTop = stackZ + s.tierH;
+      const yTop = syTop(zTop)+0.5, h0 = Math.max(2, s.tierH*SCALE-1);
+      const cxc = x0 + w0/2, cyc = yTop + h0/2;
 
-    /* 평면 사각형 (원지/판지 동일하게 납작한 면) — 불투명(겹침 오인 방지) */
-    ctx.globalAlpha = 1.0;
-    ctx.fillStyle = b.color;
-    ctx.fillRect(x0, yTop, w0, h0);
-    ctx.strokeStyle = _psdDarken(b.color,.35); ctx.lineWidth = 1;
-    ctx.strokeRect(x0, yTop, w0, h0);
+      /* 평면 사각형 (불투명 → 겹침 오인 방지) */
+      ctx.globalAlpha = 1.0;
+      ctx.fillStyle = s.color;
+      ctx.fillRect(x0, yTop, w0, h0);
+      ctx.strokeStyle = _psdDarken(s.color,.35); ctx.lineWidth = 1;
+      ctx.strokeRect(x0, yTop, w0, h0);
 
-    /* 단(段) 구분선 — 여백 대신 선으로 단 경계를 표시 (2단 이상) */
-    if ((b.tier||1) > 1) {
-      ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(x0-0.5, yTop+h0); ctx.lineTo(x0+w0+0.5, yTop+h0); ctx.stroke();
-      ctx.strokeStyle = 'rgba(253,224,71,.95)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(x0, yTop+h0-0.5); ctx.lineTo(x0+w0, yTop+h0-0.5); ctx.stroke();
-    }
+      /* 단(段) 구분선 — 2단 이상이면 아래 단과의 경계를 굵은 선으로 표시 */
+      if (t > 1) {
+        ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x0-0.5, yTop+h0); ctx.lineTo(x0+w0+0.5, yTop+h0); ctx.stroke();
+        ctx.strokeStyle = 'rgba(253,224,71,.95)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(x0, yTop+h0-0.5); ctx.lineTo(x0+w0, yTop+h0-0.5); ctx.stroke();
+      }
 
-    /* 단수(tier) 표시 — n/총 형태 */
-    if (w0 > 20 && h0 > 14) {
-      ctx.fillStyle='rgba(255,255,255,.95)';
-      ctx.font=`bold ${Math.min(12, w0*.3)}px sans-serif`; ctx.textAlign='center';
-      const tierTxt = (b.totalTiers>1) ? `${b.tier}/${b.totalTiers}단` : `${b.tier||1}단`;
-      ctx.fillText(tierTxt, cxc, cyc+3);
+      /* 단수 표시 — 요청: '1단','2단' 형태(해당 단 번호만) */
+      if (w0 > 20 && h0 > 14) {
+        ctx.fillStyle='rgba(255,255,255,.95)';
+        ctx.font=`bold ${Math.min(12, w0*.3)}px sans-serif`; ctx.textAlign='center';
+        ctx.fillText(`${t}단`, cxc, cyc+3);
+      }
+
+      drawn.push({ idx, topMm: zTop, xMidMm: gStart + s.footMm/2, color: s.color });
+      stackZ = zTop;
     }
 
     /* 범례 (품목별 1회) */
-    if (!seenLegend[b.idx]) {
-      seenLegend[b.idx] = true;
-      const vz = vizItems[b.idx] || {};
-      if (vz.type === 'roll')
-        legendItems.push({ color:b.color, label:`${vz.label} (롤×${vz.rollCount}, Ø${(vz.diamMm/10).toFixed(0)}cm, 폭${(vz.widMm/10).toFixed(0)}cm, ${maxTierByItem[b.idx]}단)` });
-      else if (vz.type === 'board')
-        legendItems.push({ color:b.color, label:`${vz.label} (판지 ${psdFmtNum(vz.reams)}연, H${((vz.fullStackHgtM||vz.stackHgtM)*100).toFixed(0)}cm, ${maxTierByItem[b.idx]}단)` });
-    }
+    const vz = vizItems[idx] || {};
+    if (vz.type === 'roll')
+      legendItems.push({ color:s.color, label:`${vz.label} (롤×${vz.rollCount}, Ø${(vz.diamMm/10).toFixed(0)}cm, 폭${(vz.widMm/10).toFixed(0)}cm, ${s.tiers}단)` });
+    else if (vz.type === 'board')
+      legendItems.push({ color:s.color, label:`${vz.label} (판지 ${psdFmtNum(vz.reams)}연, H${((vz.fullStackHgtM||vz.stackHgtM)*100).toFixed(0)}cm, ${s.tiers}단)` });
 
-    b._visTopMm = zTop;
-    drawn.push(b);
+    cursorMm = gStart + s.footMm + GAP_MM;
   });
 
   /* ── 품목 높이 수치 표시 (아이템별 최상단에 총 적재높이) ── */
-  //  붙여 쌓은 시각 상단(_visTopMm)이 가장 높은 블록 위에 높이(cm) 표기.
-  const topByItem = {};   // idx → {maxTopMm, xMid(mm), color}
+  const topByItem = {};   // idx → {topMm, xMid(mm), color}
   drawn.forEach(b=>{
-    const top = b._visTopMm != null ? b._visTopMm : (b.z + b.h);
-    const gStart = isFront ? b.x : b.y, gLen = isFront ? b.w : b.l;
-    const xmid = gStart + gLen/2;
-    if (!topByItem[b.idx] || top > topByItem[b.idx].topMm)
-      topByItem[b.idx] = { topMm: top, xMidMm: xmid, color: b.color };
+    if (!topByItem[b.idx] || b.topMm > topByItem[b.idx].topMm)
+      topByItem[b.idx] = { topMm: b.topMm, xMidMm: b.xMidMm, color: b.color };
   });
   ctx.font = 'bold 9px sans-serif'; ctx.textAlign='center';
   Object.values(topByItem).forEach(t=>{
