@@ -3083,6 +3083,9 @@ thead th:hover .th-drag-handle{opacity:.8}
   <div class="nav-item" onclick="showPage('psDispatchOpt')" id="nav-psDispatchOpt">
     <span class="icon">🚀</span> PS 배차(최적화)
   </div>
+  <div class="nav-item" onclick="showPage('returnOut')" id="nav-returnOut">
+    <span class="icon">↩️</span> 반품출고
+  </div>
   <div class="nav-item" onclick="showPage('dispatchConstraint')" id="nav-dispatchConstraint">
     <span class="icon">🎯</span> PS제약조건관리
   </div>
@@ -3402,6 +3405,7 @@ const PAGE_META = {
   dispatchConstraint: { title:'PS제약조건관리', badge:'🎯 PS제약조건관리', crumb:['홈','배차관리','PS제약조건관리'] },
   psDispatch:         { title:'PS 배차',       badge:'🚚 PS 배차',      crumb:['홈','기준정보 관리','PS 배차'] },
   psDispatchOpt:      { title:'PS 배차(최적화)', badge:'🚀 PS 배차(최적화)', crumb:['홈','배차관리','PS 배차(최적화)'] },
+  returnOut:          { title:'반품출고',         badge:'↩️ 반품출고',        crumb:['홈','배차관리','반품출고'] },
   docMgmt:            { title:'서류관리',          badge:'📁 서류관리',         crumb:['홈','서류관리','서류관리'] },
 };
 
@@ -3428,6 +3432,7 @@ const PAGE_ICON = {
   BZPTN_DETAIL:'🗺️', VHCMA:'🚛', ROUTE_COST:'💰',
   psDispatch:'🚚',
   psDispatchOpt:'🚀',
+  returnOut:'↩️',
   dispatchConstraint:'🎯',
   dispatchStrategy:'⚙️',
   docMgmt:'📁',
@@ -3541,6 +3546,22 @@ function _doShowPage(p) {
     }
   }
 
+  // ── 반품출고 이탈 시: ro-root를 body 아래 hidden 컨테이너에 보존 ──
+  if (typeof roState !== 'undefined' && roState.initialized) {
+    const roRoot = document.getElementById('ro-root');
+    if (roRoot && p !== 'returnOut') {
+      if (typeof roSaveForm === 'function') roSaveForm();
+      let keeper = document.getElementById('ro-root-keeper');
+      if (!keeper) {
+        keeper = document.createElement('div');
+        keeper.id = 'ro-root-keeper';
+        keeper.style.cssText = 'display:none;position:fixed;width:0;height:0;overflow:hidden';
+        document.body.appendChild(keeper);
+      }
+      keeper.appendChild(roRoot);
+    }
+  }
+
   // ── 출고예정정보/출고문서아이템 이탈 시: ss-root를 hidden 컨테이너에 보존 ──
   if (shipScheduleState.initialized) {
     const ssRoot = document.getElementById('ss-root');
@@ -3649,6 +3670,30 @@ function _doShowPage(p) {
     }
   }
 
+  // ── 반품출고로 복귀 시: keeper에서 ro-root를 꺼내 content에 재삽입 ──
+  if (p === 'returnOut' && typeof roState !== 'undefined' && roState.initialized) {
+    const keeper  = document.getElementById('ro-root-keeper');
+    const roRoot  = document.getElementById('ro-root');
+    const content = document.getElementById('content');
+    if (roRoot && content) {
+      content.innerHTML = '';
+      content.appendChild(roRoot);
+      content.style.overflowY = 'hidden';
+      srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
+      const meta    = PAGE_META[p];
+      const titleEl = document.getElementById('page-title');
+      const badgeEl = document.getElementById('topbar-badge');
+      if (meta) {
+        if (titleEl) titleEl.textContent = meta.title;
+        if (badgeEl) badgeEl.textContent = meta.badge;
+        updateBreadcrumb(meta.crumb);
+      }
+      if (typeof roRestoreForm === 'function' && roState.savedForm) roRestoreForm(roState.savedForm);
+      if (typeof roSwitchTab === 'function') roSwitchTab(roState.activeTab || 'dispatch');
+      return;
+    }
+  }
+
   // 메타 적용
   const meta    = PAGE_META[p];
   const titleEl = document.getElementById('page-title');
@@ -3732,6 +3777,9 @@ function _doShowPage(p) {
   } else if (p === 'psDispatchOpt') {
     srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderPsDispatchOpt();
+  } else if (p === 'returnOut') {
+    srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
+    renderReturnOut();
   } else {
     state.table = p;
     srch.style.display = 'flex'; psize.style.display = 'flex'; toolbar.style.display = 'none';
@@ -13409,6 +13457,538 @@ async function psopSaveAllVehCnt() {
 }
 
 /* ── 메인 렌더 ───────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════
+   반품출고 (신규 메뉴 · returnOut)
+   ── PS배차(최적화)의 기본 기능/구성/UI 를 참고한 경량형 화면 ──
+   · 탭1 배차          : IFWMS103 반품 대상 조회 → 체크 → 차량배정 → 배차저장
+   · 탭2 배차확정(SAP선적): 저장된 반품 배차(가선적) 확인 (PS배차 SAP탭 참고)
+   · 백엔드: /api/ps-return/{search,save}  (기존 PS배차 로직 미사용, 독립 ro* 네임스페이스)
+══════════════════════════════════════════════════════════════════ */
+const roState = {
+  initialized: false,
+  activeTab:   'dispatch',
+  savedForm:   null,
+  searchRows:  [],          // 조회 결과 (IFWMS103 반품 대상)
+  checkedSet:  new Set(),    // 체크된 행 키(EBELN|EBELP) Set
+};
+
+/* 행 고유 키 */
+function roRowKey(r) { return `${r.EBELN}|${r.EBELP}`; }
+
+/* 검색조건 저장/복원 (화면 이탈/복귀 시 폼값 유지) */
+function roSaveForm() {
+  roState.savedForm = {
+    wareky:   document.getElementById('ro-wareky')?.value   || '1100',
+    skug05:   document.getElementById('ro-skug05')?.value   || '',
+    dateFrom: document.getElementById('ro-date-from')?.value || '',
+    dateTo:   document.getElementById('ro-date-to')?.value   || '',
+    lifnr:    document.getElementById('ro-lifnr')?.value     || '',
+    ebeln:    document.getElementById('ro-ebeln')?.value     || '',
+    dispStat: document.getElementById('ro-disp-stat')?.value || 'all',
+  };
+}
+function roRestoreForm(saved) {
+  if (!saved) return;
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  setVal('ro-wareky',    saved.wareky);
+  setVal('ro-skug05',    saved.skug05);
+  setVal('ro-date-from', saved.dateFrom);
+  setVal('ro-date-to',   saved.dateTo);
+  setVal('ro-lifnr',     saved.lifnr);
+  setVal('ro-ebeln',     saved.ebeln);
+  setVal('ro-disp-stat', saved.dispStat);
+}
+
+/* 탭 전환 */
+function roSwitchTab(tab) {
+  ['dispatch','sap'].forEach(t => {
+    const btn   = document.getElementById(`ro-tab-btn-${t}`);
+    const panel = document.getElementById(`ro-panel-${t}`);
+    if (btn)   btn.classList.toggle('active', t === tab);
+    if (panel) panel.classList.toggle('active', t === tab);
+  });
+  roState.activeTab = tab;
+  if (tab === 'sap') roSapTabInit();
+}
+
+/* 기본 날짜: 입고예정일 FROM=-3, TO=+3 (요구 사양) */
+function roDefaultDates() {
+  const fmt = d => d.toISOString().slice(0,10);
+  const today = new Date();
+  const f = new Date(today); f.setDate(f.getDate() - 3);
+  const t = new Date(today); t.setDate(t.getDate() + 3);
+  return { from: fmt(f), to: fmt(t) };
+}
+
+async function renderReturnOut() {
+  const c = document.getElementById('content');
+  c.style.overflowY = 'hidden';
+  if (roState.initialized) return;   // 복귀는 _doShowPage 에서 처리
+
+  const dd = roDefaultDates();
+
+  c.innerHTML = `
+<div class="psd-layout" id="ro-root">
+
+  <!-- ══ 탭 바 ══ -->
+  <div class="psop-tab-bar" id="ro-tab-bar">
+    <button class="psop-tab-btn active" id="ro-tab-btn-dispatch" onclick="roSwitchTab('dispatch')">
+      <span style="font-size:14px">📦</span>
+      <span>배차</span>
+      <span class="psop-tab-badge" id="ro-badge-dispatch">0</span>
+    </button>
+    <button class="psop-tab-btn" id="ro-tab-btn-sap" onclick="roSwitchTab('sap')">
+      <span style="font-size:14px">✅</span>
+      <span>배차확정 (SAP선적)</span>
+      <span class="psop-tab-badge" id="ro-badge-sap">0</span>
+    </button>
+  </div>
+
+  <!-- ══ 탭 1: 배차 ══ -->
+  <div class="psop-tab-panel active" id="ro-panel-dispatch">
+    <!-- ① 검색조건 -->
+    <div class="psd-searchbar">
+      <div class="psd-search-row">
+        <span class="psop-cond-title">■ 검색조건</span>
+        <div class="psd-sep-v"></div>
+        <!-- 거점 (WAREKY) 필수 -->
+        <div class="psd-fg">
+          <label>거점 <span style="font-size:10px;color:var(--text3)">(필수)</span></label>
+          <select id="ro-wareky" style="min-width:130px">
+            <option value="1100" selected>1100 — 청주공장창고</option>
+            <option value="1500">1500 — 음성공장창고</option>
+            <option value="4100">4100 — 용인물류센터</option>
+            <option value="4400">4400 — 경북물류센터</option>
+            <option value="4200">4200 — 경남물류센터</option>
+            <option value="4300">4300 — 전라물류센터</option>
+            <option value="4800">4800 — 제주물류센터</option>
+            <option value="4000">4000 — 파주물류센터</option>
+            <option value="6000">6000 — 임가공 거점</option>
+          </select>
+        </div>
+        <!-- 제품군 (SKUG05) 필수 · 단일선택 · 기본 미선택 -->
+        <div class="psd-fg">
+          <label>제품군 <span style="font-size:10px;color:var(--text3)">(필수)</span></label>
+          <select id="ro-skug05" style="min-width:110px">
+            <option value="" selected>선택</option>
+            <option value="10">10 — 제지</option>
+            <option value="20">20 — 생활</option>
+          </select>
+        </div>
+        <!-- 입고예정일 FROM -->
+        <div class="psd-fg">
+          <label>입고예정일(FROM)</label>
+          <input type="date" id="ro-date-from" value="${dd.from}" style="min-width:126px">
+        </div>
+        <!-- 입고예정일 TO -->
+        <div class="psd-fg">
+          <label>~TO</label>
+          <input type="date" id="ro-date-to" value="${dd.to}" style="min-width:126px">
+        </div>
+        <!-- 납품처코드 -->
+        <div class="psd-fg">
+          <label>납품처코드</label>
+          <input type="text" id="ro-lifnr" placeholder="납품처코드..." style="min-width:120px"
+            onkeydown="if(event.key==='Enter') roSearch()">
+        </div>
+        <!-- 납품문서번호 -->
+        <div class="psd-fg">
+          <label>납품문서번호</label>
+          <input type="text" id="ro-ebeln" placeholder="납품문서번호..." style="min-width:130px"
+            onkeydown="if(event.key==='Enter') roSearch()">
+        </div>
+        <!-- 배차상태 -->
+        <div class="psd-fg">
+          <label>배차상태</label>
+          <select id="ro-disp-stat" style="min-width:90px">
+            <option value="all" selected>전체</option>
+            <option value="undispatched">미배차</option>
+            <option value="dispatched">배차완료</option>
+          </select>
+        </div>
+        <button class="psd-btn primary" onclick="roSearch()">🔍 조회</button>
+        <div class="psd-sep-v"></div>
+        <!-- 액션 -->
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          <div style="font-size:11px;color:var(--text3)" id="ro-status-text"></div>
+          <span style="font-size:11px;color:var(--text3);white-space:nowrap">차종</span>
+          <select id="ro-cartype" style="min-width:96px">
+            <option value="">차종선택</option>
+            <option value="1톤">1톤</option>
+            <option value="2.5톤">2.5톤</option>
+            <option value="5톤">5톤</option>
+            <option value="11톤">11톤</option>
+            <option value="18톤">18톤</option>
+            <option value="25톤">25톤</option>
+          </select>
+          <button class="psd-btn success" id="ro-btn-save" onclick="roSaveDispatch()" disabled>🚚 배차저장</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ② 반품 대상 목록 -->
+    <div class="psd-main" style="padding:10px;">
+      <div class="psd-left" style="flex:1">
+        <div class="psd-panel-hdr">
+          <div class="psd-panel-hdr-title">📄 반품 대상 목록 <span class="psd-sel-badge" id="ro-list-cnt">0</span></div>
+          <div class="psd-panel-hdr-info">체크 후 차종 선택 → 배차저장 (STKNUM=가선적번호 반영)</div>
+        </div>
+        <div class="psd-panel-body" id="ro-list-wrap" style="overflow:auto">
+          <div class="psd-empty-state">조회 버튼을 눌러 반품 대상을 불러오세요</div>
+        </div>
+      </div>
+    </div>
+  </div><!-- /ro-panel-dispatch -->
+
+  <!-- ══ 탭 2: 배차확정 (SAP선적) ══ -->
+  <div class="psop-tab-panel" id="ro-panel-sap">
+    <div class="psd-root" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;">
+      <div class="psd-toolbar">
+        <span style="font-size:11px;color:var(--text3);white-space:nowrap">입고예정일</span>
+        <input type="date" id="ro-sap-dt-from" style="background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:3px 6px;font-size:11px;">
+        <span style="font-size:11px;color:var(--text3)">~</span>
+        <input type="date" id="ro-sap-dt-to" style="background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:3px 6px;font-size:11px;">
+        <div class="psd-sep"></div>
+        <span style="font-size:11px;color:var(--text3);white-space:nowrap">가선적번호</span>
+        <input type="text" id="ro-sap-kw-stknum" placeholder="가선적번호 검색" style="background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:3px 7px;font-size:11px;width:130px;"
+          onkeydown="if(event.key==='Enter') roLoadSapList()">
+        <button class="psd-btn" onclick="roLoadSapList()">🔍 조회</button>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:12px;font-size:11px;color:var(--text2)">
+          <span>가선적: <b id="ro-sap-stat-total" style="color:var(--primary)">0</b>건</span>
+        </div>
+      </div>
+      <div class="psd-main" style="gap:10px;padding:10px;">
+        <!-- 왼쪽: 가선적번호 목록 -->
+        <div class="psd-left">
+          <div class="psd-panel-hdr">
+            <div class="psd-panel-hdr-title">📋 가선적번호 목록 <span class="psd-sel-badge" id="ro-sap-left-cnt">0</span></div>
+            <div class="psd-panel-hdr-info">행 클릭 시 납품문서 표시</div>
+          </div>
+          <div class="psd-panel-body" id="ro-sap-left-wrap" style="overflow:auto">
+            <div class="psd-empty-state">조회 버튼을 눌러 데이터를 불러오세요</div>
+          </div>
+        </div>
+        <!-- 오른쪽: 납품문서 상세 -->
+        <div class="psd-right">
+          <div class="psd-panel-hdr">
+            <div class="psd-panel-hdr-title">📄 납품문서 상세 <span class="psd-sel-badge" id="ro-sap-right-cnt">0</span></div>
+            <div class="psd-panel-hdr-info" id="ro-sap-right-stknum"></div>
+          </div>
+          <div class="psd-panel-body" id="ro-sap-right-wrap" style="overflow:auto">
+            <div class="psd-sap-select-prompt">
+              <div style="font-size:36px;opacity:.5">👈</div>
+              <div style="font-size:12px">왼쪽 목록에서 가선적번호를 선택하세요</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div><!-- /ro-panel-sap -->
+
+</div><!-- /ro-root -->
+  `;
+
+  roState.initialized = true;
+  if (roState.savedForm) roRestoreForm(roState.savedForm);
+}
+
+/* ── 배차 탭: 반품 대상 조회 ─────────────────────────── */
+async function roSearch() {
+  const wareky = document.getElementById('ro-wareky')?.value || '1100';
+  const skug05 = document.getElementById('ro-skug05')?.value || '';
+  const dateFrom = (document.getElementById('ro-date-from')?.value || '').replace(/-/g,'');
+  const dateTo   = (document.getElementById('ro-date-to')?.value   || '').replace(/-/g,'');
+  const lifnr = (document.getElementById('ro-lifnr')?.value || '').trim();
+  const ebeln = (document.getElementById('ro-ebeln')?.value || '').trim();
+
+  if (!skug05) { showToast('⚠ 제품군을 선택하세요 (필수)'); return; }
+  if (!wareky) { showToast('⚠ 거점을 선택하세요 (필수)');  return; }
+
+  const wrap = document.getElementById('ro-list-wrap');
+  if (wrap) wrap.innerHTML = '<div class="psd-empty-state">⏳ 조회 중...</div>';
+  roState.checkedSet.clear();
+
+  try {
+    const params = new URLSearchParams({ wareky, skug05, dateFrom, dateTo });
+    if (lifnr) params.set('lifnr', lifnr);
+    if (ebeln) params.set('ebeln', ebeln);
+    const res = await fetch(`/api/ps-return/search?${params}`);
+    const json = await res.json();
+    if (!res.ok || json.success === false) throw new Error(json.message || '조회 실패');
+    roState.searchRows = json.data || json.result || [];
+  } catch (e) {
+    roState.searchRows = [];
+    if (wrap) wrap.innerHTML = `<div class="psd-empty-state">⚠ 조회 실패: ${e.message}</div>`;
+    showToast('조회 실패: ' + e.message);
+    return;
+  }
+  roRenderList();
+}
+
+/* ── 배차 탭: 목록 렌더 (배차상태 필터 적용) ─────────── */
+function roRenderList() {
+  const wrap = document.getElementById('ro-list-wrap');
+  if (!wrap) return;
+  const stat = document.getElementById('ro-disp-stat')?.value || 'all';
+  let rows = roState.searchRows || [];
+  if (stat === 'undispatched') rows = rows.filter(r => !r.DISPATCHED);
+  else if (stat === 'dispatched') rows = rows.filter(r => r.DISPATCHED);
+
+  const cntEl = document.getElementById('ro-list-cnt');
+  if (cntEl) cntEl.textContent = rows.length;
+  const badge = document.getElementById('ro-badge-dispatch');
+  if (badge) {
+    const undp = (roState.searchRows || []).filter(r => !r.DISPATCHED).length;
+    badge.textContent = (roState.searchRows || []).length ? `${undp}미` : 0;
+  }
+
+  if (!rows.length) {
+    wrap.innerHTML = '<div class="psd-empty-state">조회 결과가 없습니다</div>';
+    roUpdateActionBtn();
+    return;
+  }
+
+  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+  const fmtNum = v => { const n = parseFloat(v); return isNaN(n) ? (v ?? '') : n.toLocaleString(undefined,{maximumFractionDigits:3}); };
+  const fmtDt  = v => { const s = (v||'').toString(); return s.length === 8 ? `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}` : s; };
+
+  let html = `
+    <table class="sap-doc-tbl" style="width:100%;border-collapse:collapse;table-layout:auto;font-size:12px">
+      <thead>
+        <tr>
+          <th style="width:34px"><input type="checkbox" id="ro-chk-all" onchange="roToggleAll(this.checked)"></th>
+          <th style="width:90px">배차상태</th>
+          <th>납품문서</th>
+          <th style="width:44px">아이템</th>
+          <th style="width:80px">입고예정일</th>
+          <th>납품처</th>
+          <th>품목</th>
+          <th>품목명</th>
+          <th style="width:60px">단위</th>
+          <th style="width:70px">TON</th>
+          <th style="width:60px">BAG</th>
+          <th style="width:60px">BOX</th>
+          <th style="width:60px">PLT</th>
+          <th style="width:110px">가선적번호</th>
+        </tr>
+      </thead>
+      <tbody>`;
+  rows.forEach(r => {
+    const key = roRowKey(r);
+    const checked = roState.checkedSet.has(key) ? 'checked' : '';
+    const dispBadge = r.DISPATCHED
+      ? '<span style="color:#0a7d33;font-weight:700">✅ 배차완료</span>'
+      : '<span style="color:#b26a00;font-weight:700">⏳ 미배차</span>';
+    // 배차완료 행은 재배차 방지: 체크박스 비활성화
+    const dis = r.DISPATCHED ? 'disabled title="이미 배차완료(가선적번호 존재)"' : '';
+    html += `
+      <tr data-key="${esc(key)}">
+        <td style="text-align:center"><input type="checkbox" class="ro-chk" data-key="${esc(key)}" ${checked} ${dis} onchange="roToggleRow(this)"></td>
+        <td style="text-align:center">${dispBadge}</td>
+        <td style="font-family:monospace">${esc(r.EBELN)}</td>
+        <td style="text-align:center">${esc(r.EBELP)}</td>
+        <td style="text-align:center">${esc(fmtDt(r.EINDT))}</td>
+        <td>${esc(r.LIFNR)} ${esc(r.DPTNNM)}</td>
+        <td style="font-family:monospace">${esc(r.SKUKEY)}</td>
+        <td>${esc(r.DESC01)}</td>
+        <td style="text-align:center">${esc(r.MEINS)}</td>
+        <td style="text-align:right">${fmtNum(r.TOT)}</td>
+        <td style="text-align:right">${fmtNum(r.BAG)}</td>
+        <td style="text-align:right">${fmtNum(r.BOX)}</td>
+        <td style="text-align:right">${fmtNum(r.PLT)}</td>
+        <td style="font-family:monospace;text-align:center">${esc(r.STKNUM)}</td>
+      </tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+  roUpdateActionBtn();
+}
+
+/* 개별 체크 토글 */
+function roToggleRow(el) {
+  const key = el.getAttribute('data-key');
+  if (el.checked) roState.checkedSet.add(key);
+  else roState.checkedSet.delete(key);
+  roUpdateActionBtn();
+}
+/* 전체 체크 토글 (미배차 행만) */
+function roToggleAll(checked) {
+  document.querySelectorAll('.ro-chk').forEach(cb => {
+    if (cb.disabled) return;
+    cb.checked = checked;
+    const key = cb.getAttribute('data-key');
+    if (checked) roState.checkedSet.add(key); else roState.checkedSet.delete(key);
+  });
+  roUpdateActionBtn();
+}
+/* 배차저장 버튼 활성/비활성 + 상태 텍스트 */
+function roUpdateActionBtn() {
+  const n = roState.checkedSet.size;
+  const btn = document.getElementById('ro-btn-save');
+  if (btn) btn.disabled = (n === 0);
+  const st = document.getElementById('ro-status-text');
+  if (st) st.textContent = n ? `선택 ${n}건` : '';
+}
+
+/* ── 배차 탭: 반품 배차저장 ──────────────────────────── */
+async function roSaveDispatch() {
+  const keys = [...roState.checkedSet];
+  if (!keys.length) { showToast('⚠ 배차할 항목을 선택하세요'); return; }
+  const cartype = document.getElementById('ro-cartype')?.value || '';
+
+  // 선택된 행 수집
+  const byKey = new Map((roState.searchRows || []).map(r => [roRowKey(r), r]));
+  const items = keys.map(k => byKey.get(k)).filter(Boolean).map(r => ({
+    EBELN: r.EBELN, EBELP: r.EBELP, SKUKEY: r.SKUKEY, DESC01: r.DESC01,
+    MEINS: r.MEINS, LIFNR: r.LIFNR, DPTNNM: r.DPTNNM,
+    QTSHPO: r.TOT, GRSWGT: 0, KG_WEIGHT: r.TOT,
+  }));
+  if (!items.length) { showToast('⚠ 선택 항목을 찾을 수 없습니다'); return; }
+
+  // 대표 납품처/거점/일자 (첫 행 기준)
+  const first = byKey.get(keys[0]);
+  const rqshpd = (document.getElementById('ro-date-from')?.value || '').replace(/-/g,'');
+  const vehicle = {
+    LIFNR: first?.LIFNR || '', DPTNNM: first?.DPTNNM || '',
+    WAREKY: first?.WAREKY || document.getElementById('ro-wareky')?.value || '1100',
+    RQSHPD: rqshpd, CARTYPE: cartype,
+    TOTAL_KG: items.reduce((s,it)=> s + (parseFloat(it.QTSHPO)||0), 0),
+    ITEMS: items,
+  };
+
+  const btn = document.getElementById('ro-btn-save');
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch('/api/ps-return/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vehicles: [vehicle] }),
+    });
+    const json = await res.json();
+    if (!res.ok || json.success === false) throw new Error(json.message || '저장 실패');
+    const data = json.data || json.result || {};
+    const nos = data.dispatch_nos || [];
+    showToast(`✅ 반품 배차저장 완료 (가선적번호: ${nos.join(', ') || data.saved || items.length})`);
+    roState.checkedSet.clear();
+    await roSearch();   // 재조회 → 배차완료 상태 반영
+  } catch (e) {
+    showToast('저장 실패: ' + e.message);
+    if (btn) btn.disabled = false;
+  }
+}
+
+/* ══ 배차확정(SAP선적) 탭: 저장된 반품 가선적 조회 ══ */
+const _roSapState = { rows: [], selectedStknum: null, docRows: [] };
+
+function roSapTabInit() {
+  const dtFrom = document.getElementById('ro-sap-dt-from');
+  const dtTo   = document.getElementById('ro-sap-dt-to');
+  if (dtFrom && !dtFrom.value) {
+    const df = document.getElementById('ro-date-from')?.value || '';
+    const dt = document.getElementById('ro-date-to')?.value   || '';
+    if (df) { dtFrom.value = df; dtTo.value = dt || df; }
+    else {
+      const dd = roDefaultDates();
+      dtFrom.value = dd.from; dtTo.value = dd.to;
+    }
+  }
+  roLoadSapList();
+}
+
+/* SAP선적 탭: 배차완료(STKNUM 존재) 반품 대상을 가선적번호 단위로 그룹화하여 조회 */
+async function roLoadSapList() {
+  const wareky = document.getElementById('ro-wareky')?.value || '1100';
+  const skug05 = document.getElementById('ro-skug05')?.value || '';
+  const dateFrom = (document.getElementById('ro-sap-dt-from')?.value || '').replace(/-/g,'');
+  const dateTo   = (document.getElementById('ro-sap-dt-to')?.value   || '').replace(/-/g,'');
+  const kw = (document.getElementById('ro-sap-kw-stknum')?.value || '').trim();
+  const wrap = document.getElementById('ro-sap-left-wrap');
+  if (!wrap) return;
+  if (!skug05) { wrap.innerHTML = '<div class="psd-empty-state">⚠ 배차 탭에서 제품군을 먼저 선택하세요</div>'; return; }
+  wrap.innerHTML = '<div class="psd-empty-state">⏳ 조회 중...</div>';
+
+  try {
+    const params = new URLSearchParams({ wareky, skug05, dateFrom, dateTo });
+    const res = await fetch(`/api/ps-return/search?${params}`);
+    const json = await res.json();
+    if (!res.ok || json.success === false) throw new Error(json.message || '조회 실패');
+    let rows = (json.data || json.result || []).filter(r => r.DISPATCHED && r.STKNUM);
+    if (kw) rows = rows.filter(r => (r.STKNUM||'').includes(kw));
+    // 가선적번호(STKNUM) 단위 그룹화
+    const grp = new Map();
+    rows.forEach(r => {
+      const g = grp.get(r.STKNUM) || { STKNUM: r.STKNUM, LIFNR: r.LIFNR, DPTNNM: r.DPTNNM, EINDT: r.EINDT, cnt: 0, ton: 0, docs: [] };
+      g.cnt += 1; g.ton += (parseFloat(r.TOT)||0); g.docs.push(r);
+      grp.set(r.STKNUM, g);
+    });
+    _roSapState.rows = [...grp.values()].sort((a,b)=> (a.STKNUM<b.STKNUM?1:-1));
+  } catch (e) {
+    _roSapState.rows = [];
+    wrap.innerHTML = `<div class="psd-empty-state">⚠ 조회 실패: ${e.message}</div>`;
+    return;
+  }
+  roRenderSapLeft();
+}
+
+function roRenderSapLeft() {
+  const wrap = document.getElementById('ro-sap-left-wrap');
+  if (!wrap) return;
+  const rows = _roSapState.rows || [];
+  const cntEl = document.getElementById('ro-sap-left-cnt'); if (cntEl) cntEl.textContent = rows.length;
+  const totEl = document.getElementById('ro-sap-stat-total'); if (totEl) totEl.textContent = rows.length;
+  const badge = document.getElementById('ro-badge-sap'); if (badge) badge.textContent = rows.length;
+  if (!rows.length) { wrap.innerHTML = '<div class="psd-empty-state">배차완료(가선적) 대상이 없습니다</div>'; return; }
+
+  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+  const fmtNum = v => { const n = parseFloat(v); return isNaN(n) ? '' : n.toLocaleString(undefined,{maximumFractionDigits:3}); };
+  let html = `<table class="sap-left-tbl" style="width:100%;border-collapse:collapse;table-layout:auto;font-size:12px">
+    <thead><tr><th style="width:120px">가선적번호</th><th>납품처</th><th style="width:50px">건수</th><th style="width:80px">TON</th></tr></thead><tbody>`;
+  rows.forEach((g,i) => {
+    const sel = _roSapState.selectedStknum === g.STKNUM ? ' style="background:var(--primary-light,rgba(14,165,233,.14))"' : '';
+    html += `<tr data-idx="${i}"${sel} onclick="roSelectSap(${i})" style="cursor:pointer">
+      <td style="font-family:monospace;text-align:center">${esc(g.STKNUM)}</td>
+      <td>${esc(g.LIFNR)} ${esc(g.DPTNNM)}</td>
+      <td style="text-align:center">${g.cnt}</td>
+      <td style="text-align:right">${fmtNum(g.ton)}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function roSelectSap(idx) {
+  const g = (_roSapState.rows || [])[idx];
+  if (!g) return;
+  _roSapState.selectedStknum = g.STKNUM;
+  _roSapState.docRows = g.docs || [];
+  roRenderSapLeft();
+  roRenderSapDocs();
+}
+
+function roRenderSapDocs() {
+  const wrap = document.getElementById('ro-sap-right-wrap');
+  if (!wrap) return;
+  const rows = _roSapState.docRows || [];
+  const cntEl = document.getElementById('ro-sap-right-cnt'); if (cntEl) cntEl.textContent = rows.length;
+  const stkEl = document.getElementById('ro-sap-right-stknum'); if (stkEl) stkEl.textContent = _roSapState.selectedStknum || '';
+  if (!rows.length) { wrap.innerHTML = '<div class="psd-sap-select-prompt"><div style="font-size:12px">납품문서가 없습니다</div></div>'; return; }
+  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+  const fmtNum = v => { const n = parseFloat(v); return isNaN(n) ? (v ?? '') : n.toLocaleString(undefined,{maximumFractionDigits:3}); };
+  let html = `<table class="sap-doc-tbl" style="width:100%;border-collapse:collapse;table-layout:auto;font-size:12px">
+    <thead><tr><th>납품문서</th><th style="width:44px">아이템</th><th>품목</th><th>품목명</th><th style="width:60px">단위</th><th style="width:70px">TON</th><th style="width:60px">BOX</th></tr></thead><tbody>`;
+  rows.forEach(r => {
+    html += `<tr>
+      <td style="font-family:monospace">${esc(r.EBELN)}</td>
+      <td style="text-align:center">${esc(r.EBELP)}</td>
+      <td style="font-family:monospace">${esc(r.SKUKEY)}</td>
+      <td>${esc(r.DESC01)}</td>
+      <td style="text-align:center">${esc(r.MEINS)}</td>
+      <td style="text-align:right">${fmtNum(r.TOT)}</td>
+      <td style="text-align:right">${fmtNum(r.BOX)}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
 async function renderPsDispatchOpt() {
   const c = document.getElementById('content');
   c.style.overflowY = 'hidden';
