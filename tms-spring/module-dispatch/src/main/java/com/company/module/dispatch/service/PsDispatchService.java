@@ -405,11 +405,13 @@ public class PsDispatchService {
             int    totalCnt    = veh.getItems() == null ? 0 : veh.getItems().size();
 
             // PS_DISPATCH_H INSERT → MariaDB tmsEm
+            // DISPATCH_TYPE : PS(판매/이송) 배차 저장 시 'GI'(출고) 로 고정
+            //   ─ 반품 배차(배차(반품) 탭)는 별도 저장 경로에서 'GR' 로 저장한다.
             tmsEm.createNativeQuery("""
                 INSERT INTO KNRAWMS.PS_DISPATCH_H
                   (DISPATCH_NO, DISPATCH_DT, RQSHPD, DPTNKY, DPTNM,
-                   CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR)
-                VALUES (?,?,?,?,?,?,'DRAFT',?,?,?,?)
+                   CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR, DISPATCH_TYPE)
+                VALUES (?,?,?,?,?,?,'DRAFT',?,?,?,?,'GI')
                 """)
               .setParameter(1,  dispatchNo)
               .setParameter(2,  today)
