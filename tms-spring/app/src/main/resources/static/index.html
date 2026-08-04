@@ -10444,91 +10444,89 @@ function _lvRenderLoadCanvas2D(canvas, wrap, items, veh, view) {
      표시하지 않고" 앞면 기준 평면으로만 그린다. 원기둥 캡/입체감(그라데이션) 없이
      단순 사각형으로 표현하고, 단(段) 사이는 여백이 아닌 선(구분선)으로 나눈다.
      정면: 화면가로=X, 측면: 화면가로=Y. 세로=높이(z).
-     ── 평면화 방법 ──
-     1) 같은 화면 컬럼(gStart 기준)·같은 단(tier)에 겹치는 블록은 앞쪽 1개만 남긴다.
-     2) 단 간격(TIER_GAP)을 제거하고 단끼리 붙여 쌓아(여백 제거) 시각 높이를 재계산,
-        단 경계에는 구분선을 긋는다. */
+     ── 평면화 방법 (겹침 방지) ──
+     1) 화면 가로축(정면=X, 측면=Y)을 품목 footprint 단위로 "컬럼"으로 나누고,
+        각 컬럼(가로 구간)이 겹치면 앞쪽(depth 작은) 블록만 대표로 남긴다
+        → 옆 품목/뒤 품목과의 겹침 제거.
+     2) 컬럼별로 1단→상위단을 파렛트 위(palHmm)부터 여백 없이 붙여 쌓고,
+        단 경계에는 구분선을 그어 단수를 구분(TIER_GAP 여백 제거). */
   const legendItems = [];
   const seenLegend = {};
 
   const maxTierByItem = {};
   (placement.blocks||[]).forEach(b=>{ maxTierByItem[b.idx]=Math.max(maxTierByItem[b.idx]||0, b.tier||1); });
 
-  // 1) 평면 투영: (화면컬럼 gStart, 단 tier) 키로 중복(안쪽) 제거 → 앞쪽 블록만 대표
-  const projMap = new Map();   // key → 대표 블록
-  (placement.blocks||[]).forEach(b => {
-    const gStart = isFront ? b.x : b.y;
-    const depth  = isFront ? b.y : b.x;   // 값이 작을수록 앞
-    const key = Math.round(gStart) + '|' + (b.tier||1);
-    const prev = projMap.get(key);
-    if (!prev || depth < prev._depth) { b._depth = depth; projMap.set(key, b); }
-    else if (prev) prev._depth = Math.min(prev._depth, depth);
+  /* 1) 단 간격(TIER_GAP) 여백 제거 → 시각 z 재계산
+     각 (품목, 가로위치, 깊이) "기둥"에서 1단부터 파렛트 위(palHmm)에 붙여 쌓는다.
+     기둥 키 = idx + 가로시작(x또는y) + 깊이(y또는x). 같은 기둥 내 tier 오름차순 누적. */
+  const colKeyOf = b => b.idx + '|' + Math.round(b.x) + '|' + Math.round(b.y);
+  const colBottom = new Map();   // colKey → 현재까지 누적된 시각 바닥(mm)
+  const sameCol = new Map();     // colKey → 정렬용 tier 리스트
+  (placement.blocks||[]).slice().sort((a,b)=>(a.tier||1)-(b.tier||1)).forEach(b => {
+    const k = colKeyOf(b);
+    const base = colBottom.has(k) ? colBottom.get(k) : palHmm;   // ★ 파렛트 위부터
+    b._visZ   = base;            // 시각 바닥(z)
+    b._visTop = base + b.h;      // 시각 상단(z)
+    colBottom.set(k, b._visTop);
   });
 
-  // 2) 컬럼별로 단을 아래→위로 붙여 쌓기(여백 제거) → 시각 z 재계산
-  const colGroups = new Map();  // gStart → [블록...]
-  projMap.forEach(b => {
+  /* 2) painter's algorithm — 뒤(깊이 큰) → 앞(깊이 작은) 순으로 그려
+     앞쪽 품목이 뒤쪽을 덮어 "안쪽(가려진) 품목은 안 보이게" 한다.
+     정면뷰: 깊이=Y, 측면뷰: 깊이=X. 같은 깊이면 아래 단(z작은)부터. */
+  const order = (placement.blocks||[]).slice();
+  const depthOf = b => isFront ? b.y : b.x;
+  order.sort((a,b)=> (depthOf(b)-depthOf(a)) || ((a._visZ||0)-(b._visZ||0)));
+
+  const drawn = [];
+  order.forEach(b => {
     const gStart = isFront ? b.x : b.y;
-    const k = Math.round(gStart);
-    if (!colGroups.has(k)) colGroups.set(k, []);
-    colGroups.get(k).push(b);
-  });
+    const gLen   = isFront ? b.w : b.l;
+    const x0 = sx(gStart)+1, w0 = Math.max(2, gLen*SCALE-2);
+    const zTop = b._visTop, h0 = Math.max(2, b.h*SCALE-1);
+    const yTop = syTop(zTop)+0.5;
+    const cxc = x0 + w0/2, cyc = yTop + h0/2;
 
-  colGroups.forEach(list => {
-    list.sort((a,b)=> (a.tier||1)-(b.tier||1));   // 1단 → 상위 단
-    let stackZ = 0;                               // 붙여 쌓기용 바닥부터 누적 높이(mm)
-    list.forEach(b => {
-      const gStart = isFront ? b.x : b.y;
-      const gLen   = isFront ? b.w : b.l;
-      const x0 = sx(gStart)+1, w0 = Math.max(2, gLen*SCALE-2);
-      // 단 간격 없이 붙여 쌓은 시각 좌표
-      const zBot = stackZ, zTop = stackZ + b.h;
-      const yTop = syTop(zTop)+0.5, h0 = Math.max(2, b.h*SCALE-1);
-      const cxc = x0 + w0/2, cyc = yTop + h0/2;
+    /* 평면 사각형 (원지/판지 동일하게 납작한 면) — 불투명(겹침 오인 방지) */
+    ctx.globalAlpha = 1.0;
+    ctx.fillStyle = b.color;
+    ctx.fillRect(x0, yTop, w0, h0);
+    ctx.strokeStyle = _psdDarken(b.color,.35); ctx.lineWidth = 1;
+    ctx.strokeRect(x0, yTop, w0, h0);
 
-      /* 평면 사각형 (원지/판지 동일하게 납작한 면으로) */
-      ctx.fillStyle = b.color; ctx.globalAlpha = 0.9;
-      ctx.fillRect(x0, yTop, w0, h0);
-      ctx.globalAlpha = 1.0;
-      ctx.strokeStyle = _psdDarken(b.color,.3); ctx.lineWidth = 1;
-      ctx.strokeRect(x0, yTop, w0, h0);
+    /* 단(段) 구분선 — 여백 대신 선으로 단 경계를 표시 (2단 이상) */
+    if ((b.tier||1) > 1) {
+      ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x0-0.5, yTop+h0); ctx.lineTo(x0+w0+0.5, yTop+h0); ctx.stroke();
+      ctx.strokeStyle = 'rgba(253,224,71,.95)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x0, yTop+h0-0.5); ctx.lineTo(x0+w0, yTop+h0-0.5); ctx.stroke();
+    }
 
-      /* 단(段) 구분선 — 여백 대신 굵은 선으로 단 경계를 표시 */
-      if ((b.tier||1) > 1) {
-        ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(x0-0.5, yTop+h0); ctx.lineTo(x0+w0+0.5, yTop+h0); ctx.stroke();
-        ctx.strokeStyle = 'rgba(253,224,71,.9)'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(x0, yTop+h0-0.5); ctx.lineTo(x0+w0, yTop+h0-0.5); ctx.stroke();
-      }
+    /* 단수(tier) 표시 — n/총 형태 */
+    if (w0 > 20 && h0 > 14) {
+      ctx.fillStyle='rgba(255,255,255,.95)';
+      ctx.font=`bold ${Math.min(12, w0*.3)}px sans-serif`; ctx.textAlign='center';
+      const tierTxt = (b.totalTiers>1) ? `${b.tier}/${b.totalTiers}단` : `${b.tier||1}단`;
+      ctx.fillText(tierTxt, cxc, cyc+3);
+    }
 
-      /* 단수(tier) 표시 — n/총 형태 */
-      if (w0 > 20 && h0 > 14) {
-        ctx.fillStyle='rgba(255,255,255,.95)';
-        ctx.font=`bold ${Math.min(12, w0*.3)}px sans-serif`; ctx.textAlign='center';
-        const tierTxt = (b.totalTiers>1) ? `${b.tier}/${b.totalTiers}단` : `${b.tier||1}단`;
-        ctx.fillText(tierTxt, cxc, cyc+3);
-      }
+    /* 범례 (품목별 1회) */
+    if (!seenLegend[b.idx]) {
+      seenLegend[b.idx] = true;
+      const vz = vizItems[b.idx] || {};
+      if (vz.type === 'roll')
+        legendItems.push({ color:b.color, label:`${vz.label} (롤×${vz.rollCount}, Ø${(vz.diamMm/10).toFixed(0)}cm, 폭${(vz.widMm/10).toFixed(0)}cm, ${maxTierByItem[b.idx]}단)` });
+      else if (vz.type === 'board')
+        legendItems.push({ color:b.color, label:`${vz.label} (판지 ${psdFmtNum(vz.reams)}연, H${((vz.fullStackHgtM||vz.stackHgtM)*100).toFixed(0)}cm, ${maxTierByItem[b.idx]}단)` });
+    }
 
-      /* 범례 (품목별 1회) */
-      if (!seenLegend[b.idx]) {
-        seenLegend[b.idx] = true;
-        const vz = vizItems[b.idx] || {};
-        if (vz.type === 'roll')
-          legendItems.push({ color:b.color, label:`${vz.label} (롤×${vz.rollCount}, Ø${(vz.diamMm/10).toFixed(0)}cm, 폭${(vz.widMm/10).toFixed(0)}cm, ${maxTierByItem[b.idx]}단)` });
-        else if (vz.type === 'board')
-          legendItems.push({ color:b.color, label:`${vz.label} (판지 ${psdFmtNum(vz.reams)}연, H${((vz.fullStackHgtM||vz.stackHgtM)*100).toFixed(0)}cm, ${maxTierByItem[b.idx]}단)` });
-      }
-
-      // 이 블록의 시각 상단높이 기록(높이 수치 표기용)
-      b._visTopMm = zTop;
-      stackZ = zTop;   // 다음 단은 바로 위에 붙여 쌓음(여백 없음)
-    });
+    b._visTopMm = zTop;
+    drawn.push(b);
   });
 
   /* ── 품목 높이 수치 표시 (아이템별 최상단에 총 적재높이) ── */
   //  붙여 쌓은 시각 상단(_visTopMm)이 가장 높은 블록 위에 높이(cm) 표기.
   const topByItem = {};   // idx → {maxTopMm, xMid(mm), color}
-  projMap.forEach(b=>{
+  drawn.forEach(b=>{
     const top = b._visTopMm != null ? b._visTopMm : (b.z + b.h);
     const gStart = isFront ? b.x : b.y, gLen = isFront ? b.w : b.l;
     const xmid = gStart + gLen/2;
