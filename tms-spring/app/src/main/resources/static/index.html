@@ -2023,12 +2023,13 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psd-right .psd-panel-hdr .psd-panel-hdr-title{color:#14532d;font-weight:800}
 .psd-right .psd-panel-hdr .psd-panel-hdr-info{color:#166534}
 /* 배차확정(SAP선적) 탭 전용 — 패널 헤더 색상을 조금 더 어두운 계열로 */
-#psop-panel-sap .psd-left .psd-panel-hdr{background:linear-gradient(135deg,#60a5fa 0%,#3b82f6 100%);border-bottom:2px solid #1d4ed8}
-#psop-panel-sap .psd-left .psd-panel-hdr .psd-panel-hdr-title{color:#ffffff;font-weight:800}
-#psop-panel-sap .psd-left .psd-panel-hdr .psd-panel-hdr-info{color:#dbeafe}
-#psop-panel-sap .psd-right .psd-panel-hdr{background:linear-gradient(135deg,#4ade80 0%,#22c55e 100%);border-bottom:2px solid #15803d}
-#psop-panel-sap .psd-right .psd-panel-hdr .psd-panel-hdr-title{color:#0b3d1a;font-weight:800}
-#psop-panel-sap .psd-right .psd-panel-hdr .psd-panel-hdr-info{color:#052e16}
+/* '선적번호 목록' / '납품문서 상세' 패널 헤더 — 밝은 회색 계열 (하단 조회 List와 구분) */
+#psop-panel-sap .psd-left .psd-panel-hdr,
+#psop-panel-sap .psd-right .psd-panel-hdr{background:linear-gradient(135deg,#dde1e6 0%,#c9cfd6 100%);border-bottom:2px solid #aeb6c0}
+#psop-panel-sap .psd-left .psd-panel-hdr .psd-panel-hdr-title,
+#psop-panel-sap .psd-right .psd-panel-hdr .psd-panel-hdr-title{color:#374151;font-weight:800}
+#psop-panel-sap .psd-left .psd-panel-hdr .psd-panel-hdr-info,
+#psop-panel-sap .psd-right .psd-panel-hdr .psd-panel-hdr-info{color:#5b6470}
 /* ══ 배차확정(SAP선적) 탭 — 글자크기/폰트/굵기 통일 ══ */
 /* 탭 전체 기본 폰트패밀리 통일 (숫자/영문 포함 동일 sans-serif) */
 #psop-panel-sap,
