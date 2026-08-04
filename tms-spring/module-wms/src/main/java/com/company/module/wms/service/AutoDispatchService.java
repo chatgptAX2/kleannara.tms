@@ -1827,8 +1827,9 @@ public class AutoDispatchService {
             double widthMm = layer.repWidthMm;
 
             int cols     = Math.max(1, (int)(carWmm / diamMm));
-            // 세워 적재: 1단 높이 = 원지 폭(widthMm). 폭이 차량 가용높이보다 작아야 2단 이상 가능.
-            int maxTiers = Math.max(1, Math.min(cp.maxStack, (int)(heightCapMm / widthMm)));
+            // 세워 적재: 1단 높이 = 원지 폭(widthMm)+단간격. 폭이 차량 가용높이보다 작아야 2단 이상 가능.
+            final double ROLL_TIER_GAP_MM = 30.0; // 단 사이 물리 간격(시뮬레이션과 일치)
+            int maxTiers = Math.max(1, Math.min(cp.maxStack, (int)((heightCapMm + ROLL_TIER_GAP_MM) / (widthMm + ROLL_TIER_GAP_MM))));
             int perSlice = cols * maxTiers; // diamMm 깊이 슬라이스당 수용 롤 수 = 열 × 단
 
             // 이 레이어에 필요한 길이(Y) = ceil(layer.totalRolls / perSlice) × diamMm(원 footprint)
@@ -1845,10 +1846,14 @@ public class AutoDispatchService {
         }
 
         final double heightCapFinal = heightCapMm; // 람다 캡처용
+        final double TIER_GAP_MM = 30.0;
         result.maxCapacity  = totalCap;
-        // 최고 적재 높이 = 원지 폭 × 단수 (세워 적재)
+        // 최고 적재 높이 = 원지 폭 × 단수 + 단간격 (세워 적재)
         result.stackHeightM = layerMap.values().stream()
-            .mapToDouble(l -> l.repWidthMm * Math.max(1, Math.min(cp.maxStack, (int)(heightCapFinal / l.repWidthMm))))
+            .mapToDouble(l -> {
+                int t = Math.max(1, Math.min(cp.maxStack, (int)((heightCapFinal + TIER_GAP_MM) / (l.repWidthMm + TIER_GAP_MM))));
+                return l.repWidthMm * t + TIER_GAP_MM * (t - 1);
+            })
             .max().orElse(0) / 1000.0;
         result.usedFloorRatio = carLmm > 0 ? Math.min(100.0, usedLengthMm / carLmm * 100.0) : 0.0;
         // Dead Space 허용 비율(ROLL_3D_DEAD_SPACE_PCT) 반영: 기본 2% + 설정 비율만큼 여유 허용

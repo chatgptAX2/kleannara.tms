@@ -9873,7 +9873,8 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
 
   const blocks = [];
   const FALLBACK_UNIT_W = 600;
-  const GAP = 20; // mm, 블록 사이 시각적 간격
+  const GAP = 20;       // mm, 블록 사이 시각적 간격
+  const TIER_GAP = 30;  // mm, 다단(단과 단) 사이 시각적 간격 → 단 구분 표시
 
   // ── 원지(원통) 배치: Z축(높이)으로 세워서 적재 ──────────────
   //  실제 상차와 동일하게 원통을 세로로 세워 적재(눕히면 2단 적재 불가).
@@ -9903,8 +9904,8 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
       const widMm     = sdims.widthMm || 1400;   // 원지 폭 = 세워 적재 시 높이
       const diamMm    = _lvRollDiameter(oneKg, gsm, widMm) || 800;
       const cols      = Math.max(1, Math.floor(carWmm / diamMm));   // X: 지름 기준
-      // Z(높이) 다단 = 원지 폭(widMm) 기준. 세워 적재해야 2단(이상) 가능.
-      const tiers     = Math.max(1, Math.min(maxStack, Math.floor(rollCapMm / widMm)));
+      // Z(높이) 다단 = 원지 폭(widMm)+단간격 기준. 세워 적재해야 2단(이상) 가능.
+      const tiers     = Math.max(1, Math.min(maxStack, Math.floor((rollCapMm + TIER_GAP) / (widMm + TIER_GAP))));
       let remaining = rollCount, placed = 0;
       while (remaining > 0) {
         // 한 행(Y=diamMm 슬라이스): cols × tiers 개 (세로 적재)
@@ -9913,12 +9914,13 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
         for (let ci = 0; ci < cols && remaining > 0; ci++) {
           for (let ti = 0; ti < tiers && remaining > 0; ti++) {
             const x = ci * diamMm;
-            const z = ti * widMm;               // 세워 쌓음 → 폭만큼 위로
+            const z = ti * (widMm + TIER_GAP);  // 세워 쌓음 → 폭만큼 위로(+단 간격)
             blocks.push({
               x, y: rowStartY, z,
               w: diamMm, l: diamMm, h: widMm,    // 바닥 원(diam×diam), 높이=폭
               color, type:'roll', label, idx,
-              cyl: true, vertical: true, diamMm, widMm, rollNo: placed+1
+              cyl: true, vertical: true, diamMm, widMm, rollNo: placed+1,
+              tier: ti+1, totalTiers: tiers      // 단수(몇 단째 / 총 단수)
             });
             remaining--; placed++;
           }
@@ -9980,7 +9982,8 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
           x: curX, y: curY, z: ti*hMm,
           w: bw, l: bl, h: hMm,
           color, type:'board', label, idx,
-          cyl:false, no: ++no
+          cyl:false, no: ++no,
+          tier: ti+1, totalTiers: place       // 단수
         });
       }
       remaining -= place;
@@ -10043,6 +10046,21 @@ function _lvDispose3D(key) {
 
 function _lvHexToThreeColor(hex) {
   return new THREE.Color(hex);
+}
+
+/* 3D 단수(tier) 라벨 스프라이트 생성 — 원통/박스 앞면에 "n/총단" 표시 */
+function _lvTierSprite(text) {
+  const cv = document.createElement('canvas');
+  cv.width = 128; cv.height = 48;
+  const c2 = cv.getContext('2d');
+  c2.fillStyle = 'rgba(15,23,42,.55)';
+  c2.fillRect(0,0,128,48);
+  c2.strokeStyle = 'rgba(255,255,255,.4)'; c2.lineWidth = 2; c2.strokeRect(1,1,126,46);
+  c2.font = 'bold 26px sans-serif'; c2.fillStyle = '#fde68a';
+  c2.textAlign='center'; c2.textBaseline='middle';
+  c2.fillText(text, 64, 25);
+  const tex = new THREE.CanvasTexture(cv);
+  return new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true, depthTest:false }));
 }
 
 /* 메인 3D 렌더 함수
@@ -10159,23 +10177,43 @@ function _lvRender3D(containerId, placement, opts) {
       // 원지: 실린더 (세워 적재 → 축=Y(수직), 회전 없음)
       const r   = Math.max(b.diamMm*S/2, 0.02);
       const len = bh;   // 세워 적재 → 높이 = 원지 폭(widMm) = b.h
-      const geo = new THREE.CylinderGeometry(r, r, len, 20);
+      const geo = new THREE.CylinderGeometry(r, r, len, 24);
       const mat = new THREE.MeshLambertMaterial({ color: col });
       mesh = new THREE.Mesh(geo, mat);
       // 실린더 기본축은 Y(수직) → 회전하지 않고 그대로 세워 배치
-      mesh.position.set(b.x*S + r, b.z*S + len/2, b.y*S + r);
+      const cxm = b.x*S + r, cym = b.z*S + len/2, czm = b.y*S + r;
+      mesh.position.set(cxm, cym, czm);
+      // ── 단 구분: 상/하단 원형 테두리(윤곽선) → 단과 단 경계 표시 ──
+      const rimGeo = new THREE.EdgesGeometry(new THREE.CylinderGeometry(r, r, len, 24));
+      const rim = new THREE.LineSegments(rimGeo, new THREE.LineBasicMaterial({ color: _psdDarken(b.color,.45) }));
+      rim.position.set(cxm, cym, czm);
+      grp.add(rim);
+      // ── 단수 라벨 스프라이트 (2단 이상일 때만) ──
+      if ((b.totalTiers||1) > 1) {
+        const tl = _lvTierSprite(`${b.tier}/${b.totalTiers}단`);
+        tl.position.set(cxm, cym, czm + r*0.98);
+        tl.scale.set(carW*0.16, carW*0.06, 1);
+        grp.add(tl);
+      }
     } else {
       const geo = new THREE.BoxGeometry(bw, bh, bl);
       const mat = new THREE.MeshLambertMaterial({ color: col });
       mesh = new THREE.Mesh(geo, mat);
-      mesh.position.set(b.x*S + bw/2, b.z*S + bh/2, b.y*S + bl/2);
-      // 테두리
+      const cxm = b.x*S + bw/2, cym = b.z*S + bh/2, czm = b.y*S + bl/2;
+      mesh.position.set(cxm, cym, czm);
+      // 테두리 (단 구분)
       const eg = new THREE.LineSegments(
         new THREE.EdgesGeometry(geo),
         new THREE.LineBasicMaterial({ color: _psdDarken(b.color,.4) })
       );
       eg.position.copy(mesh.position);
       grp.add(eg);
+      if ((b.totalTiers||1) > 1) {
+        const tl = _lvTierSprite(`${b.tier}/${b.totalTiers}단`);
+        tl.position.set(cxm, cym, czm + bl*0.5 + 0.001);
+        tl.scale.set(carW*0.16, carW*0.06, 1);
+        grp.add(tl);
+      }
     }
     grp.add(mesh);
   });
@@ -10261,307 +10299,244 @@ function _psdBottomFootprintPx(vizItems, isFront, SCALE, boxW) {
   return Math.min(botW, boxW);
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   ★ 공용 2D 적재 캔버스 렌더러 (PS배차·배차확정 공통)
+   3D(_lvRender3D)와 동일한 _lvComputePlacement 결과(blocks)를 그대로 투영하여
+   그린다 → 2D/3D 완전 일치. 원지는 세워 적재(수직 원통), 단수(tier) 구분 표시,
+   적재함 규격은 박스 바깥에 표기, 품목 높이 수치 표시.
+   반환: { vizItems } (범례/요약 테이블용)
+   ────────────────────────────────────────────────────────────────── */
+function _lvRenderLoadCanvas2D(canvas, wrap, items, veh, view) {
+  const ctx = canvas.getContext('2d');
+  const _vd = _lvVehDims(veh);
+  const carLen = _vd.len, carWid = _vd.wid, carHgt = _vd.hgt;
+  const palHgt = _vd.palHgt, effHgt = _vd.effHgt, loadKg = _vd.loadKg;
+  const FALLBACK_UNIT_W = 600;
+  const isFront = view === 'front';
+
+  /* ── vizItems (범례/요약용) ── */
+  const vizItems = [];
+  (items||[]).forEach((it, idx) => {
+    const sk=(it.SKUKEY||'').trim(), uom=(it.UOMKEY||'').trim();
+    const qty=parseFloat(it.QTSHPO||0), kgWeight=parseFloat(it.KG_WEIGHT||0);
+    const grswgt=parseFloat(it.GRSWGT||0), unitW=parseFloat(it.UNIT_WEIGHT||0);
+    const dims=_lvSkuDims(sk), color=_psdItemColor(idx), label=(it.DESC01||sk).slice(0,20);
+    if (_lvIsRoll(sk)) {
+      const kg=kgWeight>0?kgWeight:qty, single_w=unitW>0?unitW:FALLBACK_UNIT_W;
+      const rollCount=uom==='R'?Math.round(qty):(kg>0?Math.ceil(kg/single_w):0);
+      const oneKg=uom==='R'?single_w:(rollCount>0?kg/rollCount:single_w);
+      const gsm=dims.gsm||100, widMm=dims.widthMm||1400;
+      const diamMm=_lvRollDiameter(oneKg,gsm,widMm)||800;
+      vizItems.push({ type:'roll', label, color, rollCount, diamMm, widMm, oneKg, gsm, totalKg:rollCount*oneKg });
+    } else if (_lvIsBoard(sk)) {
+      const widMm=dims.widthMm||1000, lenMm=dims.lengthMm||700, gsm=dims.gsm||300;
+      const totalKg=kgWeight>0?kgWeight:(grswgt>0&&qty>0?grswgt*qty:qty);
+      const reams=uom==='R'?Math.round(qty):Math.round(totalKg/Math.max(grswgt||1,1));
+      const sheetCount=Math.max(1,reams*500);
+      const oneReamM=Math.max(gsm/1200000.0*500.0,0.02);
+      const fullStackHgtM=Math.max(0.02,oneReamM*reams);
+      const stackHgtM=Math.min(fullStackHgtM,effHgt);
+      vizItems.push({ type:'board', label, color, widMm, lenMm, gsm, sheetCount, reams, oneReamM, fullStackHgtM, stackHgtM, totalKg });
+    } else {
+      const totalKg=kgWeight>0?kgWeight:qty;
+      vizItems.push({ type:'other', label, color, totalKg, qty, uom });
+    }
+  });
+
+  /* ── 실제 배치 좌표 (3D와 동일) ── */
+  const placement = _lvComputePlacement(items||[], veh, 0, 0, 0);
+  const carWmm = placement.car.W, carLmm = placement.car.L;
+  const palHmm = placement.car.palHgt || 0;
+  // 세로축(높이) 최대 = 파렛트 + 유효높이
+  const axisXmm = isFront ? carWmm : carLmm;    // 화면 가로축(mm)
+  const axisYmm = (effHgt + palHgt) * 1000.0;   // 화면 세로축(mm)
+
+  /* ── 캔버스 크기 (규격 표시용 여백 확대) ── */
+  const MARGIN_L = 60, MARGIN_R = 104, MARGIN_T = 60, MARGIN_B = 52;
+  const MAX_W = Math.min(1280, (wrap.clientWidth||1000) - 8);
+  const SCALE = Math.min((MAX_W - MARGIN_L - MARGIN_R) / (axisXmm/1000), 560 / (axisYmm/1000)) / 1000; // px per mm
+  const boxW = axisXmm * SCALE, boxH = axisYmm * SCALE;
+  const canW = Math.round(boxW + MARGIN_L + MARGIN_R);
+  const canH = Math.round(boxH + MARGIN_T + MARGIN_B);
+  canvas.width = canW; canvas.height = canH;
+  wrap.style.minHeight = (canH + 16) + 'px';
+  const ox = MARGIN_L, oy = MARGIN_T;
+  // mm → 화면좌표 (세로: 바닥=oy+boxH, 위로 +z)
+  const sx = mm => ox + mm * SCALE;
+  const syTop = mm => oy + boxH - mm * SCALE;   // 높이 mm(z) → 화면 y(윗면)
+
+  /* ── 배경 ── */
+  ctx.fillStyle = '#0f172a'; ctx.fillRect(0,0,canW,canH);
+
+  /* ── 적재함 테두리 ── */
+  ctx.strokeStyle = '#475569'; ctx.lineWidth = 2;
+  ctx.strokeRect(ox, oy, boxW, boxH);
+
+  /* ── 격자선(1m) ── */
+  ctx.strokeStyle = 'rgba(148,163,184,.13)'; ctx.lineWidth = 0.5;
+  for (let m=1; m<axisXmm/1000; m++){ const x=ox+m*1000*SCALE; ctx.beginPath(); ctx.moveTo(x,oy); ctx.lineTo(x,oy+boxH); ctx.stroke(); }
+  for (let m=1; m<axisYmm/1000; m++){ const y=oy+boxH-m*1000*SCALE; ctx.beginPath(); ctx.moveTo(ox,y); ctx.lineTo(ox+boxW,y); ctx.stroke(); }
+
+  /* ── 파렛트 (placement.pallet 실제 footprint) ── */
+  if (placement.pallet && palHmm > 0) {
+    const p = placement.pallet;
+    const pStart = isFront ? p.x : p.y;
+    const pLen   = isFront ? p.w : p.l;
+    const px = sx(pStart), pw = pLen*SCALE, pPxH = palHmm*SCALE;
+    ctx.fillStyle = 'rgba(138,90,43,.6)';
+    ctx.fillRect(px+1, oy+boxH-pPxH, Math.max(0,pw-1), pPxH-1);
+    ctx.strokeStyle = '#5c3a17'; ctx.lineWidth = 1;
+    ctx.strokeRect(px+1, oy+boxH-pPxH, Math.max(0,pw-1), pPxH-1);
+    if (pw > 60) {
+      ctx.fillStyle = '#f5deb3'; ctx.font = '9px sans-serif'; ctx.textAlign='center';
+      ctx.fillText('파렛트 '+(palHgt*100).toFixed(0)+'cm', px+pw/2, oy+boxH-pPxH/2+3);
+    }
+  }
+
+  /* ── 블록 투영 렌더 (3D와 동일 배치) ──
+     정면: 화면가로=X(b.x..b.x+b.w), 측면: 화면가로=Y(b.y..b.y+b.l)
+     세로(높이) = z..z+h. 뒤(멀리 있는) 블록부터 그려 겹침 자연스럽게. */
+  const legendItems = [];
+  const seenLegend = {};
+  const blocks = (placement.blocks||[]).slice();
+  // depth 정렬: 정면뷰 → y 큰(뒤) 먼저 / 측면뷰 → x 큰 먼저, 같은 depth 면 아래(z작은)먼저
+  const depthOf = b => isFront ? b.y : b.x;
+  blocks.sort((a,b)=> (depthOf(b)-depthOf(a)) || (a.z-b.z));
+
+  const maxTierByItem = {};
+  (placement.blocks||[]).forEach(b=>{ maxTierByItem[b.idx]=Math.max(maxTierByItem[b.idx]||0, b.tier||1); });
+
+  blocks.forEach(b => {
+    const gStart = isFront ? b.x : b.y;      // 화면 가로 시작(mm)
+    const gLen   = isFront ? b.w : b.l;      // 화면 가로 길이(mm)
+    const x0 = sx(gStart)+1, w0 = Math.max(2, gLen*SCALE-2);
+    const yTop = syTop(b.z + b.h)+1, h0 = Math.max(2, b.h*SCALE-2);
+    const cxc = x0 + w0/2, cyc = yTop + h0/2;
+
+    if (b.cyl) {
+      /* 세운 원통: 몸통(사각) + 상/하단 타원 캡 */
+      const capH = Math.min(w0*0.16, h0*0.28);
+      const grd = ctx.createLinearGradient(x0,0,x0+w0,0);
+      grd.addColorStop(0,_psdDarken(b.color,.15)); grd.addColorStop(.4,_psdLighten(b.color,.55)); grd.addColorStop(1,_psdDarken(b.color,.25));
+      ctx.fillStyle = grd;
+      ctx.fillRect(x0, yTop+capH, w0, h0-capH*2);
+      ctx.beginPath(); ctx.ellipse(cxc, yTop+h0-capH, w0/2, capH, 0, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cxc, yTop+capH, w0/2, capH, 0, 0, Math.PI*2); ctx.fillStyle=_psdLighten(b.color,.35); ctx.fill();
+      ctx.strokeStyle=_psdDarken(b.color,.35); ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(x0,yTop+capH); ctx.lineTo(x0,yTop+h0-capH); ctx.moveTo(x0+w0,yTop+capH); ctx.lineTo(x0+w0,yTop+h0-capH); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(cxc,yTop+capH,w0/2,capH,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(cxc,yTop+h0-capH,w0/2,capH,0,0,Math.PI); ctx.stroke();
+    } else {
+      ctx.fillStyle = b.color; ctx.globalAlpha = 0.85;
+      ctx.fillRect(x0, yTop, w0, h0);
+      ctx.globalAlpha = 1.0;
+      ctx.strokeStyle=_psdDarken(b.color,.3); ctx.lineWidth=1;
+      ctx.strokeRect(x0, yTop, w0, h0);
+    }
+
+    /* 단수(tier) 표시 — 2단 이상이면 "n/총" 형태로 구분 */
+    if (w0 > 20 && h0 > 16) {
+      ctx.fillStyle='rgba(255,255,255,.92)';
+      ctx.font=`bold ${Math.min(12, w0*.3)}px sans-serif`; ctx.textAlign='center';
+      const tierTxt = (b.totalTiers>1) ? `${b.tier}/${b.totalTiers}단` : `${b.tier||1}단`;
+      ctx.fillText(tierTxt, cxc, cyc+3);
+    }
+
+    /* 범례 (품목별 1회) */
+    if (!seenLegend[b.idx]) {
+      seenLegend[b.idx] = true;
+      const vz = vizItems[b.idx] || {};
+      if (vz.type === 'roll')
+        legendItems.push({ color:b.color, label:`${vz.label} (롤×${vz.rollCount}, Ø${(vz.diamMm/10).toFixed(0)}cm, 폭${(vz.widMm/10).toFixed(0)}cm, ${maxTierByItem[b.idx]}단)` });
+      else if (vz.type === 'board')
+        legendItems.push({ color:b.color, label:`${vz.label} (판지 ${psdFmtNum(vz.reams)}연, H${((vz.fullStackHgtM||vz.stackHgtM)*100).toFixed(0)}cm, ${maxTierByItem[b.idx]}단)` });
+    }
+  });
+
+  /* ── 품목 높이 수치 표시 (아이템별 최상단에 총 적재높이) ── */
+  //  같은 idx(품목)의 블록 중 최고 z+h 를 찾아 그 위에 높이(cm) 표기.
+  const topByItem = {};   // idx → {maxTopMm, xMid(mm), color}
+  (placement.blocks||[]).forEach(b=>{
+    const top = b.z + b.h;
+    const gStart = isFront ? b.x : b.y, gLen = isFront ? b.w : b.l;
+    const xmid = gStart + gLen/2;
+    if (!topByItem[b.idx] || top > topByItem[b.idx].topMm)
+      topByItem[b.idx] = { topMm: top, xMidMm: xmid, color: b.color };
+  });
+  ctx.font = 'bold 9px sans-serif'; ctx.textAlign='center';
+  Object.values(topByItem).forEach(t=>{
+    const yy = syTop(t.topMm) - 4;
+    if (yy < oy - 2) return;
+    ctx.fillStyle = _psdLighten(t.color, .5);
+    ctx.fillText(`↕${(t.topMm/10).toFixed(0)}cm`, sx(t.xMidMm), yy);
+  });
+
+  /* ── 축 눈금 ── */
+  ctx.fillStyle = '#94a3b8'; ctx.font = '10px sans-serif';
+  ctx.textAlign='center';
+  for (let m=0; m<=Math.floor(axisXmm/1000); m++){ const x=ox+m*1000*SCALE; ctx.fillText(m+'m', x, oy+boxH+16); ctx.strokeStyle='#334155'; ctx.lineWidth=.5; ctx.beginPath(); ctx.moveTo(x,oy+boxH); ctx.lineTo(x,oy+boxH+5); ctx.stroke(); }
+  ctx.textAlign='right';
+  for (let m=0; m<=Math.floor(axisYmm/1000); m++){ const y=oy+boxH-m*1000*SCALE; ctx.fillText(m+'m', ox-6, y+3); }
+
+  /* ── ★ 적재함 규격을 박스 바깥에 표시 ── */
+  //  상단: 가로 규격(폭 또는 길이) 치수선
+  const dimAxisLabel = isFront ? `폭 ${carWid.toFixed(2)}m` : `길이 ${carLen.toFixed(2)}m`;
+  ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 1; ctx.fillStyle = '#fbbf24';
+  const dimY = oy - 22;
+  ctx.beginPath();
+  ctx.moveTo(ox, dimY); ctx.lineTo(ox+boxW, dimY);
+  ctx.moveTo(ox, dimY-4); ctx.lineTo(ox, dimY+4);
+  ctx.moveTo(ox+boxW, dimY-4); ctx.lineTo(ox+boxW, dimY+4);
+  ctx.stroke();
+  ctx.font = 'bold 11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText(dimAxisLabel, ox+boxW/2, dimY-5);
+  //  우측: 높이 규격 치수선 (유효높이/전체높이)
+  const dimX = ox + boxW + 26;
+  ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(dimX, oy); ctx.lineTo(dimX, oy+boxH);
+  ctx.moveTo(dimX-4, oy); ctx.lineTo(dimX+4, oy);
+  ctx.moveTo(dimX-4, oy+boxH); ctx.lineTo(dimX+4, oy+boxH);
+  ctx.stroke();
+  ctx.save();
+  ctx.translate(dimX+14, oy+boxH/2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle = '#fbbf24'; ctx.font='bold 11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText(`높이 ${carHgt.toFixed(2)}m (유효 ${effHgt.toFixed(2)}m)`, 0, 0);
+  ctx.restore();
+  //  좌상단: 차량/적재정보
+  ctx.fillStyle = '#64748b'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+  ctx.fillText(
+    (isFront ? `정면뷰(폭×높이)` : `측면뷰(길이×높이)`) + (loadKg ? `  │  적재가능 ${psdFmtNum(loadKg)} KG` : ''),
+    ox, oy - 40 < 12 ? 12 : oy - 40
+  );
+
+  /* ── 무게 진행 막대 ── */
+  const totalKgUsed = vizItems.reduce((s,x)=>s+(x.totalKg||0),0);
+  if (loadKg && loadKg > 0) {
+    const barY = canH - 8, barLen = boxW;
+    const ratio = Math.min(totalKgUsed/loadKg, 1.0);
+    const barColor = ratio>=1?'#dc2626':ratio>=.9?'#d97706':'#059669';
+    ctx.fillStyle='#1e293b'; ctx.fillRect(ox,barY-8,barLen,8);
+    ctx.fillStyle=barColor; ctx.fillRect(ox,barY-8,barLen*ratio,8);
+    ctx.strokeStyle='#334155'; ctx.lineWidth=1; ctx.strokeRect(ox,barY-8,barLen,8);
+    ctx.fillStyle='#e2e8f0'; ctx.font='bold 9px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(`${psdFmtNum(Math.round(totalKgUsed))} / ${psdFmtNum(loadKg)} KG (${Math.round(ratio*100)}%)`, ox+barLen/2, barY-1);
+  }
+
+  return { vizItems, legendItems };
+}
+
 /* ══════════════════════════════════════════════════
    Canvas 렌더링 메인
    ══════════════════════════════════════════════════ */
 function _psdRenderLoadCanvas(v, veh) {
   const canvas = document.getElementById('psd-load-canvas');
   const wrap   = document.getElementById('psd-load-canvas-wrap');
-  const ctx    = canvas.getContext('2d');
-
-  /* 차량 치수 (없으면 기본값) — WIDTH_M 범위문자열 파싱 공용 헬퍼 사용 */
-  const _vd = _lvVehDims(veh);
-  const carLen = _vd.len, carWid = _vd.wid, carHgt = _vd.hgt;
-  const palHgt = _vd.palHgt, effHgt = _vd.effHgt, loadKg = _vd.loadKg;
-
-  /* ── 아이템 목록 분석 ── */
+  if (!canvas || !wrap) return;
+  /* 공용 2D 렌더러로 위임 (원지 세워적재/단수표시/규격표시/높이표시 일원화) */
+  const { vizItems, legendItems } = _lvRenderLoadCanvas2D(canvas, wrap, v.items || [], veh, _psdLoadView === 'side' ? 'side' : 'front');
   const items = v.items || [];
-  const FALLBACK_UNIT_W = 600;
 
-  /* 각 아이템 → 시각화 객체 배열 */
-  const vizItems = [];
-  items.forEach((it, idx) => {
-    const sk       = (it.SKUKEY||'').trim();
-    const uom      = (it.UOMKEY||'').trim();
-    const qty      = parseFloat(it.QTSHPO||0);
-    const kgWeight = parseFloat(it.KG_WEIGHT||0);
-    const grswgt   = parseFloat(it.GRSWGT||0);
-    const unitW    = parseFloat(it.UNIT_WEIGHT||0);
-    const dims     = _psdParseSkuKeyDims(sk);
-    const color    = _psdItemColor(idx);
-    const label    = (it.DESC01||sk).slice(0,20);
-
-    if (_psdIsRoll(sk)) {
-      /* 원지 롤 */
-      const kg         = kgWeight > 0 ? kgWeight : qty;  // KG
-      const single_w   = unitW > 0 ? unitW : FALLBACK_UNIT_W;
-      const rollCount  = uom==='R' ? Math.round(qty) : (kg>0 ? Math.ceil(kg/single_w) : 0);
-      const oneKg      = uom==='R' ? single_w : (rollCount>0 ? kg/rollCount : single_w);
-      const gsm        = dims.gsm || 100;
-      const widMm      = dims.widthMm || 1400;
-      const diamMm     = _psdCalcRollDiameter(oneKg, gsm, widMm) || 800;
-      vizItems.push({ type:'roll', label, color, rollCount, diamMm, widMm, oneKg, gsm, totalKg:rollCount*oneKg });
-    } else if (_psdIsBoard(sk)) {
-      /* 판지
-         UOMKEY='R' → 연(ream, 500장) 단위
-         QTSHPO = 연수, KG_WEIGHT = 총 KG, GRSWGT = 연당 KG(있을 경우)
-      */
-      const widMm  = dims.widthMm  || 1000;
-      const lenMm  = dims.lengthMm || 700;
-      const gsm    = dims.gsm || 300;
-      // 총 중량: KG_WEIGHT 우선, 없으면 GRSWGT×QTSHPO
-      const totalKg = kgWeight > 0 ? kgWeight
-                    : (grswgt > 0 && qty > 0 ? grswgt * qty : qty);
-      // 연수(ream) 및 장수(sheet) 계산
-      const reams = uom === 'R' ? Math.round(qty) : Math.round(totalKg / Math.max(grswgt||1, 1));
-      const sheetCount = Math.max(1, reams * 500);
-      /* ★ 높이 모델 수정 (적재뷰 미표시 버그 fix)
-         기존: 전체 장수(reams×500)를 한 기둥으로 쌓아 수 m 높이 → 차량 초과 → skip.
-         수정: 1연(500장) = 1번들 블록 높이. 차량 유효높이 내 다단(tier) 적층으로 표현.
-           · 1연 두께 t = gsm/1.2e6 m/장 × 500장, 최소 2cm
-           · 렌더 stackHgtM = min(전체높이, 유효높이) 로 clamp → 반드시 표시됨
-      */
-      const oneReamM  = Math.max(gsm / 1200000.0 * 500.0, 0.02);   // 1연 두께(m)
-      const fullStackHgtM = Math.max(0.02, oneReamM * reams);       // 이론상 총 적층높이
-      const stackHgtM = Math.min(fullStackHgtM, effHgt);            // 차량 유효높이로 clamp(표시용)
-      vizItems.push({ type:'board', label, color, widMm, lenMm, gsm, sheetCount, reams, oneReamM, fullStackHgtM, stackHgtM, totalKg });
-    } else {
-      /* 기타 박스 */
-      const totalKg = kgWeight>0 ? kgWeight : qty;
-      vizItems.push({ type:'other', label, color, totalKg, qty, uom });
-    }
-  });
-
-  /* ── Canvas 크기 설정 ── */
-  const isFront = _psdLoadView === 'front';
-  // 뷰 기준 치수
-  const axisX_m = isFront ? carWid : carLen;   // 가로축(m)
-  // 세로축 = 유효높이 + 파렛트높이 (파렛트가 화물 아래에 위치)
-  const axisY_m = effHgt + palHgt;              // 세로축(m)
-  const MARGIN = 44;
-  /* 요청2: 시뮬레이션 이미지 확대 — 최대 폭/높이 상향 */
-  const MAX_W = Math.min(1280, (wrap.clientWidth||1000) - 8);
-  const SCALE = Math.min((MAX_W - MARGIN*2) / axisX_m, 560 / axisY_m);
-  const canW  = Math.round(axisX_m * SCALE + MARGIN*2);
-  const canH  = Math.round(axisY_m * SCALE + MARGIN*2 + 28);  // 28 = 아래 축 레이블
-  canvas.width  = canW;
-  canvas.height = canH;
-  wrap.style.minHeight = (canH + 16) + 'px';
-
-  /* ── 배경 ── */
-  ctx.fillStyle = '#0f172a';
-  ctx.fillRect(0,0,canW,canH);
-
-  /* 적재함 영역 */
-  const ox = MARGIN;   // 왼쪽 여백
-  const oy = MARGIN;   // 위 여백
-  const boxW = axisX_m * SCALE;
-  const boxH = axisY_m * SCALE;
-
-  /* 적재함 테두리 */
-  ctx.strokeStyle = '#475569';
-  ctx.lineWidth   = 2;
-  ctx.strokeRect(ox, oy, boxW, boxH);
-
-  /* 격자선 (1m 단위) */
-  ctx.strokeStyle = 'rgba(148,163,184,.15)';
-  ctx.lineWidth   = 0.5;
-  for (let m=1; m<axisX_m; m++) {
-    const x = ox + m*SCALE;
-    ctx.beginPath(); ctx.moveTo(x,oy); ctx.lineTo(x,oy+boxH); ctx.stroke();
-  }
-  for (let m=1; m<axisY_m; m++) {
-    const y = oy + boxH - m*SCALE;
-    ctx.beginPath(); ctx.moveTo(ox,y); ctx.lineTo(ox+boxW,y); ctx.stroke();
-  }
-
-  /* ── 파렛트 footprint(바닥층 화물 점유폭) 사전 계산 ──
-     ★ 요청1: 파렛트는 화물 아래에 깔리고 너비 = 화물(바닥층) 너비. */
-  const palPx = palHgt * SCALE;      // 파렛트 두께(px)
-  const _footWidthPx = _psdBottomFootprintPx(vizItems, isFront, SCALE, boxW);
-
-  /* 파렛트 밴드 (화물 footprint 폭만큼, 화물 아래) */
-  if (palHgt > 0 && _footWidthPx > 0) {
-    ctx.fillStyle = 'rgba(138,90,43,.6)';
-    ctx.fillRect(ox+1, oy+boxH-palPx, _footWidthPx-1, palPx-1);
-    ctx.strokeStyle = '#5c3a17'; ctx.lineWidth = 1;
-    ctx.strokeRect(ox+1, oy+boxH-palPx, _footWidthPx-1, palPx-1);
-    ctx.fillStyle = '#f5deb3';
-    ctx.font = '9px sans-serif';
-    ctx.textAlign = 'center';
-    if (_footWidthPx > 60)
-      ctx.fillText('파렛트 ' + (palHgt*100).toFixed(0)+'cm', ox+_footWidthPx/2, oy+boxH-palPx/2+3);
-  }
-
-  /* ── 아이템 배치 ── */
-  // 간단한 행 배치: x 위치 진행, 넘치면 다음 높이 레이어로
-  let curX = ox;                    // 현재 x (px)
-  const baseFloorY = oy+boxH-palPx; // 화물 바닥 = 파렛트 윗면
-  let floorY = baseFloorY;          // 현재 층 바닥 (px, 위로 쌓임)
-  let layerMaxH = 0;                // 현재 층 최대 높이(px)
-
-  const legendItems = [];
-
-  vizItems.forEach((it, idx) => {
-    if (it.type === 'roll') {
-      /* 원지 롤: 세워 적재 → 정면/측면 모두 세운 원통(직사각형+타원 상/하단) 으로.
-         너비 = 지름(diamMm), 높이 = 원지 폭(widMm). 세워야 2단 적재 가능. */
-      const rectW = (it.diamMm / 1000) * SCALE;   // 너비 = 지름(px)
-      const rectH = (it.widMm  / 1000) * SCALE;   // 높이 = 원지 폭(px)
-      const capH  = Math.min(rectW * 0.18, rectH * 0.30);  // 상/하단 타원 캡 높이
-
-      for (let ri=0; ri<it.rollCount; ri++) {
-        if (curX + rectW > ox+boxW && ri>0) {
-          floorY -= layerMaxH;
-          layerMaxH = 0;
-          curX = ox;
-        }
-        if (floorY - rectH < oy) break;   // 높이 초과 → 표시 중단
-        const x0 = curX + 1, w0 = rectW - 2;
-        const yTop = floorY - rectH + 1, h0 = rectH - 2;
-        const cxc = x0 + w0/2;
-        /* 세워진 원통: 세로 그라디언트(좌→우 명암)로 곡면감 */
-        const grd = ctx.createLinearGradient(x0, 0, x0+w0, 0);
-        grd.addColorStop(0,   _psdDarken(it.color, .15));
-        grd.addColorStop(0.4, _psdLighten(it.color, .55));
-        grd.addColorStop(1,   _psdDarken(it.color, .25));
-        ctx.fillStyle = grd;
-        /* 몸통(직사각형) */
-        ctx.fillRect(x0, yTop+capH, w0, h0-capH*2);
-        /* 하단 타원 캡 */
-        ctx.beginPath();
-        ctx.ellipse(cxc, yTop+h0-capH, w0/2, capH, 0, 0, Math.PI*2);
-        ctx.fill();
-        /* 상단 타원 캡(윗면 = 약간 밝게) */
-        ctx.beginPath();
-        ctx.ellipse(cxc, yTop+capH, w0/2, capH, 0, 0, Math.PI*2);
-        ctx.fillStyle = _psdLighten(it.color, .35);
-        ctx.fill();
-        /* 외곽선 */
-        ctx.strokeStyle = _psdDarken(it.color, .35);
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(x0, yTop+capH); ctx.lineTo(x0, yTop+h0-capH);
-        ctx.moveTo(x0+w0, yTop+capH); ctx.lineTo(x0+w0, yTop+h0-capH);
-        ctx.stroke();
-        ctx.beginPath(); ctx.ellipse(cxc, yTop+capH, w0/2, capH, 0, 0, Math.PI*2); ctx.stroke();
-        ctx.beginPath(); ctx.ellipse(cxc, yTop+h0-capH, w0/2, capH, 0, 0, Math.PI); ctx.stroke();
-        /* 롤 번호 */
-        if (rectW > 24 && rectH > 20) {
-          ctx.fillStyle='rgba(255,255,255,.9)';
-          ctx.font = `bold ${Math.min(11, rectW*.35)}px sans-serif`;
-          ctx.textAlign='center';
-          ctx.fillText(ri+1, cxc, yTop+h0/2+3);
-        }
-        curX += rectW;
-        layerMaxH = Math.max(layerMaxH, rectH);
-      }
-      if (it.rollCount > 0) legendItems.push({ color:it.color, label:`${it.label} (롤×${it.rollCount}, Ø${(it.diamMm/10).toFixed(0)}cm)` });
-    } else if (it.type === 'board') {
-      /* 판지: 직사각형 스택 */
-      const rectW = isFront ? (it.widMm/1000)*SCALE : (it.lenMm/1000)*SCALE;
-      const rectH = it.stackHgtM * SCALE;
-      if (curX + rectW > ox+boxW) {
-        floorY -= layerMaxH;
-        layerMaxH = 0;
-        curX = ox;
-      }
-      if (floorY - rectH < oy) { /* skip */ }
-      else {
-        ctx.fillStyle = it.color;
-        ctx.globalAlpha = 0.82;
-        ctx.fillRect(curX+1, floorY-rectH+1, rectW-2, rectH-2);
-        ctx.globalAlpha = 1.0;
-        ctx.strokeStyle = _psdDarken(it.color,.3);
-        ctx.lineWidth = 1;
-        ctx.strokeRect(curX+1, floorY-rectH+1, rectW-2, rectH-2);
-        /* 라벨 */
-        if (rectW > 40 && rectH > 14) {
-          ctx.fillStyle='rgba(255,255,255,.9)';
-          ctx.font = `bold 9px sans-serif`;
-          ctx.textAlign='center';
-          const txt = it.label.slice(0,12);
-          ctx.fillText(txt, curX+rectW/2, floorY-rectH/2+3);
-        }
-        curX += rectW;
-        layerMaxH = Math.max(layerMaxH, rectH);
-      }
-      legendItems.push({ color:it.color, label:`${it.label} (판지 ${psdFmtNum(it.reams)}연/${psdFmtNum(it.sheetCount)}장, H:${((it.fullStackHgtM||it.stackHgtM)*100).toFixed(0)}cm)` });
-    } else {
-      /* 기타: 가로 막대로 표현 */
-      const kg = it.totalKg || 0;
-      const rectW = Math.max(30, Math.min(boxW*0.3, (kg/1000)*SCALE*2));
-      const rectH = 20;
-      if (curX + rectW > ox+boxW) {
-        floorY -= layerMaxH;
-        layerMaxH = 0;
-        curX = ox;
-      }
-      if (floorY - rectH >= oy) {
-        ctx.fillStyle = it.color;
-        ctx.globalAlpha = 0.75;
-        ctx.fillRect(curX+1, floorY-rectH+1, rectW-2, rectH-2);
-        ctx.globalAlpha = 1.0;
-        ctx.strokeStyle = _psdDarken(it.color,.3);
-        ctx.lineWidth = 1;
-        ctx.strokeRect(curX+1, floorY-rectH+1, rectW-2, rectH-2);
-        curX += rectW;
-        layerMaxH = Math.max(layerMaxH, rectH);
-      }
-      legendItems.push({ color:it.color, label:`${it.label} (${it.uom||'KG'} ${psdFmtNum(it.qty)})` });
-    }
-  });
-
-  /* ── 축 레이블 ── */
-  ctx.fillStyle = '#94a3b8';
-  ctx.font = '10px sans-serif';
-  ctx.textAlign = 'center';
-  // X축 눈금
-  for (let m=0; m<=Math.floor(axisX_m); m++) {
-    const x = ox + m*SCALE;
-    ctx.fillText(m+'m', x, oy+boxH+14);
-    ctx.strokeStyle = '#334155';
-    ctx.lineWidth = 0.5;
-    ctx.beginPath(); ctx.moveTo(x, oy+boxH); ctx.lineTo(x, oy+boxH+5); ctx.stroke();
-  }
-  // Y축 눈금
-  ctx.textAlign = 'right';
-  for (let m=0; m<=Math.floor(axisY_m); m++) {
-    const y = oy+boxH - m*SCALE;
-    ctx.fillText(m+'m', ox-5, y+3);
-  }
-  // 차량 치수 표기
-  ctx.fillStyle = '#64748b';
-  ctx.font = '10px sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText(
-    (isFront ? `W:${carWid}m` : `L:${carLen}m`) + ` × H:${carHgt}m (유효:${effHgt.toFixed(2)}m)` +
-    (loadKg ? `  │  적재가능 ${psdFmtNum(loadKg)} KG` : ''),
-    ox, oy - 6
-  );
-
-  /* ── 무게 진행 막대 ── */
-  const totalKgUsed = vizItems.reduce((s,x)=>s+(x.totalKg||0), 0);
-  if (loadKg && loadKg > 0) {
-    const barY   = canH - 10;
-    const barLen = boxW;
-    const ratio  = Math.min(totalKgUsed/loadKg, 1.0);
-    const barColor = ratio >= 1.0 ? '#dc2626' : ratio >= 0.9 ? '#d97706' : '#059669';
-    ctx.fillStyle = '#1e293b';
-    ctx.fillRect(ox, barY-8, barLen, 8);
-    ctx.fillStyle = barColor;
-    ctx.fillRect(ox, barY-8, barLen*ratio, 8);
-    ctx.strokeStyle = '#334155';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(ox, barY-8, barLen, 8);
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = 'bold 9px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(
-      `${psdFmtNum(Math.round(totalKgUsed))} / ${psdFmtNum(loadKg)} KG  (${Math.round(ratio*100)}%)`,
-      ox+barLen/2, barY-1
-    );
-  }
 
   /* ── 범례 ── */
   const legendEl = document.getElementById('psd-load-legend');
@@ -12450,222 +12425,12 @@ function _sapRenderLoadCanvas() {
   const cache  = _sapLoadItemsCache[_sapLoadStknum];
   if (!cache) return;
   const { items, veh } = cache;
-
   const canvas = document.getElementById('sap-load-canvas');
   const wrap   = document.getElementById('sap-load-canvas-wrap');
   if (!canvas || !wrap) return;
-  const ctx    = canvas.getContext('2d');
+  /* 공용 2D 렌더러로 위임 (PS배차와 동일 로직 공유) */
+  const { vizItems, legendItems } = _lvRenderLoadCanvas2D(canvas, wrap, items || [], veh, _sapLoadView === 'side' ? 'side' : 'front');
 
-  /* 차량 치수 (없으면 기본값) — WIDTH_M 범위문자열 파싱 공용 헬퍼 사용 */
-  const _vd = _lvVehDims(veh);
-  const carLen = _vd.len, carWid = _vd.wid, carHgt = _vd.hgt;
-  const palHgt = _vd.palHgt, effHgt = _vd.effHgt, loadKg = _vd.loadKg;
-
-  /* ── 아이템 목록 분석 ── */
-  const FALLBACK_UNIT_W = 600;
-  const vizItems = [];
-  items.forEach((it, idx) => {
-    const sk       = (it.SKUKEY||'').trim();
-    const uom      = (it.UOMKEY||'').trim();
-    const qty      = parseFloat(it.QTSHPO||0);
-    const kgWeight = parseFloat(it.KG_WEIGHT||0);
-    const grswgt   = parseFloat(it.GRSWGT||0);
-    const unitW    = parseFloat(it.UNIT_WEIGHT||0);
-    const dims     = _sapParseSkuKeyDims(sk);
-    const color    = _sapItemColor(idx);
-    const label    = (it.DESC01||sk).slice(0,20);
-
-    if (_sapIsRoll(sk)) {
-      const kg        = kgWeight > 0 ? kgWeight : qty;
-      const single_w  = unitW > 0 ? unitW : FALLBACK_UNIT_W;
-      const rollCount = uom==='R' ? Math.round(qty) : (kg>0 ? Math.ceil(kg/single_w) : 0);
-      const oneKg     = uom==='R' ? single_w : (rollCount>0 ? kg/rollCount : single_w);
-      const gsm       = dims.gsm || 100;
-      const widMm     = dims.widthMm || 1400;
-      const diamMm    = _sapCalcRollDiameter(oneKg, gsm, widMm) || 800;
-      vizItems.push({ type:'roll', label, color, rollCount, diamMm, widMm, oneKg, gsm, totalKg:rollCount*oneKg });
-    } else if (_sapIsBoard(sk)) {
-      const widMm   = dims.widthMm  || 1000;
-      const lenMm   = dims.lengthMm || 700;
-      const gsm     = dims.gsm || 300;
-      const totalKg = kgWeight > 0 ? kgWeight : (grswgt > 0 && qty > 0 ? grswgt * qty : qty);
-      const reams   = uom === 'R' ? Math.round(qty) : Math.round(totalKg / Math.max(grswgt||1, 1));
-      const sheetCount = Math.max(1, reams * 500);
-      /* ★ 높이 모델 수정 (적재뷰 미표시 버그 fix) — 1연=1번들, 유효높이 clamp */
-      const oneReamM   = Math.max(gsm / 1200000.0 * 500.0, 0.02);
-      const fullStackHgtM = Math.max(0.02, oneReamM * reams);
-      const stackHgtM  = Math.min(fullStackHgtM, effHgt);
-      vizItems.push({ type:'board', label, color, widMm, lenMm, gsm, sheetCount, reams, oneReamM, fullStackHgtM, stackHgtM, totalKg });
-    } else {
-      const totalKg = kgWeight>0 ? kgWeight : qty;
-      vizItems.push({ type:'other', label, color, totalKg, qty, uom });
-    }
-  });
-
-  /* ── Canvas 크기 설정 ── */
-  const isFront  = _sapLoadView === 'front';
-  const axisX_m  = isFront ? carWid : carLen;
-  const axisY_m  = effHgt + palHgt;   // 유효높이 + 파렛트(화물 아래)
-  const MARGIN   = 44;
-  /* 요청2: 시뮬레이션 이미지 확대 */
-  const MAX_W    = Math.min(1280, (wrap.clientWidth||1000) - 8);
-  const SCALE    = Math.min((MAX_W - MARGIN*2) / axisX_m, 560 / axisY_m);
-  const canW     = Math.round(axisX_m * SCALE + MARGIN*2);
-  const canH     = Math.round(axisY_m * SCALE + MARGIN*2 + 28);
-  canvas.width   = canW;
-  canvas.height  = canH;
-  wrap.style.minHeight = (canH + 16) + 'px';
-
-  /* 배경 */
-  ctx.fillStyle = '#0f172a';
-  ctx.fillRect(0,0,canW,canH);
-
-  const ox = MARGIN, oy = MARGIN;
-  const boxW = axisX_m * SCALE;
-  const boxH = axisY_m * SCALE;
-
-  /* 적재함 테두리 */
-  ctx.strokeStyle = '#475569'; ctx.lineWidth = 2;
-  ctx.strokeRect(ox, oy, boxW, boxH);
-
-  /* 격자선 */
-  ctx.strokeStyle = 'rgba(148,163,184,.15)'; ctx.lineWidth = 0.5;
-  for (let m=1; m<axisX_m; m++) {
-    const x = ox+m*SCALE;
-    ctx.beginPath(); ctx.moveTo(x,oy); ctx.lineTo(x,oy+boxH); ctx.stroke();
-  }
-  for (let m=1; m<axisY_m; m++) {
-    const y = oy+boxH-m*SCALE;
-    ctx.beginPath(); ctx.moveTo(ox,y); ctx.lineTo(ox+boxW,y); ctx.stroke();
-  }
-
-  /* ── 파렛트 footprint(바닥층 화물 점유폭) 사전 계산 (요청1) ── */
-  const palPx = palHgt * SCALE;
-  const _footWidthPx = _psdBottomFootprintPx(vizItems, isFront, SCALE, boxW);
-
-  /* 파렛트 밴드 (화물 footprint 폭만큼, 화물 아래) */
-  if (palHgt > 0 && _footWidthPx > 0) {
-    ctx.fillStyle = 'rgba(138,90,43,.6)';
-    ctx.fillRect(ox+1, oy+boxH-palPx, _footWidthPx-1, palPx-1);
-    ctx.strokeStyle = '#5c3a17'; ctx.lineWidth = 1;
-    ctx.strokeRect(ox+1, oy+boxH-palPx, _footWidthPx-1, palPx-1);
-    ctx.fillStyle = '#f5deb3'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
-    if (_footWidthPx > 60)
-      ctx.fillText('파렛트 '+(palHgt*100).toFixed(0)+'cm', ox+_footWidthPx/2, oy+boxH-palPx/2+3);
-  }
-
-  /* ── 아이템 배치 ── */
-  const baseFloorY = oy+boxH-palPx;   // 화물 바닥 = 파렛트 윗면
-  let curX = ox, floorY = baseFloorY, layerMaxH = 0;
-  const legendItems = [];
-
-  vizItems.forEach((it) => {
-    if (it.type === 'roll') {
-      const r_px = (it.diamMm/1000/2)*SCALE;
-      const w_px = (it.widMm/1000)*SCALE;
-      for (let ri=0; ri<it.rollCount; ri++) {
-        if (isFront) {
-          const cx = curX + r_px;
-          if (cx + r_px > ox+boxW && ri>0) { floorY -= layerMaxH; layerMaxH = 0; curX = ox; }
-          const cy = floorY - r_px;
-          if (cy - r_px < oy) break;
-          const grd = ctx.createRadialGradient(cx-r_px*.25,cy-r_px*.25,r_px*.1,cx,cy,r_px);
-          grd.addColorStop(0, _sapLighten(it.color,.55));
-          grd.addColorStop(1, it.color);
-          ctx.beginPath(); ctx.arc(cx,cy,r_px,0,Math.PI*2);
-          ctx.fillStyle=grd; ctx.fill();
-          ctx.strokeStyle=_sapDarken(it.color,.3); ctx.lineWidth=1; ctx.stroke();
-          if (r_px>12) {
-            ctx.fillStyle='rgba(255,255,255,.85)';
-            ctx.font=`bold ${Math.min(11,r_px*.6)}px sans-serif`;
-            ctx.textAlign='center';
-            ctx.fillText(ri+1,cx,cy+Math.min(4,r_px*.2));
-          }
-          curX=cx+r_px; layerMaxH=Math.max(layerMaxH,r_px*2);
-        } else {
-          const rectW=w_px, rectH=(it.diamMm/1000)*SCALE;
-          if (curX+rectW>ox+boxW) { floorY-=layerMaxH; layerMaxH=0; curX=ox; }
-          if (floorY-rectH<oy) break;
-          ctx.fillStyle=it.color;
-          ctx.fillRect(curX+1,floorY-rectH+1,rectW-2,rectH-2);
-          ctx.strokeStyle=_sapDarken(it.color,.3); ctx.lineWidth=1;
-          ctx.strokeRect(curX+1,floorY-rectH+1,rectW-2,rectH-2);
-          if (rectW>30&&rectH>14) {
-            ctx.fillStyle='rgba(255,255,255,.85)'; ctx.font='9px sans-serif'; ctx.textAlign='center';
-            ctx.fillText(ri+1,curX+rectW/2,floorY-rectH/2+3);
-          }
-          curX+=rectW; layerMaxH=Math.max(layerMaxH,rectH);
-        }
-      }
-      if (it.rollCount>0) legendItems.push({color:it.color,label:`${it.label} (롤×${it.rollCount}, Ø${(it.diamMm/10).toFixed(0)}cm)`});
-    } else if (it.type === 'board') {
-      const rectW=isFront?(it.widMm/1000)*SCALE:(it.lenMm/1000)*SCALE;
-      const rectH=it.stackHgtM*SCALE;
-      if (curX+rectW>ox+boxW) { floorY-=layerMaxH; layerMaxH=0; curX=ox; }
-      if (floorY-rectH>=oy) {
-        ctx.fillStyle=it.color; ctx.globalAlpha=0.82;
-        ctx.fillRect(curX+1,floorY-rectH+1,rectW-2,rectH-2);
-        ctx.globalAlpha=1.0;
-        ctx.strokeStyle=_sapDarken(it.color,.3); ctx.lineWidth=1;
-        ctx.strokeRect(curX+1,floorY-rectH+1,rectW-2,rectH-2);
-        if (rectW>40&&rectH>14) {
-          ctx.fillStyle='rgba(255,255,255,.9)'; ctx.font='bold 9px sans-serif'; ctx.textAlign='center';
-          ctx.fillText(it.label.slice(0,12),curX+rectW/2,floorY-rectH/2+3);
-        }
-        curX+=rectW; layerMaxH=Math.max(layerMaxH,rectH);
-      }
-      legendItems.push({color:it.color,label:`${it.label} (판지 ${_sapFmtNum(it.reams)}연/${_sapFmtNum(it.sheetCount)}장, H:${((it.fullStackHgtM||it.stackHgtM)*100).toFixed(0)}cm)`});
-    } else {
-      const kg=it.totalKg||0;
-      const rectW=Math.max(30,Math.min(boxW*0.3,(kg/1000)*SCALE*2));
-      const rectH=20;
-      if (curX+rectW>ox+boxW) { floorY-=layerMaxH; layerMaxH=0; curX=ox; }
-      if (floorY-rectH>=oy) {
-        ctx.fillStyle=it.color; ctx.globalAlpha=0.75;
-        ctx.fillRect(curX+1,floorY-rectH+1,rectW-2,rectH-2);
-        ctx.globalAlpha=1.0;
-        ctx.strokeStyle=_sapDarken(it.color,.3); ctx.lineWidth=1;
-        ctx.strokeRect(curX+1,floorY-rectH+1,rectW-2,rectH-2);
-        curX+=rectW; layerMaxH=Math.max(layerMaxH,rectH);
-      }
-      legendItems.push({color:it.color,label:`${it.label} (${it.uom||'KG'} ${_sapFmtNum(it.qty)})`});
-    }
-  });
-
-  /* ── 축 레이블 ── */
-  ctx.fillStyle='#94a3b8'; ctx.font='10px sans-serif'; ctx.textAlign='center';
-  for (let m=0; m<=Math.floor(axisX_m); m++) {
-    const x=ox+m*SCALE;
-    ctx.fillText(m+'m',x,oy+boxH+14);
-    ctx.strokeStyle='#334155'; ctx.lineWidth=0.5;
-    ctx.beginPath(); ctx.moveTo(x,oy+boxH); ctx.lineTo(x,oy+boxH+5); ctx.stroke();
-  }
-  ctx.textAlign='right';
-  for (let m=0; m<=Math.floor(axisY_m); m++) {
-    const y=oy+boxH-m*SCALE;
-    ctx.fillText(m+'m',ox-5,y+3);
-  }
-  ctx.fillStyle='#64748b'; ctx.font='10px sans-serif'; ctx.textAlign='left';
-  ctx.fillText(
-    (isFront?`W:${carWid}m`:`L:${carLen}m`)+` × H:${carHgt}m (유효:${effHgt.toFixed(2)}m)`+
-    (loadKg?`  │  적재가능 ${_sapFmtNum(loadKg)} KG`:''),
-    ox, oy-6
-  );
-
-  /* ── 무게 진행 막대 ── */
-  const totalKgUsed = vizItems.reduce((s,x)=>s+(x.totalKg||0),0);
-  if (loadKg && loadKg>0) {
-    const barY=canH-10, barLen=boxW, ratio=Math.min(totalKgUsed/loadKg,1.0);
-    const barColor=ratio>=1.0?'#dc2626':ratio>=0.9?'#d97706':'#059669';
-    ctx.fillStyle='#1e293b'; ctx.fillRect(ox,barY-8,barLen,8);
-    ctx.fillStyle=barColor; ctx.fillRect(ox,barY-8,barLen*ratio,8);
-    ctx.strokeStyle='#334155'; ctx.lineWidth=1; ctx.strokeRect(ox,barY-8,barLen,8);
-    ctx.fillStyle='#e2e8f0'; ctx.font='bold 9px sans-serif'; ctx.textAlign='center';
-    ctx.fillText(
-      `${_sapFmtNum(Math.round(totalKgUsed))} / ${_sapFmtNum(loadKg)} KG  (${Math.round(ratio*100)}%)`,
-      ox+barLen/2, barY-1
-    );
-  }
 
   /* ── 범례 ── */
   document.getElementById('sap-load-legend').innerHTML = legendItems.map(l =>
