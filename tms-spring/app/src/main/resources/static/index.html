@@ -18043,10 +18043,15 @@ function _ssColDefs() {
         const u=String(r.UOMKEY||'').trim();
         const g5=String(r.SKUG05||'').trim();
 
-        /* ── 원지(KG+제품군10): SKUKEY 10~13번째 자리 직접 파싱 ── */
+        /* ── 원지(KG+제품군10): SKUKEY 10~13번째 자리 직접 파싱 ──
+           해당 4자리 코드값은 mm 단위 → cm 컬럼이므로 /10 환산하여 표시 */
         if(u==='KG' && g5==='10'){
           const s=String(r.SKUKEY||''); const h=s.slice(9,13);
-          return h?String(parseInt(h,10)||h):'';
+          if(!h) return '';
+          const mm=parseInt(h,10);
+          if(isNaN(mm)) return String(h);
+          const cm=Math.round(mm/10*100)/100;   // mm → cm (소수 2자리 반올림)
+          return cm.toLocaleString(undefined,{maximumFractionDigits:2});
         }
 
         /* ── 판지(R+제품군10): 판지 높이 산식 적용 ──
