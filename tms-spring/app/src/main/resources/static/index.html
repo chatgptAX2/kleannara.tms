@@ -10393,8 +10393,28 @@ function _lvRenderLoadCanvas2D(canvas, wrap, items, veh, view) {
   const placement = _lvComputePlacement(items||[], veh, 0, 0, 0);
   const carWmm = placement.car.W, carLmm = placement.car.L;
   const palHmm = placement.car.palHgt || 0;
+
+  /* ── 적재 프로파일 통계 선(先)산출 (SCALE 계산에 필요) ──
+     각 품목의 화면 가로 점유(footMm=정면:폭 / 측면:길이)와 단수를 구하고,
+     GAP_MM 간격으로 나란히 놓았을 때의 '프로파일 총 폭'을 미리 계산한다.
+     이 총 폭이 차폭/차장을 넘으면 화면 가로축을 총 폭까지 확장하여
+     품목이 적재함 테두리 밖으로 튀어나가지 않도록 한다. */
+  const GAP_MM = 40;
+  const _byItem = new Map();   // idx → {idx,color,cyl,footMm,tierH,tiers}
+  (placement.blocks||[]).forEach(b => {
+    const footMm = isFront ? b.w : b.l;
+    let s = _byItem.get(b.idx);
+    if (!s) { s = { idx:b.idx, color:b.color, cyl:!!b.cyl, footMm, tierH:b.h, tiers:0 }; _byItem.set(b.idx, s); }
+    s.footMm = Math.max(s.footMm, footMm);
+    s.tierH  = Math.max(s.tierH, b.h);
+    s.tiers  = Math.max(s.tiers, b.tier||1);
+  });
+  let _profileMm = 0;
+  Array.from(_byItem.values()).forEach((s,i) => { _profileMm += s.footMm + (i>0?GAP_MM:0); });
+
   // 세로축(높이) 최대 = 파렛트 + 유효높이
-  const axisXmm = isFront ? carWmm : carLmm;    // 화면 가로축(mm)
+  const carAxisXmm = isFront ? carWmm : carLmm;         // 실제 차량 가로 규격(mm)
+  const axisXmm = Math.max(carAxisXmm, _profileMm);     // 화면 가로축 = max(차량규격, 프로파일 총 폭)
   const axisYmm = (effHgt + palHgt) * 1000.0;   // 화면 세로축(mm)
 
   /* ── 캔버스 크기 (규격 표시용 여백 확대) ── */
@@ -10417,6 +10437,22 @@ function _lvRenderLoadCanvas2D(canvas, wrap, items, veh, view) {
   /* ── 적재함 테두리 ── */
   ctx.strokeStyle = '#475569'; ctx.lineWidth = 2;
   ctx.strokeRect(ox, oy, boxW, boxH);
+
+  /* ── ★ 실제 차량 가로 규격(폭/길이) 한계선 ──
+     프로파일 총 폭이 차량 규격을 초과하면(축이 확장된 경우) 실제 차량
+     가로 규격 위치에 점선 한계선을 그어 '이 지점까지가 차량 규격'임을 표시.
+     → 품목이 이 선을 넘으면 '규격 초과' 이나, 적재함 테두리 밖으로
+        튀어나가 그려지지는 않음(항상 테두리 안에 그림). */
+  if (axisXmm > carAxisXmm + 0.5) {
+    const limX = sx(carAxisXmm);
+    ctx.strokeStyle = 'rgba(248,113,113,.9)'; ctx.lineWidth = 1.5;
+    ctx.setLineDash([6,4]);
+    ctx.beginPath(); ctx.moveTo(limX, oy); ctx.lineTo(limX, oy+boxH); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#fca5a5'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'left';
+    const limLbl = isFront ? `차량폭 ${(carAxisXmm/1000).toFixed(2)}m` : `차량길이 ${(carAxisXmm/1000).toFixed(2)}m`;
+    ctx.fillText(limLbl, Math.min(limX+3, ox+boxW-70), oy+11);
+  }
 
   /* ── 격자선(1m) ── */
   ctx.strokeStyle = 'rgba(148,163,184,.13)'; ctx.lineWidth = 0.5;
@@ -10451,19 +10487,10 @@ function _lvRenderLoadCanvas2D(canvas, wrap, items, veh, view) {
          단 경계는 구분선으로 구분. 품목/파렛트/옆품목 어디와도 겹치지 않는다. */
   const legendItems = [];
 
-  // 품목(idx)별 통계: footprint(가로 점유 mm), 단수, 단당 높이(mm)
-  const byItem = new Map();   // idx → {idx,color,cyl,footMm,tierH,tiers}
-  (placement.blocks||[]).forEach(b => {
-    const footMm = isFront ? b.w : b.l;   // 화면 가로 점유
-    let s = byItem.get(b.idx);
-    if (!s) { s = { idx:b.idx, color:b.color, cyl:!!b.cyl, footMm, tierH:b.h, tiers:0 }; byItem.set(b.idx, s); }
-    s.footMm = Math.max(s.footMm, footMm);
-    s.tierH  = Math.max(s.tierH, b.h);
-    s.tiers  = Math.max(s.tiers, b.tier||1);
-  });
+  // 품목(idx)별 통계는 SCALE 계산 전에 선산출한 _byItem 재사용
+  const byItem = _byItem;
 
   // 품목을 가로축으로 나란히 누적 배치(겹침 방지). 품목 사이 GAP_MM 간격.
-  const GAP_MM = 40;
   const drawn = [];
   let cursorMm = 0;
   Array.from(byItem.keys()).sort((a,b)=>a-b).forEach(idx => {
