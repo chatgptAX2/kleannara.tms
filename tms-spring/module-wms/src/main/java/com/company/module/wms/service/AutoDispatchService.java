@@ -1316,6 +1316,25 @@ public class AutoDispatchService {
         return 0.0;
     }
 
+    /** 육각 밀착(지그재그) X간격 비율 = √3/2 ≈ 0.866 (프런트 _LV_ZZ_RATIO 와 동일). */
+    private static final double ROLL_ZZ_RATIO = Math.sqrt(3) / 2.0;
+
+    /**
+     * 원지 열(X) 배치 열수 산출 — straight vs 지그재그(네스팅). 프런트 _lvPlanRollCols 와 동일.
+     *   · straight 로 2열 이상 가능하면 그대로.
+     *   · straight 1열뿐이면 지그재그 시도(dx=footMm×√3/2+2). 2열 이상 가능하면 채택.
+     *   ★ A안: 기하학적으로 겹치지 않는 한도에서만 지그재그(실익 없으면 1열).
+     * @return int[]{cols, zigzag(0/1)}
+     */
+    private int[] planRollCols(double footMm, double carWmm) {
+        int straight = Math.max(1, (int) (carWmm / footMm));
+        if (straight >= 2) return new int[]{straight, 0};
+        double dx = footMm * ROLL_ZZ_RATIO + 2.0;
+        int zz = Math.max(1, (int) ((carWmm - footMm) / dx) + 1);
+        if (zz >= 2) return new int[]{zz, 1};
+        return new int[]{1, 0};
+    }
+
     private int[] parseBoardDims(String sk) {
         if (sk == null || sk.length() < 17 || !"-".equals(sk.substring(8, 9))) return null;
         try {
@@ -1851,24 +1870,29 @@ public class AutoDispatchService {
             double widthMm = layer.repWidthMm;                 // 높이(=높이(cm) 원천)
             double footMm  = layer.repFootMm > 0 ? layer.repFootMm : diamMm; // 가로폭(=너비)
 
-            // 세워 적재(수직 원통): 바닥 원 지름 = 가로폭(너비=footMm) → X/Y 모두 footMm 점유.
-            int cols     = Math.max(1, (int)(carWmm / footMm));
+            // 세워 적재(수직 원통): 바닥 원 지름 = 가로폭(너비=footMm).
+            //  straight 로 2열 미만이면 지그재그(네스팅)로 열수 확대 시도(A안: 겹침 없음).
+            int[] plan   = planRollCols(footMm, carWmm);
+            int cols     = plan[0];
+            boolean zz   = plan[1] == 1;
             // 세워 적재: 1단 높이 = 원지 높이(widthMm)+단간격. 높이가 차량 가용높이보다 작아야 2단 이상 가능.
             final double ROLL_TIER_GAP_MM = 30.0; // 단 사이 물리 간격(시뮬레이션과 일치)
             int maxTiers = Math.max(1, Math.min(cp.maxStack, (int)((heightCapMm + ROLL_TIER_GAP_MM) / (widthMm + ROLL_TIER_GAP_MM))));
-            int perSlice = cols * maxTiers; // footMm 깊이 슬라이스당 수용 롤 수 = 열 × 단
+            int perSlice = cols * maxTiers; // footMm 깊이 슬라이스(사이클)당 수용 롤 수 = 열 × 단
 
-            // 이 레이어에 필요한 길이(Y) = ceil(layer.totalRolls / perSlice) × footMm(원 footprint)
+            // 이 레이어에 필요한 길이(Y) = ceil(layer.totalRolls / perSlice) 사이클 × footMm.
+            //  지그재그면 홀수열 offset(footMm/2) 만큼 Y 여유가 추가로 필요(마지막 사이클 tail).
             int rows = (int) Math.ceil((double) layer.totalRolls / perSlice);
-            double layerLengthMm = rows * footMm;
+            double layerLengthMm = rows * footMm + (zz && rows > 0 ? footMm / 2.0 : 0.0);
             usedLengthMm += layerLengthMm;
 
             int layerCap = rows * perSlice;
             totalCap += layerCap;
 
             result.layerNotes.add(String.format(
-                "[3D-원지(세워적재)] 직경그룹%dmm/가로폭(너비)%dmm/높이%dmm: 롤%d개 / 배치=%d열×%d단(높이기준)×%d행 / Y축점유=%.0fmm",
-                (int)diamMm, (int)footMm, (int)widthMm, layer.totalRolls, cols, maxTiers, rows, layerLengthMm));
+                "[3D-원지(세워적재)] 직경그룹%dmm/가로폭(너비)%dmm/높이%dmm: 롤%d개 / 배치=%d열%s×%d단(높이기준)×%d행 / Y축점유=%.0fmm",
+                (int)diamMm, (int)footMm, (int)widthMm, layer.totalRolls, cols,
+                zz ? "(지그재그)" : "", maxTiers, rows, layerLengthMm));
         }
 
         final double heightCapFinal = heightCapMm; // 람다 캡처용
