@@ -10184,6 +10184,29 @@ function _lvRender3D(containerId, placement, opts) {
   frame.position.set(carW/2, carH/2, carL/2);
   grp.add(frame);
 
+  // ── 적재함 규격(가로/세로) 라벨 — 바닥 모서리에 치수 표시 ──
+  //   가로(너비=X) = placement.car.W, 세로(길이=Y) = placement.car.L (mm)
+  {
+    const carWmm = placement.car.W || 0;   // 가로(너비)
+    const carLmm = placement.car.L || 0;   // 세로(길이)
+    const _fmtM  = mm => (mm/1000).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+    const lblScale = Math.max(carW, carL) * 0.16;   // 씬 크기 대비 라벨 스케일
+    // 가로(너비) 라벨 — 앞쪽 모서리(Y=0) 바닥 바깥, X 중앙
+    if (carWmm > 0) {
+      const dw = _lvDimSprite([`가로(너비) ${_fmtM(carWmm)} m`]);
+      dw.spr.position.set(carW/2, 0.02, -Math.max(carL*0.10, lblScale*0.5));
+      dw.spr.scale.set(lblScale, lblScale/dw.ratio, 1);
+      grp.add(dw.spr);
+    }
+    // 세로(길이) 라벨 — 왼쪽 모서리(X=0) 바닥 바깥, Y 중앙
+    if (carLmm > 0) {
+      const dl = _lvDimSprite([`세로(길이) ${_fmtM(carLmm)} m`]);
+      dl.spr.position.set(-Math.max(carW*0.10, lblScale*0.5), 0.02, carL/2);
+      dl.spr.scale.set(lblScale, lblScale/dl.ratio, 1);
+      grp.add(dl.spr);
+    }
+  }
+
   // ── 파렛트 (요청1: 화물 footprint 너비/길이와 동일, 화물은 그 위에 적재) ──
   if (placement.pallet && palH > 0 && placement.pallet.w > 0 && placement.pallet.l > 0) {
     const pw = placement.pallet.w * S;
