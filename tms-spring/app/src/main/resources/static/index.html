@@ -9849,6 +9849,19 @@ function _lvVehDims(veh) {
 function _lvIsRoll(sk){ sk=String(sk||''); return sk.length>=17 && sk[8]==='-' && sk.slice(13,17)==='0000'; }
 function _lvIsBoard(sk){ sk=String(sk||''); if(sk.length<17||sk[8]!=='-')return false; const lp=sk.slice(13,17); return lp!=='0000' && /^\d{4}$/.test(lp); }
 function _lvSkuDims(sk){ sk=String(sk||''); if(sk.length<17)return{gsm:null,widthMm:null,lengthMm:null}; return {gsm:parseInt(sk.slice(5,8),10),widthMm:parseInt(sk.slice(9,13),10),lengthMm:parseInt(sk.slice(13,17),10)}; }
+/* 원지 너비(mm) — 출고예정정보 '너비(mm)' 컬럼(_WIDTH)과 동일 규칙.
+   인치코드(SKUKEY 3~5번째 자리) + 평량(gsm, 6~8번째 자리) 기준:
+     12인치 → 1500 / 3인치 & gsm<=240 → 1400 / 3인치 & gsm>240 → 1100.
+   ★ 세워 적재 시 이 값이 원통의 '가로폭(footprint 지름)' = X축 폭이 된다. */
+function _lvRollWidthMm(sk){
+  sk=String(sk||''); if(sk.length<8) return null;
+  const m=sk.toLowerCase().slice(2,5);
+  const is12=['a11','ab1','ag1','am1','111','s11','i11','k11','sm1'].includes(m);
+  const is3 =['ar1','ae1','aj1','al1','sr1','ir1','rw1'].includes(m);
+  if(is12) return 1500;
+  if(is3){ const g=parseInt(sk.slice(5,8),10); return (isNaN(g)||g<=240)?1400:1100; }
+  return null;
+}
 function _lvRollDiameter(weightKg, gsm, widthMm){
   if(!gsm||!widthMm||gsm<=0||widthMm<=0||weightKg<=0) return null;
   const widthM=widthMm/1000.0, tM=(gsm/1000.0)/1200.0, Lm=(weightKg*1000.0)/(gsm*widthM);
@@ -9878,9 +9891,11 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
 
   // ── 원지(원통) 배치: Z축(높이)으로 세워서 적재 ──────────────
   //  실제 상차와 동일하게 원통을 세로로 세워 적재(눕히면 2단 적재 불가).
-  //  바닥 footprint = diam×diam(원 지름), 높이 = 폭(widthMm=원지 축길이).
-  //  cols = floor(carW / diam) (X), rows = Y 방향 진행(diam 씩),
-  //  tiers = min(maxStack, floor(rollCap / width)) (Z, 폭 기준 다단).
+  //  · 바닥 footprint = 너비×너비 (footMm=출고예정정보 '너비(mm)' 컬럼값)
+  //  · 높이 = 출고예정정보 '높이(cm)' 컬럼값 (heightMm=SKUKEY slice(9,13) mm)
+  //  cols  = floor(carW / footMm) (X, 가로폭=너비 기준),
+  //  rows  = Y 방향 진행(footMm 씩),
+  //  tiers = min(maxStack, floor(rollCap / heightMm)) (Z, 높이 기준 다단).
   let rollY = 0;           // 원지 Y 진행 커서(mm)
   // ── 판지 배치는 원지 뒤(Y)부터 이어서: shelf 커서 별도 ──
 
@@ -9901,23 +9916,30 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
       const rollCount = uom==='R' ? Math.round(qty) : (kg>0 ? Math.ceil(kg/single_w) : 0);
       const oneKg     = uom==='R' ? single_w : (rollCount>0 ? kg/rollCount : single_w);
       const gsm       = sdims.gsm || 100;
-      const widMm     = sdims.widthMm || 1400;   // 원지 폭 = 세워 적재 시 높이
-      const diamMm    = _lvRollDiameter(oneKg, gsm, widMm) || 800;
-      const cols      = Math.max(1, Math.floor(carWmm / diamMm));   // X: 지름 기준
-      // Z(높이) 다단 = 원지 폭(widMm)+단간격 기준. 세워 적재해야 2단(이상) 가능.
-      const tiers     = Math.max(1, Math.min(maxStack, Math.floor((rollCapMm + TIER_GAP) / (widMm + TIER_GAP))));
+      // ── Req F: 세워 적재(수직 원통) 규격 ──────────────────────────
+      //  · 가로폭(X, footprint 지름) = 출고예정정보 '너비(mm)' 컬럼값
+      //      (인치/평량 기준 1500/1400/1100). 물리적 지름 산식(무게 기반)이 아님.
+      //  · 높이(Z)               = 출고예정정보 '높이(cm)' 컬럼값
+      //      = SKUKEY slice(9,13) mm (= sdims.widthMm).
+      const footMm    = _lvRollWidthMm(sk) || sdims.widthMm || 1400;  // 가로폭(=너비)
+      const heightMm  = sdims.widthMm || footMm;                      // 높이(=높이(cm) 원천 mm)
+      const diamMm    = footMm;   // 세워 원통의 바닥 원 지름 = 가로폭(너비)
+      const widMm     = heightMm; // 세워 원통의 축 길이(수직) = 높이
+      const cols      = Math.max(1, Math.floor(carWmm / footMm));     // X: 너비(가로폭) 기준
+      // Z(높이) 다단 = 원지 높이(heightMm)+단간격 기준. 세워 적재해야 2단(이상) 가능.
+      const tiers     = Math.max(1, Math.min(maxStack, Math.floor((rollCapMm + TIER_GAP) / (heightMm + TIER_GAP))));
       let remaining = rollCount, placed = 0;
       while (remaining > 0) {
-        // 한 행(Y=diamMm 슬라이스): cols × tiers 개 (세로 적재)
+        // 한 행(Y=footMm 슬라이스): cols × tiers 개 (세로 적재)
         const rowStartY = rollY;
-        if (rowStartY + diamMm > carLmm + 0.5) break;   // Y 초과 → 중단
+        if (rowStartY + footMm > carLmm + 0.5) break;   // Y 초과 → 중단
         for (let ci = 0; ci < cols && remaining > 0; ci++) {
           for (let ti = 0; ti < tiers && remaining > 0; ti++) {
-            const x = ci * diamMm;
-            const z = ti * (widMm + TIER_GAP);  // 세워 쌓음 → 폭만큼 위로(+단 간격)
+            const x = ci * footMm;
+            const z = ti * (heightMm + TIER_GAP);  // 세워 쌓음 → 높이만큼 위로(+단 간격)
             blocks.push({
               x, y: rowStartY, z,
-              w: diamMm, l: diamMm, h: widMm,    // 바닥 원(diam×diam), 높이=폭
+              w: footMm, l: footMm, h: heightMm,   // 바닥 원(너비×너비), 높이=높이(cm)
               color, type:'roll', label, idx,
               cyl: true, vertical: true, diamMm, widMm, rollNo: placed+1,
               tier: ti+1, totalTiers: tiers      // 단수(몇 단째 / 총 단수)
@@ -9925,7 +9947,7 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
             remaining--; placed++;
           }
         }
-        rollY = rowStartY + diamMm + GAP;        // Y 는 지름만큼 전진
+        rollY = rowStartY + footMm + GAP;        // Y 는 가로폭(너비)만큼 전진
         if (rollY > carLmm) break;
       }
     }
@@ -10198,8 +10220,10 @@ function _lvRender3D(containerId, placement, opts) {
     let mesh;
     if (b.cyl) {
       // 원지: 실린더 (세워 적재 → 축=Y(수직), 회전 없음)
+      //  · 바닥 원 지름 = 가로폭(너비, b.diamMm=b.w) → X-간격과 일치(겹침 없음)
+      //  · 높이(len)   = 높이(cm) 원천값(b.h)
       const r   = Math.max(b.diamMm*S/2, 0.02);
-      const len = bh;   // 세워 적재 → 높이 = 원지 폭(widMm) = b.h
+      const len = bh;   // 세워 적재 → 높이 = 높이(cm) = b.h
       const geo = new THREE.CylinderGeometry(r, r, len, 24);
       const mat = new THREE.MeshLambertMaterial({ color: col });
       mesh = new THREE.Mesh(geo, mat);
