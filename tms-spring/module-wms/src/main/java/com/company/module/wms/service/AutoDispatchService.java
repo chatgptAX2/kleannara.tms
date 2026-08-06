@@ -1296,6 +1296,26 @@ public class AutoDispatchService {
         } catch (Exception e) { return null; }
     }
 
+    /**
+     * 원지 '너비(mm)' — 프런트 출고예정정보 '너비(mm)' 컬럼(_WIDTH) 및
+     * 적재 시뮬레이션 _lvRollWidthMm 와 동일 규칙.
+     *   · 인치코드(SKUKEY 3~5번째 자리) + 평량(gsm, 6~8번째 자리) 기준.
+     *   · 12인치 → 1500 / 3인치 & gsm<=240 → 1400 / 3인치 & gsm>240 → 1100.
+     * ★ 세워 적재(수직 원통) 시 이 값이 바닥 원의 '가로폭(footprint 지름)' = X축 폭.
+     *    판정 불가 시 0 반환(호출부에서 직경 fallback).
+     */
+    private double rollFootprintWidthMm(String sk) {
+        String inch = getInch(sk);
+        if ("12인치".equals(inch)) return 1500.0;
+        if ("3인치".equals(inch)) {
+            try {
+                int g = Integer.parseInt(sk.substring(5, 8));
+                return g <= 240 ? 1400.0 : 1100.0;
+            } catch (Exception e) { return 1400.0; }
+        }
+        return 0.0;
+    }
+
     private int[] parseBoardDims(String sk) {
         if (sk == null || sk.length() < 17 || !"-".equals(sk.substring(8, 9))) return null;
         try {
@@ -1802,10 +1822,14 @@ public class AutoDispatchService {
             Double dmmCalc = calcRollDiameter(kgPerRoll, sk);
             double diamMm  = (dmmCalc != null && dmmCalc > 0) ? dmmCalc : 800.0; // fallback 800mm
 
+            // 가로폭(footprint, mm): 출고예정정보 '너비(mm)'(인치/평량 기준). 판정 불가 시 직경 fallback.
+            double footMm  = rollFootprintWidthMm(sk);
+            if (footMm <= 0) footMm = diamMm;
+
             // 직경 50mm 단위 버킷으로 그룹화 (소수점 오차 흡수)
             int bucket = (int)(Math.ceil(diamMm / 50.0) * 50);
             layerMap.computeIfAbsent(bucket, k -> new RollLayer(k, finalWidthMm))
-                    .addRolls(qty, widthMm, diamMm);
+                    .addRolls(qty, widthMm, diamMm, footMm);
         }
 
         if (totalRolls == 0) return RollPhysics3D.fail("원통형 롤 없음");
@@ -1824,25 +1848,27 @@ public class AutoDispatchService {
         for (Map.Entry<Integer, RollLayer> e : layerMap.entrySet()) {
             RollLayer layer = e.getValue();
             double diamMm  = layer.repDiamMm;
-            double widthMm = layer.repWidthMm;
+            double widthMm = layer.repWidthMm;                 // 높이(=높이(cm) 원천)
+            double footMm  = layer.repFootMm > 0 ? layer.repFootMm : diamMm; // 가로폭(=너비)
 
-            int cols     = Math.max(1, (int)(carWmm / diamMm));
-            // 세워 적재: 1단 높이 = 원지 폭(widthMm)+단간격. 폭이 차량 가용높이보다 작아야 2단 이상 가능.
+            // 세워 적재(수직 원통): 바닥 원 지름 = 가로폭(너비=footMm) → X/Y 모두 footMm 점유.
+            int cols     = Math.max(1, (int)(carWmm / footMm));
+            // 세워 적재: 1단 높이 = 원지 높이(widthMm)+단간격. 높이가 차량 가용높이보다 작아야 2단 이상 가능.
             final double ROLL_TIER_GAP_MM = 30.0; // 단 사이 물리 간격(시뮬레이션과 일치)
             int maxTiers = Math.max(1, Math.min(cp.maxStack, (int)((heightCapMm + ROLL_TIER_GAP_MM) / (widthMm + ROLL_TIER_GAP_MM))));
-            int perSlice = cols * maxTiers; // diamMm 깊이 슬라이스당 수용 롤 수 = 열 × 단
+            int perSlice = cols * maxTiers; // footMm 깊이 슬라이스당 수용 롤 수 = 열 × 단
 
-            // 이 레이어에 필요한 길이(Y) = ceil(layer.totalRolls / perSlice) × diamMm(원 footprint)
+            // 이 레이어에 필요한 길이(Y) = ceil(layer.totalRolls / perSlice) × footMm(원 footprint)
             int rows = (int) Math.ceil((double) layer.totalRolls / perSlice);
-            double layerLengthMm = rows * diamMm;
+            double layerLengthMm = rows * footMm;
             usedLengthMm += layerLengthMm;
 
             int layerCap = rows * perSlice;
             totalCap += layerCap;
 
             result.layerNotes.add(String.format(
-                "[3D-원지(세워적재)] 직경그룹%dmm/폭%dmm: 롤%d개 / 배치=%d열×%d단(폭기준)×%d행 / Y축점유=%.0fmm",
-                (int)diamMm, (int)widthMm, layer.totalRolls, cols, maxTiers, rows, layerLengthMm));
+                "[3D-원지(세워적재)] 직경그룹%dmm/가로폭(너비)%dmm/높이%dmm: 롤%d개 / 배치=%d열×%d단(높이기준)×%d행 / Y축점유=%.0fmm",
+                (int)diamMm, (int)footMm, (int)widthMm, layer.totalRolls, cols, maxTiers, rows, layerLengthMm));
         }
 
         final double heightCapFinal = heightCapMm; // 람다 캡처용
@@ -1872,18 +1898,20 @@ public class AutoDispatchService {
     private static class RollLayer {
         int    bucket;
         double repDiamMm  = 0;  // 대표 직경 (평균)
-        double repWidthMm = 0;  // 대표 너비 (평균)
+        double repWidthMm = 0;  // 대표 높이(=출고예정정보 높이(cm) 원천, slice(9,13)) (평균)
+        double repFootMm  = 0;  // 대표 가로폭(=출고예정정보 너비(mm), 인치/평량 기준) (평균)
         int    totalRolls = 0;
         int    sampleCount = 0;
 
         RollLayer(int bucket, double firstWidth) {
             this.bucket = bucket; this.repWidthMm = firstWidth;
         }
-        void addRolls(int qty, double widthMm, double diamMm) {
+        void addRolls(int qty, double widthMm, double diamMm, double footMm) {
             totalRolls += qty;
             // 가중 평균으로 대표값 갱신
             repDiamMm  = (repDiamMm  * sampleCount + diamMm  * qty) / (sampleCount + qty);
             repWidthMm = (repWidthMm * sampleCount + widthMm * qty) / (sampleCount + qty);
+            repFootMm  = (repFootMm  * sampleCount + footMm  * qty) / (sampleCount + qty);
             sampleCount += qty;
         }
     }
