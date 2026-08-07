@@ -15087,8 +15087,23 @@ function _psopVehRenderDocs(pid) {
     const inch     = psopGetInch(it.SKUKEY||'');
     const inchTxt  = inch || '-';
 
-    // 원지중량: GRSWGT
-    const grswgt   = it.GRSWGT != null ? Number(it.GRSWGT).toLocaleString() : '-';
+    // 중량: 실제 총중량(KG_WEIGHT). 원지·판지 공통.
+    //   · 기존 '원지중량'은 SKUMA.GRSWGT 였는데 원지는 마스터 미등록(=1/0)이라 '1'로만 표시됨.
+    //   · 실제 중량은 백엔드가 계산한 KG_WEIGHT(원지: qty×단중, 판지: 총 KG).
+    const kgw      = parseFloat(it.KG_WEIGHT || 0);
+    const wgtVal   = kgw > 0
+      ? Math.round(kgw).toLocaleString() + 'kg'
+      : (it.GRSWGT != null && Number(it.GRSWGT) > 0 ? Number(it.GRSWGT).toLocaleString() + 'kg' : '-');
+
+    // 원지개수: ROLL_COUNT (원지만). 판지/기타는 '-'.
+    const isRollDoc = _psopIsRoll(sk) || it.SKU_TYPE === 'roll';
+    const rollCntVal = isRollDoc
+      ? ((it.ROLL_COUNT || 0) > 0
+          ? Number(it.ROLL_COUNT).toLocaleString()
+          : (parseFloat(it.QTSHPO || 0) > 0 && (it.UOMKEY || '').trim() === 'R'
+              ? Math.round(parseFloat(it.QTSHPO || 0)).toLocaleString()
+              : '-'))
+      : '-';
 
     // CBM: ROLL_CBM 또는 BOARD_CBM (있는 것 우선)
     const cbm      = it.ROLL_CBM != null
@@ -15120,7 +15135,8 @@ function _psopVehRenderDocs(pid) {
       <td class="center" style="font-size:10px">${uom}</td>
       <td class="center" style="font-size:10px;white-space:nowrap">${skuType}</td>
       <td class="center" style="font-size:10px;white-space:nowrap">${inchTxt}</td>
-      <td class="num" style="font-size:10px">${grswgt}</td>
+      <td class="num" style="font-size:10px">${wgtVal}</td>
+      <td class="num" style="font-size:10px;font-weight:600;color:${isRollDoc?'var(--primary)':'var(--text3)'}">${rollCntVal}</td>
       <td class="num" style="font-size:10px">${cbm}</td>
       <td class="center" style="font-size:10px;white-space:nowrap">${rqshpd}</td>
       <td class="center" style="font-size:10px;white-space:nowrap">${shpmtyNm}</td>
@@ -15139,6 +15155,7 @@ function _psopVehRenderDocs(pid) {
         <col style="width:46px">
         <col style="width:62px">
         <col style="width:56px">
+        <col style="width:56px">
         <col style="width:72px">
         <col style="width:62px">
       </colgroup>
@@ -15151,7 +15168,8 @@ function _psopVehRenderDocs(pid) {
           <th>단위</th>
           <th>유형</th>
           <th>인치</th>
-          <th>원지중량</th>
+          <th>중량</th>
+          <th>원지개수</th>
           <th>CBM</th>
           <th>납품일</th>
           <th>출하유형</th>
