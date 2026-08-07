@@ -20312,7 +20312,13 @@ const DCON_KEY_META = {
   /* GLOBAL */
   MAX_TON_RATIO:   { label:'최대 중량비율',    unit:'%',  op:'<=', type:'GLOBAL', hint:'차량 적재 허용 상한 (기본 100%)' },
   MIN_FILL_RATIO:  { label:'최소 적재율',      unit:'%',  op:'>=', type:'GLOBAL', hint:'최소 허용 적재율 (기본 0%)' },
+  MAX_FILL_RATIO:  { label:'최대 적재율',      unit:'%',  op:'<=', type:'GLOBAL', hint:'초과 배차 방지 상한 (기본 100%)' },
   ALLOW_MULTI:     { label:'복수 납품처 허용',  unit:'Y/N',op:'=',  type:'GLOBAL', hint:'Y=허용, N=1납품처만' },
+  ALLOW_MIXED_LOAD:{ label:'혼적 허용(원지+판지)', unit:'Y/N', op:'=', type:'GLOBAL', hint:'Y=원지+판지 한 차량 혼적 허용, N=동일 재질만' },
+  ALLOW_SPLIT_ITEM:{ label:'납품 분할 허용',   unit:'Y/N', op:'=',  type:'GLOBAL', hint:'Y=허용(차량 초과분 분할), N=단일 차량 강제' },
+  MAX_VEHICLES_PER_GROUP:{ label:'그룹당 최대 차량 수', unit:'대', op:'<=', type:'GLOBAL', hint:'0/99=무제한 (초과 시 수동검토 경고)' },
+  ENTRY_TON_LIMIT: { label:'진입 톤수 제한',   unit:'ton', op:'<=', type:'GLOBAL', hint:'0=제한없음, >0=해당 톤수 초과 차량 배차 제외' },
+  FIXED_VEH_PRIORITY:{ label:'고정차량 최우선 배차', unit:'Y/N', op:'=', type:'GLOBAL', hint:'Y=고정차량 매핑 오더 사전 할당' },
   MAX_ITEMS_PER_VEHICLE: { label:'차량당 최대 아이템 수', unit:'건', op:'<=', type:'GLOBAL', hint:'0=무제한' },
   /* VEHICLE */
   USE_YN:          { label:'차종 사용 여부',   unit:'Y/N',op:'=',  type:'VEHICLE', hint:'Y=사용, N=제외' },
@@ -20326,9 +20332,33 @@ const DCON_KEY_META = {
   MAX_WEIGHT_KG:   { label:'화물 최대 중량',   unit:'kg',  op:'<=', type:'CARGO',  hint:'개별 SKU 최대 중량' },
   FRAGILE_CARTYPE: { label:'파손주의 전용 차종',unit:'코드',op:'IN', type:'CARGO',  hint:'파손주의 화물 허용 차종' },
   SPLIT_ALLOWED:   { label:'분할 배차 허용',   unit:'Y/N', op:'=',  type:'CARGO',  hint:'Y=허용, N=한 차량에 모아야 함' },
+  /* CARGO — 원지(Roll) */
+  ROLL_SINGLE_KG_FALLBACK:{ label:'[원지] 롤 단중 fallback', unit:'kg', op:'=', type:'CARGO', hint:'롤 단중 미등록 시 기본값 (기본 600)' },
+  MAX_ROLL_STACK_TIER:{ label:'[원지] 최대 적재 단수', unit:'단', op:'<=', type:'CARGO', hint:'롤 최대 몇 단까지 적재 (Hard Cap, 기본 2)' },
+  ROLL_MAX_HEIGHT_M:{ label:'[원지] 다단 적재높이 상한', unit:'m', op:'<=', type:'CARGO', hint:'0=차량높이 자동연동 / >0=설정값과 차량높이 중 작은값' },
+  ROLL_HEIGHT_MARGIN_M:{ label:'[원지] 높이 안전 여유 마진', unit:'m', op:'=', type:'CARGO', hint:'적재 높이 안전 여유 (기본 0)' },
+  ROLL_PALLET_APPLY_YN:{ label:'[원지] 파레트 차감 적용', unit:'Y/N', op:'=', type:'CARGO', hint:'Y=FORKLIFT_YN=N 납품처에 파레트 높이 차감 적용' },
+  ROLL_PALLET_DEDUCT_M:{ label:'[원지] 파레트 높이 차감', unit:'m', op:'=', type:'CARGO', hint:'파레트 적재 시 가용 높이 차감 (기본 0.15)' },
+  ROLL_3D_CHECK_YN:{ label:'[원지] 3D 물리검증 활성', unit:'Y/N', op:'=', type:'CARGO', hint:'Y=원지 3D 검증 / N=검증 스킵' },
+  ROLL_3D_DEAD_SPACE_PCT:{ label:'[원지] 3D Dead Space 허용', unit:'%', op:'<=', type:'CARGO', hint:'3D 검증 시 여유 마진 허용비율 (0=허용안함)' },
+  /* CARGO — 판지(Board) */
+  BOARD_CBM_CHECK_YN:{ label:'[판지] CBM 검증 활성', unit:'Y/N', op:'=', type:'CARGO', hint:'N=CBM 이중검증 스킵(중량만 검사)' },
+  BOARD_MAX_TON_RATIO:{ label:'[판지] 중량 최대 사용률', unit:'%', op:'<=', type:'CARGO', hint:'Double-Threshold 중량 상한 (기본 100%)' },
+  BOARD_MAX_CBM_RATIO:{ label:'[판지] CBM 최대 사용률', unit:'%', op:'<=', type:'CARGO', hint:'Double-Threshold 부피 상한 (기본 100%)' },
+  BOARD_MIN_FILL_RATIO:{ label:'[판지] 최소 적재율', unit:'%', op:'>=', type:'CARGO', hint:'판지 전용 최소 적재율 (미설정 시 전역값)' },
+  MAX_BOARD_HEIGHT_M:{ label:'[판지] 최대 적재 높이', unit:'m', op:'<=', type:'CARGO', hint:'판지 스택 최대 높이 (기본 2.4)' },
+  BOARD_HEIGHT_VEH_LINK_YN:{ label:'[판지] 최대높이 차량연동', unit:'Y/N', op:'=', type:'CARGO', hint:'Y=차량 가용높이와 연동 (기본 Y)' },
+  BOARD_BULK_INTEGER_ONLY:{ label:'[판지] 벌크 1PLT 정수 강제', unit:'Y/N', op:'=', type:'CARGO', hint:'Y=벌크 개체 내 분할 불가' },
+  BOARD_INNER_SPLIT_ALLOW:{ label:'[판지] 속포장 분할 허용', unit:'Y/N', op:'=', type:'CARGO', hint:'Y=속 단위 분할 허용' },
+  BOARD_3D_CHECK_YN:{ label:'[판지] 3D 물리검증 활성', unit:'Y/N', op:'=', type:'CARGO', hint:'Y=판지 3D 검증 / N=검증 스킵' },
+  BOARD_3D_DEAD_SPACE_PCT:{ label:'[판지] 3D Dead Space 허용', unit:'%', op:'<=', type:'CARGO', hint:'3D 검증 시 여유 마진 허용비율 (0=허용안함)' },
+  /* CARGO — 혼적(Mixed) */
+  MIX_3D_CHECK_YN:{ label:'[혼적] 3D 물리검증 활성', unit:'Y/N', op:'=', type:'CARGO', hint:'Y=원지+판지 혼적 3D 검증 / N=검증 스킵' },
   /* COST */
   PENALTY_RATE:    { label:'초과적재 패널티 배수', unit:'x', op:'=', type:'COST', hint:'MIN_COST 목적식 초과 패널티 (기본 3.0)' },
+  COST_PENALTY_OVER:{ label:'초과적재 패널티 배수(대체키)', unit:'x', op:'=', type:'COST', hint:'초과 시 비용 패널티 (기본 1.5)' },
   COST_MARGIN_RATE:{ label:'비용 여유 허용율',  unit:'%',  op:'<=', type:'COST', hint:'운송비 상한 마진 (기본 0%)' },
+  COST_REF_DATE:   { label:'운송비 기준일',     unit:'날짜', op:'=', type:'COST', hint:'TODAY 또는 YYYYMMDD' },
 };
 
 async function renderDispatchConstraint() {
