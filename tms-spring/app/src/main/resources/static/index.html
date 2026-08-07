@@ -11617,7 +11617,7 @@ function psdOpenSplitModal(items) {
       <td><input type="checkbox" class="psd-split-chk" data-idx="${idx}" checked></td>
       <td class="left" style="font-family:monospace;font-size:11px;white-space:nowrap">${svbeln}</td>
       <td style="font-family:monospace;font-size:11px;white-space:nowrap;text-align:center">${sposnr}</td>
-      <td class="left" style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${it.DESC01||''}">${it.DESC01||it.SKUKEY||''}</td>
+      <td class="left" style="min-width:240px;white-space:normal;word-break:break-all;line-height:1.35" title="${it.DESC01||''}">${it.DESC01||it.SKUKEY||''}</td>
       <td class="split-narrow" style="text-align:right;font-weight:600">${psdFmtNum(orgQty)}</td>
       <td class="split-narrow">${it.UOMKEY||'KG'}</td>
       <td>
@@ -11653,7 +11653,7 @@ function psdOpenSplitModal(items) {
             <thead>
               <tr>
                 <th style="width:28px"></th>
-                <th>납품문서</th><th style="width:70px">아이템</th><th>품목명</th>
+                <th>납품문서</th><th style="width:70px">아이템</th><th style="min-width:240px">품목명</th>
                 <th class="split-narrow" style="text-align:right">원수량</th><th class="split-narrow">단위</th>
                 <th style="text-align:center">분할수량</th>
                 <th class="split-narrow" style="text-align:right">잔량</th><th class="split-narrow">단위</th>
@@ -17106,7 +17106,7 @@ function psopOpenSplitModal(items) {
             <thead>
               <tr>
                 <th style="width:28px"></th>
-                <th>납품문서</th><th style="width:70px">아이템</th><th>품목명</th>
+                <th>납품문서</th><th style="width:70px">아이템</th><th style="min-width:240px">품목명</th>
                 <th class="split-narrow" style="text-align:right">원수량</th><th class="split-narrow">단위</th>
                 <th style="text-align:center">분할수량</th>
                 <th class="split-narrow" style="text-align:right">잔량</th><th class="split-narrow">단위</th>
@@ -17149,7 +17149,7 @@ function psopBuildSplitRow(it, idx, isFirst) {
     ? `<td><input type="checkbox" class="psd-split-chk" data-idx="${idx}" checked></td>
        <td class="left" style="font-family:monospace;font-size:11px">${svbeln}</td>
        <td class="left" style="font-family:monospace;font-size:11px">${sposnr}</td>
-       <td class="left" style="max-width:160px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${it.DESC01||''}">${it.DESC01||it.SKUKEY||''}</td>
+       <td class="left" style="min-width:240px;white-space:normal;word-break:break-all;line-height:1.35" title="${it.DESC01||''}">${it.DESC01||it.SKUKEY||''}</td>
        <td class="split-narrow" style="text-align:right;font-weight:600">${psopFmtNum(orgQty)}</td>
        <td class="split-narrow">${uom}</td>`
     : `<td></td>
@@ -17294,6 +17294,8 @@ async function psopExecuteSplit() {
 
   let successCnt = 0;
   let splitItemCnt = 0;
+  let wmsUnconfirmed = 0;   // WMS 저장이 확정되지 않은(미연동/실패) 건수
+  const failMsgs = [];
   for (const [svbeln, rows] of bySvbeln.entries()) {
     // 요청 payload 의 splits 는 지정된 형식({SVBELN,SPOSNR,skukey,desc01,org_qty,split_qty})만 포함
     const splits = rows.map(r => ({
@@ -17312,61 +17314,44 @@ async function psopExecuteSplit() {
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
-      // 로컬 searchRows 갱신: 원본 잔량(합계 차감) 반영 + 신규 분할 아이템 추가
-      const newItems = data.splits || [];
-      // 원본 QTSHPO 는 (SHPOKY|SHPOIT) 별 1회만 차감 — 합계 사용
-      const decByKey = new Map();
-      rows.forEach(r => {
-        const k = r._shpoky + '|' + r._shpoit;
-        decByKey.set(k, (decByKey.get(k)||0) + r.split_qty);
-      });
-      decByKey.forEach((dec, k) => {
-        const [sk, sit] = k.split('|');
-        const orig = psopState.searchRows.find(x => x.SHPOKY===sk && x.SHPOIT===sit);
-        if (orig) orig.QTSHPO = parseFloat(orig.QTSHPO||0) - dec;
-      });
-      // 신규 분할문서 추가
-      rows.forEach((r, i) => {
-        const orig = psopState.searchRows.find(x => x.SHPOKY===r._shpoky && x.SHPOIT===r._shpoit);
-        const ni = newItems[i];
-        if (ni) {
-          psopState.searchRows.push({
-            SHPOKY:     ni.SHPOKY,
-            SHPOIT:     ni.SHPOIT,
-            SVBELN:     ni.SVBELN || r.SVBELN,
-            SPOSNR:     ni.SPOSNR || r.SPOSNR,
-            SKUKEY:     ni.SKUKEY || r.skukey,
-            DESC01:     ni.DESC01 || r.desc01,
-            UOMKEY:     ni.UOMKEY || orig?.UOMKEY || 'KG',
-            QTSHPO:     ni.QTSHPO ?? r.split_qty,
-            DPTNKY:     orig?.DPTNKY||'',
-            DPTNM:      orig?.DPTNM||'',
-            DOCDAT:     orig?.DOCDAT||'',
-            RQSHPD:     orig?.RQSHPD||'',
-            SHPMTY:     orig?.SHPMTY||'',
-            SHPMTY_NM:  orig?.SHPMTY_NM||'',
-            SKU_TYPE:   orig?.SKU_TYPE||'',
-            INCH:       psopGetInch(ni.SKUKEY||r.skukey||''),
-            IS_SPLIT:   1,
-            ORG_SHPOKY: ni.ORG_SHPOKY,
-            ORG_SHPOIT: ni.ORG_SHPOIT,
-            DISPATCHED: false,
-          });
-        }
-      });
+      // ── WMS 실제 저장 확정 여부 판정 ──
+      //   백엔드 shipmentSplit 응답: { ok, rfc_msg, wms:{ok,status_code,body}, splits }
+      //   실제 SHPDI 분할 저장은 WMS_IFC301(사내망 API)이 수행 → data.wms.ok 가 최종 확정 신호.
+      //   WMS 미연동(개발/사외망) 또는 실패면 서버 원본이 그대로라 재조회 시 원복됨.
+      const wmsOk = data.wms ? !!data.wms.ok : false;
+      if (!wmsOk) {
+        wmsUnconfirmed++;
+        const reason = (data.wms && (data.wms.body || data.wms.error || data.wms.diagnosis))
+          ? String(data.wms.body || data.wms.error || data.wms.diagnosis).slice(0, 120)
+          : 'WMS 저장 응답 없음(미연동/사외망 추정)';
+        failMsgs.push(`납품문서 ${svbeln}: WMS 미확정 — ${reason}`);
+      }
       successCnt++;
       splitItemCnt += rows.length;
     } catch(e) {
-      showToast(`❌ 분할 실패 (납품문서 ${svbeln}): ${e.message}`);
+      failMsgs.push(`납품문서 ${svbeln}: ${e.message}`);
     }
   }
 
   document.getElementById('psop-split-modal')?.remove();
-  if (successCnt) {
-    showToast(`✅ 납품분할 완료 — 납품문서 ${successCnt}건 / 분할 ${splitItemCnt}건`);
-    psopState.selectedDocs.clear();
-    psopRenderDocTable();
-    psopUpdateToolbar();
+  psopState.selectedDocs.clear();
+
+  // ── 결과 통지 ──
+  //   ★ 로컬 searchRows 를 임의로 조작하지 않는다.
+  //     (기존엔 백엔드가 신규 SHPOKY/QTSHPO 를 돌려주지 않아 분할문서가 화면에 안 뜨고,
+  //      재조회 시 서버 원본으로 덮여 '원복'되는 버그가 있었음)
+  //     → WMS 저장이 확정된 경우에만 서버를 재조회(psopSearch)하여 실제 분할문서를 반영한다.
+  if (successCnt && wmsUnconfirmed === 0) {
+    showToast(`✅ 납품분할 완료 — 납품문서 ${successCnt}건 / 분할 ${splitItemCnt}건 · 재조회 중…`);
+    await psopSearch();   // 서버 실제 상태(신규 채번 분할문서 포함) 반영
+  } else if (successCnt && wmsUnconfirmed > 0) {
+    // 요청은 접수됐으나 WMS 저장이 확정되지 않음 → 성공으로 오인하지 않도록 경고
+    showToast(`⚠️ 분할 요청 접수 ${successCnt}건 중 ${wmsUnconfirmed}건 WMS 저장 미확정 — 실제 반영 안 될 수 있습니다. (운영망/WMS 연동 확인 필요)`);
+    if (failMsgs.length) console.warn('[납품분할] WMS 미확정 상세:\n' + failMsgs.join('\n'));
+    await psopSearch();   // 서버 실제 상태로 정합 (미반영 시 원본 유지가 정상)
+  } else {
+    showToast(`❌ 납품분할 실패 — ${failMsgs[0] || '알 수 없는 오류'}`);
+    if (failMsgs.length > 1) console.warn('[납품분할] 실패 상세:\n' + failMsgs.join('\n'));
   }
 }
 
