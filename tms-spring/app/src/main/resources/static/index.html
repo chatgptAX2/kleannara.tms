@@ -20313,8 +20313,8 @@ const DCON_KEY_META = {
   MAX_TON_RATIO:   { label:'최대 중량비율',    unit:'%',  op:'<=', type:'GLOBAL', hint:'차량 적재 허용 상한 (기본 100%)' },
   MIN_FILL_RATIO:  { label:'최소 적재율',      unit:'%',  op:'>=', type:'GLOBAL', hint:'최소 허용 적재율 (기본 0%)' },
   MAX_FILL_RATIO:  { label:'최대 적재율',      unit:'%',  op:'<=', type:'GLOBAL', hint:'초과 배차 방지 상한 (기본 100%)' },
-  ALLOW_MULTI:     { label:'복수 납품처 허용',  unit:'Y/N',op:'=',  type:'GLOBAL', hint:'Y=허용, N=1납품처만' },
-  ALLOW_MIXED_LOAD:{ label:'혼적 허용(원지+판지)', unit:'Y/N', op:'=', type:'GLOBAL', hint:'Y=원지+판지 한 차량 혼적 허용, N=동일 재질만' },
+  ALLOW_MULTI:     { label:'복수 납품처 허용(미사용)',  unit:'Y/N',op:'=',  type:'GLOBAL', hint:'현재 배차엔진 미참조 — 복수 납품처 혼적은 [혼적 허용(복수 납품처)] 사용' },
+  ALLOW_MIXED_LOAD:{ label:'혼적 허용(복수 납품처)', unit:'Y/N', op:'=', type:'GLOBAL', hint:'Y=우편번호 앞3자리 인접 복수 납품처를 한 차량에 혼적, N=동일 납품처만' },
   ALLOW_SPLIT_ITEM:{ label:'납품 분할 허용',   unit:'Y/N', op:'=',  type:'GLOBAL', hint:'Y=허용(차량 초과분 분할), N=단일 차량 강제' },
   MAX_VEHICLES_PER_GROUP:{ label:'그룹당 최대 차량 수', unit:'대', op:'<=', type:'GLOBAL', hint:'0/99=무제한 (초과 시 수동검토 경고)' },
   ENTRY_TON_LIMIT: { label:'진입 톤수 제한',   unit:'ton', op:'<=', type:'GLOBAL', hint:'0=제한없음, >0=해당 톤수 초과 차량 배차 제외' },
@@ -20353,7 +20353,7 @@ const DCON_KEY_META = {
   BOARD_3D_CHECK_YN:{ label:'[판지] 3D 물리검증 활성', unit:'Y/N', op:'=', type:'CARGO', hint:'Y=판지 3D 검증 / N=검증 스킵' },
   BOARD_3D_DEAD_SPACE_PCT:{ label:'[판지] 3D Dead Space 허용', unit:'%', op:'<=', type:'CARGO', hint:'3D 검증 시 여유 마진 허용비율 (0=허용안함)' },
   /* CARGO — 혼적(Mixed) */
-  MIX_3D_CHECK_YN:{ label:'[혼적] 3D 물리검증 활성', unit:'Y/N', op:'=', type:'CARGO', hint:'Y=원지+판지 혼적 3D 검증 / N=검증 스킵' },
+  MIX_3D_CHECK_YN:{ label:'[혼적] 3D 물리검증 활성', unit:'Y/N', op:'=', type:'CARGO', hint:'혼적(원지+판지) 3D 검증 파라미터 — 현재 배차는 재질별 차량 분리로 미동작(예약)' },
   /* COST */
   PENALTY_RATE:    { label:'초과적재 패널티 배수', unit:'x', op:'=', type:'COST', hint:'MIN_COST 목적식 초과 패널티 (기본 3.0)' },
   COST_PENALTY_OVER:{ label:'초과적재 패널티 배수(대체키)', unit:'x', op:'=', type:'COST', hint:'초과 시 비용 패널티 (기본 1.5)' },
