@@ -15076,6 +15076,7 @@ function _psopVehRenderDocs(pid) {
   }
 
   const tbody = items.map(it => {
+    const sk       = (it.SKUKEY||'').trim();
     const uom      = (it.UOMKEY||'KG').trim();
     const qty      = Number(it.QTSHPO||0).toLocaleString();
     const dptnm    = it.DPTNM || it.DPTNKYNM || it.DPTNKY || '-';
