@@ -20353,7 +20353,8 @@ const DCON_KEY_META = {
   BOARD_3D_CHECK_YN:{ label:'[판지] 3D 물리검증 활성', unit:'Y/N', op:'=', type:'CARGO', hint:'Y=판지 3D 검증 / N=검증 스킵' },
   BOARD_3D_DEAD_SPACE_PCT:{ label:'[판지] 3D Dead Space 허용', unit:'%', op:'<=', type:'CARGO', hint:'3D 검증 시 여유 마진 허용비율 (0=허용안함)' },
   /* CARGO — 혼적(Mixed) */
-  MIX_3D_CHECK_YN:{ label:'[혼적] 3D 물리검증 활성', unit:'Y/N', op:'=', type:'CARGO', hint:'혼적(원지+판지) 3D 검증 파라미터 — 현재 배차는 재질별 차량 분리로 미동작(예약)' },
+  ALLOW_MATERIAL_MIX:{ label:'원지+판지 혼적 허용', unit:'Y/N', op:'=', type:'CARGO', hint:'Y=원지 차량의 여유공간(바닥 Y축)에 판지를 함께 적재하여 한 차량에 혼적 / N=재질별 차량 분리 배차(원지·판지 각각 별도 차량)' },
+  MIX_3D_CHECK_YN:{ label:'[혼적] 3D 물리검증 활성', unit:'Y/N', op:'=', type:'CARGO', hint:'혼적(원지+판지) 3D 검증 파라미터 — 배치 검증 예약 항목' },
   /* COST */
   PENALTY_RATE:    { label:'초과적재 패널티 배수', unit:'x', op:'=', type:'COST', hint:'MIN_COST 목적식 초과 패널티 (기본 3.0)' },
   COST_PENALTY_OVER:{ label:'초과적재 패널티 배수(대체키)', unit:'x', op:'=', type:'COST', hint:'초과 시 비용 패널티 (기본 1.5)' },

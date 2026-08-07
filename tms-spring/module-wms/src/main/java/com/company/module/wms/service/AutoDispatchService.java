@@ -246,11 +246,23 @@ public class AutoDispatchService {
             boolean isMixedLoad = !rollItems.isEmpty() && !boardItems.isEmpty();
 
             // ── 원지 배차 (FFD/BFD BinPacking) ───────────────────
+            int rollVehStart = allVehicles.size();
             if (!rollItems.isEmpty()) {
                 processRollItems(rollItems, dptnky, dptnm, rqshpd, validCars, vehInfo,
                     carOrder, inchMaps, skumaMap, routeCostMap, ptnrInfoMap,
                     objective, cp, pid, prof, isMixedGroup, isMixedLoad, isDynBlocked,
                     pi, allVehicles);
+            }
+            int rollVehEnd = allVehicles.size();
+
+            // ── 원지+판지 재질 혼적 (ALLOW_MATERIAL_MIX=Y) 후처리 post-fill ──
+            //  원지 차량의 여유(중량 + 바닥 길이 Y축)에 판지를 실어 별도 판지 차량 발생을
+            //  줄인다. 판지는 원지 옆 빈 바닥에 배치(원지 위 적재 아님) → 파손/3D 충돌 회피.
+            //  담지 못한 판지만 아래 processBoardItems 로 별도 배차.
+            if (cp.materialMix && isMixedLoad && rollVehEnd > rollVehStart && !boardItems.isEmpty()) {
+                boardItems = fillBoardsIntoRollVehicles(
+                    boardItems, allVehicles, rollVehStart, rollVehEnd,
+                    vehInfo, skumaMap, cp);
             }
 
             // ── 판지 배차 (CBM + 중량 이중 한계) ─────────────────
@@ -808,6 +820,113 @@ public class AutoDispatchService {
             vrow.put("max_ton_label", pi.maxTonLabel);
             allVehicles.add(vrow);
         }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  원지+판지 재질 혼적 후처리 (ALLOW_MATERIAL_MIX=Y)
+    // ════════════════════════════════════════════════════════════════
+    //  원지 차량(방금 배차된 rollVehStart..rollVehEnd)의 남은 여유 공간에
+    //  판지를 실어 별도 판지 차량 발생을 줄인다.
+    //  물리 모델: 판지는 원지 위에 쌓지 않고, 원지가 차지하지 않은 "바닥 길이(Y축)
+    //  빈 구간"에 세로로 나란히 적재한다(엑셀 §4-1 원지하단/판지상단 취지 준수, 3D 충돌 회피).
+    //  각 원지 차량에 대해 아래 3개 제약을 모두 만족하는 판지만 greedy 로 이동한다.
+    //    ① 여유 중량   : spare_kg          >= 판지 중량
+    //    ② 여유 바닥길이: (100-원지바닥점유%)/100 × 차량길이(m) >= 판지 바닥 점유 길이(m)
+    //    ③ 높이        : 판지 적재높이     <= 차량 유효높이(effectiveHeightM)
+    //  담지 못한 판지는 리스트로 반환 → 호출부에서 processBoardItems 로 별도 배차.
+    private List<Map<String, Object>> fillBoardsIntoRollVehicles(
+        List<Map<String, Object>> boardItems,
+        List<Map<String, Object>> allVehicles,
+        int rollVehStart, int rollVehEnd,
+        Map<String, VehInfo> vehInfo,
+        Map<String, SkuInfo> skumaMap,
+        ConstraintParams cp
+    ) {
+        // 큰 판지부터(무게 큰 순) 채워 넣어 여유공간 활용도 향상
+        List<Map<String, Object>> remaining = new ArrayList<>(boardItems);
+        remaining.sort((a, b) -> Double.compare(
+            boardKg(b, skumaMap), boardKg(a, skumaMap)));
+
+        for (int vi = rollVehStart; vi < rollVehEnd && !remaining.isEmpty(); vi++) {
+            Map<String, Object> rv = allVehicles.get(vi);
+            if (!"ROLL".equals(str(rv.get("material_type")))) continue;
+
+            String cartype = str(rv.get("cartype"));
+            VehInfo vInfo  = vehInfo.getOrDefault(cartype, VehInfo.EMPTY);
+            if (vInfo.loadKg <= 0 || vInfo.lengthM <= 0 || vInfo.widthM <= 0) continue;
+
+            // 현재 원지 차량의 여유 자원
+            double spareKg     = dbl(rv.get("spare_kg"));
+            double rollFloorPct = dbl(rv.get("physics3d_roll_floor_pct")); // 원지 바닥 점유율(%)
+            double vehLenM     = vInfo.lengthM;
+            double vehWidM     = vInfo.widthM;
+            double vehEffH     = vInfo.effectiveHeightM > 0 ? vInfo.effectiveHeightM : vInfo.heightM;
+            // 여유 바닥 길이(Y축, m). 원지 바닥 점유율이 비정상(0/미검증)이면 안전하게 여유 없음 처리 회피 위해
+            // 점유율 0~100 범위로 clamp.
+            double usedPct     = Math.max(0.0, Math.min(100.0, rollFloorPct));
+            double spareFloorLenM = (100.0 - usedPct) / 100.0 * vehLenM;
+            double vehFloorAreaSpare = spareFloorLenM * vehWidM;  // 여유 바닥 면적(m²)
+
+            if (spareKg <= 0 || spareFloorLenM <= 0.01) continue;
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> rvItems = (List<Map<String, Object>>) rv.get("items");
+            @SuppressWarnings("unchecked")
+            List<String> rvNotes = (List<String>) rv.get("notes");
+
+            double usedKg = 0, usedFloorAreaM2 = 0;
+            List<Map<String, Object>> moved = new ArrayList<>();
+
+            Iterator<Map<String, Object>> it = remaining.iterator();
+            while (it.hasNext()) {
+                Map<String, Object> bi = it.next();
+                double bKg = boardKg(bi, skumaMap);
+                if (bKg <= 0) continue;
+
+                // 판지 적재 높이/바닥 면적 산정
+                double bH   = Math.min(calcBoardHeight(bi, skumaMap), cp.maxBoardHeightM);
+                if (bH <= 0) bH = cp.maxBoardHeightM;
+                double bCbm = getItemCbm(bi, skumaMap);
+                // 바닥 점유 면적 = 부피 / 적재높이 (근사). 높이 0 방어.
+                double bFloorArea = bH > 0 ? bCbm / bH : bCbm / Math.max(0.1, cp.maxBoardHeightM);
+
+                // ① 여유 중량  ② 여유 바닥 면적  ③ 높이 제약
+                boolean okKg   = (usedKg + bKg) <= spareKg;
+                boolean okArea = (usedFloorAreaM2 + bFloorArea) <= vehFloorAreaSpare;
+                boolean okH    = bH <= vehEffH + 0.001;
+
+                if (okKg && okArea && okH) {
+                    usedKg          += bKg;
+                    usedFloorAreaM2 += bFloorArea;
+                    moved.add(bi);
+                    it.remove();
+                }
+            }
+
+            if (!moved.isEmpty()) {
+                // 원지 차량 vrow 갱신 (중량/여유/적재율/품목/재질 표시)
+                rvItems.addAll(moved);
+                double newKg   = dbl(rv.get("total_kg")) + usedKg;
+                double cap     = dbl(rv.get("load_cap"));
+                double newFill = cap > 0 ? newKg / cap * 100 : 0;
+                rv.put("total_kg",    round2(newKg));
+                rv.put("spare_kg",    round2(cap - newKg));
+                rv.put("fill_ratio",  round2(newFill));
+                rv.put("item_cnt",    rvItems.size());
+                rv.put("material_type", "MIXED");        // 원지+판지 혼적 차량
+                rv.put("material_mix_yn", "Y");
+                rv.put("board_moved_cnt", moved.size());
+                rv.put("board_moved_kg",  round2(usedKg));
+                double floorUsePct = vehFloorAreaSpare > 0
+                    ? usedFloorAreaM2 / vehFloorAreaSpare * 100 : 0;
+                rvNotes.add(String.format(
+                    "[재질혼적] 원지 차량 여유공간에 판지 %d건(%.0fkg) 혼적 적재 " +
+                    "(여유중량 %.0fkg / 여유바닥길이 %.2fm 사용, 판지 바닥점유 %.0f%%)",
+                    moved.size(), usedKg, spareKg, spareFloorLenM, floorUsePct));
+                rvNotes.add("[재질혼적-배치] 판지는 원지 미점유 바닥구간(Y축)에 나란히 적재 — 원지 위 적재 금지");
+            }
+        }
+        return remaining;  // 담지 못한 판지 (별도 배차 대상)
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -1554,6 +1673,8 @@ public class AutoDispatchService {
         cp.boardMinFill     = bMin >= 0 ? bMin / 100.0 : cp.minFill;
         cp.allowSplit       = cbool(C, "ALLOW_SPLIT_ITEM",          true);
         cp.allowMixedLoad   = cbool(C, "ALLOW_MIXED_LOAD",          false);
+        // ── 원지+판지 재질 혼적 허용 (신규): Y=한 차량에 원지+판지 혼적, N=재질별 분리 ──
+        cp.materialMix      = cbool(C, "ALLOW_MATERIAL_MIX",        false);
         // ── 롤 최대 적재 단수: MAX_ROLL_STACK_TIER 우선, 미설정 시 중복키 ROLL_MAX_TIER 폴백 ──
         double maxStackVal  = cfloatMulti(C, 2.0, "MAX_ROLL_STACK_TIER", "ROLL_MAX_TIER");
         cp.maxStack         = (int) maxStackVal;
@@ -1702,6 +1823,7 @@ public class AutoDispatchService {
         double penalty = 1.5, boardMinFill = 0.0, maxBoardHeightM = 2.4;
         int maxStack = 2;
         boolean allowSplit = true, allowMixedLoad = false;
+        boolean materialMix = false;       // 원지+판지 재질 혼적 허용 (ALLOW_MATERIAL_MIX)
         boolean boardBulkIntOnly = true, boardInnerSplit = true;
 
         // ── 신규 반영 제약조건 ──
