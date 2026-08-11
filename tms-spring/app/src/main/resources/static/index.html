@@ -23970,8 +23970,17 @@ async function _dconSpSave() {
       const origVal = String(match.CONST_VALUE ?? '');
       newItems.push({ const_id: match.CONST_ID, active_yn: yn, param_value: val && val !== origVal ? val : null });
     } else {
-      showToast(`신규 행 "${key}": DB에서 해당 제약조건을 찾을 수 없습니다 (마스터 등록 필요)`, 'warn');
-      return;
+      /* 마스터 미존재(신규 파라미터 키: ALLOW_MATERIAL_MIX 등) → const_id 없이 키 정보 전송.
+         백엔드(setItemsSave)에서 DS_DISPATCH_CONST 마스터를 find-or-create 후 저장한다. */
+      newItems.push({
+        const_id: null,
+        const_key: key,
+        const_type: r.CONST_TYPE || tab || 'GLOBAL',
+        const_op: op,
+        target_id: tid || null,
+        param_value: val || null,
+        active_yn: yn
+      });
     }
   }
 
