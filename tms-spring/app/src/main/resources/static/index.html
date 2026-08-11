@@ -10505,12 +10505,18 @@ function _lvRenderLoadCanvas2D(canvas, wrap, items, veh, view) {
     s.tierH  = Math.max(s.tierH, b.h);
     s.tiers  = Math.max(s.tiers, b.tier||1);
   });
-  let _profileMm = 0;
-  Array.from(_byItem.values()).forEach((s,i) => { _profileMm += s.footMm + (i>0?GAP_MM:0); });
+  // [수정] 화면 가로축 = max(차량 가로규격, 실제 배치가 점유한 최대 좌표).
+  //  기존 _profileMm(품목 나란히 누적폭)은 정면뷰 다열 오인 원인이라 폐기하고,
+  //  실제 배치 좌표(정면=x+w, 측면=y+l)의 최댓값을 사용한다.
+  let _placedMaxMm = 0;
+  (placement.blocks||[]).forEach(b => {
+    const end = isFront ? (b.x + b.w) : (b.y + b.l);
+    if (end > _placedMaxMm) _placedMaxMm = end;
+  });
 
   // 세로축(높이) 최대 = 파렛트 + 유효높이
   const carAxisXmm = isFront ? carWmm : carLmm;         // 실제 차량 가로 규격(mm)
-  const axisXmm = Math.max(carAxisXmm, _profileMm);     // 화면 가로축 = max(차량규격, 프로파일 총 폭)
+  const axisXmm = Math.max(carAxisXmm, _placedMaxMm);   // 화면 가로축 = max(차량규격, 실제 점유)
   const axisYmm = (effHgt + palHgt) * 1000.0;   // 화면 세로축(mm)
 
   /* ── 캔버스 크기 (규격 표시용 여백 확대) ── */
@@ -10582,58 +10588,102 @@ function _lvRenderLoadCanvas2D(canvas, wrap, items, veh, view) {
        · 세로축 = 높이. 각 품목은 파렛트 위(palHmm)부터 단(段)을 여백 없이 붙여 쌓고
          단 경계는 구분선으로 구분. 품목/파렛트/옆품목 어디와도 겹치지 않는다. */
   const legendItems = [];
+  let _psdView3dColNote = '';   // 정면뷰 폭방향 열 수 안내 배지
 
-  // 품목(idx)별 통계는 SCALE 계산 전에 선산출한 _byItem 재사용
-  const byItem = _byItem;
-
-  // 품목을 가로축으로 나란히 누적 배치(겹침 방지). 품목 사이 GAP_MM 간격.
+  /* ── ★ 실제 배치 좌표(placement.blocks) 투영 렌더 ──────────────────
+     [수정] 기존에는 품목을 화면 가로축에 '나란히 누적'하는 프로파일 표현이라,
+     실제로는 길이(Y)방향으로 늘어선 품목이 정면뷰에서 폭(X)방향 여러 열처럼
+     보여 3D(1열)와 불일치했다(정면뷰 2열 오인 버그).
+     → 이제 정면뷰=X(폭)×Z(높이), 측면뷰=Y(길이)×Z(높이) 실제 좌표를 그대로
+        투영한다. 폭 방향 실제 열 수(cols)/지그재그 배치가 3D와 정확히 일치한다.
+     · 정면뷰: 가로 = 블록 실제 x(폭 위치), 세로 = z(높이)
+     · 측면뷰: 가로 = 블록 실제 y(길이 위치), 세로 = z(높이)
+     · 깊이(정면=y, 측면=x)가 큰 블록을 먼저(뒤) 그리고 작은 블록을 나중(앞)에
+       그려 최전면 블록이 위에 오도록 painter's algorithm 적용. */
   const drawn = [];
-  let cursorMm = 0;
-  Array.from(byItem.keys()).sort((a,b)=>a-b).forEach(idx => {
-    const s = byItem.get(idx);
-    const gStart = cursorMm;
-    const x0 = sx(gStart)+1, w0 = Math.max(2, s.footMm*SCALE-2);
-    let stackZ = palHmm;   // ★ 파렛트 위부터 적재 → 파렛트와 겹침 방지
-    for (let t = 1; t <= s.tiers; t++) {
-      const zTop = stackZ + s.tierH;
-      const yTop = syTop(zTop)+0.5, h0 = Math.max(2, s.tierH*SCALE-1);
-      const cxc = x0 + w0/2, cyc = yTop + h0/2;
 
-      /* 평면 사각형 (불투명 → 겹침 오인 방지) */
-      ctx.globalAlpha = 1.0;
-      ctx.fillStyle = s.color;
+  // 화면 가로축 매핑: 정면=x, 측면=y / 깊이축: 정면=y, 측면=x
+  const projStart = b => isFront ? b.x : b.y;      // 가로 시작(mm)
+  const projFoot  = b => isFront ? b.w : b.l;      // 가로 점유(mm)
+  const projDepth = b => isFront ? b.y : b.x;      // 깊이(뒤→앞 정렬용)
+
+  // 뒤(깊이 큰)→앞(깊이 작은) 정렬: 앞 블록이 나중에 그려져 위에 겹침
+  const sorted = (placement.blocks || []).slice().sort((a,b)=>{
+    const d = projDepth(b) - projDepth(a);         // 깊이 내림차순(뒤 먼저)
+    if (Math.abs(d) > 0.5) return d;
+    return (a.z||0) - (b.z||0);                    // 같은 깊이면 아래 단 먼저
+  });
+
+  sorted.forEach(b => {
+    const gStart = projStart(b);
+    const footMm = projFoot(b);
+    const zBot   = b.z || 0;              // 블록 하단 높이(파렛트 포함 이미 반영)
+    const zTop   = zBot + (b.h || 0);
+    const x0 = sx(gStart)+1, w0 = Math.max(2, footMm*SCALE-2);
+    const yTop = syTop(zTop)+0.5, h0 = Math.max(2, (b.h||0)*SCALE-1);
+    const cxc = x0 + w0/2, cyc = yTop + h0/2;
+
+    ctx.globalAlpha = 1.0;
+    if (b.cyl) {
+      /* 원통(원지): 정면/측면 모두 지름=footMm 인 '기둥' 단면(둥근 상하) */
+      ctx.fillStyle = b.color;
       ctx.fillRect(x0, yTop, w0, h0);
-      ctx.strokeStyle = _psdDarken(s.color,.35); ctx.lineWidth = 1;
+      ctx.strokeStyle = _psdDarken(b.color,.35); ctx.lineWidth = 1;
       ctx.strokeRect(x0, yTop, w0, h0);
-
-      /* 단(段) 구분선 — 2단 이상이면 아래 단과의 경계를 굵은 선으로 표시 */
-      if (t > 1) {
-        ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(x0-0.5, yTop+h0); ctx.lineTo(x0+w0+0.5, yTop+h0); ctx.stroke();
-        ctx.strokeStyle = 'rgba(253,224,71,.95)'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(x0, yTop+h0-0.5); ctx.lineTo(x0+w0, yTop+h0-0.5); ctx.stroke();
-      }
-
-      /* 단수 표시 — 요청: '1단','2단' 형태(해당 단 번호만) */
-      if (w0 > 20 && h0 > 14) {
-        ctx.fillStyle='rgba(255,255,255,.95)';
-        ctx.font=`bold ${Math.min(12, w0*.3)}px sans-serif`; ctx.textAlign='center';
-        ctx.fillText(`${t}단`, cxc, cyc+3);
-      }
-
-      drawn.push({ idx, topMm: zTop, xMidMm: gStart + s.footMm/2, color: s.color });
-      stackZ = zTop;
+      /* 원통 좌우 곡면 음영(원기둥 느낌) */
+      const grad = ctx.createLinearGradient(x0, 0, x0+w0, 0);
+      grad.addColorStop(0,   'rgba(0,0,0,.28)');
+      grad.addColorStop(.5,  'rgba(255,255,255,.14)');
+      grad.addColorStop(1,   'rgba(0,0,0,.28)');
+      ctx.fillStyle = grad; ctx.fillRect(x0, yTop, w0, h0);
+    } else {
+      /* 판지(직육면체) 평면 사각형 */
+      ctx.fillStyle = b.color;
+      ctx.fillRect(x0, yTop, w0, h0);
+      ctx.strokeStyle = _psdDarken(b.color,.35); ctx.lineWidth = 1;
+      ctx.strokeRect(x0, yTop, w0, h0);
     }
 
-    /* 범례 (품목별 1회) */
-    const vz = vizItems[idx] || {};
-    if (vz.type === 'roll')
-      legendItems.push({ color:s.color, label:`${vz.label} (롤×${vz.rollCount}, Ø${(vz.diamMm/10).toFixed(0)}cm, 폭${(vz.widMm/10).toFixed(0)}cm, ${s.tiers}단)` });
-    else if (vz.type === 'board')
-      legendItems.push({ color:s.color, label:`${vz.label} (판지 ${psdFmtNum(vz.reams)}연, H${((vz.fullStackHgtM||vz.stackHgtM)*100).toFixed(0)}cm, ${s.tiers}단)` });
+    /* 단(段) 구분선 — 2단 이상 블록의 아래 경계 표시 */
+    if ((b.tier||1) > 1) {
+      ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x0-0.5, yTop+h0); ctx.lineTo(x0+w0+0.5, yTop+h0); ctx.stroke();
+      ctx.strokeStyle = 'rgba(253,224,71,.95)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x0, yTop+h0-0.5); ctx.lineTo(x0+w0, yTop+h0-0.5); ctx.stroke();
+    }
 
-    cursorMm = gStart + s.footMm + GAP_MM;
+    /* 단수 표시 */
+    if (w0 > 20 && h0 > 14) {
+      ctx.fillStyle='rgba(255,255,255,.95)';
+      ctx.font=`bold ${Math.min(12, w0*.3)}px sans-serif`; ctx.textAlign='center';
+      ctx.fillText(`${b.tier||1}단`, cxc, cyc+3);
+    }
+
+    drawn.push({ idx:b.idx, topMm: zTop, xMidMm: gStart + footMm/2, color: b.color });
   });
+
+  /* ── 범례 (품목별 1회) ── */
+  const _legSeen = new Set();
+  (placement.blocks||[]).forEach(b => {
+    if (_legSeen.has(b.idx)) return; _legSeen.add(b.idx);
+    const vz = vizItems[b.idx] || {};
+    if (vz.type === 'roll')
+      legendItems.push({ color:vz.color, label:`${vz.label} (롤×${vz.rollCount}, Ø${(vz.diamMm/10).toFixed(0)}cm, 폭${(vz.widMm/10).toFixed(0)}cm, ${b.totalTiers||1}단)` });
+    else if (vz.type === 'board')
+      legendItems.push({ color:vz.color, label:`${vz.label} (판지 ${psdFmtNum(vz.reams)}연, H${((vz.fullStackHgtM||vz.stackHgtM)*100).toFixed(0)}cm)` });
+  });
+
+  /* ── ★ 폭방향 실제 열(cols) 안내 배지 (정면뷰 전용) ──
+     실제 배치된 폭 방향 열 수를 표기해 '왜 1열/2열인지' 즉시 파악 가능. */
+  if (isFront) {
+    const rollBlocks = (placement.blocks||[]).filter(b=>b.cyl);
+    if (rollBlocks.length > 0) {
+      const xs = Array.from(new Set(rollBlocks.map(b=>Math.round(b.x)))).sort((a,b)=>a-b);
+      const nCols = xs.length;
+      const zz = placement.meta && placement.meta.rollZigzag;
+      _psdView3dColNote = `원지 폭방향 ${nCols}열 배치${zz?' (지그재그 네스팅)':''}`;
+    } else _psdView3dColNote = '';
+  }
 
   /* ── 품목 높이 수치 표시 (아이템별 최상단에 총 적재높이) ── */
   const topByItem = {};   // idx → {topMm, xMid(mm), color}
@@ -10684,7 +10734,8 @@ function _lvRenderLoadCanvas2D(canvas, wrap, items, veh, view) {
   //  좌상단: 차량/적재정보
   ctx.fillStyle = '#64748b'; ctx.font='10px sans-serif'; ctx.textAlign='left';
   ctx.fillText(
-    (isFront ? `정면뷰(폭×높이)` : `측면뷰(길이×높이)`) + (loadKg ? `  │  적재가능 ${psdFmtNum(loadKg)} KG` : ''),
+    (isFront ? `정면뷰(폭×높이)` : `측면뷰(길이×높이)`) + (loadKg ? `  │  적재가능 ${psdFmtNum(loadKg)} KG` : '')
+      + (_psdView3dColNote ? `  │  ${_psdView3dColNote}` : ''),
     ox, oy - 40 < 12 ? 12 : oy - 40
   );
 
