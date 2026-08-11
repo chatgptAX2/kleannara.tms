@@ -536,7 +536,7 @@ public class AutoDispatchService {
             VehInfo vi3d  = vehInfo.getOrDefault(vehCar, VehInfo.EMPTY);
             RollPhysics3D rp3d;
             if (cp.roll3dCheck) {
-                rp3d = verifyRolls3D(b.items, skumaMap, vi3d, cp);
+                rp3d = verifyRolls3D(b.items, skumaMap, vi3d, cp, inchMaps, vehCar);
             } else {
                 rp3d = RollPhysics3D.fail("[3D-원지검증] 비활성화(ROLL_3D_CHECK_YN=N) — 스킵");
                 rp3d.fits = true;  // 검증 스킵 시 업그레이드 로직 미동작하도록 통과 처리
@@ -551,7 +551,7 @@ public class AutoDispatchService {
                     String ct = str(c.get("CARTYPE"));
                     if (sortKey(ct, carOrder) >= sortKey(vehCar, carOrder)) continue;
                     VehInfo cvi = vehInfo.getOrDefault(ct, VehInfo.EMPTY);
-                    RollPhysics3D rp3dUp = verifyRolls3D(b.items, skumaMap, cvi, cp);
+                    RollPhysics3D rp3dUp = verifyRolls3D(b.items, skumaMap, cvi, cp, inchMaps, ct);
                     if (rp3dUp.fits) {
                         notes.add(String.format("[3D-원지-업그레이드] %s→%s (3D 공간 부족 해소)", vehCar, ct));
                         vehCar = ct; upgraded3d = true;
@@ -598,6 +598,8 @@ public class AutoDispatchService {
             vrow.put("physics3d_roll_fits",        rp3d.fits);
             vrow.put("physics3d_roll_floor_pct",   round2(rp3d.usedFloorRatio));
             vrow.put("physics3d_roll_stack_height", round2(rp3d.stackHeightM));
+            // 프런트 적재 시각화(_lvComputePlacement)와 동일 배치를 위한 DS_INCH 기반 레이아웃
+            vrow.put("roll_layout",   rp3d.rollLayout);
             vrow.put("is_mixed",      isMixedGroup);
             vrow.put("is_mixed_load", isMixedLoad);
             vrow.put("mixed_dptnm",   isMixedGroup ? dptnm : "");
@@ -1879,6 +1881,10 @@ public class AutoDispatchService {
         double  stackHeightM;   // 최고 단 높이 (m)
         String  summary;        // 요약 메시지
         List<String> layerNotes = new ArrayList<>(); // 레이어별 배치 상세
+        // ── 프런트 적재 시각화(_lvComputePlacement)와 동일 배치를 위한 레이아웃 정보 ──
+        //  각 직경 레이어별: 열수(cols)/지그재그(zz)/1단수량(tier1Count)/단수(maxTiers)/
+        //  가로폭(footMm)/높이(widthMm)/직경(diamMm)/총롤수(rolls)
+        List<Map<String, Object>> rollLayout = new ArrayList<>();
 
         static RollPhysics3D fail(String reason) {
             RollPhysics3D r = new RollPhysics3D();
@@ -1912,7 +1918,8 @@ public class AutoDispatchService {
      */
     private RollPhysics3D verifyRolls3D(List<Map<String, Object>> items,
                                          Map<String, SkuInfo> skumaMap,
-                                         VehInfo vi, ConstraintParams cp) {
+                                         VehInfo vi, ConstraintParams cp,
+                                         InchMaps inchMaps, String cartype) {
         double carWmm = vi.widthM  * 1000.0;   // 차량 너비 (mm)
         double carLmm = vi.lengthM * 1000.0;   // 차량 길이 (mm)
         // ── 원지 다단 적재 최고높이 = 차량 톤수별 가용높이(effectiveHeightM) ──
@@ -1967,10 +1974,25 @@ public class AutoDispatchService {
             double footMm  = rollFootprintWidthMm(sk);
             if (footMm <= 0) footMm = diamMm;
 
+            // ── DS_INCH 기준 1단 적재 가능 개수 조회 (차량 톤수·인치·평량별) ──
+            //  차량유형관리 DS_INCH12/DS_INCH3.MAX_COUNT.
+            //  ※ 같은 인치라도 평량(GRM_COND: GE300/LT300)에 따라 개수 다름.
+            String inch = getInch(sk);
+            String grm  = getGrm(sk);
+            int tier1   = 0;
+            if (inchMaps != null && cartype != null) {
+                Map<String, Integer> im = "12인치".equals(inch)
+                        ? inchMaps.inch12.getOrDefault(cartype, Collections.emptyMap())
+                        : "3인치".equals(inch)
+                            ? inchMaps.inch3.getOrDefault(cartype, Collections.emptyMap())
+                            : Collections.emptyMap();
+                tier1 = im.getOrDefault(grm, 0);
+            }
+
             // 직경 50mm 단위 버킷으로 그룹화 (소수점 오차 흡수)
             int bucket = (int)(Math.ceil(diamMm / 50.0) * 50);
             layerMap.computeIfAbsent(bucket, k -> new RollLayer(k, finalWidthMm))
-                    .addRolls(qty, widthMm, diamMm, footMm);
+                    .addRolls(qty, widthMm, diamMm, footMm, tier1, inch, grm);
         }
 
         if (totalRolls == 0) return RollPhysics3D.fail("원통형 롤 없음");
@@ -1993,28 +2015,74 @@ public class AutoDispatchService {
             double footMm  = layer.repFootMm > 0 ? layer.repFootMm : diamMm; // 가로폭(=너비)
 
             // 세워 적재(수직 원통): 바닥 원 지름 = 가로폭(너비=footMm).
-            //  straight 로 2열 미만이면 지그재그(네스팅)로 열수 확대 시도(A안: 겹침 없음).
-            int[] plan   = planRollCols(footMm, carWmm);
-            int cols     = plan[0];
-            boolean zz   = plan[1] == 1;
+            //  ── 열(X) 배치 판정 (Req D) ──────────────────────────────
+            //  ① 원지 너비(footMm) vs 적재함 너비(carWmm) 비교로 평행/지그재그 판정.
+            //     · 2열 평행(밀착) 가능(2×footMm ≤ carWmm) → 평행 2열.
+            //     · 평행 2열 불가 → 지그재그(원지 사이 간격을 띄워) 2열 시도.
+            //  ② 1단 적재 개수는 차량유형관리 DS_INCH MAX_COUNT(tier1Count)를 기준으로 함.
+            //     (DS_INCH 매핑 없으면 기하학적 planRollCols 로 fallback)
+            int cols;
+            boolean zz;
+            boolean straight2 = (footMm * 2.0 <= carWmm);           // 평행 2열(밀착) 가능?
+            if (straight2) {
+                cols = Math.max(2, (int) (carWmm / footMm)); zz = false;
+            } else {
+                // 평행 2열 불가 → 지그재그로 2열 이상 가능한지 기하 판정(√3/2 네스팅).
+                int[] plan = planRollCols(footMm, carWmm);
+                cols = plan[0]; zz = (plan[1] == 1);
+            }
+
             // 세워 적재: 1단 높이 = 원지 높이(widthMm)+단간격. 높이가 차량 가용높이보다 작아야 2단 이상 가능.
             final double ROLL_TIER_GAP_MM = 30.0; // 단 사이 물리 간격(시뮬레이션과 일치)
             int maxTiers = Math.max(1, Math.min(cp.maxStack, (int)((heightCapMm + ROLL_TIER_GAP_MM) / (widthMm + ROLL_TIER_GAP_MM))));
-            int perSlice = cols * maxTiers; // footMm 깊이 슬라이스(사이클)당 수용 롤 수 = 열 × 단
 
-            // 이 레이어에 필요한 길이(Y) = ceil(layer.totalRolls / perSlice) 사이클 × footMm.
-            //  지그재그면 홀수열 offset(footMm/2) 만큼 Y 여유가 추가로 필요(마지막 사이클 tail).
-            int rows = (int) Math.ceil((double) layer.totalRolls / perSlice);
-            double layerLengthMm = rows * footMm + (zz && rows > 0 ? footMm / 2.0 : 0.0);
-            usedLengthMm += layerLengthMm;
+            // ── 1단 적재 총 개수 결정 ────────────────────────────────
+            //  DS_INCH MAX_COUNT(tier1Count) 가 있으면 그 값을 1단 총 개수의 상한으로 사용.
+            //  없으면 (cols × 차량길이수용행) 기하 추정으로 fallback.
+            int tier1Count = layer.tier1Count;                      // DS_INCH 1단 총 개수
+            boolean useInch = tier1Count > 0;
 
-            int layerCap = rows * perSlice;
-            totalCap += layerCap;
+            int perSlice, rows;
+            double layerLengthMm;
+            if (useInch) {
+                // 1단 = tier1Count 개를 cols 열로 분배 → 길이방향 행 수 = ceil(tier1Count/cols).
+                //  전체 롤은 1단(tier1Count) 단위로 maxTiers 단까지 적층.
+                //  차량 길이(Y) 점유는 "필요 단수 만큼의 1단 배치"가 아니라 1단 바닥 점유 × (1단이 여러 배치면 반복).
+                int floorGroups = (int) Math.ceil((double) layer.totalRolls / Math.max(1, tier1Count * maxTiers));
+                rows = (int) Math.ceil((double) tier1Count / Math.max(1, cols)) * Math.max(1, floorGroups);
+                perSlice = cols * maxTiers;
+                layerLengthMm = rows * footMm + (zz && rows > 0 ? footMm / 2.0 : 0.0);
+                usedLengthMm += layerLengthMm;
+                totalCap += tier1Count * maxTiers * floorGroups;
+            } else {
+                perSlice = cols * maxTiers; // footMm 깊이 슬라이스(사이클)당 수용 롤 수 = 열 × 단
+                rows = (int) Math.ceil((double) layer.totalRolls / perSlice);
+                layerLengthMm = rows * footMm + (zz && rows > 0 ? footMm / 2.0 : 0.0);
+                usedLengthMm += layerLengthMm;
+                totalCap += rows * perSlice;
+            }
 
             result.layerNotes.add(String.format(
-                "[3D-원지(세워적재)] 직경그룹%dmm/가로폭(너비)%dmm/높이%dmm: 롤%d개 / 배치=%d열%s×%d단(높이기준)×%d행 / Y축점유=%.0fmm",
-                (int)diamMm, (int)footMm, (int)widthMm, layer.totalRolls, cols,
-                zz ? "(지그재그)" : "", maxTiers, rows, layerLengthMm));
+                "[3D-원지(세워적재)] 직경그룹%dmm/가로폭(너비)%dmm/높이%dmm: 롤%d개 / %s / 배치=%d열%s×%d단(높이기준)×%d행 / Y축점유=%.0fmm",
+                (int)diamMm, (int)footMm, (int)widthMm, layer.totalRolls,
+                useInch ? String.format("1단수량(DS_INCH %s/%s)=%d개", layer.inchLabel, layer.grmCond, tier1Count)
+                        : "1단수량(기하추정)",
+                cols, zz ? "(지그재그)" : "(평행)", maxTiers, rows, layerLengthMm));
+
+            // ── 프런트 시각화 동기화용 레이아웃 정보 저장 ──
+            Map<String, Object> lo = new LinkedHashMap<>();
+            lo.put("diam_mm",     round2(diamMm));
+            lo.put("foot_mm",     round2(footMm));
+            lo.put("width_mm",    round2(widthMm));
+            lo.put("cols",        cols);
+            lo.put("zigzag",      zz);
+            lo.put("max_tiers",   maxTiers);
+            lo.put("tier1_count", tier1Count);   // DS_INCH 1단 총 개수(0=기하추정)
+            lo.put("use_inch",    useInch);
+            lo.put("rolls",       layer.totalRolls);
+            lo.put("inch",        layer.inchLabel);
+            lo.put("grm_cond",    layer.grmCond);
+            result.rollLayout.add(lo);
         }
 
         final double heightCapFinal = heightCapMm; // 람다 캡처용
@@ -2048,6 +2116,12 @@ public class AutoDispatchService {
         double repFootMm  = 0;  // 대표 가로폭(=출고예정정보 너비(mm), 인치/평량 기준) (평균)
         int    totalRolls = 0;
         int    sampleCount = 0;
+        // ── DS_INCH 기준 1단 적재 가능 개수(차량 톤수·인치·평량별) ──
+        //  차량유형관리(DS_INCH12/DS_INCH3)의 MAX_COUNT = "1단으로 적재 시 적재 가능한 총 개수".
+        //  0 = 매핑 없음(기하학적 planRollCols fallback).
+        int    tier1Count = 0;  // 대표 인치/평량의 DS_INCH MAX_COUNT (1단 총 개수)
+        String inchLabel  = ""; // "12인치" / "3인치"
+        String grmCond    = ""; // "GE300" / "LT300"
 
         RollLayer(int bucket, double firstWidth) {
             this.bucket = bucket; this.repWidthMm = firstWidth;
@@ -2059,6 +2133,16 @@ public class AutoDispatchService {
             repWidthMm = (repWidthMm * sampleCount + widthMm * qty) / (sampleCount + qty);
             repFootMm  = (repFootMm  * sampleCount + footMm  * qty) / (sampleCount + qty);
             sampleCount += qty;
+        }
+        void addRolls(int qty, double widthMm, double diamMm, double footMm,
+                      int tier1, String inch, String grm) {
+            addRolls(qty, widthMm, diamMm, footMm);
+            // 인치/평량은 직경 버킷 내에서 동일하다고 보고 대표값 1회 지정(최초 유효값 우선).
+            if (this.tier1Count <= 0 && tier1 > 0) {
+                this.tier1Count = tier1;
+                this.inchLabel  = inch;
+                this.grmCond    = grm;
+            }
         }
     }
 
