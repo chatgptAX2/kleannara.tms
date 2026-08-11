@@ -20496,9 +20496,9 @@ const DCON_KEY_META = {
   BOARD_INNER_SPLIT_ALLOW:{ label:'[판지] 속포장 분할 허용', unit:'Y/N', op:'=', type:'CARGO', hint:'Y=속 단위 분할 허용' },
   BOARD_3D_CHECK_YN:{ label:'[판지] 3D 물리검증 활성', unit:'Y/N', op:'=', type:'CARGO', hint:'Y=판지 3D 검증 / N=검증 스킵' },
   BOARD_3D_DEAD_SPACE_PCT:{ label:'[판지] 3D Dead Space 허용', unit:'%', op:'<=', type:'CARGO', hint:'3D 검증 시 여유 마진 허용비율 (0=허용안함)' },
-  /* CARGO — 혼적(Mixed) */
-  ALLOW_MATERIAL_MIX:{ label:'원지+판지 혼적 허용', unit:'Y/N', op:'=', type:'CARGO', hint:'Y=원지 차량의 여유공간(바닥 Y축)에 판지를 함께 적재하여 한 차량에 혼적 / N=재질별 차량 분리 배차(원지·판지 각각 별도 차량)' },
-  MIX_3D_CHECK_YN:{ label:'[혼적] 3D 물리검증 활성', unit:'Y/N', op:'=', type:'CARGO', hint:'혼적(원지+판지) 3D 검증 파라미터 — 배치 검증 예약 항목' },
+  /* MIX_MATERIAL — 원지+판지 재질 혼적 */
+  ALLOW_MATERIAL_MIX:{ label:'원지+판지 혼적 허용', unit:'Y/N', op:'=', type:'MIX_MATERIAL', hint:'Y=원지 차량의 여유공간(바닥 Y축)에 판지를 함께 적재하여 한 차량에 혼적 / N=재질별 차량 분리 배차(원지·판지 각각 별도 차량)' },
+  MIX_3D_CHECK_YN:{ label:'[혼적] 3D 물리검증 활성', unit:'Y/N', op:'=', type:'MIX_MATERIAL', hint:'혼적(원지+판지) 3D 검증 파라미터 — 배치 검증 예약 항목' },
   /* COST */
   PENALTY_RATE:    { label:'초과적재 패널티 배수', unit:'x', op:'=', type:'COST', hint:'MIN_COST 목적식 초과 패널티 (기본 3.0)' },
   COST_PENALTY_OVER:{ label:'초과적재 패널티 배수(대체키)', unit:'x', op:'=', type:'COST', hint:'초과 시 비용 패널티 (기본 1.5)' },
@@ -21199,7 +21199,7 @@ async function dconLoadConstraints(profileId) {
     const r = await fetch(`/api/dispatch-constraint/list?profile_id=${profileId}`);
     const d = await r.json();
     if (!d.ok) { showToast('제약조건 로드 실패'); return; }
-    DCON.constraints = d.rows || [];
+    DCON.constraints = _dconNormalizeMixMaterialType(d.rows || []);
     _dconUpdateTabCounts();
     // 현재 탭에 따라 렌더링 분기
     if (DCON.activeTab === 'VEHICLE') {
@@ -21772,7 +21772,8 @@ const DCON_GRP_META = {
   BOARD_BULK_SPLIT: { icon:'📋', label:'판지② 벌크·속포장 제약',   cls:'g-board-bulk',  desc:'벌크=1PLT 정수 단위 / 속포장=속 단위 분할 허용, 판지 위 추가 적재 (엑셀§3-2)' },
   BOARD_FLEX_SPLIT: { icon:'✂️', label:'판지③ 유연 분할 선적',      cls:'g-board-flex',  desc:'차량 한계 도달 시 초과분(속단위)만 후속 차량에 정확히 배정 (엑셀§3-3)' },
   BOARD_3D_VERIFY:  { icon:'📦', label:'판지④ 3D 물리 검증',        cls:'g-board-3d',    desc:'판지 Dead Space 포함 3D 블록 검증, 최대 적재 높이 검증 (엑셀§3-4)' },
-  /* ── 혼합적재(Mixed Load) 3개 탭 ── */
+  /* ── 혼합적재(Mixed Load) 탭 ── */
+  MIX_MATERIAL:   { icon:'🔗', label:'혼적⓪ 원지+판지 재질 혼적',  cls:'g-mix-material', desc:'Y=원지 차량 여유공간(바닥 Y축)에 판지 함께 적재하여 한 차량 혼적 / N=재질별 차량 분리 배차' },
   MIX_Z_AXIS:     { icon:'⬆️', label:'혼적① Z축 수직 적재 순서',  cls:'g-mix-z',       desc:'원지 하단·판지 상단 강제 고정 — 물리적 압착 파손 방지 핵심 (엑셀§4-1)' },
   MIX_Y_LIFO:     { icon:'↔️', label:'혼적② Y축 LIFO 배치',       cls:'g-mix-y',       desc:'복수 납품처 LIFO: 나중 하차→안쪽, 먼저 하차→문 쪽 / 전후 Zone 분할 (엑셀§4-2)' },
   MIX_DUAL_VERIFY:{ icon:'✅', label:'혼적③ 이중 복합 검증',       cls:'g-mix-dual',    desc:'혼적 총중량+높이+CBM 이중 복합 한계 검증, Dead Space 포함 3D (엑셀§4-3)' },
@@ -21955,7 +21956,7 @@ async function dconSelectSet(setId) {
     if (!rd.ok) throw new Error(rd.error || '조회 실패');
 
     /* API 성공 시에만 _spRows·_cartypeRows 초기화 및 재구성 */
-    DCON._setFullRows = rd.rows || [];
+    DCON._setFullRows = _dconNormalizeMixMaterialType(rd.rows || []);
     DCON._spRows = [];
     DCON._cartypeRows = [];
 
@@ -22021,7 +22022,7 @@ function _dconSpRenderTabs() {
     'ENTRY_TON','FORKLIFT','DYNAMIC','DYNAMIC_ZONE',
     'ROLL_UNIT','ROLL_STACK','ROLL_INCH_MIX','ROLL_3D_VERIFY',
     'BOARD_CBM_WEIGHT','BOARD_BULK_SPLIT','BOARD_FLEX_SPLIT','BOARD_3D_VERIFY',
-    'MIX_Z_AXIS','MIX_Y_LIFO','MIX_DUAL_VERIFY',
+    'MIX_MATERIAL','MIX_Z_AXIS','MIX_Y_LIFO','MIX_DUAL_VERIFY',
     'COST'
   ];
   const typeCnt = {};
@@ -22067,6 +22068,8 @@ function _dconSpRenderTabs() {
   if (hasDynamic)  typeCnt['DYNAMIC']   = typeCnt['DYNAMIC']   || 0;
   if (hasRegion)   typeCnt['REGION']    = typeCnt['REGION']    || 0;
 
+  /* 혼적⓪ 재질 혼적 탭은 항상 표시 (핵심 제약 — 데이터 없어도 추가 가능하도록) */
+  if (typeCnt['MIX_MATERIAL'] === undefined) typeCnt['MIX_MATERIAL'] = 0;
   const tabs = [...tabOrder, ...Object.keys(typeCnt).filter(k=>!tabOrder.includes(k))];
   el.innerHTML = tabs.filter(t => {
     if (t === 'CARTYPE')    return hasVehicles;
@@ -22074,6 +22077,7 @@ function _dconSpRenderTabs() {
     if (t === 'FORKLIFT')   return hasForklift;
     if (t === 'DYNAMIC')    return hasDynamic;
     if (t === 'REGION')     return hasRegion;
+    if (t === 'MIX_MATERIAL') return true;   // 항상 표시
     return typeCnt[t] !== undefined;
   }).map(t => {
     const gm = DCON_GRP_META[t] || { icon:'⚙️', label:t };
@@ -23600,7 +23604,7 @@ async function dconOpenTabMgr() {
     try {
       const rd = await fetch(`/api/dispatch-const-set/full?set_id=${DCON.selSetId}`).then(r => r.json());
       if (rd.ok) {
-        DCON._setFullRows = rd.rows || [];
+        DCON._setFullRows = _dconNormalizeMixMaterialType(rd.rows || []);
         /* [BUG FIX] _spRows는 건드리지 않음 — 사용자가 탭매니저 열기 전에 편집 중인
            체크 상태(_spRows)를 API 재조회 결과로 덮어쓰면 이전 체크가 소실됨.
            _setFullRows(전체 마스터 목록)만 채우고, _spRows는 dconSelectSet()에서 관리. */
@@ -23617,6 +23621,19 @@ function dconCloseTabMgr() {
   const drawer  = document.getElementById('dcon-tab-mgr-drawer');
   if (overlay) overlay.classList.remove('open');
   if (drawer)  drawer.classList.remove('open');
+}
+
+/* 재질 혼적 제약(ALLOW_MATERIAL_MIX / MIX_3D_CHECK_YN)의 CONST_TYPE 정규화.
+   과거 CARGO 타입으로 저장된 행을 MIX_MATERIAL 탭으로 이동 표시(자동배차는 CONST_KEY만 사용). */
+const _DCON_MIX_MATERIAL_KEYS = ['ALLOW_MATERIAL_MIX', 'MIX_3D_CHECK_YN'];
+function _dconNormalizeMixMaterialType(rows) {
+  if (!Array.isArray(rows)) return rows;
+  rows.forEach(r => {
+    if (r && _DCON_MIX_MATERIAL_KEYS.includes(r.CONST_KEY) && r.CONST_TYPE !== 'MIX_MATERIAL') {
+      r.CONST_TYPE = 'MIX_MATERIAL';
+    }
+  });
+  return rows;
 }
 
 function _dconTabMgrRender() {
@@ -23658,6 +23675,7 @@ function _dconTabMgrRender() {
         { key:'BOARD_3D_VERIFY',  special:false },
     ]},
     { groupNm:'🔀 혼합적재', groupKey:'MIX', tabs:[
+        { key:'MIX_MATERIAL',   special:false },
         { key:'MIX_Z_AXIS',     special:false },
         { key:'MIX_Y_LIFO',     special:false },
         { key:'MIX_DUAL_VERIFY',special:false },
