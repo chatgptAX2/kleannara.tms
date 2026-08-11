@@ -893,9 +893,11 @@ public class AutoDispatchService {
                 double bFloorArea = bH > 0 ? bCbm / bH : bCbm / Math.max(0.1, cp.maxBoardHeightM);
 
                 // ① 여유 중량  ② 여유 바닥 면적  ③ 높이 제약
+                //  MIX_3D_CHECK_YN=Y(기본): 바닥면적(Y축)·높이까지 3D 물리검증
+                //  MIX_3D_CHECK_YN=N       : 3D 물리검증(바닥면적·높이) 스킵, 중량 제약만 적용
                 boolean okKg   = (usedKg + bKg) <= spareKg;
-                boolean okArea = (usedFloorAreaM2 + bFloorArea) <= vehFloorAreaSpare;
-                boolean okH    = bH <= vehEffH + 0.001;
+                boolean okArea = !cp.mix3dCheck || (usedFloorAreaM2 + bFloorArea) <= vehFloorAreaSpare;
+                boolean okH    = !cp.mix3dCheck || bH <= vehEffH + 0.001;
 
                 if (okKg && okArea && okH) {
                     usedKg          += bKg;
@@ -926,6 +928,9 @@ public class AutoDispatchService {
                     "(여유중량 %.0fkg / 여유바닥길이 %.2fm 사용, 판지 바닥점유 %.0f%%)",
                     moved.size(), usedKg, spareKg, spareFloorLenM, floorUsePct));
                 rvNotes.add("[재질혼적-배치] 판지는 원지 미점유 바닥구간(Y축)에 나란히 적재 — 원지 위 적재 금지");
+                rvNotes.add(cp.mix3dCheck
+                    ? "[재질혼적-3D검증] MIX_3D_CHECK_YN=Y — 바닥면적(Y축)·높이 3D 물리검증 적용"
+                    : "[재질혼적-3D검증] MIX_3D_CHECK_YN=N — 3D 물리검증 스킵(중량 제약만 적용)");
             }
         }
         return remaining;  // 담지 못한 판지 (별도 배차 대상)
