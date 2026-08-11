@@ -519,6 +519,23 @@ public class DispatchConfigApiService {
                 "SELECT NVL(MAX(ITEM_ID),0)+1 FROM KNRAWMS.DS_DISPATCH_CONST_SET_ITEM", Long.class);
             for (Map<String, Object> it : items) {
                 Long constId = toLong(it.get("const_id"));
+                /* ── const_id 미존재(신규 파라미터 키) → 마스터 자동 find-or-create ──
+                   ALLOW_MATERIAL_MIX / MIX_3D_CHECK_YN 등 신규 파라미터 키는 DS_DISPATCH_CONST
+                   마스터 행이 없어 프론트 3-tier 매칭이 실패한다. 이때 프론트는 const_id=null +
+                   const_key/const_type 를 전송하므로, 여기서 마스터를 find-or-create 한 뒤 저장한다. */
+                if (constId == null) {
+                    String ckey = str(it.get("const_key"));
+                    if (ckey.isBlank()) continue;   // 키도 없으면 스킵
+                    String ctype = str(it.getOrDefault("const_type", "GLOBAL"));
+                    if (ctype.isBlank()) ctype = "GLOBAL";
+                    constId = findOrCreateConstMaster(
+                        ckey, ctype,
+                        str(it.getOrDefault("const_op", "=")),
+                        str(it.get("target_id")),
+                        str(it.get("target_nm")),
+                        str(it.get("const_value"))
+                    );
+                }
                 if (constId == null) continue;
                 String yn   = Objects.toString(it.get("active_yn"), "Y").trim();
                 Object pval = it.get("param_value");
@@ -527,6 +544,42 @@ public class DispatchConfigApiService {
             }
             return Map.of("ok", true, "saved", items.size());
         } catch (Exception e) { return errMap(e); }
+    }
+
+    /* ── 신규 파라미터 키(예: ALLOW_MATERIAL_MIX)의 DS_DISPATCH_CONST 마스터 find-or-create ──
+       세트 항목 저장 시 const_id 가 없는 신규 키를 처리한다. 동일 CONST_KEY(+TARGET_ID) 가
+       이미 있으면 그 CONST_ID 재사용, 없으면 첫 번째 프로파일에 마스터를 생성한다. */
+    private Long findOrCreateConstMaster(String key, String type, String op,
+                                         String targetId, String targetNm, String constValue) {
+        if (key == null || key.isBlank()) return null;
+        String tid = (targetId == null) ? "" : targetId.trim();
+        // ① 기존 마스터 재사용 (CONST_KEY + TARGET_ID 매칭; TARGET_ID 없으면 키만)
+        List<Map<String, Object>> existing;
+        if (tid.isBlank()) {
+            existing = tmsJdbc.queryForList(
+                "SELECT CONST_ID FROM KNRAWMS.DS_DISPATCH_CONST " +
+                "WHERE CONST_KEY=? AND (TARGET_ID IS NULL OR TARGET_ID='') ORDER BY CONST_ID FETCH FIRST 1 ROWS ONLY",
+                key);
+        } else {
+            existing = tmsJdbc.queryForList(
+                "SELECT CONST_ID FROM KNRAWMS.DS_DISPATCH_CONST " +
+                "WHERE CONST_KEY=? AND TARGET_ID=? ORDER BY CONST_ID FETCH FIRST 1 ROWS ONLY",
+                key, tid);
+        }
+        if (!existing.isEmpty()) return toLong(existing.get(0).get("CONST_ID"));
+        // ② 없으면 첫 번째 프로파일에 마스터 생성
+        List<Map<String, Object>> pr = tmsJdbc.queryForList(
+            "SELECT PROFILE_ID FROM KNRAWMS.DS_DISPATCH_PROFILE ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY");
+        Long profileId = pr.isEmpty() ? 1L : toLong(pr.get(0).get("PROFILE_ID"));
+        String ctype = (type == null || type.isBlank()) ? "GLOBAL" : type;
+        String cop   = (op == null || op.isBlank())     ? "="      : op;
+        tmsJdbc.update(
+            "INSERT INTO KNRAWMS.DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) " +
+            "VALUES (SEQ_DS_DISPATCH_CONST.NEXTVAL,?,?,?,?,?,?,?,?,?,?,?,?)",
+            profileId, ctype, key, (constValue == null ? "" : constValue), cop,
+            (tid.isBlank() ? null : tid), (targetNm == null ? null : targetNm),
+            "Y", "제약조건관리 신규 항목 자동생성", 999, today(), today());
+        return tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_CONST.CURRVAL FROM DUAL", Long.class);
     }
 
     // ══════════════════════════════════════════════════════════════
