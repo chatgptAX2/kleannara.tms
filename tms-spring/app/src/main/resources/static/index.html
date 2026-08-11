@@ -8865,8 +8865,9 @@ const PSD_CAR_COLOR = {
   '1.4톤':'car-1t4','3.5톤':'car-3t5','5톤':'car-5t',
   '5톤축':'car-5tax','8톤':'car-8t','11톤':'car-11t','15톤':'car-15t','18톤':'car-18t'
 };
-const PSD_INCH12 = new Set(['a11','ab1','ag1','am1','111','s11','i11','k11','sm1']);
-const PSD_INCH3  = new Set(['ar1','ae1','aj1','al1','sr1','ir1','rw1']);
+/* ★ 인치 판별 코드 — 백엔드 AutoDispatchService.INCH12/INCH3 · PsDispatchService.INCH12_CODES/INCH3_CODES 와 동일 정본 세트로 통일 */
+const PSD_INCH12 = new Set(['a11','ab1','ag1','am1','111','s11','i11','k11','sm1','s12','i12','k12','a12','st1','su1','sh1','ks1','kc1']);
+const PSD_INCH3  = new Set(['ar1','ae1','aj1','al1','sr1','ir1','rw1','s72','i72','s32','s31','sp2','sz2','sc2','sn1','sy2','b42','b41','s51','l41','ra1','rp1','rs1','rg1']);
 
 /* 인치 판별 — 판지(board)이면 '' 반환 */
 function psdGetInch(skukey) {
@@ -8911,6 +8912,17 @@ function psdFmtNum(v) {
 /* 인치 배지 HTML */
 function psdInchBadge(skukey) {
   const inch = psdGetInch(skukey);
+  if (!inch) return '';
+  return `<span class="psd-car-item-inch ${inch==='12인치'?'inch-12':'inch-3'}">${inch}</span>`;
+}
+/* 아이템 인치 판별 — 서버 제공 INCH 우선, 없으면 SKUKEY(대/소문자 폴백)로 계산 */
+function psdItemInch(it) {
+  if (!it) return '';
+  if (it.INCH) return it.INCH;
+  return psdGetInch(it.SKUKEY || it.skukey || '');
+}
+function psdItemInchBadge(it) {
+  const inch = psdItemInch(it);
   if (!inch) return '';
   return `<span class="psd-car-item-inch ${inch==='12인치'?'inch-12':'inch-3'}">${inch}</span>`;
 }
@@ -9564,7 +9576,7 @@ function psdBuildVehicleCard(v) {
       <span class="psd-car-item-drag">⠿</span>
       <span class="psd-car-item-shpo">${it.SHPOKY}</span>
       <span class="psd-car-item-desc" title="${it.DESC01||''}">${it.DESC01||it.SKUKEY||''}</span>
-      ${psdInchBadge(it.SKUKEY)}
+      ${psdItemInchBadge(it)}
       ${(it.UOMKEY||'').trim()==='R' && it.KG_WEIGHT
         ? `<span class="psd-car-item-qty">${psdFmtNum(it.QTSHPO)}</span><span class="psd-car-item-unit">R</span><span style="font-size:10px;color:var(--text3);margin-left:2px">(${psdFmtNum(it.KG_WEIGHT)}KG)</span>`
         : `<span class="psd-car-item-qty">${psdFmtNum(it.QTSHPO)}</span><span class="psd-car-item-unit">${it.UOMKEY||'KG'}</span>`
@@ -9856,8 +9868,8 @@ function _lvSkuDims(sk){ sk=String(sk||''); if(sk.length<17)return{gsm:null,widt
 function _lvRollWidthMm(sk){
   sk=String(sk||''); if(sk.length<8) return null;
   const m=sk.toLowerCase().slice(2,5);
-  const is12=['a11','ab1','ag1','am1','111','s11','i11','k11','sm1'].includes(m);
-  const is3 =['ar1','ae1','aj1','al1','sr1','ir1','rw1'].includes(m);
+  const is12=PSD_INCH12.has(m);
+  const is3 =PSD_INCH3.has(m);
   if(is12) return 1500;
   if(is3){ const g=parseInt(sk.slice(5,8),10); return (isNaN(g)||g<=240)?1400:1100; }
   return null;
@@ -9866,8 +9878,8 @@ function _lvRollWidthMm(sk){
 function _lvGetInch(sk){
   sk=String(sk||''); if(sk.length<5) return '';
   const m=sk.toLowerCase().slice(2,5);
-  const is12=['a11','ab1','ag1','am1','111','s11','i11','k11','sm1'].includes(m);
-  const is3 =['ar1','ae1','aj1','al1','sr1','ir1','rw1'].includes(m);
+  const is12=PSD_INCH12.has(m);
+  const is3 =PSD_INCH3.has(m);
   if(is12) return '12인치';
   if(is3)  return '3인치';
   return '';
@@ -11376,7 +11388,7 @@ function psdShowAutoResultModal(vehicles, objNm) {
       } else {
         // 폴백: 클라이언트에서 600KG 기준 계산
         (v.items||[]).forEach(it => {
-          if (psdGetInch(it.SKUKEY||'')) {
+          if (psdItemInch(it)) {
             const kg = parseFloat(it.QTSHPO||0);
             if (kg > 0) totalRollCount += Math.max(1, Math.round(kg / ROLL_SINGLE_KG));
           }
@@ -11391,7 +11403,7 @@ function psdShowAutoResultModal(vehicles, objNm) {
       : '';
 
     const itemsHtml = (v.items||[]).map((it, itIdx) => {
-      const inch      = psdGetInch(it.SKUKEY||'');
+      const inch      = psdItemInch(it);
       const inchBadge = inch ? `<span class="psd-car-item-inch ${inch==='12인치'?'inch-12':'inch-3'}">${inch}</span>` : '';
       const isAdded   = itIdx >= origCnt;
       const addedMark = isAdded ? `<span class="psd-auto-item-added">+추가</span>` : '';
@@ -12161,8 +12173,9 @@ const PSOP_CAR_COLOR = {
   '1.4톤':'car-1t4','3.5톤':'car-3t5','5톤':'car-5t',
   '5톤축':'car-5tax','8톤':'car-8t','11톤':'car-11t','15톤':'car-15t','18톤':'car-18t'
 };
-const PSOP_INCH12 = new Set(['a11','ab1','ag1','am1','111','s11','i11','k11','sm1']);
-const PSOP_INCH3  = new Set(['ar1','ae1','aj1','al1','sr1','ir1','rw1']);
+/* ★ 인치 판별 코드 — 백엔드 AutoDispatchService.INCH12/INCH3 · PsDispatchService.INCH12_CODES/INCH3_CODES 와 동일 정본 세트로 통일 */
+const PSOP_INCH12 = new Set(['a11','ab1','ag1','am1','111','s11','i11','k11','sm1','s12','i12','k12','a12','st1','su1','sh1','ks1','kc1']);
+const PSOP_INCH3  = new Set(['ar1','ae1','aj1','al1','sr1','ir1','rw1','s72','i72','s32','s31','sp2','sz2','sc2','sn1','sy2','b42','b41','s51','l41','ra1','rp1','rs1','rg1']);
 
 /* 인치 판별 — 판지(board)이면 '' 반환 */
 function psopGetInch(skukey) {
@@ -12211,6 +12224,17 @@ function psopFmtNum(v) {
 /* 인치 배지 HTML */
 function psopInchBadge(skukey) {
   const inch = psopGetInch(skukey);
+  if (!inch) return '';
+  return `<span class="psd-car-item-inch ${inch==='12인치'?'inch-12':'inch-3'}">${inch}</span>`;
+}
+/* 아이템 인치 판별 — 서버 제공 INCH 우선, 없으면 SKUKEY(대/소문자 폴백)로 계산 */
+function psopItemInch(it) {
+  if (!it) return '';
+  if (it.INCH) return it.INCH;
+  return psopGetInch(it.SKUKEY || it.skukey || '');
+}
+function psopItemInchBadge(it) {
+  const inch = psopItemInch(it);
   if (!inch) return '';
   return `<span class="psd-car-item-inch ${inch==='12인치'?'inch-12':'inch-3'}">${inch}</span>`;
 }
@@ -15228,8 +15252,8 @@ function _psopVehRenderDocs(pid) {
     // 유형: SKU_TYPE 또는 SHPMTY_NM
     const skuType  = it.SKU_TYPE || it.SHPMTY_NM || it.SHPMTY || '-';
 
-    // 인치: psopGetInch 활용
-    const inch     = psopGetInch(it.SKUKEY||'');
+    // 인치: 서버 INCH 우선, 없으면 SKUKEY 계산 (대/소문자 폴백)
+    const inch     = psopItemInch(it);
     const inchTxt  = inch || '-';
 
     // 중량: 실제 총중량(KG_WEIGHT). 원지·판지 공통.
@@ -15366,7 +15390,7 @@ function psopBuildVehicleCard(v) {
       <span class="psd-car-item-drag">⠿</span>
       <span class="psd-car-item-shpo">${it.SHPOKY}</span>
       <span class="psd-car-item-desc" title="${it.DESC01||''}">${it.DESC01||it.SKUKEY||''}</span>
-      ${psopInchBadge(it.SKUKEY)}
+      ${psopItemInchBadge(it)}
       ${(it.UOMKEY||'').trim()==='R' && it.KG_WEIGHT
         ? `<span class="psd-car-item-qty">${psopFmtNum(it.QTSHPO)}</span><span class="psd-car-item-unit">R</span><span style="font-size:10px;color:var(--text3);margin-left:2px">(${psopFmtNum(it.KG_WEIGHT)}KG)</span>`
         : `<span class="psd-car-item-qty">${psopFmtNum(it.QTSHPO)}</span><span class="psd-car-item-unit">${it.UOMKEY||'KG'}</span>`
@@ -16880,7 +16904,7 @@ function psopShowAutoResultModal(vehicles, objNm, selectedCnt) {
       } else {
         // 폴백: 클라이언트에서 600KG 기준 계산
         (v.items||[]).forEach(it => {
-          if (psopGetInch(it.SKUKEY||'')) {
+          if (psopItemInch(it)) {
             const kg = parseFloat(it.QTSHPO||0);
             if (kg > 0) totalRollCount += Math.max(1, Math.round(kg / ROLL_SINGLE_KG));
           }
@@ -16895,7 +16919,7 @@ function psopShowAutoResultModal(vehicles, objNm, selectedCnt) {
       : '';
 
     const itemsHtml = (v.items||[]).map((it, itIdx) => {
-      const inch      = psopGetInch(it.SKUKEY||'');
+      const inch      = psopItemInch(it);
       const inchBadge = inch ? `<span class="psd-car-item-inch ${inch==='12인치'?'inch-12':'inch-3'}">${inch}</span>` : '';
       const isAdded   = itIdx >= origCnt;
       const addedMark = isAdded ? `<span class="psd-auto-item-added">+추가</span>` : '';
@@ -21857,6 +21881,8 @@ const DCON_PARAM_META = {
   BOARD_3D_DEAD_SPACE_PCT:{ label:'Dead Space 허용비율',    unit:'%',    hint:'판지 혼합 적재 Dead Space 최대 허용 (%)' },
   BOARD_HEIGHT_MAX_M:   { label:'최대 적재 높이',            unit:'m',    hint:'판지 스택 최대 높이 (m, 기본 2.4)' },
   /* ── 혼합적재 파라미터 ── */
+  ALLOW_MATERIAL_MIX:   { label:'원지+판지 혼적 허용',        unit:'Y/N',  hint:'Y=원지 차량 여유공간(바닥 Y축)에 판지 함께 적재하여 한 차량 혼적 / N=재질별 차량 분리 배차' },
+  MIX_3D_CHECK_YN:      { label:'[혼적] 3D 물리검증 활성',    unit:'Y/N',  hint:'혼적(원지+판지) 3D 검증 파라미터 — 배치 검증 예약 항목' },
   MIX_ROLL_BOTTOM_FORCE:{ label:'원지 하단 고정 강제',       unit:'Y/N',  hint:'Y=원지 반드시 하단(바닥), 판지 상단' },
   MIX_BOARD_TOP_FORCE:  { label:'판지 상단 고정 강제',       unit:'Y/N',  hint:'Y=판지 반드시 상단' },
   MIX_VERTICAL_ORDER:   { label:'수직 적재 순서',            unit:'코드', hint:'ROLL_BOTTOM=원지하단/판지상단' },

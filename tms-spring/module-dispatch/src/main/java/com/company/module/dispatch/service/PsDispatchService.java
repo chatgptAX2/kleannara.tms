@@ -47,8 +47,17 @@ public class PsDispatchService {
     // SKUKEY 파싱 헬퍼 (Flask _ps_* 함수 Java 포팅)
     // ──────────────────────────────────────────────────────────────────────────
 
-    private static final Set<String> INCH12_CODES = Set.of("s12","s13","s14","p12","p13","p14","r12","r13");
-    private static final Set<String> INCH3_CODES  = Set.of("s03","p03","r03","s3i","p3i");
+    // ★ 인치 판별 코드 — AutoDispatchService.INCH12/INCH3 및 프론트(PSOP_INCH12/PSOP_INCH3)와 동일하게 통일.
+    //   과거 세트(s12/p12/...)에는 sr1 등 실제 원지 코드가 누락되어 인치 미표시 버그 발생 → 정본 세트로 교체.
+    private static final Set<String> INCH12_CODES = Set.of(
+        "a11","ab1","ag1","am1","111","s11","i11","k11","sm1",
+        "s12","i12","k12","a12",
+        "st1","su1","sh1","ks1","kc1");
+    private static final Set<String> INCH3_CODES  = Set.of(
+        "ar1","ae1","aj1","al1","sr1","ir1","rw1",
+        "s72","i72","s32","s31","sp2","sz2","sc2",
+        "sn1","sy2","b42","b41","s51","l41",
+        "ra1","rp1","rs1","rg1");
 
     private String psGetInch(String skukey) {
         if (skukey == null || skukey.length() < 5) return "";
