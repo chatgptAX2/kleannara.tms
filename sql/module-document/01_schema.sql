@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS DOC_FILE (
     FILE_TYPE   VARCHAR(100)                         COMMENT 'MIME 타입',
     FILE_EXT    VARCHAR(20)                          COMMENT '파일 확장자',
     DOWNLOAD_CNT INT         DEFAULT 0               COMMENT '다운로드 횟수',
+    OP_DATE     VARCHAR(8)                           COMMENT '운행일자 (YYYYMMDD)',
     NOTE        VARCHAR(500)                         COMMENT '비고',
     CREDAT      VARCHAR(8)                           COMMENT '생성일자',
     CRETIM      VARCHAR(6)                           COMMENT '생성시간',

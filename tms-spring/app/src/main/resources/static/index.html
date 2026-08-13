@@ -24917,7 +24917,8 @@ async function dmDoUpload() {
     const res  = await fetch('/api/doc/upload', { method: 'POST', body: formData });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error);
-    showToast(`✅ ${data.saved.length}개 파일 업로드 완료`);
+    const savedCnt = Array.isArray(data.saved) ? data.saved.length : (data.file_id ? 1 : 0);
+    showToast(`✅ ${savedCnt}개 파일 업로드 완료`);
     DM.pendingFiles = [];
     // input 초기화
     const inp = document.getElementById('dm-file-input');
@@ -24925,6 +24926,8 @@ async function dmDoUpload() {
     document.getElementById('dm-note').value = '';
     _dmUpdatePending();
     await dmLoadFolders(folderId);  // 카운트 갱신
+    await dmLoadFiles();            // 파일 목록 즉시 갱신
+    if (btn) { btn.disabled = false; btn.textContent = '⬆️ 업로드'; }
   } catch(e) {
     showToast(`❌ 업로드 실패: ${e.message}`, 'error');
     if (btn) { btn.disabled = false; btn.textContent = '⬆️ 업로드'; }
