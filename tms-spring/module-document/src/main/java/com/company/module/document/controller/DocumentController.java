@@ -48,20 +48,26 @@ public class DocumentController {
         return ResponseEntity.ok(documentService.deleteFolder(folderId));
     }
 
-    // ── 파일 목록 조회 ─────────────────────────────────────────────
+    // ── 파일 목록 조회 (운행일자/업로드일시/키워드 필터) ──────────
     @GetMapping("/files")
     public ResponseEntity<Map<String, Object>> getFiles(
-            @RequestParam(required = false) Long folderId) {
-        return ResponseEntity.ok(documentService.getFiles(folderId));
+            @RequestParam(value = "folder_id", required = false) Long folderId,
+            @RequestParam(value = "op_from", required = false) String opFrom,
+            @RequestParam(value = "op_to",   required = false) String opTo,
+            @RequestParam(value = "up_from", required = false) String upFrom,
+            @RequestParam(value = "up_to",   required = false) String upTo,
+            @RequestParam(value = "kw",      required = false) String kw) {
+        return ResponseEntity.ok(documentService.getFiles(folderId, opFrom, opTo, upFrom, upTo, kw));
     }
 
-    // ── 파일 업로드 ────────────────────────────────────────────────
+    // ── 파일 업로드 (다중 파일 + 운행일자) ────────────────────────
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Map<String, Object>> upload(
-            @RequestParam("file") MultipartFile file,
+            @RequestParam("file") java.util.List<MultipartFile> files,
             @RequestParam(value = "folder_id", required = false) Long folderId,
+            @RequestParam(value = "op_date", required = false) String opDate,
             @RequestParam(value = "note", required = false) String note) {
-        return ResponseEntity.ok(documentService.upload(file, folderId, note));
+        return ResponseEntity.ok(documentService.upload(files, folderId, opDate, note));
     }
 
     // ── 파일 다운로드 ──────────────────────────────────────────────

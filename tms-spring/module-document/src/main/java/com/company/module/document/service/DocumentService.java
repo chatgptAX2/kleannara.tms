@@ -133,69 +133,91 @@ public class DocumentService {
         }
     }
 
-    // ── 파일 목록 조회 ─────────────────────────────────────────────
-    public Map<String, Object> getFiles(Long folderId) {
+    // ── 파일 목록 조회 (프론트 필드명 alias + 운행일자/업로드일시/키워드 필터) ──
+    public Map<String, Object> getFiles(Long folderId, String opFrom, String opTo,
+                                        String upFrom, String upTo, String kw) {
         try {
-            List<Map<String, Object>> rows;
-            if (folderId != null) {
-                rows = jdbc.queryForList(
-                    "SELECT * FROM KNRAWMS.DOC_FILE WHERE FOLDER_ID=? AND DEL_YN='N' ORDER BY CREDAT DESC, FILE_ID DESC",
-                    folderId
-                );
-            } else {
-                rows = jdbc.queryForList(
-                    "SELECT * FROM KNRAWMS.DOC_FILE WHERE DEL_YN='N' ORDER BY CREDAT DESC, FILE_ID DESC"
-                );
-            }
+            /* 프론트(_dmRenderFileTable)가 기대하는 필드명으로 alias:
+               ORIG_NM(파일명)=FILE_NM, UPLOAD_DAT=CREDAT, UPLOAD_TIM=CRETIM, OP_DATE=운행일자 */
+            StringBuilder sql = new StringBuilder(
+                "SELECT FILE_ID, FOLDER_ID, FILE_NM AS ORIG_NM, FILE_NM, FILE_PATH, FILE_SIZE, " +
+                "FILE_TYPE, FILE_EXT, NOTE, OP_DATE, CREDAT AS UPLOAD_DAT, CRETIM AS UPLOAD_TIM, " +
+                "CREDAT, CRETIM, DOWNLOAD_CNT " +
+                "FROM KNRAWMS.DOC_FILE WHERE DEL_YN='N' ");
+            List<Object> args = new ArrayList<>();
+            List<Integer> types = new ArrayList<>();
+            if (folderId != null) { sql.append("AND FOLDER_ID=? ");            args.add(folderId); types.add(Types.NUMERIC); }
+            if (opFrom != null && !opFrom.isBlank()) { sql.append("AND OP_DATE >= ? "); args.add(opFrom); types.add(Types.VARCHAR); }
+            if (opTo   != null && !opTo.isBlank())   { sql.append("AND OP_DATE <= ? "); args.add(opTo);   types.add(Types.VARCHAR); }
+            if (upFrom != null && !upFrom.isBlank()) { sql.append("AND CREDAT  >= ? "); args.add(upFrom); types.add(Types.VARCHAR); }
+            if (upTo   != null && !upTo.isBlank())   { sql.append("AND CREDAT  <= ? "); args.add(upTo);   types.add(Types.VARCHAR); }
+            if (kw     != null && !kw.isBlank())     { sql.append("AND (FILE_NM LIKE ? OR NOTE LIKE ?) "); args.add("%"+kw+"%"); types.add(Types.VARCHAR); args.add("%"+kw+"%"); types.add(Types.VARCHAR); }
+            sql.append("ORDER BY CREDAT DESC, FILE_ID DESC");
+
+            List<Map<String, Object>> rows = jdbc.queryForList(
+                sql.toString(), args.toArray(),
+                types.stream().mapToInt(Integer::intValue).toArray());
             return Map.of("ok", true, "files", rows);
         } catch (Exception e) {
+            log.error("getFiles error: {}", e.getMessage());
             return Map.of("ok", false, "error", e.getMessage());
         }
     }
 
-    // ── 파일 업로드 ────────────────────────────────────────────────
+    // ── 파일 업로드 (다중 파일 지원 + 운행일자) ───────────────────
     @Transactional
-    public Map<String, Object> upload(MultipartFile file, Long folderId, String note) {
-        if (file == null || file.isEmpty())
+    public Map<String, Object> upload(List<MultipartFile> files, Long folderId,
+                                      String opDate, String note) {
+        if (files == null || files.isEmpty())
             return Map.of("ok", false, "error", "파일 필수");
 
-        String today    = LocalDate.now().format(YMDFORMAT);
-        String now      = LocalDateTime.now().format(HMSFORMAT);
-        String origName = file.getOriginalFilename();
-        String ext      = "";
-        if (origName != null && origName.contains("."))
-            ext = origName.substring(origName.lastIndexOf("."));
+        String today = LocalDate.now().format(YMDFORMAT);
+        String now   = LocalDateTime.now().format(HMSFORMAT);
+        String opd   = (opDate != null && !opDate.isBlank()) ? opDate.trim() : null;
 
-        // 저장 경로: uploadBasePath/{today}/{UUID}{ext}
-        String savedName = UUID.randomUUID().toString() + ext;
-        Path dirPath  = Paths.get(uploadBasePath, today);
-        Path filePath = dirPath.resolve(savedName);
-
+        List<Map<String, Object>> saved = new ArrayList<>();
         try {
-            Files.createDirectories(dirPath);
-            file.transferTo(filePath.toFile());
+            for (MultipartFile file : files) {
+                if (file == null || file.isEmpty()) continue;
 
-            /* [ORA-02289 FIX] SEQ_DOC_FILE 시퀀스 미존재 대비 MAX(FILE_ID)+1 채번.
-               [ORA-18734 FIX] folder_id=null(루트 업로드)·DOWNLOAD_CNT=0 등 argTypes 명시. */
-            Long newId = jdbc.queryForObject(
-                "SELECT NVL(MAX(FILE_ID),0)+1 FROM KNRAWMS.DOC_FILE", Long.class);
-            jdbc.update(
-                "INSERT INTO KNRAWMS.DOC_FILE (FILE_ID, FOLDER_ID, FILE_NM, FILE_PATH, FILE_SIZE, FILE_TYPE, FILE_EXT, " +
-                "NOTE, CREDAT, CRETIM, CREUSR, LMODAT, DEL_YN, DOWNLOAD_CNT) " +
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                new Object[]{
-                    newId, folderId, origName, filePath.toString(), file.getSize(),
-                    file.getContentType(), ext,
-                    note, today, now, "SYSTEM", today, "N", 0
-                },
-                new int[]{
-                    Types.NUMERIC, Types.NUMERIC, Types.VARCHAR, Types.VARCHAR, Types.NUMERIC,
-                    Types.VARCHAR, Types.VARCHAR,
-                    Types.VARCHAR, Types.VARCHAR, Types.VARCHAR, Types.VARCHAR,
-                    Types.VARCHAR, Types.VARCHAR, Types.NUMERIC
-                }
-            );
-            return Map.of("ok", true, "file_id", newId, "file_nm", origName);
+                String origName = file.getOriginalFilename();
+                String ext = "";
+                if (origName != null && origName.contains("."))
+                    ext = origName.substring(origName.lastIndexOf(".") + 1); // 점(.) 제외 → 프론트 FILE_EXT 매칭('pdf')
+
+                // 저장 경로: uploadBasePath/{today}/{UUID}.{ext}
+                String savedName = UUID.randomUUID().toString() + (ext.isBlank() ? "" : "." + ext);
+                Path dirPath  = Paths.get(uploadBasePath, today);
+                Path filePath = dirPath.resolve(savedName);
+                Files.createDirectories(dirPath);
+                file.transferTo(filePath.toFile());
+
+                /* [ORA-02289] SEQ 미존재 대비 MAX+1 채번. [ORA-18734] argTypes 명시. */
+                Long newId = jdbc.queryForObject(
+                    "SELECT NVL(MAX(FILE_ID),0)+1 FROM KNRAWMS.DOC_FILE", Long.class);
+                jdbc.update(
+                    "INSERT INTO KNRAWMS.DOC_FILE (FILE_ID, FOLDER_ID, FILE_NM, FILE_PATH, FILE_SIZE, FILE_TYPE, FILE_EXT, " +
+                    "OP_DATE, NOTE, CREDAT, CRETIM, CREUSR, LMODAT, DEL_YN, DOWNLOAD_CNT) " +
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    new Object[]{
+                        newId, folderId, origName, filePath.toString(), file.getSize(),
+                        file.getContentType(), ext,
+                        opd, note, today, now, "SYSTEM", today, "N", 0
+                    },
+                    new int[]{
+                        Types.NUMERIC, Types.NUMERIC, Types.VARCHAR, Types.VARCHAR, Types.NUMERIC,
+                        Types.VARCHAR, Types.VARCHAR,
+                        Types.VARCHAR, Types.VARCHAR, Types.VARCHAR, Types.VARCHAR, Types.VARCHAR,
+                        Types.VARCHAR, Types.VARCHAR, Types.NUMERIC
+                    }
+                );
+                Map<String, Object> one = new LinkedHashMap<>();
+                one.put("file_id", newId);
+                one.put("file_nm", origName);
+                saved.add(one);
+            }
+            if (saved.isEmpty()) return Map.of("ok", false, "error", "업로드할 유효한 파일이 없습니다");
+            return Map.of("ok", true, "saved", saved);
         } catch (Exception e) {
             log.error("upload error: {}", e.getMessage());
             return Map.of("ok", false, "error", e.getMessage());
@@ -261,6 +283,7 @@ public class DocumentService {
         try {
             String fileNm = body.containsKey("file_nm") ? (String) body.get("file_nm") : null;
             String note   = body.containsKey("note")    ? (String) body.get("note")    : null;
+            String opDate = body.containsKey("op_date") ? Objects.toString(body.get("op_date"), null) : null;
             Long folderId = body.get("folder_id") != null
                 ? Long.valueOf(body.get("folder_id").toString()) : null;
 
@@ -268,6 +291,11 @@ public class DocumentService {
                 jdbc.update("UPDATE KNRAWMS.DOC_FILE SET FILE_NM=?, LMODAT=? WHERE FILE_ID=?", fileNm.trim(), today, fileId);
             if (note != null)
                 jdbc.update("UPDATE KNRAWMS.DOC_FILE SET NOTE=?, LMODAT=? WHERE FILE_ID=?", note.trim(), today, fileId);
+            if (opDate != null)
+                jdbc.update(
+                    "UPDATE KNRAWMS.DOC_FILE SET OP_DATE=?, LMODAT=? WHERE FILE_ID=?",
+                    new Object[]{ opDate.isBlank() ? null : opDate.trim(), today, fileId },
+                    new int[]{ Types.VARCHAR, Types.VARCHAR, Types.NUMERIC });
             if (folderId != null)
                 jdbc.update("UPDATE KNRAWMS.DOC_FILE SET FOLDER_ID=?, LMODAT=? WHERE FILE_ID=?", folderId, today, fileId);
             return Map.of("ok", true);
