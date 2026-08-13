@@ -41,6 +41,30 @@ public class DocumentService {
     private static final DateTimeFormatter YMDFORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final DateTimeFormatter HMSFORMAT = DateTimeFormatter.ofPattern("HHmmss");
 
+    /* DOC_FILE.OP_DATE(운행일자) 컬럼 존재 여부 캐시.
+       운영 DB에 아직 컬럼 추가 SQL(FIX_DOC_FILE_ADD_OP_DATE.sql)이 적용되지 않았을 수 있어,
+       런타임에 컬럼 존재를 감지하여 SQL 을 자동 적응시킨다(ORA-00904 방지). */
+    private volatile Boolean opDateColExists = null;
+
+    private boolean hasOpDateColumn() {
+        Boolean cached = opDateColExists;
+        if (cached != null) return cached;
+        boolean exists = false;
+        try {
+            Integer cnt = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM ALL_TAB_COLUMNS " +
+                "WHERE OWNER='KNRAWMS' AND TABLE_NAME='DOC_FILE' AND COLUMN_NAME='OP_DATE'",
+                Integer.class);
+            exists = cnt != null && cnt > 0;
+        } catch (Exception e) {
+            /* ALL_TAB_COLUMNS 조회 실패(권한/비Oracle 등) 시 안전하게 미존재로 간주 */
+            log.warn("hasOpDateColumn detect failed, assume absent: {}", e.getMessage());
+            exists = false;
+        }
+        opDateColExists = exists;
+        return exists;
+    }
+
     // ── 폴더 목록 조회 ─────────────────────────────────────────────
     public Map<String, Object> getFolders(Long parentId) {
         try {
@@ -137,18 +161,23 @@ public class DocumentService {
     public Map<String, Object> getFiles(Long folderId, String opFrom, String opTo,
                                         String upFrom, String upTo, String kw) {
         try {
+            boolean hasOpDate = hasOpDateColumn();
             /* 프론트(_dmRenderFileTable)가 기대하는 필드명으로 alias:
-               ORIG_NM(파일명)=FILE_NM, UPLOAD_DAT=CREDAT, UPLOAD_TIM=CRETIM, OP_DATE=운행일자 */
+               ORIG_NM(파일명)=FILE_NM, UPLOAD_DAT=CREDAT, UPLOAD_TIM=CRETIM, OP_DATE=운행일자.
+               OP_DATE 컬럼 미존재 DB 대비: 있으면 실제 컬럼, 없으면 NULL AS OP_DATE 로 대체. */
             StringBuilder sql = new StringBuilder(
                 "SELECT FILE_ID, FOLDER_ID, FILE_NM AS ORIG_NM, FILE_NM, FILE_PATH, FILE_SIZE, " +
-                "FILE_TYPE, FILE_EXT, NOTE, OP_DATE, CREDAT AS UPLOAD_DAT, CRETIM AS UPLOAD_TIM, " +
+                "FILE_TYPE, FILE_EXT, NOTE, " +
+                (hasOpDate ? "OP_DATE" : "NULL AS OP_DATE") + ", " +
+                "CREDAT AS UPLOAD_DAT, CRETIM AS UPLOAD_TIM, " +
                 "CREDAT, CRETIM, DOWNLOAD_CNT " +
                 "FROM KNRAWMS.DOC_FILE WHERE DEL_YN='N' ");
             List<Object> args = new ArrayList<>();
             List<Integer> types = new ArrayList<>();
             if (folderId != null) { sql.append("AND FOLDER_ID=? ");            args.add(folderId); types.add(Types.NUMERIC); }
-            if (opFrom != null && !opFrom.isBlank()) { sql.append("AND OP_DATE >= ? "); args.add(opFrom); types.add(Types.VARCHAR); }
-            if (opTo   != null && !opTo.isBlank())   { sql.append("AND OP_DATE <= ? "); args.add(opTo);   types.add(Types.VARCHAR); }
+            /* OP_DATE 필터는 컬럼이 있을 때만 적용(없으면 무시) */
+            if (hasOpDate && opFrom != null && !opFrom.isBlank()) { sql.append("AND OP_DATE >= ? "); args.add(opFrom); types.add(Types.VARCHAR); }
+            if (hasOpDate && opTo   != null && !opTo.isBlank())   { sql.append("AND OP_DATE <= ? "); args.add(opTo);   types.add(Types.VARCHAR); }
             if (upFrom != null && !upFrom.isBlank()) { sql.append("AND CREDAT  >= ? "); args.add(upFrom); types.add(Types.VARCHAR); }
             if (upTo   != null && !upTo.isBlank())   { sql.append("AND CREDAT  <= ? "); args.add(upTo);   types.add(Types.VARCHAR); }
             if (kw     != null && !kw.isBlank())     { sql.append("AND (FILE_NM LIKE ? OR NOTE LIKE ?) "); args.add("%"+kw+"%"); types.add(Types.VARCHAR); args.add("%"+kw+"%"); types.add(Types.VARCHAR); }
@@ -175,6 +204,7 @@ public class DocumentService {
         String now   = LocalDateTime.now().format(HMSFORMAT);
         String opd   = (opDate != null && !opDate.isBlank()) ? opDate.trim() : null;
 
+        boolean hasOpDate = hasOpDateColumn();
         List<Map<String, Object>> saved = new ArrayList<>();
         try {
             for (MultipartFile file : files) {
@@ -192,25 +222,45 @@ public class DocumentService {
                 Files.createDirectories(dirPath);
                 file.transferTo(filePath.toFile());
 
-                /* [ORA-02289] SEQ 미존재 대비 MAX+1 채번. [ORA-18734] argTypes 명시. */
+                /* [ORA-02289] SEQ 미존재 대비 MAX+1 채번. [ORA-18734] argTypes 명시.
+                   OP_DATE 컬럼 미존재 DB 대비: 있으면 포함, 없으면 컬럼 제외 INSERT. */
                 Long newId = jdbc.queryForObject(
                     "SELECT NVL(MAX(FILE_ID),0)+1 FROM KNRAWMS.DOC_FILE", Long.class);
-                jdbc.update(
-                    "INSERT INTO KNRAWMS.DOC_FILE (FILE_ID, FOLDER_ID, FILE_NM, FILE_PATH, FILE_SIZE, FILE_TYPE, FILE_EXT, " +
-                    "OP_DATE, NOTE, CREDAT, CRETIM, CREUSR, LMODAT, DEL_YN, DOWNLOAD_CNT) " +
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    new Object[]{
-                        newId, folderId, origName, filePath.toString(), file.getSize(),
-                        file.getContentType(), ext,
-                        opd, note, today, now, "SYSTEM", today, "N", 0
-                    },
-                    new int[]{
-                        Types.NUMERIC, Types.NUMERIC, Types.VARCHAR, Types.VARCHAR, Types.NUMERIC,
-                        Types.VARCHAR, Types.VARCHAR,
-                        Types.VARCHAR, Types.VARCHAR, Types.VARCHAR, Types.VARCHAR, Types.VARCHAR,
-                        Types.VARCHAR, Types.VARCHAR, Types.NUMERIC
-                    }
-                );
+                if (hasOpDate) {
+                    jdbc.update(
+                        "INSERT INTO KNRAWMS.DOC_FILE (FILE_ID, FOLDER_ID, FILE_NM, FILE_PATH, FILE_SIZE, FILE_TYPE, FILE_EXT, " +
+                        "OP_DATE, NOTE, CREDAT, CRETIM, CREUSR, LMODAT, DEL_YN, DOWNLOAD_CNT) " +
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        new Object[]{
+                            newId, folderId, origName, filePath.toString(), file.getSize(),
+                            file.getContentType(), ext,
+                            opd, note, today, now, "SYSTEM", today, "N", 0
+                        },
+                        new int[]{
+                            Types.NUMERIC, Types.NUMERIC, Types.VARCHAR, Types.VARCHAR, Types.NUMERIC,
+                            Types.VARCHAR, Types.VARCHAR,
+                            Types.VARCHAR, Types.VARCHAR, Types.VARCHAR, Types.VARCHAR, Types.VARCHAR,
+                            Types.VARCHAR, Types.VARCHAR, Types.NUMERIC
+                        }
+                    );
+                } else {
+                    jdbc.update(
+                        "INSERT INTO KNRAWMS.DOC_FILE (FILE_ID, FOLDER_ID, FILE_NM, FILE_PATH, FILE_SIZE, FILE_TYPE, FILE_EXT, " +
+                        "NOTE, CREDAT, CRETIM, CREUSR, LMODAT, DEL_YN, DOWNLOAD_CNT) " +
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        new Object[]{
+                            newId, folderId, origName, filePath.toString(), file.getSize(),
+                            file.getContentType(), ext,
+                            note, today, now, "SYSTEM", today, "N", 0
+                        },
+                        new int[]{
+                            Types.NUMERIC, Types.NUMERIC, Types.VARCHAR, Types.VARCHAR, Types.NUMERIC,
+                            Types.VARCHAR, Types.VARCHAR,
+                            Types.VARCHAR, Types.VARCHAR, Types.VARCHAR, Types.VARCHAR, Types.VARCHAR,
+                            Types.VARCHAR, Types.NUMERIC
+                        }
+                    );
+                }
                 Map<String, Object> one = new LinkedHashMap<>();
                 one.put("file_id", newId);
                 one.put("file_nm", origName);
@@ -291,7 +341,7 @@ public class DocumentService {
                 jdbc.update("UPDATE KNRAWMS.DOC_FILE SET FILE_NM=?, LMODAT=? WHERE FILE_ID=?", fileNm.trim(), today, fileId);
             if (note != null)
                 jdbc.update("UPDATE KNRAWMS.DOC_FILE SET NOTE=?, LMODAT=? WHERE FILE_ID=?", note.trim(), today, fileId);
-            if (opDate != null)
+            if (opDate != null && hasOpDateColumn())
                 jdbc.update(
                     "UPDATE KNRAWMS.DOC_FILE SET OP_DATE=?, LMODAT=? WHERE FILE_ID=?",
                     new Object[]{ opDate.isBlank() ? null : opDate.trim(), today, fileId },
