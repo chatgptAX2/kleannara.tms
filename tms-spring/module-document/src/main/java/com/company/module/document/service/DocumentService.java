@@ -79,19 +79,22 @@ public class DocumentService {
         String now   = LocalDateTime.now().format(HMSFORMAT);
 
         try {
-            /* [ORA-18734 FIX] parent_id=null(루트 폴더) 등 파라미터를 SQL 타입 미지정으로
-               바인딩하면 Oracle JDBC 드라이버가 타입을 추론하지 못해 ORA-18734 발생.
-               → Object[] + int[] argTypes 로 각 파라미터의 java.sql.Types 를 명시한다. */
+            /* [ORA-02289 FIX] SEQ_DOC_FOLDER 시퀀스가 운영 Oracle 에 존재하지 않아
+               NEXTVAL 호출 시 INSERT 실행 실패(ORA-02289: sequence does not exist).
+               → 타 모듈 표준과 동일하게 MAX(FOLDER_ID)+1 로 채번한다.
+               [ORA-18734 FIX] parent_id=null(루트 폴더) 등은 argTypes(java.sql.Types) 명시. */
+            Long newId = jdbc.queryForObject(
+                "SELECT NVL(MAX(FOLDER_ID),0)+1 FROM KNRAWMS.DOC_FOLDER", Long.class);
             jdbc.update(
                 "INSERT INTO KNRAWMS.DOC_FOLDER (FOLDER_ID, FOLDER_NM, PARENT_ID, SORT_SEQ, CREDAT, CRETIM, LMODAT, DEL_YN) " +
-                "VALUES (SEQ_DOC_FOLDER.NEXTVAL,?,?,?,?,?,?,?)",
-                new Object[]{ folderNm.trim(), parentId, 0, today, now, today, "N" },
-                new int[]{ Types.VARCHAR, Types.NUMERIC, Types.NUMERIC,
+                "VALUES (?,?,?,?,?,?,?,?)",
+                new Object[]{ newId, folderNm.trim(), parentId, 0, today, now, today, "N" },
+                new int[]{ Types.NUMERIC, Types.VARCHAR, Types.NUMERIC, Types.NUMERIC,
                            Types.VARCHAR, Types.VARCHAR, Types.VARCHAR, Types.VARCHAR }
             );
-            Long newId = jdbc.queryForObject("SELECT SEQ_DOC_FOLDER.CURRVAL FROM DUAL", Long.class);
             return Map.of("ok", true, "folder_id", newId);
         } catch (Exception e) {
+            log.error("createFolder error: {}", e.getMessage());
             return Map.of("ok", false, "error", e.getMessage());
         }
     }
@@ -172,26 +175,26 @@ public class DocumentService {
             Files.createDirectories(dirPath);
             file.transferTo(filePath.toFile());
 
-            /* [ORA-18734 FIX] folder_id=null(루트 업로드)·DOWNLOAD_CNT=0 등 파라미터를
-               SQL 타입 미지정으로 바인딩하면 Oracle JDBC 드라이버가 타입 추론 실패 →
-               ORA-18734 발생. → argTypes(java.sql.Types) 명시. */
+            /* [ORA-02289 FIX] SEQ_DOC_FILE 시퀀스 미존재 대비 MAX(FILE_ID)+1 채번.
+               [ORA-18734 FIX] folder_id=null(루트 업로드)·DOWNLOAD_CNT=0 등 argTypes 명시. */
+            Long newId = jdbc.queryForObject(
+                "SELECT NVL(MAX(FILE_ID),0)+1 FROM KNRAWMS.DOC_FILE", Long.class);
             jdbc.update(
                 "INSERT INTO KNRAWMS.DOC_FILE (FILE_ID, FOLDER_ID, FILE_NM, FILE_PATH, FILE_SIZE, FILE_TYPE, FILE_EXT, " +
                 "NOTE, CREDAT, CRETIM, CREUSR, LMODAT, DEL_YN, DOWNLOAD_CNT) " +
-                "VALUES (SEQ_DOC_FILE.NEXTVAL,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 new Object[]{
-                    folderId, origName, filePath.toString(), file.getSize(),
+                    newId, folderId, origName, filePath.toString(), file.getSize(),
                     file.getContentType(), ext,
                     note, today, now, "SYSTEM", today, "N", 0
                 },
                 new int[]{
-                    Types.NUMERIC, Types.VARCHAR, Types.VARCHAR, Types.NUMERIC,
+                    Types.NUMERIC, Types.NUMERIC, Types.VARCHAR, Types.VARCHAR, Types.NUMERIC,
                     Types.VARCHAR, Types.VARCHAR,
                     Types.VARCHAR, Types.VARCHAR, Types.VARCHAR, Types.VARCHAR,
                     Types.VARCHAR, Types.VARCHAR, Types.NUMERIC
                 }
             );
-            Long newId = jdbc.queryForObject("SELECT SEQ_DOC_FILE.CURRVAL FROM DUAL", Long.class);
             return Map.of("ok", true, "file_id", newId, "file_nm", origName);
         } catch (Exception e) {
             log.error("upload error: {}", e.getMessage());
