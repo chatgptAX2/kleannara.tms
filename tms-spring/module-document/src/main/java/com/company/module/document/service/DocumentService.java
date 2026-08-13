@@ -15,6 +15,7 @@ import java.io.File;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.sql.Types;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -78,10 +79,15 @@ public class DocumentService {
         String now   = LocalDateTime.now().format(HMSFORMAT);
 
         try {
+            /* [ORA-18734 FIX] parent_id=null(루트 폴더) 등 파라미터를 SQL 타입 미지정으로
+               바인딩하면 Oracle JDBC 드라이버가 타입을 추론하지 못해 ORA-18734 발생.
+               → Object[] + int[] argTypes 로 각 파라미터의 java.sql.Types 를 명시한다. */
             jdbc.update(
                 "INSERT INTO KNRAWMS.DOC_FOLDER (FOLDER_ID, FOLDER_NM, PARENT_ID, SORT_SEQ, CREDAT, CRETIM, LMODAT, DEL_YN) " +
                 "VALUES (SEQ_DOC_FOLDER.NEXTVAL,?,?,?,?,?,?,?)",
-                folderNm.trim(), parentId, 0, today, now, today, "N"
+                new Object[]{ folderNm.trim(), parentId, 0, today, now, today, "N" },
+                new int[]{ Types.VARCHAR, Types.NUMERIC, Types.NUMERIC,
+                           Types.VARCHAR, Types.VARCHAR, Types.VARCHAR, Types.VARCHAR }
             );
             Long newId = jdbc.queryForObject("SELECT SEQ_DOC_FOLDER.CURRVAL FROM DUAL", Long.class);
             return Map.of("ok", true, "folder_id", newId);
@@ -166,13 +172,24 @@ public class DocumentService {
             Files.createDirectories(dirPath);
             file.transferTo(filePath.toFile());
 
+            /* [ORA-18734 FIX] folder_id=null(루트 업로드)·DOWNLOAD_CNT=0 등 파라미터를
+               SQL 타입 미지정으로 바인딩하면 Oracle JDBC 드라이버가 타입 추론 실패 →
+               ORA-18734 발생. → argTypes(java.sql.Types) 명시. */
             jdbc.update(
                 "INSERT INTO KNRAWMS.DOC_FILE (FILE_ID, FOLDER_ID, FILE_NM, FILE_PATH, FILE_SIZE, FILE_TYPE, FILE_EXT, " +
                 "NOTE, CREDAT, CRETIM, CREUSR, LMODAT, DEL_YN, DOWNLOAD_CNT) " +
                 "VALUES (SEQ_DOC_FILE.NEXTVAL,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                folderId, origName, filePath.toString(), file.getSize(),
-                file.getContentType(), ext,
-                note, today, now, "SYSTEM", today, "N", 0
+                new Object[]{
+                    folderId, origName, filePath.toString(), file.getSize(),
+                    file.getContentType(), ext,
+                    note, today, now, "SYSTEM", today, "N", 0
+                },
+                new int[]{
+                    Types.NUMERIC, Types.VARCHAR, Types.VARCHAR, Types.NUMERIC,
+                    Types.VARCHAR, Types.VARCHAR,
+                    Types.VARCHAR, Types.VARCHAR, Types.VARCHAR, Types.VARCHAR,
+                    Types.VARCHAR, Types.VARCHAR, Types.NUMERIC
+                }
             );
             Long newId = jdbc.queryForObject("SELECT SEQ_DOC_FILE.CURRVAL FROM DUAL", Long.class);
             return Map.of("ok", true, "file_id", newId, "file_nm", origName);
