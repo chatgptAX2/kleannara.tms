@@ -274,6 +274,47 @@ public class DocumentService {
         }
     }
 
+    /* ── 확장자 → Content-Type 매핑 ────────────────────────────────
+       MS 오피스/이미지/PDF 등 주요 형식을 정확한 MIME 으로 매핑.
+       오피스 온라인 뷰어 미리보기 및 브라우저 다운로드 파일명 처리를 위해 필요. */
+    private String resolveContentType(String ext, String fileNm, String fallback) {
+        String e = (ext != null && !ext.isBlank()) ? ext : null;
+        if (e == null && fileNm != null && fileNm.contains(".")) {
+            e = fileNm.substring(fileNm.lastIndexOf('.') + 1);
+        }
+        if (e != null) {
+            switch (e.toLowerCase()) {
+                // 문서
+                case "pdf":  return "application/pdf";
+                case "doc":  return "application/msword";
+                case "docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                case "xls":  return "application/vnd.ms-excel";
+                case "xlsx": return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                case "ppt":  return "application/vnd.ms-powerpoint";
+                case "pptx": return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+                case "txt":  return "text/plain";
+                case "csv":  return "text/csv";
+                case "hwp":  return "application/x-hwp";
+                case "hwpx": return "application/haansofthwpx";
+                // 이미지
+                case "png":  return "image/png";
+                case "jpg":
+                case "jpeg": return "image/jpeg";
+                case "gif":  return "image/gif";
+                case "bmp":  return "image/bmp";
+                case "webp": return "image/webp";
+                case "tif":
+                case "tiff": return "image/tiff";
+                case "svg":  return "image/svg+xml";
+                case "heic": return "image/heic";
+                case "heif": return "image/heif";
+                default: break;
+            }
+        }
+        if (fallback != null && !fallback.isBlank()) return fallback;
+        return "application/octet-stream";
+    }
+
     // ── 파일 조회 (다운로드/미리보기 공통) ────────────────────────
     public FileResult getFile(Long fileId, boolean inline) {
         try {
@@ -285,7 +326,13 @@ public class DocumentService {
             Map<String, Object> row = rows.get(0);
             String filePath = (String) row.get("FILE_PATH");
             String fileNm   = (String) row.get("FILE_NM");
-            String fileType = (String) row.getOrDefault("FILE_TYPE", "application/octet-stream");
+            String fileExt  = Objects.toString(row.get("FILE_EXT"), null);
+            String storedType = Objects.toString(row.get("FILE_TYPE"), null);
+
+            /* Content-Type 결정: 확장자 기반 매핑을 우선 적용(브라우저가 보낸 FILE_TYPE 은
+               비어있거나 부정확한 경우가 있어 오피스/이미지 파일이 octet-stream 으로 다운로드되는 문제 방지).
+               매핑에 없으면 저장된 FILE_TYPE, 그것도 없으면 octet-stream. */
+            String fileType = resolveContentType(fileExt, fileNm, storedType);
 
             File f = new File(filePath);
             if (!f.exists()) return FileResult.notFound();

@@ -3021,7 +3021,18 @@ thead th:hover .th-drag-handle{opacity:.8}
 .dm-ext-badge{display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase}
 .dm-ext-pdf{background:#fef3c7;color:#92400e}
 .dm-ext-img{background:#dbeafe;color:#1e40af}
+.dm-ext-word{background:#dbeafe;color:#1d4ed8}
+.dm-ext-excel{background:#dcfce7;color:#15803d}
+.dm-ext-ppt{background:#ffedd5;color:#c2410c}
 .dm-ext-other{background:var(--surface2);color:var(--text3)}
+/* 선택 파일 칩(대기 목록) — 드롭존 하단에 표시 */
+.dm-pending-list{display:flex;flex-wrap:wrap;gap:6px;margin:8px 18px 0}
+.dm-pending-chip{display:inline-flex;align-items:center;gap:6px;max-width:280px;padding:4px 8px;border-radius:16px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.35);font-size:11px;color:var(--text2)}
+.dm-pending-chip .dm-chip-ext{font-size:9px;font-weight:800;text-transform:uppercase;padding:0 4px;border-radius:3px;background:rgba(59,130,246,.2);color:var(--primary)}
+.dm-pending-chip .dm-chip-nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.dm-pending-chip .dm-chip-sz{color:var(--text3);font-size:10px;flex-shrink:0}
+.dm-pending-chip .dm-chip-x{cursor:pointer;color:var(--text3);border:none;background:none;font-size:13px;line-height:1;padding:0 2px;flex-shrink:0}
+.dm-pending-chip .dm-chip-x:hover{color:#ef4444}
 /* 파일 크기 */
 .dm-filesize{color:var(--text3);font-size:11px}
 /* 미리보기 모달 */
@@ -24817,12 +24828,14 @@ async function dmSelectFolder(folderId) {
          ondragleave="this.classList.remove('drag-over')"
          ondrop="dmHandleDrop(event)">
       <input type="file" id="dm-file-input" multiple
-             accept=".pdf,.png,.jpg,.jpeg,.gif,.bmp,.webp,.tiff,.tif,.svg,.heic,.heif"
+             accept=".pdf,.png,.jpg,.jpeg,.gif,.bmp,.webp,.tiff,.tif,.svg,.heic,.heif,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.txt,.csv"
              onchange="dmHandleFileSelect(event)">
       <span class="dm-upload-zone-icon">📤</span>
       <div class="dm-upload-zone-txt">클릭하거나 파일을 드래그하여 업로드</div>
-      <div class="dm-upload-zone-hint">PDF, PNG, JPG, GIF, BMP, WEBP, TIFF, SVG, HEIC 지원</div>
+      <div class="dm-upload-zone-hint">이미지(PDF·PNG·JPG·GIF·BMP·WEBP·TIFF·SVG·HEIC), MS 오피스(Word·Excel·PowerPoint), 한글(HWP), TXT·CSV 지원</div>
     </div>
+    <!-- 선택 파일 칩 목록 (드롭존 하단) -->
+    <div class="dm-pending-list" id="dm-pending-list"></div>
     <div class="dm-upload-meta">
       <label>운행일자
         <input type="date" id="dm-op-date" style="width:140px">
@@ -24879,19 +24892,73 @@ function dmHandleDrop(e) {
   }
 }
 
-/* ── 대기 파일 표시 ── */
+/* ── 대기 파일 표시 (파일명 칩 목록 + 요약) ── */
 function _dmUpdatePending() {
-  const txt = document.getElementById('dm-pending-txt');
-  const btn = document.getElementById('dm-upload-btn');
-  if (!txt || !btn) return;
+  const txt  = document.getElementById('dm-pending-txt');
+  const list = document.getElementById('dm-pending-list');
+  const btn  = document.getElementById('dm-upload-btn');
+  if (!btn) return;
+
   if (!DM.pendingFiles.length) {
-    txt.textContent = '';
+    if (txt)  txt.textContent = '';
+    if (list) list.innerHTML  = '';
     btn.disabled = true;
     return;
   }
-  const names = DM.pendingFiles.map(f => f.name).join(', ');
-  txt.textContent = `선택된 파일 ${DM.pendingFiles.length}개: ${names}`;
+
+  /* 요약 텍스트 */
+  const totalSize = DM.pendingFiles.reduce((s, f) => s + (f.size || 0), 0);
+  if (txt) txt.textContent = `선택된 파일 ${DM.pendingFiles.length}개 · 총 ${_dmFmtSize(totalSize)}`;
+
+  /* 파일 칩 목록 (DOM 직접 생성 — 파일명 특수문자 안전) */
+  if (list) {
+    list.innerHTML = '';
+    DM.pendingFiles.forEach((f, idx) => {
+      const ext = (f.name.split('.').pop() || '').toLowerCase();
+      const chip = document.createElement('span');
+      chip.className = 'dm-pending-chip';
+      chip.title = f.name;
+
+      const extEl = document.createElement('span');
+      extEl.className = 'dm-chip-ext';
+      extEl.textContent = ext || '?';
+
+      const nmEl = document.createElement('span');
+      nmEl.className = 'dm-chip-nm';
+      nmEl.textContent = f.name;
+
+      const szEl = document.createElement('span');
+      szEl.className = 'dm-chip-sz';
+      szEl.textContent = _dmFmtSize(f.size);
+
+      const xEl = document.createElement('button');
+      xEl.className = 'dm-chip-x';
+      xEl.type = 'button';
+      xEl.textContent = '✕';
+      xEl.title = '선택 취소';
+      xEl.addEventListener('click', e => { e.stopPropagation(); _dmRemovePending(idx); });
+
+      chip.appendChild(extEl);
+      chip.appendChild(nmEl);
+      chip.appendChild(szEl);
+      chip.appendChild(xEl);
+      list.appendChild(chip);
+    });
+  }
   btn.disabled = false;
+}
+
+/* ── 대기 파일 개별 제거 ── */
+function _dmRemovePending(idx) {
+  DM.pendingFiles.splice(idx, 1);
+  /* input.files 도 동기화 */
+  const inp = document.getElementById('dm-file-input');
+  if (inp) {
+    const dt = new DataTransfer();
+    DM.pendingFiles.forEach(f => dt.items.add(f));
+    inp.files = dt.files;
+  }
+  _dmUpdatePending();
 }
 
 /* ── 실제 업로드 ── */
@@ -24996,9 +25063,19 @@ function _dmRenderFileTable() {
   const rows = DM.files.map((f, i) => {
     const ext     = (f.FILE_EXT || '').toLowerCase();
     const isPdf   = ext === 'pdf';
-    const isImg   = ['png','jpg','jpeg','gif','bmp','webp','tiff','tif','svg','heic','heif'].includes(ext);
-    const extCls  = isPdf ? 'dm-ext-pdf' : isImg ? 'dm-ext-img' : 'dm-ext-other';
-    const canPrev = isPdf || isImg;
+    const isImg   = _dmIsImageExt(ext);
+    const isWord  = ['doc','docx'].includes(ext);
+    const isExcel = ['xls','xlsx','csv'].includes(ext);
+    const isPpt   = ['ppt','pptx'].includes(ext);
+    const isOffice= isWord || isExcel || isPpt;
+    const extCls  = isPdf ? 'dm-ext-pdf'
+                  : isImg ? 'dm-ext-img'
+                  : isWord ? 'dm-ext-word'
+                  : isExcel ? 'dm-ext-excel'
+                  : isPpt ? 'dm-ext-ppt'
+                  : 'dm-ext-other';
+    /* 미리보기 가능: 이미지·PDF(내장), Office(오피스 온라인 뷰어) */
+    const canPrev = isPdf || isImg || isOffice;
     const sizeStr = _dmFmtSize(f.FILE_SIZE);
     const opDate  = f.OP_DATE ? _dmFmtDate(f.OP_DATE) : '-';
     const upDate  = f.UPLOAD_DAT ? _dmFmtDate(f.UPLOAD_DAT) : '-';
@@ -25120,12 +25197,32 @@ function dmDownload(fileId) {
   window.open(`/api/doc/download/${fileId}`, '_blank');
 }
 
+/* ── 확장자 판별 헬퍼 ── */
+function _dmIsImageExt(ext) {
+  return ['png','jpg','jpeg','gif','bmp','webp','tiff','tif','svg','heic','heif'].includes((ext||'').toLowerCase());
+}
+function _dmIsOfficeExt(ext) {
+  return ['doc','docx','xls','xlsx','ppt','pptx'].includes((ext||'').toLowerCase());
+}
+
 /* ── 미리보기 ── */
 function dmPreview(fileId, origNm, ext) {
   /* ext 가 없으면 origNm 에서 추출 (이벤트 위임 경로 외 직접 호출 대비) */
-  if (!ext) ext = origNm.split('.').pop().toLowerCase();
-  const isImg = ['png','jpg','jpeg','gif','bmp','webp','tiff','tif','svg','heic','heif'].includes(ext);
+  if (!ext) ext = (origNm.split('.').pop() || '').toLowerCase();
+  ext = ext.toLowerCase();
+  const isImg    = _dmIsImageExt(ext);
+  const isOffice = _dmIsOfficeExt(ext);
   const previewUrl = `/api/doc/preview/${fileId}`;
+
+  /* MS 오피스(Word/Excel/PowerPoint) → Microsoft Office Online Viewer 로 미리보기.
+     뷰어는 공개적으로 접근 가능한 절대 URL 이 필요하므로 현재 origin 기준 절대 URL 사용.
+     (사내 폐쇄망 등으로 오피스 뷰어 접근 불가 시 새 탭에서 원본이 다운로드/열림) */
+  if (isOffice) {
+    const absUrl = new URL(previewUrl, window.location.href).href;
+    const viewer = 'https://view.officeapps.live.com/op/view.aspx?src=' + encodeURIComponent(absUrl);
+    _dmOpenIframePreview(origNm, viewer, previewUrl, fileId);
+    return;
+  }
 
   /* PDF → 새 탭으로 열기 (iframe sandbox 차단 우회) */
   if (!isImg) {
@@ -25169,6 +25266,69 @@ function dmPreview(fileId, origNm, ext) {
   img.src = previewUrl;
   img.alt = origNm;
   body.appendChild(img);
+
+  modal.appendChild(hdr);
+  modal.appendChild(body);
+  overlay.appendChild(modal);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+/* ── iframe 미리보기 모달 (MS 오피스 온라인 뷰어용) ── */
+function _dmOpenIframePreview(origNm, iframeUrl, rawUrl, fileId) {
+  const prev = document.getElementById('dm-preview-overlay');
+  if (prev) prev.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'dm-preview-overlay';
+  overlay.className = 'dm-preview-overlay';
+
+  const modal = document.createElement('div');
+  modal.className = 'dm-preview-modal';
+
+  const hdr = document.createElement('div');
+  hdr.className = 'dm-preview-hdr';
+  const titleEl = document.createElement('span');
+  titleEl.className = 'dm-preview-hdr-title';
+  titleEl.textContent = '👁 ' + origNm;
+
+  /* 새 창(원본) 링크 — 뷰어 실패 대비 */
+  const openLink = document.createElement('a');
+  openLink.href = rawUrl;
+  openLink.target = '_blank';
+  openLink.rel = 'noopener';
+  openLink.textContent = '↗ 새 창';
+  openLink.style.cssText = 'padding:4px 12px;border-radius:6px;background:rgba(255,255,255,.15);color:#e0eaff;font-size:11.5px;text-decoration:none;margin-right:6px';
+
+  const dlLink = document.createElement('a');
+  dlLink.href = `/api/doc/download/${fileId}`;
+  dlLink.download = origNm;
+  dlLink.textContent = '⬇️ 다운로드';
+  dlLink.style.cssText = 'padding:4px 12px;border-radius:6px;background:rgba(255,255,255,.15);color:#e0eaff;font-size:11.5px;text-decoration:none;margin-right:6px';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'dm-preview-close';
+  closeBtn.textContent = '✕ 닫기';
+  closeBtn.addEventListener('click', () => overlay.remove());
+
+  hdr.appendChild(titleEl);
+  hdr.appendChild(openLink);
+  hdr.appendChild(dlLink);
+  hdr.appendChild(closeBtn);
+
+  const body = document.createElement('div');
+  body.className = 'dm-preview-body';
+  /* 로딩 안내 (오피스 온라인 뷰어는 외부 로딩이 다소 느릴 수 있음) */
+  const hint = document.createElement('div');
+  hint.style.cssText = 'position:absolute;color:#93c5fd;font-size:12px';
+  hint.textContent = '오피스 문서 미리보기를 불러오는 중...';
+  body.style.position = 'relative';
+  body.appendChild(hint);
+
+  const iframe = document.createElement('iframe');
+  iframe.src = iframeUrl;
+  iframe.addEventListener('load', () => { hint.style.display = 'none'; });
+  body.appendChild(iframe);
 
   modal.appendChild(hdr);
   modal.appendChild(body);
