@@ -10491,8 +10491,18 @@ function _lvRender3D(containerId, placement, opts) {
     return spr;
   }
   const frontLbl = _makeLabel('▲ 진행방향(앞)', '#86efac');
-  frontLbl.position.set(carW/2 - carW/2, carH*0.5, -carL*0.06 - carL/2);
-  grp.add(frontLbl);
+  // 진행방향 라벨을 적재함 앞면(Z=0)에 가깝게 배치.
+  //   X = 적재함 너비 중앙(carW/2)  → 좌우 중앙 정렬
+  //   Y = 바닥 근처(살짝 위)          → 상단 규격/높이 라벨과 간섭 회피
+  //   Z = 앞면 바깥으로 소폭 오프셋    → '가로(너비)' 치수 라벨보다 조금 더 바깥에 두어
+  //                                     서로 겹치지 않으면서 적재함과 가깝게 표시
+  //   (기존: -carL*0.06 - carL/2 로 적재함에서 carL 절반 이상 떨어져 너무 멀었음)
+  {
+    const _lblScale2 = Math.max(carW, carL) * 0.16;
+    const _dimZ = Math.max(carL*0.10, _lblScale2*0.5);   // 가로(너비) 치수 라벨의 앞쪽 오프셋
+    frontLbl.position.set(carW/2, carH*0.06, -(_dimZ + _lblScale2*0.9));
+    grp.add(frontLbl);
+  }
 
   // ── OrbitControls ──
   let controls = null;
