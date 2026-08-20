@@ -185,6 +185,10 @@ public class ShipmentRowResponse {
     @JsonProperty("PLT_CNT")
     private Integer pltCnt;         // PLT개수 (null=계산불가)
 
+    // ── PLT 수량 (최근 입고 RECDI.QTYRCV = 1PLT당 수량) ──────
+    @JsonProperty("PLT_QTY")
+    private Double pltQty;          // 1PLT당 수량(원지=Kg/판지=R, null=미등록)
+
     // ── SOK 환산 (판지 높이 계산용) ──────────────────────────
     @JsonProperty("SOK_PER_R")
     private Double sokPerR;         // 1R당 SOK 수
