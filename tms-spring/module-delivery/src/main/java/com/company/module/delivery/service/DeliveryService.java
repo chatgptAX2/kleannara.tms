@@ -54,6 +54,35 @@ public class DeliveryService {
         this.wmsJdbc         = wmsJdbc;
     }
 
+    /* ── 런타임 컬럼 존재 감지 (ORA-00904 방지) ───────────────────────────────
+       운영 DB에 아직 MAX_TON 컬럼 추가 SQL(FIX_BZPTN_DETAIL_ADD_MAX_TON.sql)이
+       적용되지 않았을 수 있어, 런타임에 KNRAWMS.BZPTN_DETAIL.MAX_TON 존재를
+       감지하여 SELECT/정렬 SQL 을 자동 적응시킨다(ORA-00904 방지).
+       DocumentService.hasOpDateColumn() 패턴과 동일. */
+    private volatile Boolean maxTonColExists = null;
+
+    private boolean hasMaxTonColumn() {
+        Boolean cached = maxTonColExists;
+        if (cached != null) return cached;
+        boolean exists = false;
+        try {
+            Object cnt = tmsEm.createNativeQuery(
+                "SELECT COUNT(*) FROM ALL_TAB_COLUMNS " +
+                "WHERE OWNER='KNRAWMS' AND TABLE_NAME='BZPTN_DETAIL' AND COLUMN_NAME='MAX_TON'")
+                .getSingleResult();
+            long n = cnt == null ? 0L
+                : cnt instanceof BigDecimal ? ((BigDecimal) cnt).longValue()
+                : ((Number) cnt).longValue();
+            exists = n > 0;
+        } catch (Exception e) {
+            /* ALL_TAB_COLUMNS 조회 실패(권한/비Oracle 등) 시 안전하게 미존재로 간주 */
+            log.warn("hasMaxTonColumn detect failed, assume absent: {}", e.getMessage());
+            exists = false;
+        }
+        maxTonColExists = exists;
+        return exists;
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     // 납품처 목록 (Flask api_delivery_list)
     // tmsEm NativeQuery 사용 — JdbcTemplate DataSource 의존성 없애고 tmsEm 단일화
@@ -68,6 +97,8 @@ public class DeliveryService {
         String ptnrky    = nullIfBlank(req.getPtnrky());
         String q         = nullIfBlank(req.getQ());
 
+        boolean hasMaxTon = hasMaxTonColumn();
+
         // ── 동적 WHERE 절 ──────────────────────────────────────────────
         StringBuilder where = new StringBuilder(" WHERE b.PTNRTY = 'CT'");
 
@@ -77,8 +108,10 @@ public class DeliveryService {
         if (ptnrky    != null) where.append(" AND (b.PTNRKY LIKE :ptnrky OR b.NAME01 LIKE :ptnrky)");
         if (q         != null) where.append(" AND (b.PTNRKY LIKE :q OR b.NAME01 LIKE :q OR b.ADDR01 LIKE :q OR b.REGN01 LIKE :q)");
 
-        // ── 정렬 화이트리스트 ──────────────────────────────────────────
-        Set<String> allowed = Set.of("PTNRKY","NAME01","WAREKY","ITEM_GROUP","ADDR01","AREA_CD","DEADLINE_TIME","FORKLIFT_YN","MAX_TON");
+        // ── 정렬 화이트리스트 (MAX_TON 은 컬럼 존재 시에만 허용) ────────
+        Set<String> allowed = new HashSet<>(Arrays.asList(
+            "PTNRKY","NAME01","WAREKY","ITEM_GROUP","ADDR01","AREA_CD","DEADLINE_TIME","FORKLIFT_YN"));
+        if (hasMaxTon) allowed.add("MAX_TON");
         String sc = req.getSortCol() == null ? "PTNRKY" : req.getSortCol();
         if (!allowed.contains(sc)) sc = "PTNRKY";
         String sd = "DESC".equalsIgnoreCase(req.getSortDir()) ? "DESC" : "ASC";
@@ -102,12 +135,14 @@ public class DeliveryService {
             : ((Number) countResult).longValue();
 
         // ── 데이터 (Oracle OFFSET/FETCH) ──────────────────────────────
+        // MAX_TON 은 운영 DB에 컬럼이 존재할 때만 SELECT (미존재 시 NULL 상수로 대체 → ORA-00904 방지)
+        String maxTonSelect = hasMaxTon ? "d.MAX_TON" : "NULL AS MAX_TON";
         String dataSql =
             "SELECT b.PTNRKY, b.NAME01, b.PTNRTY, b.OWNRKY," +
             "       b.ADDR01, b.ADDR02, b.REGN01, b.TELN01," +
             "       d.WAREKY, d.ROUTE_CD, d.ITEM_GROUP, d.AREA_CD," +
             "       d.UNLOAD_TIME, d.MAX_HEIGHT, d.AUTO_ALLOC_YN, d.FORKLIFT_YN," +
-            "       d.INB_TIME_FROM1, d.INB_TIME_TO1, d.MAX_BOX_QTY, d.DEADLINE_TIME, d.MAX_TON," +
+            "       d.INB_TIME_FROM1, d.INB_TIME_TO1, d.MAX_BOX_QTY, d.DEADLINE_TIME, " + maxTonSelect + "," +
             "       CASE WHEN d.PTNRKY IS NOT NULL THEN 'Y' ELSE 'N' END AS HAS_DETAIL" +
             " FROM KNRAWMS.BZPTN b" +
             " LEFT JOIN KNRAWMS.BZPTN_DETAIL d" +
@@ -199,86 +234,93 @@ public class DeliveryService {
         String nowdt = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
         String nowtm = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
 
+        boolean hasMaxTon = hasMaxTonColumn();
+
         if (bzptnDetailRepo.existsByPtnrkyAndPtnrtyAndOwnrky(ptnrky, ptnrty, ownrky)) {
-            tmsEm.createNativeQuery("""
-                UPDATE KNRAWMS.BZPTN_DETAIL SET
-                  WAREKY=?,ROUTE_CD=?,ITEM_GROUP=?,UNLOAD_TIME=?,
-                  INB_TIME_FROM1=?,INB_TIME_TO1=?,AREA_CD=?,MAX_HEIGHT=?,
-                  FORKLIFT_YN=?,HANDWORK_YN=?,AUTO_PLT=?,MAX_BOX_QTY=?,
-                  AUTO_ALLOC_YN=?,SINGLE_ITEM_YN=?,NY_TYPE=?,SINGLE_HEIGHT=?,
-                  DYNAMIC_YN=?,LTL_YN=?,PRIORITY_YN=?,MIN_QTSIWH=?,
-                  LATITUDE=?,LONGITUDE=?,DEL_YN=?,DEADLINE_TIME=?,MAX_TON=?,
-                  LMODAT=?,LMOTIM=?,LMOUSR=?
-                WHERE PTNRKY=? AND PTNRTY=? AND OWNRKY=?
-                """)
-              .setParameter(1,  req.getWareky())
-              .setParameter(2,  req.getRouteCd())
-              .setParameter(3,  req.getItemGroup())
-              .setParameter(4,  req.getUnloadTime())
-              .setParameter(5,  req.getInbTimeFrom1())
-              .setParameter(6,  req.getInbTimeTo1())
-              .setParameter(7,  req.getAreaCd())
-              .setParameter(8,  req.getMaxHeight())
-              .setParameter(9,  req.getForkliftYn())
-              .setParameter(10, req.getHandworkYn())
-              .setParameter(11, req.getAutoPlt())
-              .setParameter(12, req.getMaxBoxQty())
-              .setParameter(13, req.getAutoAllocYn())
-              .setParameter(14, req.getSingleItemYn())
-              .setParameter(15, req.getNyType())
-              .setParameter(16, req.getSingleHeight())
-              .setParameter(17, req.getDynamicYn())
-              .setParameter(18, req.getLtlYn())
-              .setParameter(19, req.getPriorityYn())
-              .setParameter(20, req.getMinQtsiwh())
-              .setParameter(21, req.getLatitude())
-              .setParameter(22, req.getLongitude())
-              .setParameter(23, req.getDelYn())
-              .setParameter(24, req.getDeadlineTime())
-              .setParameter(25, req.getMaxTon())
-              .setParameter(26, nowdt).setParameter(27, nowtm).setParameter(28, "WEB")
-              .setParameter(29, ptnrky).setParameter(30, ptnrty).setParameter(31, ownrky)
-              .executeUpdate();
+            // MAX_TON 컬럼 존재 여부에 따라 SET 절 동적 구성 (미존재 시 제외 → ORA-00904 방지)
+            String maxTonSet = hasMaxTon ? "MAX_TON=?," : "";
+            Query q = tmsEm.createNativeQuery(
+                "UPDATE KNRAWMS.BZPTN_DETAIL SET " +
+                "  WAREKY=?,ROUTE_CD=?,ITEM_GROUP=?,UNLOAD_TIME=?," +
+                "  INB_TIME_FROM1=?,INB_TIME_TO1=?,AREA_CD=?,MAX_HEIGHT=?," +
+                "  FORKLIFT_YN=?,HANDWORK_YN=?,AUTO_PLT=?,MAX_BOX_QTY=?," +
+                "  AUTO_ALLOC_YN=?,SINGLE_ITEM_YN=?,NY_TYPE=?,SINGLE_HEIGHT=?," +
+                "  DYNAMIC_YN=?,LTL_YN=?,PRIORITY_YN=?,MIN_QTSIWH=?," +
+                "  LATITUDE=?,LONGITUDE=?,DEL_YN=?,DEADLINE_TIME=?," + maxTonSet +
+                "  LMODAT=?,LMOTIM=?,LMOUSR=? " +
+                "WHERE PTNRKY=? AND PTNRTY=? AND OWNRKY=?");
+            int p = 1;
+            q.setParameter(p++, req.getWareky())
+             .setParameter(p++, req.getRouteCd())
+             .setParameter(p++, req.getItemGroup())
+             .setParameter(p++, req.getUnloadTime())
+             .setParameter(p++, req.getInbTimeFrom1())
+             .setParameter(p++, req.getInbTimeTo1())
+             .setParameter(p++, req.getAreaCd())
+             .setParameter(p++, req.getMaxHeight())
+             .setParameter(p++, req.getForkliftYn())
+             .setParameter(p++, req.getHandworkYn())
+             .setParameter(p++, req.getAutoPlt())
+             .setParameter(p++, req.getMaxBoxQty())
+             .setParameter(p++, req.getAutoAllocYn())
+             .setParameter(p++, req.getSingleItemYn())
+             .setParameter(p++, req.getNyType())
+             .setParameter(p++, req.getSingleHeight())
+             .setParameter(p++, req.getDynamicYn())
+             .setParameter(p++, req.getLtlYn())
+             .setParameter(p++, req.getPriorityYn())
+             .setParameter(p++, req.getMinQtsiwh())
+             .setParameter(p++, req.getLatitude())
+             .setParameter(p++, req.getLongitude())
+             .setParameter(p++, req.getDelYn())
+             .setParameter(p++, req.getDeadlineTime());
+            if (hasMaxTon) q.setParameter(p++, req.getMaxTon());
+            q.setParameter(p++, nowdt).setParameter(p++, nowtm).setParameter(p++, "WEB")
+             .setParameter(p++, ptnrky).setParameter(p++, ptnrty).setParameter(p++, ownrky)
+             .executeUpdate();
             return "updated";
         } else {
-            tmsEm.createNativeQuery("""
-                INSERT INTO KNRAWMS.BZPTN_DETAIL
-                (PTNRKY,PTNRTY,OWNRKY,WAREKY,ROUTE_CD,ITEM_GROUP,UNLOAD_TIME,
-                 INB_TIME_FROM1,INB_TIME_TO1,AREA_CD,MAX_HEIGHT,FORKLIFT_YN,HANDWORK_YN,
-                 AUTO_PLT,MAX_BOX_QTY,AUTO_ALLOC_YN,SINGLE_ITEM_YN,NY_TYPE,SINGLE_HEIGHT,
-                 DYNAMIC_YN,LTL_YN,PRIORITY_YN,MIN_QTSIWH,LATITUDE,LONGITUDE,DEL_YN,
-                 DEADLINE_TIME,MAX_TON,CREDAT,CRETIM,CREUSR,LMODAT,LMOTIM,LMOUSR)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """)
-              .setParameter(1,  ptnrky).setParameter(2, ptnrty).setParameter(3, ownrky)
-              .setParameter(4,  req.getWareky())
-              .setParameter(5,  req.getRouteCd())
-              .setParameter(6,  req.getItemGroup())
-              .setParameter(7,  req.getUnloadTime())
-              .setParameter(8,  req.getInbTimeFrom1())
-              .setParameter(9,  req.getInbTimeTo1())
-              .setParameter(10, req.getAreaCd())
-              .setParameter(11, req.getMaxHeight())
-              .setParameter(12, req.getForkliftYn())
-              .setParameter(13, req.getHandworkYn())
-              .setParameter(14, req.getAutoPlt())
-              .setParameter(15, req.getMaxBoxQty())
-              .setParameter(16, req.getAutoAllocYn())
-              .setParameter(17, req.getSingleItemYn())
-              .setParameter(18, req.getNyType())
-              .setParameter(19, req.getSingleHeight())
-              .setParameter(20, req.getDynamicYn())
-              .setParameter(21, req.getLtlYn())
-              .setParameter(22, req.getPriorityYn())
-              .setParameter(23, req.getMinQtsiwh())
-              .setParameter(24, req.getLatitude())
-              .setParameter(25, req.getLongitude())
-              .setParameter(26, req.getDelYn())
-              .setParameter(27, req.getDeadlineTime())
-              .setParameter(28, req.getMaxTon())
-              .setParameter(29, nowdt).setParameter(30, nowtm).setParameter(31, "WEB")
-              .setParameter(32, nowdt).setParameter(33, nowtm).setParameter(34, "WEB")
-              .executeUpdate();
+            // MAX_TON 컬럼 존재 여부에 따라 INSERT 컬럼/값 동적 구성
+            String maxTonCol = hasMaxTon ? "MAX_TON," : "";
+            String maxTonVal = hasMaxTon ? "?," : "";
+            Query q = tmsEm.createNativeQuery(
+                "INSERT INTO KNRAWMS.BZPTN_DETAIL " +
+                "(PTNRKY,PTNRTY,OWNRKY,WAREKY,ROUTE_CD,ITEM_GROUP,UNLOAD_TIME," +
+                " INB_TIME_FROM1,INB_TIME_TO1,AREA_CD,MAX_HEIGHT,FORKLIFT_YN,HANDWORK_YN," +
+                " AUTO_PLT,MAX_BOX_QTY,AUTO_ALLOC_YN,SINGLE_ITEM_YN,NY_TYPE,SINGLE_HEIGHT," +
+                " DYNAMIC_YN,LTL_YN,PRIORITY_YN,MIN_QTSIWH,LATITUDE,LONGITUDE,DEL_YN," +
+                " DEADLINE_TIME," + maxTonCol + "CREDAT,CRETIM,CREUSR,LMODAT,LMOTIM,LMOUSR) " +
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?," + maxTonVal + "?,?,?,?,?,?)");
+            int p = 1;
+            q.setParameter(p++, ptnrky).setParameter(p++, ptnrty).setParameter(p++, ownrky)
+             .setParameter(p++, req.getWareky())
+             .setParameter(p++, req.getRouteCd())
+             .setParameter(p++, req.getItemGroup())
+             .setParameter(p++, req.getUnloadTime())
+             .setParameter(p++, req.getInbTimeFrom1())
+             .setParameter(p++, req.getInbTimeTo1())
+             .setParameter(p++, req.getAreaCd())
+             .setParameter(p++, req.getMaxHeight())
+             .setParameter(p++, req.getForkliftYn())
+             .setParameter(p++, req.getHandworkYn())
+             .setParameter(p++, req.getAutoPlt())
+             .setParameter(p++, req.getMaxBoxQty())
+             .setParameter(p++, req.getAutoAllocYn())
+             .setParameter(p++, req.getSingleItemYn())
+             .setParameter(p++, req.getNyType())
+             .setParameter(p++, req.getSingleHeight())
+             .setParameter(p++, req.getDynamicYn())
+             .setParameter(p++, req.getLtlYn())
+             .setParameter(p++, req.getPriorityYn())
+             .setParameter(p++, req.getMinQtsiwh())
+             .setParameter(p++, req.getLatitude())
+             .setParameter(p++, req.getLongitude())
+             .setParameter(p++, req.getDelYn())
+             .setParameter(p++, req.getDeadlineTime());
+            if (hasMaxTon) q.setParameter(p++, req.getMaxTon());
+            q.setParameter(p++, nowdt).setParameter(p++, nowtm).setParameter(p++, "WEB")
+             .setParameter(p++, nowdt).setParameter(p++, nowtm).setParameter(p++, "WEB")
+             .executeUpdate();
             return "created";
         }
     }
