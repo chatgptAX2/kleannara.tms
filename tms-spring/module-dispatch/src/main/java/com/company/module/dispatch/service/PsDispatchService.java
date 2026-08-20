@@ -379,21 +379,30 @@ public class PsDispatchService {
         if (shpokySet.isEmpty()) return java.util.Collections.emptySet();
 
         List<String> shpokys = new ArrayList<>(shpokySet);
-        // IN 절 플레이스홀더 전개 (SHPOKY 는 검색결과 문서 수만큼으로 소량)
-        String ph = shpokys.stream().map(x -> "?").collect(Collectors.joining(","));
-        String sql =
-            "SELECT SHPOKY || '|' || SHPOIT" +
-            " FROM KNRAWMS.SHPDI" +
-            " WHERE STATIT='NEW' AND STDLNR IS NOT NULL AND STDLNR <> ' '" +
-            "   AND SHPOKY IN (" + ph + ")";
 
-        var q = em.createNativeQuery(sql);
-        for (int i = 0; i < shpokys.size(); i++) {
-            q.setParameter(i + 1, shpokys.get(i));
+        // ── Oracle IN 절 1,000개 제한(ORA-01795) 회피: 1,000개 단위로 청크 분할 조회 ──
+        //   넓은 기간(예: 8월 1~21일) 조회 시 검색결과 문서 수(distinct SHPOKY)가
+        //   1,000개를 초과할 수 있어, IN 절을 여러 번으로 나눠 실행하고 결과를 합친다.
+        final int CHUNK = 1000;
+        Set<String> keys = new HashSet<>();
+        for (int from = 0; from < shpokys.size(); from += CHUNK) {
+            List<String> chunk = shpokys.subList(from, Math.min(from + CHUNK, shpokys.size()));
+            String ph = chunk.stream().map(x -> "?").collect(Collectors.joining(","));
+            String sql =
+                "SELECT SHPOKY || '|' || SHPOIT" +
+                " FROM KNRAWMS.SHPDI" +
+                " WHERE STATIT='NEW' AND STDLNR IS NOT NULL AND STDLNR <> ' '" +
+                "   AND SHPOKY IN (" + ph + ")";
+
+            var q = em.createNativeQuery(sql);
+            for (int i = 0; i < chunk.size(); i++) {
+                q.setParameter(i + 1, chunk.get(i));
+            }
+            @SuppressWarnings("unchecked")
+            List<String> chunkKeys = q.getResultList();
+            keys.addAll(chunkKeys);
         }
-        @SuppressWarnings("unchecked")
-        List<String> keys = q.getResultList();
-        return new HashSet<>(keys);
+        return keys;
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -621,17 +630,23 @@ public class PsDispatchService {
                     if (!sk.isEmpty()) skukeys.add(sk);
                 }
                 if (!skukeys.isEmpty()) {
-                    String skPh = skukeys.stream().map(x -> "?").collect(Collectors.joining(","));
-                    var recdiQ = em.createNativeQuery(
-                        "SELECT SKUKEY, COALESCE(QTYRCV, 0) FROM KNRAWMS.RECDI WHERE SKUKEY IN (" + skPh + ")"
-                    );
-                    int pi = 1;
-                    for (String sk : skukeys) recdiQ.setParameter(pi++, sk);
+                    // Oracle IN 절 1,000개 제한(ORA-01795) 회피: 1,000개 단위 청크 분할
+                    final int CHUNK = 1000;
+                    List<String> skList = new ArrayList<>(skukeys);
+                    for (int from = 0; from < skList.size(); from += CHUNK) {
+                        List<String> chunk = skList.subList(from, Math.min(from + CHUNK, skList.size()));
+                        String skPh = chunk.stream().map(x -> "?").collect(Collectors.joining(","));
+                        var recdiQ = em.createNativeQuery(
+                            "SELECT SKUKEY, COALESCE(QTYRCV, 0) FROM KNRAWMS.RECDI WHERE SKUKEY IN (" + skPh + ")"
+                        );
+                        int pi = 1;
+                        for (String sk : chunk) recdiQ.setParameter(pi++, sk);
 
-                    @SuppressWarnings("unchecked")
-                    List<Object[]> recdiRows = recdiQ.getResultList();
-                    for (Object[] rd : recdiRows) {
-                        recdiMap.put(str(rd[0]), toDouble(rd[1]));
+                        @SuppressWarnings("unchecked")
+                        List<Object[]> recdiRows = recdiQ.getResultList();
+                        for (Object[] rd : recdiRows) {
+                            recdiMap.put(str(rd[0]), toDouble(rd[1]));
+                        }
                     }
                 }
             }
