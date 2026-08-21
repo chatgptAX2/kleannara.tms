@@ -473,8 +473,8 @@ public class DeliveryService {
     // ──────────────────────────────────────────────────────────────────────────
     // 동적 대상 (BZPTN_DISTANCE) — 납품처 상세 '동적 대상' 팝업
     //   조건: (PTNRKY_FROM=:ptnrky OR PTNRKY_TO=:ptnrky)
-    //         AND USE_YN='Y'
     //         AND DISTANCE <= BZPTN_DETAIL.DYNAMIC_DIST_M
+    //   ※ USE_YN 무관 전체 조회(사용/미사용 목록에서 함께 확인)
     //   ※ DURATION = 이동거리(분). (TIME_MIN 아님)
     //   반환: { rows, total, dynamicDistM }
     // ──────────────────────────────────────────────────────────────────────────
@@ -513,7 +513,6 @@ public class DeliveryService {
             "  LEFT JOIN KNRAWMS.BZPTN bf ON bf.PTNRKY=d.PTNRKY_FROM AND bf.PTNRTY='CT' " +
             "  LEFT JOIN KNRAWMS.BZPTN bt ON bt.PTNRKY=d.PTNRKY_TO   AND bt.PTNRTY='CT' " +
             " WHERE (d.PTNRKY_FROM=? OR d.PTNRKY_TO=?) " +
-            "   AND d.USE_YN='Y' " +
             "   AND d.DISTANCE <= ? " +
             " ORDER BY d.DISTANCE ASC";
 
@@ -555,11 +554,12 @@ public class DeliveryService {
         return result;
     }
 
-    // ── 동적 대상 삭제(미사용) — USE_YN='N' 업데이트 ─────────────────────────────
+    // ── 동적 대상 사용유무 토글 — USE_YN Y↔N 반전 ───────────────────────────────
     //   targets: [{PTNRKY_FROM, PTNRKY_TO}, ...]
+    //   현재값 기준: 사용중('Y') → 미사용('N'), 미사용('N') → 사용('Y')
     //   반환: 업데이트 건수
     @Transactional(transactionManager = "tmsTransactionManager")
-    public int disableDynamicTargets(List<Map<String, String>> targets) {
+    public int toggleDynamicTargets(List<Map<String, String>> targets) {
         if (targets == null || targets.isEmpty()) return 0;
         String nowdt = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
         String nowtm = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
@@ -568,14 +568,15 @@ public class DeliveryService {
             String from = nullIfBlank(t.get("PTNRKY_FROM"));
             String to   = nullIfBlank(t.get("PTNRKY_TO"));
             if (from == null || to == null) continue;
-            // LMODAT/LMOTIM/LMOUSR 컬럼이 없을 수도 있어 최소 컬럼만 업데이트
+            // USE_YN 현재값을 반전(Y→N, 그 외→Y). NULL/공백은 사용중('Y')으로 간주 → 'N'
             cnt += tmsEm.createNativeQuery(
-                "UPDATE KNRAWMS.BZPTN_DISTANCE SET USE_YN='N' " +
-                "WHERE PTNRKY_FROM=? AND PTNRKY_TO=?")
+                "UPDATE KNRAWMS.BZPTN_DISTANCE " +
+                "   SET USE_YN = CASE WHEN NVL(USE_YN,'Y')='Y' THEN 'N' ELSE 'Y' END " +
+                " WHERE PTNRKY_FROM=? AND PTNRKY_TO=?")
                 .setParameter(1, from).setParameter(2, to)
                 .executeUpdate();
         }
-        log.info("disableDynamicTargets: {} rows set USE_YN=N ({} {})", cnt, nowdt, nowtm);
+        log.info("toggleDynamicTargets: {} rows USE_YN toggled ({} {})", cnt, nowdt, nowtm);
         return cnt;
     }
 
