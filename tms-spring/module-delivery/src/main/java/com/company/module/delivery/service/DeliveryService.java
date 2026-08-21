@@ -473,9 +473,9 @@ public class DeliveryService {
     // ──────────────────────────────────────────────────────────────────────────
     // 동적 대상 (BZPTN_DISTANCE) — 납품처 상세 '동적 대상' 팝업
     //   조건: (PTNRKY_FROM=:ptnrky OR PTNRKY_TO=:ptnrky)
+    //         AND USE_YN='Y'
     //         AND DISTANCE < BZPTN_DETAIL.DYNAMIC_DIST_M
-    //   ※ 사양의 USE_YN='Y' 조건은 유지하되, 삭제(미사용) 후에도 목록에서
-    //     '미사용' 으로 표시하기 위해 Y/N 모두 반환하고 USE_YN 컬럼을 함께 내려준다.
+    //   ※ DURATION = 이동거리(분). (TIME_MIN 아님)
     //   반환: { rows, total, dynamicDistM }
     // ──────────────────────────────────────────────────────────────────────────
     public Map<String, Object> getDynamicTargets(String ptnrky) {
@@ -508,13 +508,14 @@ public class DeliveryService {
         String sql =
             "SELECT d.PTNRKY_FROM, bf.NAME01 AS FROM_NAME, bf.ADDR01 AS FROM_ADDR1, bf.ADDR02 AS FROM_ADDR2, bf.REGN01 AS FROM_ZIP, " +
             "       d.PTNRKY_TO,   bt.NAME01 AS TO_NAME,   bt.ADDR01 AS TO_ADDR1,   bt.ADDR02 AS TO_ADDR2,   bt.REGN01 AS TO_ZIP, " +
-            "       d.DISTANCE, d.TIME_MIN, d.USE_YN, d.CREDAT, d.CRETIM, d.CREUSR " +
+            "       d.DISTANCE, d.DURATION, d.USE_YN, d.CREDAT, d.CRETIM, d.CREUSR " +
             "  FROM KNRAWMS.BZPTN_DISTANCE d " +
             "  LEFT JOIN KNRAWMS.BZPTN bf ON bf.PTNRKY=d.PTNRKY_FROM AND bf.PTNRTY='CT' " +
             "  LEFT JOIN KNRAWMS.BZPTN bt ON bt.PTNRKY=d.PTNRKY_TO   AND bt.PTNRTY='CT' " +
             " WHERE (d.PTNRKY_FROM=? OR d.PTNRKY_TO=?) " +
+            "   AND d.USE_YN='Y' " +
             "   AND d.DISTANCE < ? " +
-            " ORDER BY d.USE_YN DESC, d.DISTANCE ASC";
+            " ORDER BY d.DISTANCE ASC";
 
         try {
             @SuppressWarnings("unchecked")
@@ -537,7 +538,7 @@ public class DeliveryService {
                 m.put("TO_ADDR2",      str(r[8]));
                 m.put("TO_ZIP",        str(r[9]));
                 m.put("DISTANCE",      r[10]);
-                m.put("TIME_MIN",      r[11]);
+                m.put("DURATION",      r[11]);
                 m.put("USE_YN",        str(r[12]).isBlank() ? "Y" : str(r[12]));
                 m.put("CREDAT",        str(r[13]));
                 m.put("CRETIM",        str(r[14]));

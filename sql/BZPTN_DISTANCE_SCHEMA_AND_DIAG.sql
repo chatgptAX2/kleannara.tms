@@ -12,7 +12,7 @@
 --    → 체크박스 선택 후 '삭제(미사용)' 시 USE_YN='N' 업데이트
 --
 --  ※ 애플리케이션(DeliveryService)이 기대하는 컬럼명:
---     PTNRKY_FROM, PTNRKY_TO, DISTANCE, TIME_MIN, USE_YN,
+--     PTNRKY_FROM, PTNRKY_TO, DISTANCE, DURATION, USE_YN,
 --     CREDAT, CRETIM, CREUSR
 --    운영 테이블의 실제 컬럼명이 다르면 아래 (1) 진단 SQL 결과를 알려주세요.
 -- =====================================================================
@@ -38,7 +38,7 @@ BEGIN
                 PTNRKY_FROM   VARCHAR2(20)  NOT NULL,   -- 거래처(출발) 코드
                 PTNRKY_TO     VARCHAR2(20)  NOT NULL,   -- 거래처(도착) 코드
                 DISTANCE      NUMBER(12,2),             -- 거리(m)
-                TIME_MIN      NUMBER(10),               -- 시간(분)
+                DURATION      NUMBER(10),               -- 이동거리(분)
                 USE_YN        VARCHAR2(1)   DEFAULT ''Y'',  -- 사용여부 (Y/N)
                 CREDAT        VARCHAR2(8),              -- 생성일자 (YYYYMMDD)
                 CRETIM        VARCHAR2(6),              -- 생성시간 (HHMISS)
