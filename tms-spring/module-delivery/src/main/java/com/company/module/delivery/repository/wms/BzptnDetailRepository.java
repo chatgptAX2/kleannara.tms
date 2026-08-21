@@ -1,6 +1,7 @@
 package com.company.module.delivery.repository.wms;
 
 import com.company.module.delivery.entity.wms.BzptnDetail;
+import com.company.module.delivery.entity.wms.BzptnDetailId;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -26,7 +27,7 @@ import java.util.Optional;
  *     동적 WHERE(값 있을 때만 조건 추가) 로 전환.
  */
 @Repository
-public interface BzptnDetailRepository extends JpaRepository<BzptnDetail, Long>, BzptnDetailRepositoryCustom {
+public interface BzptnDetailRepository extends JpaRepository<BzptnDetail, BzptnDetailId>, BzptnDetailRepositoryCustom {
 
     Optional<BzptnDetail> findByPtnrkyAndPtnrtyAndOwnrky(
         String ptnrky, String ptnrty, String ownrky

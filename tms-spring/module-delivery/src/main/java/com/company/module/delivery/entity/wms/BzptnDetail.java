@@ -18,29 +18,30 @@ import lombok.*;
  * Flask: api_delivery_list / api_delivery_save / api_delivery_delete 대응
  */
 @Entity
-@Table(name = "BZPTN_DETAIL", schema = "KNRAWMS",
-       uniqueConstraints = @UniqueConstraint(
-           name = "UK_BZPTN_DETAIL",
-           columnNames = {"PTNRKY", "PTNRTY", "OWNRKY"}))
+@Table(name = "BZPTN_DETAIL", schema = "KNRAWMS")
+@IdClass(BzptnDetailId.class)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Builder
 @AllArgsConstructor
 public class BzptnDetail {
 
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "DETAIL_ID")
-    private Long detailId;
-
+    // ── 복합 기본키(PK): PTNRKY + PTNRTY + OWNRKY + WAREKY ──────────────
+    // 실제 운영 테이블 KNRAWMS.BZPTN_DETAIL 구조에 맞춘 복합키.
+    // (기존의 존재하지 않는 DETAIL_ID IDENTITY PK 매핑을 제거)
+    @Id
     @Column(name = "PTNRKY", length = 20, nullable = false)
     private String ptnrky;          // 납품처코드
 
+    @Id
     @Column(name = "PTNRTY", length = 5)
     private String ptnrty;          // 파트너 유형 (CT)
 
+    @Id
     @Column(name = "OWNRKY", length = 10)
     private String ownrky;          // 사업주 (KN)
 
+    @Id
     @Column(name = "WAREKY", length = 10)
     private String wareky;          // 출하 창고코드
 
