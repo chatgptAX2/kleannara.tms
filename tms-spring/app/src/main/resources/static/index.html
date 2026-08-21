@@ -5635,6 +5635,7 @@ function buildDeliveryUI() {
       <div class="dlv-section-header">
         <h3 id="dlv-form-title">📝 납품처 등록</h3>
         <div style="display:flex;gap:6px">
+          <button class="dlv-btn" onclick="openDynTargetPopup()" title="동적 허용 거리 이내의 납품처간 이동거리 대상 조회/관리">🎯 동적 대상</button>
           <button class="dlv-btn success" onclick="dlvSave()">💾 저장</button>
           <button class="dlv-btn" onclick="dlvResetForm()">🗑 초기화</button>
         </div>
@@ -20010,6 +20011,227 @@ function ptnrPopupSelect(ptnrky, name01) {
     </div>
   </div>
 </div>
+
+<!-- ═══════════════════════════════════════════════════════
+     동적 대상 팝업 (납품처 상세 — BZPTN_DISTANCE)
+═══════════════════════════════════════════════════════ -->
+<div id="dyn-target-overlay"
+  style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9200;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;
+              width:1180px;max-width:97vw;height:620px;max-height:94vh;
+              display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.4);">
+    <!-- 헤더 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;">
+      <span style="font-size:14px;font-weight:700;color:var(--text);">🎯 동적 대상 (납품처간 이동거리) <span id="dyn-target-ptnr" style="font-weight:400;color:var(--text3);font-size:12px;"></span></span>
+      <button onclick="closeDynTargetPopup()"
+        style="background:none;border:none;font-size:18px;color:var(--text3);cursor:pointer;line-height:1;">✕</button>
+    </div>
+    <!-- 툴바 -->
+    <div style="display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);flex-shrink:0;align-items:center;">
+      <input id="dyn-target-q" type="text"
+        placeholder="거래처 코드/명칭 필터..."
+        style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;
+               color:var(--text);padding:7px 10px;font-size:12px;"
+        oninput="renderDynTargets()" onkeydown="if(event.key==='Enter') renderDynTargets()">
+      <button onclick="loadDynTargets()"
+        style="padding:7px 14px;font-size:12px;border-radius:6px;border:none;background:var(--primary);color:#fff;cursor:pointer;white-space:nowrap;">
+        🔍 조회
+      </button>
+      <button onclick="dynTargetDisable()"
+        style="padding:7px 14px;font-size:12px;border-radius:6px;border:none;background:var(--danger,#e53935);color:#fff;cursor:pointer;white-space:nowrap;">
+        🗑 삭제(미사용)
+      </button>
+    </div>
+    <!-- 정보 바 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;
+             padding:4px 16px;background:var(--surface2);border-bottom:1px solid var(--border);flex-shrink:0;min-height:28px;">
+      <span id="dyn-target-info" style="font-size:11px;color:var(--text3);"></span>
+      <span id="dyn-target-selcnt" style="font-size:11px;font-weight:600;color:var(--primary);"></span>
+    </div>
+    <!-- 테이블 -->
+    <div style="overflow:auto;flex:1;min-height:0;">
+      <table style="width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap;">
+        <thead>
+          <tr style="position:sticky;top:0;z-index:1;background:var(--surface2);">
+            <th style="padding:6px;width:34px;text-align:center;border-bottom:1px solid var(--border);">
+              <input type="checkbox" id="dyn-target-chkall" title="전체 선택/해제" onchange="dynTargetToggleAll(this.checked)">
+            </th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">번호</th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">거래처(출발)</th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">설명</th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">대표주소</th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">우편번호</th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">거래처(도착)</th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">설명</th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">대표주소</th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">우편번호</th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;text-align:right;">거리(m)</th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;text-align:right;">시간(분)</th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">사용여부</th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">생성일자</th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">생성시간</th>
+            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">생성자</th>
+          </tr>
+        </thead>
+        <tbody id="dyn-target-body">
+          <tr><td colspan="16" style="padding:24px;text-align:center;color:var(--text3);">조회 버튼을 눌러주세요</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <!-- 하단 -->
+    <div style="padding:10px 16px;border-top:1px solid var(--border);flex-shrink:0;
+                display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-size:11px;color:var(--text3);">💡 체크박스 선택 후 [삭제(미사용)] 시 해당 이동거리의 USE_YN 이 N 으로 변경됩니다 (목록엔 '미사용'으로 유지)</span>
+      <button onclick="closeDynTargetPopup()"
+        style="padding:6px 14px;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;">닫기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   동적 대상 팝업 JS (BZPTN_DISTANCE)
+═══════════════════════════════════════════════════════ */
+window._dynTargetState = { ptnrky:'', rows:[], selected:new Set() };
+
+function openDynTargetPopup() {
+  const ptnrky = (document.getElementById('f-PTNRKY')?.value || '').trim();
+  if (!ptnrky) { showToast('납품처를 먼저 선택하세요 (리스트에서 행 클릭)'); return; }
+  _dynTargetState.ptnrky = ptnrky;
+  _dynTargetState.rows = [];
+  _dynTargetState.selected = new Set();
+  const pel = document.getElementById('dyn-target-ptnr');
+  if (pel) pel.textContent = '— ' + ptnrky;
+  const q = document.getElementById('dyn-target-q'); if (q) q.value = '';
+  document.getElementById('dyn-target-overlay').style.display = 'flex';
+  loadDynTargets();
+}
+function closeDynTargetPopup() {
+  document.getElementById('dyn-target-overlay').style.display = 'none';
+}
+
+async function loadDynTargets() {
+  const ptnrky = _dynTargetState.ptnrky;
+  if (!ptnrky) return;
+  const body = document.getElementById('dyn-target-body');
+  body.innerHTML = '<tr><td colspan="16" style="padding:24px;text-align:center;color:var(--text3);">조회 중...</td></tr>';
+  try {
+    const res  = await fetch('/api/delivery/dynamic-targets/' + encodeURIComponent(ptnrky));
+    const json = await res.json();
+    const data = json.data || json;
+    _dynTargetState.rows = (data.rows || []);
+    _dynTargetState.selected = new Set();
+    const dd = data.dynamicDistM;
+    const info = document.getElementById('dyn-target-info');
+    if (info) {
+      info.textContent = (dd == null || dd <= 0)
+        ? '⚠ 이 납품처에 동적거리(M)가 설정되지 않아 대상이 없습니다.'
+        : `동적거리(M) 기준: ${Number(dd).toLocaleString()} m 이내 · 총 ${_dynTargetState.rows.length}건`;
+    }
+    renderDynTargets();
+  } catch (e) {
+    body.innerHTML = '<tr><td colspan="16" style="padding:24px;text-align:center;color:var(--danger,#e53935);">조회 실패: ' + (e.message||e) + '</td></tr>';
+  }
+}
+
+function _dynKey(r) { return (r.PTNRKY_FROM||'') + '|' + (r.PTNRKY_TO||''); }
+
+function renderDynTargets() {
+  const body = document.getElementById('dyn-target-body');
+  const q = (document.getElementById('dyn-target-q')?.value || '').trim().toLowerCase();
+  let rows = _dynTargetState.rows;
+  if (q) {
+    rows = rows.filter(r =>
+      (r.PTNRKY_FROM||'').toLowerCase().includes(q) || (r.FROM_NAME||'').toLowerCase().includes(q) ||
+      (r.PTNRKY_TO||'').toLowerCase().includes(q)   || (r.TO_NAME||'').toLowerCase().includes(q));
+  }
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="16" style="padding:24px;text-align:center;color:var(--text3);">대상이 없습니다</td></tr>';
+    _dynUpdateSelCnt();
+    return;
+  }
+  const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const num = v => (v==null||v==='') ? '' : Number(v).toLocaleString();
+  const addr = (a1,a2) => [a1,a2].filter(Boolean).join(' ');
+  body.innerHTML = rows.map((r,i) => {
+    const key = _dynKey(r);
+    const unused = (r.USE_YN === 'N');
+    const checked = _dynTargetState.selected.has(key) ? 'checked' : '';
+    const rowStyle = unused ? 'color:var(--text3);background:rgba(150,150,150,.08);' : '';
+    const useCell = unused
+      ? '<span style="color:var(--danger,#e53935);font-weight:700;">미사용</span>'
+      : '<span style="color:var(--success,#2e7d32);font-weight:600;">사용</span>';
+    return `<tr style="${rowStyle}border-bottom:1px solid var(--border);">
+      <td style="text-align:center;padding:5px 6px;"><input type="checkbox" ${checked} onchange="dynTargetToggle('${key.replace(/'/g,"\\'")}', this.checked)" ${unused?'title="이미 미사용"':''}></td>
+      <td style="text-align:center;padding:5px 8px;">${r.NO!=null?r.NO:(i+1)}</td>
+      <td style="padding:5px 8px;font-family:monospace;">${esc(r.PTNRKY_FROM)}</td>
+      <td style="padding:5px 8px;">${esc(r.FROM_NAME)||'-'}</td>
+      <td style="padding:5px 8px;">${esc(addr(r.FROM_ADDR1,r.FROM_ADDR2))||'-'}</td>
+      <td style="padding:5px 8px;">${esc(r.FROM_ZIP)||'-'}</td>
+      <td style="padding:5px 8px;font-family:monospace;">${esc(r.PTNRKY_TO)}</td>
+      <td style="padding:5px 8px;">${esc(r.TO_NAME)||'-'}</td>
+      <td style="padding:5px 8px;">${esc(addr(r.TO_ADDR1,r.TO_ADDR2))||'-'}</td>
+      <td style="padding:5px 8px;">${esc(r.TO_ZIP)||'-'}</td>
+      <td style="padding:5px 8px;text-align:right;">${num(r.DISTANCE)}</td>
+      <td style="padding:5px 8px;text-align:right;">${num(r.TIME_MIN)}</td>
+      <td style="padding:5px 8px;text-align:center;">${useCell}</td>
+      <td style="padding:5px 8px;text-align:center;">${esc(_dynFmtDate(r.CREDAT))}</td>
+      <td style="padding:5px 8px;text-align:center;">${esc(_dynFmtTime(r.CRETIM))}</td>
+      <td style="padding:5px 8px;text-align:center;">${esc(r.CREUSR)}</td>
+    </tr>`;
+  }).join('');
+  _dynUpdateSelCnt();
+  const all = document.getElementById('dyn-target-chkall'); if (all) all.checked = false;
+}
+
+function _dynFmtDate(s){ s=String(s||''); return s.length===8 ? `${s.slice(0,4)}.${s.slice(4,6)}.${s.slice(6,8)}` : s; }
+function _dynFmtTime(s){ s=String(s||''); return s.length>=6 ? `${s.slice(0,2)}:${s.slice(2,4)}:${s.slice(4,6)}` : s; }
+
+function dynTargetToggle(key, on) {
+  if (on) _dynTargetState.selected.add(key);
+  else    _dynTargetState.selected.delete(key);
+  _dynUpdateSelCnt();
+}
+function dynTargetToggleAll(on) {
+  const q = (document.getElementById('dyn-target-q')?.value || '').trim().toLowerCase();
+  let rows = _dynTargetState.rows;
+  if (q) rows = rows.filter(r =>
+      (r.PTNRKY_FROM||'').toLowerCase().includes(q) || (r.FROM_NAME||'').toLowerCase().includes(q) ||
+      (r.PTNRKY_TO||'').toLowerCase().includes(q)   || (r.TO_NAME||'').toLowerCase().includes(q));
+  rows.forEach(r => { const k=_dynKey(r); if(on) _dynTargetState.selected.add(k); else _dynTargetState.selected.delete(k); });
+  renderDynTargets();
+}
+function _dynUpdateSelCnt() {
+  const el = document.getElementById('dyn-target-selcnt');
+  if (el) el.textContent = _dynTargetState.selected.size ? `선택 ${_dynTargetState.selected.size}건` : '';
+}
+
+async function dynTargetDisable() {
+  if (!_dynTargetState.selected.size) { showToast('삭제(미사용)할 대상을 선택하세요'); return; }
+  if (!confirm(`선택한 ${_dynTargetState.selected.size}건을 미사용(USE_YN=N) 처리하시겠습니까?`)) return;
+  const targets = Array.from(_dynTargetState.selected).map(k => {
+    const [f,t] = k.split('|');
+    return { PTNRKY_FROM:f, PTNRKY_TO:t };
+  });
+  try {
+    const res  = await fetch('/api/delivery/dynamic-targets/disable', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ targets })
+    });
+    const json = await res.json();
+    const data = json.data || json;
+    if (data.ok) {
+      showToast(`✅ ${data.updated}건 미사용 처리 완료`);
+      loadDynTargets();  // 재조회 → '미사용' 표시 반영
+    } else {
+      showToast('❌ 처리 실패');
+    }
+  } catch (e) {
+    showToast('❌ 처리 실패: ' + (e.message||e));
+  }
+}
+</script>
 
 <script>
 /* ═══════════════════════════════════════════════════════

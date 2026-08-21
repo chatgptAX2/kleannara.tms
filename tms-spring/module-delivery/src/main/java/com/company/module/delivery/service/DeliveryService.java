@@ -471,6 +471,114 @@ public class DeliveryService {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
+    // 동적 대상 (BZPTN_DISTANCE) — 납품처 상세 '동적 대상' 팝업
+    //   조건: (PTNRKY_FROM=:ptnrky OR PTNRKY_TO=:ptnrky)
+    //         AND DISTANCE < BZPTN_DETAIL.DYNAMIC_DIST_M
+    //   ※ 사양의 USE_YN='Y' 조건은 유지하되, 삭제(미사용) 후에도 목록에서
+    //     '미사용' 으로 표시하기 위해 Y/N 모두 반환하고 USE_YN 컬럼을 함께 내려준다.
+    //   반환: { rows, total, dynamicDistM }
+    // ──────────────────────────────────────────────────────────────────────────
+    public Map<String, Object> getDynamicTargets(String ptnrky) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        List<Map<String, Object>> rows = new ArrayList<>();
+
+        // 1) 납품처의 동적 허용 거리(M) 조회 — 없으면 대상 없음
+        Double dynDist = null;
+        try {
+            Object v = tmsEm.createNativeQuery(
+                "SELECT DYNAMIC_DIST_M FROM KNRAWMS.BZPTN_DETAIL " +
+                "WHERE PTNRKY=? AND ROWNUM=1")
+                .setParameter(1, ptnrky).getSingleResult();
+            if (v != null) dynDist = (v instanceof BigDecimal) ? ((BigDecimal) v).doubleValue() : ((Number) v).doubleValue();
+        } catch (Exception e) {
+            log.warn("getDynamicTargets: DYNAMIC_DIST_M 조회 실패(ptnrky={}): {}", ptnrky, e.getMessage());
+        }
+
+        result.put("dynamicDistM", dynDist);
+
+        if (dynDist == null || dynDist <= 0) {
+            // 동적 허용 거리 미설정 → 대상 없음
+            result.put("rows", rows);
+            result.put("total", 0L);
+            return result;
+        }
+
+        // 2) BZPTN_DISTANCE + BZPTN(출발/도착 명칭·주소·우편번호) 조인 조회
+        //    거래처명/주소는 KNRAWMS.BZPTN 에서 LEFT JOIN (PTNRTY='CT')
+        String sql =
+            "SELECT d.PTNRKY_FROM, bf.NAME01 AS FROM_NAME, bf.ADDR01 AS FROM_ADDR1, bf.ADDR02 AS FROM_ADDR2, bf.REGN01 AS FROM_ZIP, " +
+            "       d.PTNRKY_TO,   bt.NAME01 AS TO_NAME,   bt.ADDR01 AS TO_ADDR1,   bt.ADDR02 AS TO_ADDR2,   bt.REGN01 AS TO_ZIP, " +
+            "       d.DISTANCE, d.TIME_MIN, d.USE_YN, d.CREDAT, d.CRETIM, d.CREUSR " +
+            "  FROM KNRAWMS.BZPTN_DISTANCE d " +
+            "  LEFT JOIN KNRAWMS.BZPTN bf ON bf.PTNRKY=d.PTNRKY_FROM AND bf.PTNRTY='CT' " +
+            "  LEFT JOIN KNRAWMS.BZPTN bt ON bt.PTNRKY=d.PTNRKY_TO   AND bt.PTNRTY='CT' " +
+            " WHERE (d.PTNRKY_FROM=? OR d.PTNRKY_TO=?) " +
+            "   AND d.DISTANCE < ? " +
+            " ORDER BY d.USE_YN DESC, d.DISTANCE ASC";
+
+        try {
+            @SuppressWarnings("unchecked")
+            List<Object[]> raw = tmsEm.createNativeQuery(sql)
+                .setParameter(1, ptnrky).setParameter(2, ptnrky).setParameter(3, dynDist)
+                .getResultList();
+
+            int idx = 1;
+            for (Object[] r : raw) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("NO",            idx++);
+                m.put("PTNRKY_FROM",   str(r[0]));
+                m.put("FROM_NAME",     str(r[1]));
+                m.put("FROM_ADDR1",    str(r[2]));
+                m.put("FROM_ADDR2",    str(r[3]));
+                m.put("FROM_ZIP",      str(r[4]));
+                m.put("PTNRKY_TO",     str(r[5]));
+                m.put("TO_NAME",       str(r[6]));
+                m.put("TO_ADDR1",      str(r[7]));
+                m.put("TO_ADDR2",      str(r[8]));
+                m.put("TO_ZIP",        str(r[9]));
+                m.put("DISTANCE",      r[10]);
+                m.put("TIME_MIN",      r[11]);
+                m.put("USE_YN",        str(r[12]).isBlank() ? "Y" : str(r[12]));
+                m.put("CREDAT",        str(r[13]));
+                m.put("CRETIM",        str(r[14]));
+                m.put("CREUSR",        str(r[15]));
+                rows.add(m);
+            }
+        } catch (Exception e) {
+            log.error("getDynamicTargets 조회 실패(ptnrky={}): {}", ptnrky, e.getMessage(), e);
+            throw e;
+        }
+
+        result.put("rows", rows);
+        result.put("total", (long) rows.size());
+        return result;
+    }
+
+    // ── 동적 대상 삭제(미사용) — USE_YN='N' 업데이트 ─────────────────────────────
+    //   targets: [{PTNRKY_FROM, PTNRKY_TO}, ...]
+    //   반환: 업데이트 건수
+    @Transactional(transactionManager = "tmsTransactionManager")
+    public int disableDynamicTargets(List<Map<String, String>> targets) {
+        if (targets == null || targets.isEmpty()) return 0;
+        String nowdt = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
+        String nowtm = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
+        int cnt = 0;
+        for (Map<String, String> t : targets) {
+            String from = nullIfBlank(t.get("PTNRKY_FROM"));
+            String to   = nullIfBlank(t.get("PTNRKY_TO"));
+            if (from == null || to == null) continue;
+            // LMODAT/LMOTIM/LMOUSR 컬럼이 없을 수도 있어 최소 컬럼만 업데이트
+            cnt += tmsEm.createNativeQuery(
+                "UPDATE KNRAWMS.BZPTN_DISTANCE SET USE_YN='N' " +
+                "WHERE PTNRKY_FROM=? AND PTNRKY_TO=?")
+                .setParameter(1, from).setParameter(2, to)
+                .executeUpdate();
+        }
+        log.info("disableDynamicTargets: {} rows set USE_YN=N ({} {})", cnt, nowdt, nowtm);
+        return cnt;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
     // util
     // ──────────────────────────────────────────────────────────────────────────
     private String str(Object o)         { return o == null ? "" : o.toString().strip(); }
