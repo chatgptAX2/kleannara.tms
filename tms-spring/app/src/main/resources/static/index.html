@@ -6276,7 +6276,10 @@ function fillDeliveryForm(data) {
   // 헬퍼: 반드시 setSel 정의 먼저, setVal 다음 — 순서 바뀌면 ReferenceError 발생
   const setVal = (id, v) => {
     const el = document.getElementById(id);
-    if (el) el.value = (v || '').trim();
+    if (!el) return;
+    // 숫자(위도/경도 등)에 .trim() 호출 시 TypeError 발생 → 안전 변환
+    if (v === null || v === undefined) { el.value = ''; return; }
+    el.value = (typeof v === 'string') ? v.trim() : String(v);
   };
   const setSel = (id, v) => {
     const el = document.getElementById(id);
@@ -6402,7 +6405,7 @@ async function dlvSave() {
     minQtsiwh:     parseFloat(document.getElementById('f-MIN_QTSIWH')?.value)||null,
     latitude:      parseFloat(document.getElementById('f-LATITUDE')?.value)||null,
     longitude:     parseFloat(document.getElementById('f-LONGITUDE')?.value)||null,
-    delYn:         getYN('DEL_YN'),
+    delYn:         getYN('DEL_YN') || 'N',   // 미선택 시 기본값 N
   };
 
   try {
