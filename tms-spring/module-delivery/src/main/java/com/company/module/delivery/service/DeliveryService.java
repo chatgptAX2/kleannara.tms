@@ -285,7 +285,7 @@ public class DeliveryService {
              .setParameter(p++, req.getMinQtsiwh())
              .setParameter(p++, req.getLatitude())
              .setParameter(p++, req.getLongitude())
-             .setParameter(p++, req.getDelYn());
+             .setParameter(p++, (req.getDelYn() == null || req.getDelYn().isBlank()) ? "N" : req.getDelYn());
             if (hasDeadline)    q.setParameter(p++, req.getDeadlineTime());
             if (hasMaxTon)      q.setParameter(p++, req.getMaxTon());
             if (hasDynamicDist) q.setParameter(p++, req.getDynamicDistM());
@@ -334,7 +334,7 @@ public class DeliveryService {
              .setParameter(p++, req.getMinQtsiwh())
              .setParameter(p++, req.getLatitude())
              .setParameter(p++, req.getLongitude())
-             .setParameter(p++, req.getDelYn());
+             .setParameter(p++, (req.getDelYn() == null || req.getDelYn().isBlank()) ? "N" : req.getDelYn());
             if (hasDeadline)    q.setParameter(p++, req.getDeadlineTime());
             if (hasMaxTon)      q.setParameter(p++, req.getMaxTon());
             if (hasDynamicDist) q.setParameter(p++, req.getDynamicDistM());
