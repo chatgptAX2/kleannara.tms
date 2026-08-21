@@ -67,6 +67,7 @@ public class ShipmentService {
         "    CD.CDESC1                     AS SKUG05NM," +
         "    SI.UOMKEY," +
         "    CAST(COALESCE(SI.QTSHPO,0) AS NUMBER(18,4)) AS QTSHPO," +
+        // QTUALO(=QTSHPO−QTALOC): '납품수량' 화면 표기 폐지(→ QTSHPO 로 통일). 하위호환 위해 응답 필드는 유지
         "    CAST(COALESCE(SI.QTSHPO - SI.QTALOC,0) AS NUMBER(18,4)) AS QTUALO," +
         "    CAST(COALESCE(SI.QTALOC,0) AS NUMBER(18,4)) AS QTALOC," +
         "    CAST(COALESCE(SI.QTJCMP,0) AS NUMBER(18,4)) AS QTJCMP," +
@@ -427,7 +428,8 @@ public class ShipmentService {
             .bag(bagVal).box(boxVal).plt(palVal).sok(sokVal).ea(eaVal)
             .boxbag(boxbag)
             .qtualo(qtualo).qtaloc(qtaloc).qtjcmp(qtjcmp).qtshpd(qtshpd)
-            .qtualoBox(bx > 0 ? round4(qtualo / bx) : 0.0)
+            // 대상BOX: 납품수량을 QTSHPO(주문수량 원 수량) 기준으로 통일 (기존 QTUALO=QTSHPO−QTALOC 폐지)
+            .qtualoBox(bx > 0 ? round4(qtshpo / bx) : 0.0)
             .qtalocBox(bx > 0 ? round4(qtaloc / bx) : 0.0)
             .qtjcmpBox(bx > 0 ? round4(qtjcmp / bx) : 0.0)
             .qtshpdBox(bx > 0 ? round4(qtshpd / bx) : 0.0)
