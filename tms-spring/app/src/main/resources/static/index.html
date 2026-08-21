@@ -18473,6 +18473,15 @@ function _ssColDefs() {
     { key:'BAG',        label:'BAG',          fmt:fmtN,  w:62,  align:'right' },
     { key:'BOX',        label:'BOX',          fmt:fmtN,  w:62,  align:'right' },
     { key:'PLT',        label:'PLT',          fmt:fmtN,  w:55,  align:'right' },
+    /* PLT당 개수: 판지(SKUG05=10) RECDI 최근 입고 QTYRCV. 판지 아님/미조회는 '-' */
+    { key:'PLT_PER_UNIT', label:'PLT당개수',
+      fmt:(v,r)=>{
+        if(v===''||v==null) return '-';
+        const n=Number(v);
+        return isNaN(n)||n===0?'-':n.toLocaleString();
+      },
+      w:72, align:'right' },
+    /* PLT개수(원지/판지) = CEIL(납품수량 ÷ PLT당개수) : 해당 납품수량이 몇 PLT 인지 */
     { key:'PLT_CNT',    label:'PLT개수\n(원지/판지)',
       fmt:(v,r)=>{
         if(v===''||v==null) return '-';
