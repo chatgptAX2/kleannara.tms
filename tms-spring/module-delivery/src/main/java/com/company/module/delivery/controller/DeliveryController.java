@@ -83,15 +83,15 @@ public class DeliveryController {
         return ResponseEntity.ok(ApiResponse.success(deliveryService.getDynamicTargets(ptnrky)));
     }
 
-    /** 동적 대상 삭제(미사용) – USE_YN='N' 업데이트
+    /** 동적 대상 사용유무 토글 – USE_YN Y↔N 반전 (사용중→미사용, 미사용→사용)
      *  body: { targets: [{PTNRKY_FROM, PTNRKY_TO}, ...] } */
-    @PostMapping("/delivery/dynamic-targets/disable")
-    public ResponseEntity<ApiResponse<Object>> disableDynamicTargets(
+    @PostMapping("/delivery/dynamic-targets/toggle")
+    public ResponseEntity<ApiResponse<Object>> toggleDynamicTargets(
             @RequestBody Map<String, Object> body) {
         @SuppressWarnings("unchecked")
         List<Map<String, String>> targets =
             (List<Map<String, String>>) body.getOrDefault("targets", List.of());
-        int updated = deliveryService.disableDynamicTargets(targets);
+        int updated = deliveryService.toggleDynamicTargets(targets);
         return ResponseEntity.ok(ApiResponse.success(Map.of("ok", true, "updated", updated)));
     }
 

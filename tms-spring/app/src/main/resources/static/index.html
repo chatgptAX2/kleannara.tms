@@ -20038,9 +20038,9 @@ function ptnrPopupSelect(ptnrky, name01) {
         style="padding:7px 14px;font-size:12px;border-radius:6px;border:none;background:var(--primary);color:#fff;cursor:pointer;white-space:nowrap;">
         🔍 조회
       </button>
-      <button onclick="dynTargetDisable()"
-        style="padding:7px 14px;font-size:12px;border-radius:6px;border:none;background:var(--danger,#e53935);color:#fff;cursor:pointer;white-space:nowrap;">
-        🗑 삭제(미사용)
+      <button onclick="dynTargetToggleUse()"
+        style="padding:7px 14px;font-size:12px;border-radius:6px;border:none;background:var(--warning,#f59e0b);color:#fff;cursor:pointer;white-space:nowrap;">
+        🔄 사용유무 변경
       </button>
     </div>
     <!-- 정보 바 -->
@@ -20082,7 +20082,7 @@ function ptnrPopupSelect(ptnrky, name01) {
     <!-- 하단 -->
     <div style="padding:10px 16px;border-top:1px solid var(--border);flex-shrink:0;
                 display:flex;align-items:center;justify-content:space-between;">
-      <span style="font-size:11px;color:var(--text3);">💡 체크박스 선택 후 [삭제(미사용)] 시 해당 이동거리의 USE_YN 이 N 으로 변경됩니다 (목록엔 '미사용'으로 유지)</span>
+      <span style="font-size:11px;color:var(--text3);">💡 체크박스 선택 후 [사용유무 변경] 시 사용중→미사용, 미사용→사용 으로 USE_YN 이 토글됩니다</span>
       <button onclick="closeDynTargetPopup()"
         style="padding:6px 14px;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;">닫기</button>
     </div>
@@ -20163,7 +20163,7 @@ function renderDynTargets() {
       ? '<span style="color:var(--danger,#e53935);font-weight:700;">미사용</span>'
       : '<span style="color:var(--success,#2e7d32);font-weight:600;">사용</span>';
     return `<tr style="${rowStyle}border-bottom:1px solid var(--border);">
-      <td style="text-align:center;padding:5px 6px;"><input type="checkbox" ${checked} onchange="dynTargetToggle('${key.replace(/'/g,"\\'")}', this.checked)" ${unused?'title="이미 미사용"':''}></td>
+      <td style="text-align:center;padding:5px 6px;"><input type="checkbox" ${checked} onchange="dynTargetToggle('${key.replace(/'/g,"\\'")}', this.checked)" title="${unused?'미사용 → 사용':'사용중 → 미사용'}"></td>
       <td style="text-align:center;padding:5px 8px;">${r.NO!=null?r.NO:(i+1)}</td>
       <td style="padding:5px 8px;font-family:monospace;">${esc(r.PTNRKY_FROM)}</td>
       <td style="padding:5px 8px;">${esc(r.FROM_NAME)||'-'}</td>
@@ -20207,23 +20207,23 @@ function _dynUpdateSelCnt() {
   if (el) el.textContent = _dynTargetState.selected.size ? `선택 ${_dynTargetState.selected.size}건` : '';
 }
 
-async function dynTargetDisable() {
-  if (!_dynTargetState.selected.size) { showToast('삭제(미사용)할 대상을 선택하세요'); return; }
-  if (!confirm(`선택한 ${_dynTargetState.selected.size}건을 미사용(USE_YN=N) 처리하시겠습니까?`)) return;
+async function dynTargetToggleUse() {
+  if (!_dynTargetState.selected.size) { showToast('사용유무를 변경할 대상을 선택하세요'); return; }
+  if (!confirm(`선택한 ${_dynTargetState.selected.size}건의 사용유무를 변경(사용중↔미사용)하시겠습니까?`)) return;
   const targets = Array.from(_dynTargetState.selected).map(k => {
     const [f,t] = k.split('|');
     return { PTNRKY_FROM:f, PTNRKY_TO:t };
   });
   try {
-    const res  = await fetch('/api/delivery/dynamic-targets/disable', {
+    const res  = await fetch('/api/delivery/dynamic-targets/toggle', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ targets })
     });
     const json = await res.json();
     const data = json.data || json;
     if (data.ok) {
-      showToast(`✅ ${data.updated}건 미사용 처리 완료`);
-      loadDynTargets();  // 재조회 → '미사용' 표시 반영
+      showToast(`✅ ${data.updated}건 사용유무 변경 완료`);
+      loadDynTargets();  // 재조회 → 변경된 사용여부 반영
     } else {
       showToast('❌ 처리 실패');
     }
