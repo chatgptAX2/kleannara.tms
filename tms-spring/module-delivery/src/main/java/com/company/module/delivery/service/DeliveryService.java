@@ -474,7 +474,7 @@ public class DeliveryService {
     // 동적 대상 (BZPTN_DISTANCE) — 납품처 상세 '동적 대상' 팝업
     //   조건: (PTNRKY_FROM=:ptnrky OR PTNRKY_TO=:ptnrky)
     //         AND USE_YN='Y'
-    //         AND DISTANCE < BZPTN_DETAIL.DYNAMIC_DIST_M
+    //         AND DISTANCE <= BZPTN_DETAIL.DYNAMIC_DIST_M
     //   ※ DURATION = 이동거리(분). (TIME_MIN 아님)
     //   반환: { rows, total, dynamicDistM }
     // ──────────────────────────────────────────────────────────────────────────
@@ -506,15 +506,15 @@ public class DeliveryService {
         // 2) BZPTN_DISTANCE + BZPTN(출발/도착 명칭·주소·우편번호) 조인 조회
         //    거래처명/주소는 KNRAWMS.BZPTN 에서 LEFT JOIN (PTNRTY='CT')
         String sql =
-            "SELECT d.PTNRKY_FROM, bf.NAME01 AS FROM_NAME, bf.ADDR01 AS FROM_ADDR1, bf.ADDR02 AS FROM_ADDR2, bf.REGN01 AS FROM_ZIP, " +
-            "       d.PTNRKY_TO,   bt.NAME01 AS TO_NAME,   bt.ADDR01 AS TO_ADDR1,   bt.ADDR02 AS TO_ADDR2,   bt.REGN01 AS TO_ZIP, " +
+            "SELECT d.PTNRKY_FROM, bf.NAME01 AS FROM_NAME, bf.ADDR01 AS FROM_ADDR1, bf.ADDR02 AS FROM_ADDR2, bf.POSTCD AS FROM_ZIP, " +
+            "       d.PTNRKY_TO,   bt.NAME01 AS TO_NAME,   bt.ADDR01 AS TO_ADDR1,   bt.ADDR02 AS TO_ADDR2,   bt.POSTCD AS TO_ZIP, " +
             "       d.DISTANCE, d.DURATION, d.USE_YN, d.CREDAT, d.CRETIM, d.CREUSR " +
             "  FROM KNRAWMS.BZPTN_DISTANCE d " +
             "  LEFT JOIN KNRAWMS.BZPTN bf ON bf.PTNRKY=d.PTNRKY_FROM AND bf.PTNRTY='CT' " +
             "  LEFT JOIN KNRAWMS.BZPTN bt ON bt.PTNRKY=d.PTNRKY_TO   AND bt.PTNRTY='CT' " +
             " WHERE (d.PTNRKY_FROM=? OR d.PTNRKY_TO=?) " +
             "   AND d.USE_YN='Y' " +
-            "   AND d.DISTANCE < ? " +
+            "   AND d.DISTANCE <= ? " +
             " ORDER BY d.DISTANCE ASC";
 
         try {
