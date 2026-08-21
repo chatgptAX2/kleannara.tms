@@ -75,6 +75,26 @@ public class DeliveryController {
         return ResponseEntity.ok(ApiResponse.success(Map.of("ok", true)));
     }
 
+    /** 동적 대상 조회 (BZPTN_DISTANCE) – 납품처 상세 '동적 대상' 팝업
+     *  반환: { rows, total, dynamicDistM } */
+    @GetMapping("/delivery/dynamic-targets/{ptnrky}")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getDynamicTargets(
+            @PathVariable String ptnrky) {
+        return ResponseEntity.ok(ApiResponse.success(deliveryService.getDynamicTargets(ptnrky)));
+    }
+
+    /** 동적 대상 삭제(미사용) – USE_YN='N' 업데이트
+     *  body: { targets: [{PTNRKY_FROM, PTNRKY_TO}, ...] } */
+    @PostMapping("/delivery/dynamic-targets/disable")
+    public ResponseEntity<ApiResponse<Object>> disableDynamicTargets(
+            @RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, String>> targets =
+            (List<Map<String, String>>) body.getOrDefault("targets", List.of());
+        int updated = deliveryService.disableDynamicTargets(targets);
+        return ResponseEntity.ok(ApiResponse.success(Map.of("ok", true, "updated", updated)));
+    }
+
     /** 운송비 검색 – Flask: GET /api/route_cost/search
      *  반환: { rows, total, carclasses } */
     @GetMapping("/route_cost/search")
