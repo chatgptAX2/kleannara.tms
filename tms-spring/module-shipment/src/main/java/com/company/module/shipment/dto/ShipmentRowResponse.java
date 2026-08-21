@@ -183,7 +183,11 @@ public class ShipmentRowResponse {
 
     // ── PLT개수 (원지/판지) ──────────────────────────────────
     @JsonProperty("PLT_CNT")
-    private Integer pltCnt;         // PLT개수 (null=계산불가)
+    private Integer pltCnt;         // PLT개수 = CEIL(납품수량÷PLT당개수) (null=계산불가)
+
+    // ── PLT당 개수 (RECDI 최근 입고 QTYRCV, 판지만) ──────────
+    @JsonProperty("PLT_PER_UNIT")
+    private Double pltPerUnit;      // PLT당 개수 (null=판지 아님/미조회)
 
     // ── SOK 환산 (판지 높이 계산용) ──────────────────────────
     @JsonProperty("SOK_PER_R")

@@ -108,7 +108,17 @@ public class ShipmentService {
         "    COALESCE((SELECT ME3.QTAUOM FROM KNRAWMS.MEASI ME3 WHERE ME3.WAREKY=SH.WAREKY AND ME3.MEASKY=SI.MEASKY AND ME3.UOMKEY='BAG' AND ROWNUM=1), 0)    AS BAG_PER_UNIT," +
         "    COALESCE((SELECT ME4.QTAUOM FROM KNRAWMS.MEASI ME4 WHERE ME4.WAREKY=SH.WAREKY AND ME4.MEASKY=SI.MEASKY AND ME4.UOMKEY='BOX' AND ROWNUM=1), 0)    AS BOX_PER_UNIT," +
         "    COALESCE((SELECT ME5.QTAUOM FROM KNRAWMS.MEASI ME5 WHERE ME5.WAREKY=SH.WAREKY AND ME5.MEASKY=SI.MEASKY AND ME5.UOMKEY='PAL' AND ROWNUM=1), 0)    AS PAL_PER_UNIT," +
-        "    COALESCE((SELECT ME6.QTAUOM FROM KNRAWMS.MEASI ME6 WHERE ME6.WAREKY=SH.WAREKY AND ME6.MEASKY=SI.MEASKY AND ME6.UOMKEY='EA'  AND ROWNUM=1), 0)    AS EA_PER_UNIT" +
+        "    COALESCE((SELECT ME6.QTAUOM FROM KNRAWMS.MEASI ME6 WHERE ME6.WAREKY=SH.WAREKY AND ME6.MEASKY=SI.MEASKY AND ME6.UOMKEY='EA'  AND ROWNUM=1), 0)    AS EA_PER_UNIT," +
+        // PLT당 개수: 판지(SKUG05='10')만 RECDI 최근 입고 QTYRCV(LOTA01/LOTA02 일치, STATIT='FRV', RECVKY 최신 1건), 그 외 0
+        "    CASE WHEN SI.SKUG05='10' THEN" +
+        "         COALESCE((SELECT rd.QTYRCV FROM KNRAWMS.RECDI rd" +
+        "                    WHERE rd.SKUKEY = SI.SKUKEY" +
+        "                      AND rd.STATIT = 'FRV'" +
+        "                      AND rd.LOTA01 = SI.LOTA01" +
+        "                      AND rd.LOTA02 = SI.LOTA02" +
+        "                    ORDER BY rd.RECVKY DESC" +
+        "                    FETCH FIRST 1 ROW ONLY), 0)" +
+        "         ELSE 0 END                AS PLT_PER_UNIT" +
         " FROM KNRAWMS.SHPDI SI" +
         " INNER JOIN KNRAWMS.SHPDH SH ON SH.SHPOKY = SI.SHPOKY" +
         " LEFT  JOIN KNRAWMS.BZPTN CT ON CT.OWNRKY=SH.OWNRKY AND CT.PTNRTY='CT' AND CT.PTNRKY=SH.DPTNKY" +
@@ -383,6 +393,7 @@ public class ShipmentService {
         // 35:RQSHPD 36:DOCDAT 37:STATDO 38:STATDONM 39:SHPMTY 40:SHPMTYNM
         // 41:DOCUTYNM 42:VEHINO 43:MEASKY
         // 44:PLTKG 45:SOK_PER_R 46:KG_PER_UNIT 47:BAG_PER_UNIT 48:BOX_PER_UNIT 49:PAL_PER_UNIT 50:EA_PER_UNIT
+        // 51:PLT_PER_UNIT
 
         String  skug05  = str(r[4]);
         String  uomkey  = str(r[6]).strip();
@@ -405,8 +416,12 @@ public class ShipmentService {
         String  boxbag    = boxPer > 0 ? "BOX" : (bagPer > 0 ? "BAG" : "");
         double  boxbagVal = boxPer > 0 ? boxVal : bagVal;
 
-        // PLT개수 계산 (SKUMA.GRSWGT 기반)
-        Integer pltCnt  = calcPltCnt(str(r[2]), skug05, qtshpo, toDoubleNullable(r[44]));
+        // PLT당 개수 (RECDI 최근 입고 QTYRCV, 판지만; 원지/미조회는 0)
+        double  pltPerUnit = toDouble(r[51]);
+
+        // PLT개수(원지/판지) = CEIL(납품수량 ÷ PLT당개수)  ← 해당 납품수량이 몇 PLT 인지
+        //   PLT당개수 0/미조회 시 계산 불가 → null(화면 '-')
+        Integer pltCnt  = calcPltCnt(qtshpo, pltPerUnit);
 
         // SOK_PER_R
         Double sokPerR = r[45] != null ? toDouble(r[45]) : null;
@@ -448,30 +463,20 @@ public class ShipmentService {
             .docutynm(str(r[41])).vehino(str(r[42]))
             .measky(str(r[43]))
             .pltCnt(pltCnt).sokPerR(sokPerR)
+            .pltPerUnit(pltPerUnit > 0 ? pltPerUnit : null)
             .build();
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // PLT개수 계산
-    //   원지(H prefix): CEIL(QTSHPO(kg) / 1200)
-    //   판지(F/S prefix): CEIL(QTSHPO(속) × GRSWGT(kg/속) / 1200)
-    //   GRSWGT 미등록: null
+    // PLT개수(원지/판지) 계산
+    //   = CEIL(납품수량(QTSHPO) ÷ PLT당개수)
+    //   목적: 해당 납품수량이 몇 PLT 인지 산출
+    //   PLT당개수(RECDI 최근 입고 QTYRCV) 0/미조회 → null(계산 불가, 화면 '-')
     // ──────────────────────────────────────────────────────────────────────────
-    private Integer calcPltCnt(String skukey, String skug05, double qtshpo, Double grswgt) {
-        if (!"10".equals(skug05.strip())) return null;
-        if (qtshpo <= 0) return null;
-
-        String prefix = skukey == null || skukey.isEmpty() ? "" : skukey.substring(0, 1).toUpperCase();
-
-        if ("H".equals(prefix)) {
-            // 원지: QTSHPO 자체가 kg 단위
-            return (int) Math.ceil(qtshpo / PLT_CAP_KG);
-        } else if (grswgt != null && grswgt > 0) {
-            // 판지(F/S/기타): QTSHPO(속) × GRSWGT(kg/속) / 파렛트용량
-            double totalKg = qtshpo * grswgt;
-            return (int) Math.ceil(totalKg / PLT_CAP_KG);
-        }
-        return null;  // GRSWGT 미등록 → 계산 불가
+    private Integer calcPltCnt(double qtshpo, double pltPerUnit) {
+        if (qtshpo <= 0)     return null;
+        if (pltPerUnit <= 0) return null;   // 판지 아님/RECDI 미조회
+        return (int) Math.ceil(qtshpo / pltPerUnit);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
