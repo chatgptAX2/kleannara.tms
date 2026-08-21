@@ -35,4 +35,5 @@ public class DeliverySaveRequest {
     private String  delYn;
     private String  deadlineTime;
     private Double  maxTon;
+    private Double  dynamicDistM;   // 동적 허용 거리(M) — 납품처별 동적 허용 거리값
 }
