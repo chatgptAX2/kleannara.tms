@@ -80,6 +80,9 @@ public class BzptnDetail {
     @Column(name = "MAX_TON")
     private Double maxTon;          // 최대 적재 중량(ton) – 차량제한
 
+    @Column(name = "DYNAMIC_DIST_M")
+    private Double dynamicDistM;    // 동적 허용 거리(M) – 납품처별 동적 허용 거리값
+
     @Column(name = "HANDWORK_YN", length = 1)
     private String handworkYn;
 

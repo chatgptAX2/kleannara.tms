@@ -55,20 +55,23 @@ public class DeliveryService {
     }
 
     /* ── 런타임 컬럼 존재 감지 (ORA-00904 방지) ───────────────────────────────
-       운영 DB에 아직 MAX_TON 컬럼 추가 SQL(FIX_BZPTN_DETAIL_ADD_MAX_TON.sql)이
-       적용되지 않았을 수 있어, 런타임에 KNRAWMS.BZPTN_DETAIL.MAX_TON 존재를
-       감지하여 SELECT/정렬 SQL 을 자동 적응시킨다(ORA-00904 방지).
-       DocumentService.hasOpDateColumn() 패턴과 동일. */
-    private volatile Boolean maxTonColExists = null;
+       운영 DB에 아직 선택적 컬럼 추가 SQL(FIX_BZPTN_DETAIL_ADD_*.sql)이
+       적용되지 않았을 수 있어, 런타임에 KNRAWMS.BZPTN_DETAIL 컬럼 존재를
+       감지하여 SELECT/정렬/저장 SQL 을 자동 적응시킨다(ORA-00904 방지).
+       DocumentService.hasOpDateColumn() 패턴을 범용화. */
+    private final java.util.concurrent.ConcurrentHashMap<String, Boolean> colExistsCache
+        = new java.util.concurrent.ConcurrentHashMap<>();
 
-    private boolean hasMaxTonColumn() {
-        Boolean cached = maxTonColExists;
+    /** KNRAWMS.BZPTN_DETAIL 에 해당 컬럼이 존재하는지 감지(캐싱). 실패 시 미존재로 간주. */
+    private boolean hasCol(String colName) {
+        Boolean cached = colExistsCache.get(colName);
         if (cached != null) return cached;
         boolean exists = false;
         try {
             Object cnt = tmsEm.createNativeQuery(
                 "SELECT COUNT(*) FROM ALL_TAB_COLUMNS " +
-                "WHERE OWNER='KNRAWMS' AND TABLE_NAME='BZPTN_DETAIL' AND COLUMN_NAME='MAX_TON'")
+                "WHERE OWNER='KNRAWMS' AND TABLE_NAME='BZPTN_DETAIL' AND COLUMN_NAME=:col")
+                .setParameter("col", colName)
                 .getSingleResult();
             long n = cnt == null ? 0L
                 : cnt instanceof BigDecimal ? ((BigDecimal) cnt).longValue()
@@ -76,10 +79,10 @@ public class DeliveryService {
             exists = n > 0;
         } catch (Exception e) {
             /* ALL_TAB_COLUMNS 조회 실패(권한/비Oracle 등) 시 안전하게 미존재로 간주 */
-            log.warn("hasMaxTonColumn detect failed, assume absent: {}", e.getMessage());
+            log.warn("hasCol({}) detect failed, assume absent: {}", colName, e.getMessage());
             exists = false;
         }
-        maxTonColExists = exists;
+        colExistsCache.put(colName, exists);
         return exists;
     }
 
@@ -97,7 +100,9 @@ public class DeliveryService {
         String ptnrky    = nullIfBlank(req.getPtnrky());
         String q         = nullIfBlank(req.getQ());
 
-        boolean hasMaxTon = hasMaxTonColumn();
+        boolean hasMaxTon      = hasCol("MAX_TON");
+        boolean hasDeadline    = hasCol("DEADLINE_TIME");
+        boolean hasDynamicDist = hasCol("DYNAMIC_DIST_M");
 
         // ── 동적 WHERE 절 ──────────────────────────────────────────────
         StringBuilder where = new StringBuilder(" WHERE b.PTNRTY = 'CT'");
@@ -108,10 +113,12 @@ public class DeliveryService {
         if (ptnrky    != null) where.append(" AND (b.PTNRKY LIKE :ptnrky OR b.NAME01 LIKE :ptnrky)");
         if (q         != null) where.append(" AND (b.PTNRKY LIKE :q OR b.NAME01 LIKE :q OR b.ADDR01 LIKE :q OR b.REGN01 LIKE :q)");
 
-        // ── 정렬 화이트리스트 (MAX_TON 은 컬럼 존재 시에만 허용) ────────
+        // ── 정렬 화이트리스트 (선택적 컬럼은 존재 시에만 허용) ────────
         Set<String> allowed = new HashSet<>(Arrays.asList(
-            "PTNRKY","NAME01","WAREKY","ITEM_GROUP","ADDR01","AREA_CD","DEADLINE_TIME","FORKLIFT_YN"));
-        if (hasMaxTon) allowed.add("MAX_TON");
+            "PTNRKY","NAME01","WAREKY","ITEM_GROUP","ADDR01","AREA_CD","FORKLIFT_YN"));
+        if (hasDeadline)    allowed.add("DEADLINE_TIME");
+        if (hasMaxTon)      allowed.add("MAX_TON");
+        if (hasDynamicDist) allowed.add("DYNAMIC_DIST_M");
         String sc = req.getSortCol() == null ? "PTNRKY" : req.getSortCol();
         if (!allowed.contains(sc)) sc = "PTNRKY";
         String sd = "DESC".equalsIgnoreCase(req.getSortDir()) ? "DESC" : "ASC";
@@ -135,14 +142,16 @@ public class DeliveryService {
             : ((Number) countResult).longValue();
 
         // ── 데이터 (Oracle OFFSET/FETCH) ──────────────────────────────
-        // MAX_TON 은 운영 DB에 컬럼이 존재할 때만 SELECT (미존재 시 NULL 상수로 대체 → ORA-00904 방지)
-        String maxTonSelect = hasMaxTon ? "d.MAX_TON" : "NULL AS MAX_TON";
+        // 선택적 컬럼은 운영 DB에 존재할 때만 SELECT (미존재 시 NULL 상수로 대체 → ORA-00904 방지)
+        String deadlineSelect = hasDeadline    ? "d.DEADLINE_TIME"  : "NULL AS DEADLINE_TIME";
+        String maxTonSelect   = hasMaxTon      ? "d.MAX_TON"        : "NULL AS MAX_TON";
+        String dynDistSelect  = hasDynamicDist ? "d.DYNAMIC_DIST_M" : "NULL AS DYNAMIC_DIST_M";
         String dataSql =
             "SELECT b.PTNRKY, b.NAME01, b.PTNRTY, b.OWNRKY," +
             "       b.ADDR01, b.ADDR02, b.REGN01, b.TELN01," +
             "       d.WAREKY, d.ROUTE_CD, d.ITEM_GROUP, d.AREA_CD," +
             "       d.UNLOAD_TIME, d.MAX_HEIGHT, d.AUTO_ALLOC_YN, d.FORKLIFT_YN," +
-            "       d.INB_TIME_FROM1, d.INB_TIME_TO1, d.MAX_BOX_QTY, d.DEADLINE_TIME, " + maxTonSelect + "," +
+            "       d.INB_TIME_FROM1, d.INB_TIME_TO1, d.MAX_BOX_QTY, " + deadlineSelect + ", " + maxTonSelect + ", " + dynDistSelect + "," +
             "       CASE WHEN d.PTNRKY IS NOT NULL THEN 'Y' ELSE 'N' END AS HAS_DETAIL" +
             " FROM KNRAWMS.BZPTN b" +
             " LEFT JOIN KNRAWMS.BZPTN_DETAIL d" +
@@ -168,7 +177,7 @@ public class DeliveryService {
             "ADDR01","ADDR02","REGN01","TELN01",
             "WAREKY","ROUTE_CD","ITEM_GROUP","AREA_CD",
             "UNLOAD_TIME","MAX_HEIGHT","AUTO_ALLOC_YN","FORKLIFT_YN",
-            "INB_TIME_FROM1","INB_TIME_TO1","MAX_BOX_QTY","DEADLINE_TIME","MAX_TON",
+            "INB_TIME_FROM1","INB_TIME_TO1","MAX_BOX_QTY","DEADLINE_TIME","MAX_TON","DYNAMIC_DIST_M",
             "HAS_DETAIL"
         };
         List<Map<String, Object>> result = new ArrayList<>();
@@ -234,11 +243,15 @@ public class DeliveryService {
         String nowdt = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
         String nowtm = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
 
-        boolean hasMaxTon = hasMaxTonColumn();
+        boolean hasMaxTon      = hasCol("MAX_TON");
+        boolean hasDeadline    = hasCol("DEADLINE_TIME");
+        boolean hasDynamicDist = hasCol("DYNAMIC_DIST_M");
 
         if (bzptnDetailRepo.existsByPtnrkyAndPtnrtyAndOwnrky(ptnrky, ptnrty, ownrky)) {
-            // MAX_TON 컬럼 존재 여부에 따라 SET 절 동적 구성 (미존재 시 제외 → ORA-00904 방지)
-            String maxTonSet = hasMaxTon ? "MAX_TON=?," : "";
+            // 선택적 컬럼은 존재 시에만 SET 절 포함 (미존재 시 제외 → ORA-00904 방지)
+            String deadlineSet = hasDeadline    ? "DEADLINE_TIME=?,"  : "";
+            String maxTonSet   = hasMaxTon      ? "MAX_TON=?,"        : "";
+            String dynDistSet  = hasDynamicDist ? "DYNAMIC_DIST_M=?," : "";
             Query q = tmsEm.createNativeQuery(
                 "UPDATE KNRAWMS.BZPTN_DETAIL SET " +
                 "  WAREKY=?,ROUTE_CD=?,ITEM_GROUP=?,UNLOAD_TIME=?," +
@@ -246,7 +259,7 @@ public class DeliveryService {
                 "  FORKLIFT_YN=?,HANDWORK_YN=?,AUTO_PLT=?,MAX_BOX_QTY=?," +
                 "  AUTO_ALLOC_YN=?,SINGLE_ITEM_YN=?,NY_TYPE=?,SINGLE_HEIGHT=?," +
                 "  DYNAMIC_YN=?,LTL_YN=?,PRIORITY_YN=?,MIN_QTSIWH=?," +
-                "  LATITUDE=?,LONGITUDE=?,DEL_YN=?,DEADLINE_TIME=?," + maxTonSet +
+                "  LATITUDE=?,LONGITUDE=?,DEL_YN=?," + deadlineSet + maxTonSet + dynDistSet +
                 "  LMODAT=?,LMOTIM=?,LMOUSR=? " +
                 "WHERE PTNRKY=? AND PTNRTY=? AND OWNRKY=?");
             int p = 1;
@@ -272,25 +285,31 @@ public class DeliveryService {
              .setParameter(p++, req.getMinQtsiwh())
              .setParameter(p++, req.getLatitude())
              .setParameter(p++, req.getLongitude())
-             .setParameter(p++, req.getDelYn())
-             .setParameter(p++, req.getDeadlineTime());
-            if (hasMaxTon) q.setParameter(p++, req.getMaxTon());
+             .setParameter(p++, req.getDelYn());
+            if (hasDeadline)    q.setParameter(p++, req.getDeadlineTime());
+            if (hasMaxTon)      q.setParameter(p++, req.getMaxTon());
+            if (hasDynamicDist) q.setParameter(p++, req.getDynamicDistM());
             q.setParameter(p++, nowdt).setParameter(p++, nowtm).setParameter(p++, "WEB")
              .setParameter(p++, ptnrky).setParameter(p++, ptnrty).setParameter(p++, ownrky)
              .executeUpdate();
             return "updated";
         } else {
-            // MAX_TON 컬럼 존재 여부에 따라 INSERT 컬럼/값 동적 구성
-            String maxTonCol = hasMaxTon ? "MAX_TON," : "";
-            String maxTonVal = hasMaxTon ? "?," : "";
+            // 선택적 컬럼은 존재 시에만 INSERT 컬럼/값 포함
+            String deadlineCol = hasDeadline    ? "DEADLINE_TIME," : "";
+            String maxTonCol   = hasMaxTon      ? "MAX_TON,"       : "";
+            String dynDistCol  = hasDynamicDist ? "DYNAMIC_DIST_M,": "";
+            String deadlineVal = hasDeadline    ? "?," : "";
+            String maxTonVal   = hasMaxTon      ? "?," : "";
+            String dynDistVal  = hasDynamicDist ? "?," : "";
             Query q = tmsEm.createNativeQuery(
                 "INSERT INTO KNRAWMS.BZPTN_DETAIL " +
                 "(PTNRKY,PTNRTY,OWNRKY,WAREKY,ROUTE_CD,ITEM_GROUP,UNLOAD_TIME," +
                 " INB_TIME_FROM1,INB_TIME_TO1,AREA_CD,MAX_HEIGHT,FORKLIFT_YN,HANDWORK_YN," +
                 " AUTO_PLT,MAX_BOX_QTY,AUTO_ALLOC_YN,SINGLE_ITEM_YN,NY_TYPE,SINGLE_HEIGHT," +
                 " DYNAMIC_YN,LTL_YN,PRIORITY_YN,MIN_QTSIWH,LATITUDE,LONGITUDE,DEL_YN," +
-                " DEADLINE_TIME," + maxTonCol + "CREDAT,CRETIM,CREUSR,LMODAT,LMOTIM,LMOUSR) " +
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?," + maxTonVal + "?,?,?,?,?,?)");
+                deadlineCol + maxTonCol + dynDistCol + "CREDAT,CRETIM,CREUSR,LMODAT,LMOTIM,LMOUSR) " +
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?," +
+                deadlineVal + maxTonVal + dynDistVal + "?,?,?,?,?,?)");
             int p = 1;
             q.setParameter(p++, ptnrky).setParameter(p++, ptnrty).setParameter(p++, ownrky)
              .setParameter(p++, req.getWareky())
@@ -315,9 +334,10 @@ public class DeliveryService {
              .setParameter(p++, req.getMinQtsiwh())
              .setParameter(p++, req.getLatitude())
              .setParameter(p++, req.getLongitude())
-             .setParameter(p++, req.getDelYn())
-             .setParameter(p++, req.getDeadlineTime());
-            if (hasMaxTon) q.setParameter(p++, req.getMaxTon());
+             .setParameter(p++, req.getDelYn());
+            if (hasDeadline)    q.setParameter(p++, req.getDeadlineTime());
+            if (hasMaxTon)      q.setParameter(p++, req.getMaxTon());
+            if (hasDynamicDist) q.setParameter(p++, req.getDynamicDistM());
             q.setParameter(p++, nowdt).setParameter(p++, nowtm).setParameter(p++, "WEB")
              .setParameter(p++, nowdt).setParameter(p++, nowtm).setParameter(p++, "WEB")
              .executeUpdate();
@@ -482,6 +502,7 @@ public class DeliveryService {
         m.put("FORKLIFT_YN", d.getForkliftYn()); m.put("INB_TIME_FROM1", d.getInbTimeFrom1());
         m.put("INB_TIME_TO1", d.getInbTimeTo1()); m.put("MAX_BOX_QTY", d.getMaxBoxQty());
         m.put("DEADLINE_TIME", d.getDeadlineTime()); m.put("MAX_TON", d.getMaxTon());
+        m.put("DYNAMIC_DIST_M", d.getDynamicDistM());
         m.put("DEL_YN", d.getDelYn()); m.put("LATITUDE", d.getLatitude()); m.put("LONGITUDE", d.getLongitude());
         return m;
     }

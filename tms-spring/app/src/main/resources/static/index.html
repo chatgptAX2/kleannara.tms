@@ -5792,6 +5792,13 @@ function buildDeliveryForm() {
     </div>
 
     <div class="form-group">
+      <label>동적거리(M) <span style="font-size:10px;color:var(--text3);font-weight:400">(동적 허용 거리)</span></label>
+      <input id="f-DYNAMIC_DIST_M" type="number" min="0" step="0.01" placeholder="예: 500 (미터)"
+        style="background:var(--surface2);border:1px solid var(--border);border-radius:5px;
+               color:var(--text);padding:6px 9px;font-size:12px;width:100%">
+    </div>
+
+    <div class="form-group">
       <label>지게차여부</label>
       <div class="yn-toggle" id="yn-FORKLIFT_YN">
         <button class="yn-btn" onclick="setYN('FORKLIFT_YN','Y',this)">Y</button>
@@ -6293,6 +6300,7 @@ function fillDeliveryForm(data) {
   setVal('f-AREA_CD',      d.AREA_CD);
   setVal('f-MAX_BOX_QTY',  d.MAX_BOX_QTY);
   setSel('f-MAX_TON',       d.MAX_TON || '');
+  setVal('f-DYNAMIC_DIST_M', d.DYNAMIC_DIST_M);
   setVal('f-SINGLE_HEIGHT',d.SINGLE_HEIGHT);
   setVal('f-MIN_QTSIWH',   d.MIN_QTSIWH);
   setVal('f-LATITUDE',     d.LATITUDE);
@@ -6336,7 +6344,7 @@ function dlvResetForm() {
 
   ['f-PTNRKY','f-NAME01','f-NAME02','f-ADDR01','f-ADDR02','f-TELN01','f-FAXTL1',
    'f-EMAIL1','f-WAREKY','f-AREA_CD','f-MAX_BOX_QTY','f-SINGLE_HEIGHT','f-MAX_TON',
-   'f-MIN_QTSIWH','f-LATITUDE','f-LONGITUDE'].forEach(id => {
+   'f-DYNAMIC_DIST_M','f-MIN_QTSIWH','f-LATITUDE','f-LONGITUDE'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -6383,6 +6391,7 @@ async function dlvSave() {
     autoPlt:       document.getElementById('f-AUTO_PLT')?.value || null,
     maxBoxQty:     parseInt(document.getElementById('f-MAX_BOX_QTY')?.value)||null,
     maxTon:        (document.getElementById('f-MAX_TON')?.value || '').trim() || null,
+    dynamicDistM:  parseFloat(document.getElementById('f-DYNAMIC_DIST_M')?.value) || null,
     autoAllocYn:   getYN('AUTO_ALLOC_YN'),
     singleItemYn:  getYN('SINGLE_ITEM_YN'),
     nyType:        getYN('NY_TYPE'),
@@ -26193,6 +26202,11 @@ function _dbDestroyChart(key) {
     _dbCharts[key].destroy();
     delete _dbCharts[key];
   }
+}
+</script>
+</body>
+</html>
+
 }
 </script>
 </body>
