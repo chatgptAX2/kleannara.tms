@@ -3,9 +3,11 @@ package com.company.module.wms.service;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.SqlParameterValue;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.Types;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -356,11 +358,11 @@ public class DispatchConfigApiService {
                     Long profileId = pr.isEmpty() ? 1L : toLong(pr.get(0).get("PROFILE_ID"));
                     String constOp = List.of("ALLOW_CARTYPE","LONG_AXIS_YN").contains(field) ? "=" : "<=";
                     tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) VALUES (SEQ_DS_DISPATCH_CONST.NEXTVAL,?,?,?,?,?,?,?,?,?,?,?,?)",
-                        profileId, "CARTYPE", field, defaultVal, constOp, carclassCd, cartype, "Y", "차량유형관리 연동", 0, today(), today());
+                        profileId, "CARTYPE", field, vc(defaultVal), constOp, carclassCd, cartype, "Y", "차량유형관리 연동", 0, today(), today());
                     constId = tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_CONST.CURRVAL FROM DUAL", Long.class);
                 }
                 tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST_SET_ITEM (ITEM_ID,SET_ID,CONST_ID,ACTIVE_YN,PARAM_VALUE) VALUES (?,?,?,?,?)",
-                    nextItemId++, setId, constId, "Y", paramVal);
+                    nextItemId++, setId, constId, "Y", vc(paramVal));
                 saved++;
             }
             return Map.of("ok", true, "saved", saved);
@@ -540,7 +542,7 @@ public class DispatchConfigApiService {
                 String yn   = Objects.toString(it.get("active_yn"), "Y").trim();
                 Object pval = it.get("param_value");
                 tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST_SET_ITEM (ITEM_ID,SET_ID,CONST_ID,ACTIVE_YN,PARAM_VALUE) VALUES (?,?,?,?,?)",
-                    nextItemId++, setId, constId, yn, pval);
+                    nextItemId++, setId, constId, yn, vc(pval));
             }
             return Map.of("ok", true, "saved", items.size());
         } catch (Exception e) { return errMap(e); }
@@ -993,11 +995,11 @@ public class DispatchConfigApiService {
                 if (!existing.isEmpty()) {
                     tmsJdbc.update(
                         "UPDATE KNRAWMS.DS_DISPATCH_CONST_SET_ITEM SET ACTIVE_YN=?,PARAM_VALUE=? WHERE SET_ID=? AND CONST_ID=?",
-                        useYn, paramVal.isEmpty() ? null : paramVal, setId, constId);
+                        useYn, vc(paramVal.isEmpty() ? null : paramVal), setId, constId);
                 } else {
                     tmsJdbc.update(
                         "INSERT INTO KNRAWMS.DS_DISPATCH_CONST_SET_ITEM (ITEM_ID,SET_ID,CONST_ID,ACTIVE_YN,PARAM_VALUE) VALUES (?,?,?,?,?)",
-                        nextItemId++, setId, constId, useYn, paramVal.isEmpty() ? null : paramVal);
+                        nextItemId++, setId, constId, useYn, vc(paramVal.isEmpty() ? null : paramVal));
                 }
                 saved++;
             }
@@ -1006,8 +1008,16 @@ public class DispatchConfigApiService {
     }
 
     private Map<String, Object> errMap(Exception e) {
-        log.error("DispatchConfigApiService error: {}", e.getMessage());
+        log.error("DispatchConfigApiService error: {}", e.getMessage(), e);
         return Map.of("ok", false, "error", e.getMessage());
+    }
+
+    /**
+     * Oracle null 바인딩 시 SQL 타입 미지정으로 ORA-17004(부적합한 열 유형)가 발생하는 것을 방지.
+     * VARCHAR 컬럼(PARAM_VALUE 등)에 null 을 안전하게 바인딩하기 위해 SqlParameterValue 로 감싼다.
+     */
+    private Object vc(Object v) {
+        return new SqlParameterValue(Types.VARCHAR, v == null ? null : v.toString());
     }
     private String str(Object v) { return v == null ? "" : v.toString().trim(); }
     private Long toLong(Object v) { try { return v == null ? null : Long.valueOf(v.toString()); } catch (Exception e) { return null; } }
