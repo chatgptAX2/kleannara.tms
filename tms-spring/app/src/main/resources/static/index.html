@@ -22224,6 +22224,7 @@ const DCON_GRP_META = {
   ENTRY_TON: { icon:'🚧', label:'납품처 진입 허용 톤수 제한', cls:'g-entry-ton', desc:'납품처별 최대 진입 차량 톤수 설정 — 초과 차량은 자동배차 후보에서 제외' },
   FORKLIFT:  { icon:'🏗', label:'지게차 여부 제약',          cls:'g-forklift',  desc:'Y=지게차 사용 → 파렛트 높이 미적용 / N=지게차 없음 → 파렛트 높이 적용' },
   DYNAMIC:     { icon:'⚡', label:'동적 제약',                cls:'g-dynamic',      desc:'Y=동적배차 가능 / N=동적배차 불가 / 미설정=동적배차 가능(기본)' },
+  PTNR_MULTI:  { icon:'🏢', label:'납품처 통합 제약',          cls:'g-ptnr-multi',   desc:'납품처 관리 설정 기반 4개 제약(동적거리·수작업·자동배차유무·동적대상 사용유무)을 한 화면에서 통합 관리 — 자동배차 시 적용' },
   DYNAMIC_ZONE: { icon:'🗂️', label:'동적 구역 제약',            cls:'g-dynamic-zone', desc:'동일 AREA_CD(권역/구) 기준 동적 그룹핑 전역 규칙 — 구역 단위 동적배차 제어 파라미터' },
   /* ── 원지(Paper Roll) 4개 탭 ── */
   ROLL_UNIT:      { icon:'📜', label:'원지① 단위 배차',      cls:'g-roll-unit',    desc:'원지는 정수 롤 단위 배차, 개체 내 분할 절대 불가 (엑셀§2-1)' },
@@ -22463,7 +22464,7 @@ async function dconSelectSet(setId) {
     });
 
     /* ENTRY_TON / FORKLIFT / DYNAMIC: 초기화 시 이미 로드됨 — 변경사항(dirty) 있으면 reload */
-    if (DCON._entryTonDirty || DCON._forkliftDirty || DCON._dynamicDirty || DCON._regionDirty) {
+    if (DCON._entryTonDirty || DCON._forkliftDirty || DCON._dynamicDirty || DCON._ptnrMultiDirty || DCON._regionDirty) {
       await _dconLoadBzptnData();
     }
 
@@ -22484,7 +22485,7 @@ function _dconSpRenderTabs() {
   /* CARTYPE은 항상 탭에 표시 (DS_VEHICLE 기반이므로 별도 카운트) */
   const tabOrder = [
     'GLOBAL','VEHICLE','CARTYPE','CARGO','PARTNER',
-    'ENTRY_TON','FORKLIFT','DYNAMIC','DYNAMIC_ZONE',
+    'ENTRY_TON','FORKLIFT','DYNAMIC','PTNR_MULTI','DYNAMIC_ZONE',
     'ROLL_UNIT','ROLL_STACK','ROLL_INCH_MIX','ROLL_3D_VERIFY',
     'BOARD_CBM_WEIGHT','BOARD_BULK_SPLIT','BOARD_FLEX_SPLIT','BOARD_3D_VERIFY',
     'MIX_MATERIAL','MIX_Z_AXIS','MIX_Y_LIFO','MIX_DUAL_VERIFY',
@@ -22527,10 +22528,12 @@ function _dconSpRenderTabs() {
   const hasEntryTon = (DCON._entryTonPartners || []).length > 0;
   const hasForklift = (DCON._forkliftPartners || []).length > 0;
   const hasDynamic  = (DCON._dynamicPartners  || []).length > 0;
+  const hasPtnrMulti = (DCON._ptnrMultiPartners || []).length > 0;
   const hasRegion   = (DCON._regionData && (DCON._regionData.regions||[]).length > 0);
   if (hasEntryTon) typeCnt['ENTRY_TON'] = typeCnt['ENTRY_TON'] || 0;
   if (hasForklift) typeCnt['FORKLIFT']  = typeCnt['FORKLIFT']  || 0;
   if (hasDynamic)  typeCnt['DYNAMIC']   = typeCnt['DYNAMIC']   || 0;
+  if (hasPtnrMulti) typeCnt['PTNR_MULTI'] = typeCnt['PTNR_MULTI'] || 0;
   if (hasRegion)   typeCnt['REGION']    = typeCnt['REGION']    || 0;
 
   /* 혼적⓪ 재질 혼적 탭은 항상 표시 (핵심 제약 — 데이터 없어도 추가 가능하도록) */
@@ -22541,6 +22544,7 @@ function _dconSpRenderTabs() {
     if (t === 'ENTRY_TON')  return hasEntryTon;
     if (t === 'FORKLIFT')   return hasForklift;
     if (t === 'DYNAMIC')    return hasDynamic;
+    if (t === 'PTNR_MULTI') return hasPtnrMulti;
     if (t === 'REGION')     return hasRegion;
     if (t === 'MIX_MATERIAL') return true;   // 항상 표시
     return typeCnt[t] !== undefined;
@@ -22554,6 +22558,8 @@ function _dconSpRenderTabs() {
         ? `<span class="dcon-set-tab-cnt" id="dcon-sp-tab-cnt-FORKLIFT">${cnt}</span>`
         : (t === 'DYNAMIC')
           ? `<span class="dcon-set-tab-cnt" id="dcon-sp-tab-cnt-DYNAMIC">${cnt}</span>`
+          : (t === 'PTNR_MULTI')
+          ? `<span class="dcon-set-tab-cnt" id="dcon-sp-tab-cnt-PTNR_MULTI">${cnt}</span>`
           : (t === 'REGION')
             ? `<span class="dcon-set-tab-cnt" id="dcon-sp-tab-cnt-REGION">${cnt}</span>`
             : `<span class="dcon-set-tab-cnt">${cnt}</span>`;
@@ -22568,6 +22574,7 @@ function _dconSpRenderTabs() {
     if (t === 'ENTRY_TON') return hasEntryTon;
     if (t === 'FORKLIFT')  return hasForklift;
     if (t === 'DYNAMIC')   return hasDynamic;
+    if (t === 'PTNR_MULTI') return hasPtnrMulti;
     if (t === 'REGION')    return hasRegion;
     return typeCnt[t] !== undefined;
   });
@@ -22580,11 +22587,12 @@ function _dconSpRenderTabs() {
 /* ── BZPTN_DETAIL 납품처 데이터 초기 로드 (페이지 진입 시 즉시 실행) ── */
 async function _dconLoadBzptnData() {
   try {
-    const [etd, fkd, dyd, rgd] = await Promise.all([
+    const [etd, fkd, dyd, rgd, pmd] = await Promise.all([
       fetch('/api/dispatch-const-set/entry-ton/list').then(r=>r.json()),
       fetch('/api/dispatch-const-set/forklift/list').then(r=>r.json()),
       fetch('/api/dispatch-const-set/dynamic/list').then(r=>r.json()),
       fetch('/api/dispatch-const-set/region/list').then(r=>r.json()),
+      fetch('/api/dispatch-const-set/ptnr-multi/list').then(r=>r.json()),
     ]);
     /* ENTRY_TON */
     if (etd.ok) {
@@ -22623,6 +22631,23 @@ async function _dconLoadBzptnData() {
         };
       });
       DCON._dynamicDirty = false;
+    }
+    /* PTNR_MULTI — 납품처 통합 제약 (동적거리·수작업·자동배차유무·동적대상 사용유무) */
+    if (pmd.ok) {
+      DCON._ptnrMultiPartners = pmd.partners || [];
+      DCON._ptnrMultiState = {};
+      (pmd.partners||[]).forEach(p => {
+        DCON._ptnrMultiState[p.PTNRKY] = {
+          dynamic_dist_m: (p.DYNAMIC_DIST_M != null ? p.DYNAMIC_DIST_M : ''),
+          handwork_yn:    p.HANDWORK_YN  || '',
+          auto_alloc_yn:  p.AUTO_ALLOC_YN|| '',
+          dynamic_yn:     p.DYNAMIC_YN   || '',
+          ptnrty:         p.PTNRTY || 'CT',
+          ownrky:         p.OWNRKY || 'KN',
+          _dirty:         false,
+        };
+      });
+      DCON._ptnrMultiDirty = false;
     }
     /* REGION — TMS_REGION 기반 지역별 납품처 묶음 */
     if (rgd.ok) {
@@ -22683,6 +22708,14 @@ function _dconSpUpdateCntBadge() {
   /* REGION 카운트: REGION_YN='Y' (묶음배차 허용) 설정된 납품처 수 */
   const rgState = DCON._regionState || {};
   const rgCnt = Object.values(rgState).filter(s => s.region_yn === 'Y').length;
+  /* PTNR_MULTI 카운트: 4개 제약 중 하나라도 설정된 납품처 수 */
+  const pmState = DCON._ptnrMultiState || {};
+  const pmCnt = Object.values(pmState).filter(s =>
+    (s.dynamic_dist_m!=null && String(s.dynamic_dist_m).trim()!=='') ||
+    (s.handwork_yn && s.handwork_yn.trim()) ||
+    (s.auto_alloc_yn && s.auto_alloc_yn.trim()) ||
+    (s.dynamic_yn && s.dynamic_yn.trim())
+  ).length;
   const total = rows.length + ctCnt + etCnt + fkCnt + dyCnt + rgCnt;
   const badge = document.getElementById('dcon-sp-cnt-badge');
   if (badge) badge.textContent = `${total}개 적용`;
@@ -22698,6 +22731,9 @@ function _dconSpUpdateCntBadge() {
   /* REGION 탭 배지 갱신 (Y=묶음허용 건수) */
   const rgBadge = document.getElementById('dcon-sp-tab-cnt-REGION');
   if (rgBadge) rgBadge.textContent = rgCnt;
+  /* PTNR_MULTI 탭 배지 갱신 (설정된 납품처 건수) */
+  const pmBadge = document.getElementById('dcon-sp-tab-cnt-PTNR_MULTI');
+  if (pmBadge) pmBadge.textContent = pmCnt;
 }
 
 /* ── 탭 body 공통 헤더 (VEHICLE/CARTYPE용) ── */
@@ -22734,9 +22770,11 @@ function _dconSpRender() {
       ? (DCON._forkliftFilter || '').toLowerCase().trim()
       : tab === 'DYNAMIC'
         ? (DCON._dynamicFilter || '').toLowerCase().trim()
-        : tab === 'REGION'
-          ? (DCON._regionFilter || '').toLowerCase().trim()
-          : (document.getElementById('dcon-sp-filter')?.value || '').toLowerCase().trim();
+        : tab === 'PTNR_MULTI'
+          ? (DCON._ptnrMultiFilter || '').toLowerCase().trim()
+          : tab === 'REGION'
+            ? (DCON._regionFilter || '').toLowerCase().trim()
+            : (document.getElementById('dcon-sp-filter')?.value || '').toLowerCase().trim();
   const rows = (DCON._spRows||[]).filter(r => !r._deleted && r.CONST_TYPE === tab);
 
   /* ENTRY_TON / FORKLIFT / DYNAMIC / REGION: 세트 없이도 납품처 목록 바로 표시 */
@@ -22746,6 +22784,8 @@ function _dconSpRender() {
     body.innerHTML = _dconSpRenderForklift(ft);
   } else if (tab === 'DYNAMIC') {
     body.innerHTML = _dconSpRenderDynamic(ft);
+  } else if (tab === 'PTNR_MULTI') {
+    body.innerHTML = _dconSpRenderPtnrMulti(ft);
   } else if (tab === 'DYNAMIC_ZONE') {
     body.innerHTML = _dconSpRenderTable(rows, ft, tab);
   } else if (tab === 'REGION') {
@@ -23507,6 +23547,149 @@ function _dconFkChange(ptnrky, ptnrty, ownrky, val) {
       if (newVal === 'Y')      statusCell.innerHTML = `<span class="dcon-fk-badge-y">🏗 지게차 Y — 파렛트 미적용</span>`;
       else if (newVal === 'N') statusCell.innerHTML = `<span class="dcon-fk-badge-n">❌ 지게차 N — 파렛트 적용</span>`;
       else                     statusCell.innerHTML = `<span class="dcon-fk-badge-none">미설정 (기본: 파렛트 적용)</span>`;
+    }
+  }
+  _dconSpUpdateCntBadge();
+  _dconSpDirty();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PTNR_MULTI — 납품처 통합 제약 탭 (지게차 탭 레이아웃과 동일 구성)
+   납품처 관리 설정 기반 4개 제약을 납품처별 컬럼으로 통합 관리:
+     ① 동적거리 (DYNAMIC_DIST_M, m 숫자입력) — 동적 허용 거리
+     ② 수작업   (HANDWORK_YN, Y/N)   — Y=수작업 대상 → 자동배차 제외
+     ③ 자동배차유무 (AUTO_ALLOC_YN, Y/N) — N=자동배차 제외
+     ④ 동적대상 사용유무 (DYNAMIC_YN, Y/N) — 납품처간 이동거리 동적 대상
+   ※ 위 제약은 자동배차 시 적용됨
+══════════════════════════════════════════════════════════════ */
+function _dconSpRenderPtnrMulti(ft) {
+  const partners = DCON._ptnrMultiPartners || [];
+  const pmState  = DCON._ptnrMultiState    || {};
+
+  /* 필터 적용 */
+  const filtered = partners.filter(p => {
+    if (!ft) return true;
+    return `${p.PTNRKY} ${p.NAME01||''} ${p.AREA_CD||''}`.toLowerCase().includes(ft);
+  });
+
+  /* 요약 카운트 */
+  const hwYCnt   = Object.values(pmState).filter(s => s.handwork_yn === 'Y').length;
+  const autoNCnt = Object.values(pmState).filter(s => s.auto_alloc_yn === 'N').length;
+  const dynYCnt  = Object.values(pmState).filter(s => s.dynamic_yn === 'Y').length;
+
+  let html = `<div class="dcon-fk-wrap">
+  <div class="dcon-fk-info">
+    🏢 <strong>납품처 통합 제약</strong> &nbsp;|&nbsp;
+    납품처 관리에서 설정된 4개 제약(동적거리·수작업·자동배차유무·동적대상 사용유무)을 통합 관리하며, 자동배차 시 적용됩니다.
+    &nbsp;<span class="dcon-fk-badge-n">✋ 수작업 Y: ${hwYCnt}개 (자동배차 제외)</span>
+    &nbsp;<span class="dcon-fk-badge-n">🚫 자동배차 N: ${autoNCnt}개 (자동배차 제외)</span>
+    &nbsp;<span class="dcon-fk-badge-y">⚡ 동적대상 Y: ${dynYCnt}개</span>
+  </div>
+  <div class="dcon-fk-toolbar">
+    <input class="dcon-fk-filter" type="text" placeholder="🔍 납품처명·코드·권역 검색…"
+      value="${_esc(ft)}" oninput="DCON._ptnrMultiFilter=this.value;_dconSpRender()"/>
+    <span class="dcon-fk-stat">${filtered.length} / ${partners.length}개 납품처</span>
+  </div>
+  <div class="dcon-fk-scroll">
+  <table class="dcon-fk-tbl">
+    <thead><tr>
+      <th style="width:90px">납품처코드</th>
+      <th style="min-width:150px">납품처명</th>
+      <th style="width:60px">권역</th>
+      <th style="width:120px">동적거리(m)</th>
+      <th style="width:140px">수작업</th>
+      <th style="width:140px">자동배차유무</th>
+      <th style="width:140px">동적대상 사용유무</th>
+    </tr></thead>
+    <tbody>`;
+
+  if (filtered.length === 0) {
+    html += `<tr><td colspan="7" class="dcon-fk-empty">검색 결과가 없습니다</td></tr>`;
+  } else {
+    filtered.forEach(p => {
+      const st = pmState[p.PTNRKY] || {
+        dynamic_dist_m: (p.DYNAMIC_DIST_M!=null?p.DYNAMIC_DIST_M:''),
+        handwork_yn: p.HANDWORK_YN||'', auto_alloc_yn: p.AUTO_ALLOC_YN||'', dynamic_yn: p.DYNAMIC_YN||''
+      };
+      const distVal = (st.dynamic_dist_m!=null?st.dynamic_dist_m:'');
+      const hw   = st.handwork_yn   || '';
+      const au   = st.auto_alloc_yn || '';
+      const dy   = st.dynamic_yn    || '';
+      const pk = _esc(p.PTNRKY), pty = _esc(p.PTNRTY||'CT'), owk = _esc(p.OWNRKY||'KN');
+
+      /* Y/N/미설정 토글 버튼 3종 세트 생성기 */
+      const ynBtns = (col, cur) => {
+        const bY = `dcon-fk-btn${cur==='Y'?' fk-active-y':''}`;
+        const bN = `dcon-fk-btn${cur==='N'?' fk-active-n':''}`;
+        const bNone = `dcon-fk-btn${(!cur)?' fk-active-none':''}`;
+        return `<div class="dcon-fk-btn-grp">
+          <button class="${bY}" onclick="_dconPmYnChange('${pk}','${pty}','${owk}','${col}','Y')">Y</button>
+          <button class="${bN}" onclick="_dconPmYnChange('${pk}','${pty}','${owk}','${col}','N')">N</button>
+          <button class="${bNone}" onclick="_dconPmYnChange('${pk}','${pty}','${owk}','${col}','')">—</button>
+        </div>`;
+      };
+
+      html += `<tr id="dcon-pm-row-${pk}">
+        <td style="font-size:10px;color:var(--text3)">${pk}</td>
+        <td>${_esc(p.NAME01||p.PTNRKY)}</td>
+        <td style="text-align:center">${p.AREA_CD ? `<span class="dcon-fk-area">${_esc(p.AREA_CD)}</span>` : '<span style="color:var(--text3)">-</span>'}</td>
+        <td style="text-align:center">
+          <input type="number" min="0" step="1" class="dcon-pm-dist" style="width:90px;text-align:right"
+            value="${_esc(String(distVal))}" placeholder="0"
+            onchange="_dconPmDistChange('${pk}','${pty}','${owk}',this.value)"/>
+        </td>
+        <td data-col="handwork_yn">${ynBtns('handwork_yn', hw)}</td>
+        <td data-col="auto_alloc_yn">${ynBtns('auto_alloc_yn', au)}</td>
+        <td data-col="dynamic_yn">${ynBtns('dynamic_yn', dy)}</td>
+      </tr>`;
+    });
+  }
+
+  html += `</tbody></table></div></div>`;
+  return html;
+}
+
+/* 동적거리(숫자) 변경 */
+function _dconPmDistChange(ptnrky, ptnrty, ownrky, val) {
+  if (!DCON._ptnrMultiState) DCON._ptnrMultiState = {};
+  if (!DCON._ptnrMultiState[ptnrky]) {
+    DCON._ptnrMultiState[ptnrky] = { dynamic_dist_m:'', handwork_yn:'', auto_alloc_yn:'', dynamic_yn:'', ptnrty, ownrky, _dirty:false };
+  }
+  const v = (val==null || String(val).trim()==='') ? '' : String(val).trim();
+  DCON._ptnrMultiState[ptnrky].dynamic_dist_m = v;
+  DCON._ptnrMultiState[ptnrky].ptnrty = ptnrty;
+  DCON._ptnrMultiState[ptnrky].ownrky = ownrky;
+  DCON._ptnrMultiState[ptnrky]._dirty = true;
+  DCON._ptnrMultiDirty = true;
+  _dconSpUpdateCntBadge();
+  _dconSpDirty();
+}
+
+/* Y/N/미설정 토글 변경 (col = handwork_yn | auto_alloc_yn | dynamic_yn) */
+function _dconPmYnChange(ptnrky, ptnrty, ownrky, col, val) {
+  if (!DCON._ptnrMultiState) DCON._ptnrMultiState = {};
+  if (!DCON._ptnrMultiState[ptnrky]) {
+    DCON._ptnrMultiState[ptnrky] = { dynamic_dist_m:'', handwork_yn:'', auto_alloc_yn:'', dynamic_yn:'', ptnrty, ownrky, _dirty:false };
+  }
+  const prev = DCON._ptnrMultiState[ptnrky][col] || '';
+  const newVal = (prev === val && val !== '') ? '' : val;   // 같은 값 재클릭 → 초기화
+  DCON._ptnrMultiState[ptnrky][col] = newVal;
+  DCON._ptnrMultiState[ptnrky].ptnrty = ptnrty;
+  DCON._ptnrMultiState[ptnrky].ownrky = ownrky;
+  DCON._ptnrMultiState[ptnrky]._dirty = true;
+  DCON._ptnrMultiDirty = true;
+
+  /* 해당 셀의 버튼 상태만 즉시 갱신 */
+  const row = document.getElementById(`dcon-pm-row-${ptnrky}`);
+  if (row) {
+    const cell = row.querySelector(`td[data-col="${col}"]`);
+    if (cell) {
+      const btns = cell.querySelectorAll('.dcon-fk-btn');
+      if (btns.length >= 3) {
+        btns[0].className = `dcon-fk-btn${newVal==='Y'?' fk-active-y':''}`;
+        btns[1].className = `dcon-fk-btn${newVal==='N'?' fk-active-n':''}`;
+        btns[2].className = `dcon-fk-btn${(!newVal)?' fk-active-none':''}`;
+      }
     }
   }
   _dconSpUpdateCntBadge();
@@ -24548,6 +24731,30 @@ async function _dconSpSave() {
       DCON._dynamicDirty = false;
     }
 
+    /* PTNR_MULTI 저장: BZPTN_DETAIL 4개 컬럼(DYNAMIC_DIST_M·HANDWORK_YN·AUTO_ALLOC_YN·DYNAMIC_YN) 일괄 업데이트 */
+    const pmState2 = DCON._ptnrMultiState || {};
+    const pmItems = Object.entries(pmState2).map(([ptnrky, st]) => ({
+      ptnrky,
+      ptnrty: st.ptnrty || 'CT',
+      ownrky: st.ownrky || 'KN',
+      dynamic_dist_m: (st.dynamic_dist_m!=null?st.dynamic_dist_m:''),
+      handwork_yn:    st.handwork_yn   || '',
+      auto_alloc_yn:  st.auto_alloc_yn || '',
+      dynamic_yn:     st.dynamic_yn    || '',
+    }));
+    let pmSaved = 0;
+    if (pmItems.length > 0) {
+      const resPm = await fetch('/api/dispatch-const-set/ptnr-multi/save', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: pmItems }),
+      });
+      const dPm = await resPm.json();
+      console.debug('[dcon] ptnr-multi/save 응답:', dPm);
+      if (!dPm.ok) throw new Error('[ptnr-multi/save] ' + (dPm.error || 'API 오류'));
+      pmSaved = dPm.saved || 0;
+      DCON._ptnrMultiDirty = false;
+    }
+
     /* REGION 저장: BZPTN_DETAIL.REGION_YN 일괄 업데이트 (DB DDL 미완료 — no-op) */
     const rgState2 = DCON._regionState || {};
     const rgItems = Object.entries(rgState2).map(([ptnrky, st]) => ({
@@ -24591,6 +24798,7 @@ async function _dconSpSave() {
     DCON._entryTonDirty = true;
     DCON._forkliftDirty = true;
     DCON._dynamicDirty  = true;
+    DCON._ptnrMultiDirty = true;
     await dconSelectSet(DCON.selSetId);
     /* dconSelectSet() 내부에서 이미 IN_SET=1 항목의 첫 번째 CONST_TYPE으로
        _spActiveTab을 설정하고 렌더링까지 완료했으므로 별도 탭 복귀 불필요.

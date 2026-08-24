@@ -515,6 +515,38 @@ public class DispatchConfigApiService {
         return bzptnDetailBatchSave(body, "DYNAMIC_YN");
     }
 
+    // ══════════════════════════════════════════════════════════════
+    //  납품처 통합 제약 (PTNR_MULTI) — 1개 탭으로 4개 제약 동시 관리
+    //   1) DYNAMIC_DIST_M  동적거리(동적 허용 거리, 숫자)
+    //   2) HANDWORK_YN     수작업 (Y/N)
+    //   3) AUTO_ALLOC_YN   자동배차유무 (Y/N)
+    //   4) DYNAMIC_YN      동적대상 사용유무 (Y/N)
+    //  대상 테이블: KNRAWMS.BZPTN_DETAIL (납품처 관리와 동일)
+    // ══════════════════════════════════════════════════════════════
+    public Map<String, Object> setPtnrMultiList() {
+        try {
+            // tmsJdbc 단독 — BZPTN JOIN BZPTN_DETAIL (동일 DB/계정이므로 JOIN 가능)
+            // b.PTNL01='10' : PS 납품처 대상만 조회
+            List<Map<String, Object>> rows = tmsJdbc.queryForList(
+                "SELECT b.PTNRKY, 'CT' AS PTNRTY, " +
+                "       COALESCE(d.OWNRKY,'KN') AS OWNRKY, " +
+                "       COALESCE(d.WAREKY,'W001') AS WAREKY, " +
+                "       COALESCE(b.NAME01,b.PTNRKY) AS NAME01, " +
+                "       d.AREA_CD, d.DYNAMIC_DIST_M, d.HANDWORK_YN, d.AUTO_ALLOC_YN, d.DYNAMIC_YN " +
+                "FROM KNRAWMS.BZPTN b " +
+                "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=b.PTNRKY AND d.PTNRTY=b.PTNRTY AND d.OWNRKY=b.OWNRKY " +
+                "WHERE b.PTNRTY='CT' AND b.PTNL01='10' ORDER BY d.AREA_CD, b.PTNRKY"
+            );
+            return Map.of("ok", true, "partners", rows);
+        } catch (Exception e) { return errMap(e); }
+    }
+
+    @Transactional(transactionManager = "tmsTransactionManager")
+    public Map<String, Object> setPtnrMultiSave(Map<String, Object> body) {
+        return bzptnDetailMultiColSave(body,
+            new String[]{ "DYNAMIC_DIST_M", "HANDWORK_YN", "AUTO_ALLOC_YN", "DYNAMIC_YN" });
+    }
+
     @Transactional(transactionManager = "tmsTransactionManager")
     public Map<String, Object> setItemsSave(Map<String, Object> body) {
         Integer setId = toInteger(body.get("set_id"));
@@ -835,6 +867,78 @@ public class DispatchConfigApiService {
                     colVal, lmodat, lmotim,              // WHEN MATCHED UPDATE
                     ptnrky, ptnrty, ownrky, wareky, colVal, lmodat, lmotim  // WHEN NOT MATCHED INSERT
                 );
+                saved++;
+            }
+            return Map.of("ok", true, "saved", saved);
+        } catch (Exception e) { return errMap(e); }
+    }
+
+    /**
+     * BZPTN_DETAIL 여러 컬럼을 납품처별로 한 번에 MERGE 저장.
+     * items[i] 는 { ptnrky, ptnrty, ownrky, wareky, <컬럼소문자>:값 ... } 형태.
+     * columnNames 에 지정된 컬럼만 UPDATE/INSERT 대상으로 반영한다.
+     * (PTNR_MULTI 통합 탭 — 동적거리/수작업/자동배차/동적대상 4컬럼 동시 저장)
+     */
+    private Map<String, Object> bzptnDetailMultiColSave(Map<String, Object> body, String[] columnNames) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> items = (List<Map<String, Object>>) body.get("items");
+        if (items == null || items.isEmpty()) return Map.of("ok", true, "saved", 0);
+        if (columnNames == null || columnNames.length == 0) return Map.of("ok", true, "saved", 0);
+        String lmodat = today();
+        String lmotim = java.time.LocalDateTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
+        int saved = 0;
+        try {
+            // 동적 SET / INSERT 컬럼 절 생성
+            StringBuilder setClause = new StringBuilder();   // UPDATE SET
+            StringBuilder insCols   = new StringBuilder();   // INSERT 컬럼
+            StringBuilder insVals   = new StringBuilder();   // INSERT VALUES placeholders
+            for (String col : columnNames) {
+                setClause.append("t.").append(col).append("=?, ");
+                insCols.append(col).append(",");
+                insVals.append("?,");
+            }
+            String sql =
+                "MERGE INTO KNRAWMS.BZPTN_DETAIL t " +
+                "USING (SELECT ? AS PTNRKY, ? AS PTNRTY, ? AS OWNRKY FROM DUAL) s " +
+                "ON (t.PTNRKY=s.PTNRKY AND t.PTNRTY=s.PTNRTY AND t.OWNRKY=s.OWNRKY) " +
+                "WHEN MATCHED THEN UPDATE SET " + setClause + "t.LMODAT=?, t.LMOTIM=?, t.LMOUSR='DCON_SET' " +
+                "WHEN NOT MATCHED THEN INSERT (PTNRKY,PTNRTY,OWNRKY,WAREKY," + insCols + "LMODAT,LMOTIM,LMOUSR) " +
+                "VALUES (?,?,?,?," + insVals + "?,?,'DCON_SET')";
+
+            for (Map<String, Object> it : items) {
+                String ptnrky = str(it.get("ptnrky"));
+                String ptnrty = Objects.toString(it.get("ptnrty"), "CT").trim();
+                String ownrky = Objects.toString(it.get("ownrky"), "KN").trim();
+                String wareky = Objects.toString(it.getOrDefault("wareky", "W001"), "W001").trim();
+                if (ptnrky.isBlank()) continue;
+
+                // PS 납품처(PTNL01='10') 대상인지 검증
+                int psCount = tmsJdbc.queryForObject(
+                    "SELECT COUNT(*) FROM KNRAWMS.BZPTN WHERE PTNRKY=? AND PTNRTY='CT' AND PTNL01='10'",
+                    Integer.class, ptnrky
+                );
+                if (psCount == 0) { saved++; continue; }
+
+                // 각 컬럼 값 추출 (소문자 키 우선, 없으면 원본 키)
+                Object[] colVals = new Object[columnNames.length];
+                for (int i = 0; i < columnNames.length; i++) {
+                    Object v = it.get(columnNames[i].toLowerCase());
+                    if (v == null) v = it.get(columnNames[i]);
+                    // 빈 문자열은 NULL 로 저장 (미설정 상태 표현)
+                    if (v instanceof String && ((String) v).isBlank()) v = null;
+                    colVals[i] = v;
+                }
+
+                // 파라미터 순서: USING(3) + UPDATE(cols + lmodat + lmotim) + INSERT(ptnrky,ptnrty,ownrky,wareky + cols + lmodat + lmotim)
+                List<Object> params = new ArrayList<>();
+                params.add(ptnrky); params.add(ptnrty); params.add(ownrky);          // USING
+                for (Object cv : colVals) params.add(cv);                              // UPDATE SET cols
+                params.add(lmodat); params.add(lmotim);                               // UPDATE lmodat/lmotim
+                params.add(ptnrky); params.add(ptnrty); params.add(ownrky); params.add(wareky); // INSERT keys
+                for (Object cv : colVals) params.add(cv);                              // INSERT cols
+                params.add(lmodat); params.add(lmotim);                               // INSERT lmodat/lmotim
+
+                tmsJdbc.update(sql, params.toArray());
                 saved++;
             }
             return Map.of("ok", true, "saved", saved);
