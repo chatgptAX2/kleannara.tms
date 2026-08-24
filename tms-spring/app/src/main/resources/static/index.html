@@ -720,6 +720,11 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
   color:var(--text);padding:5px 9px;font-size:12px;min-width:110px;transition:.15s;
 }
 .dlv-search-group input:focus,.dlv-search-group select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(14,165,233,.12)}
+/* ① 반응형: 초광폭에서 검색필드 간 여백 확대 + 입력폭 확장(가로 공간 활용) */
+@media (min-width:2200px){
+  .dlv-search-bar{gap:16px}
+  .dlv-search-group input,.dlv-search-group select{min-width:150px}
+}
 .dlv-btn{padding:6px 14px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-size:12px;font-weight:600;transition:.15s;white-space:nowrap}
 .dlv-btn:hover{border-color:var(--primary);color:var(--primary);background:var(--pastel-sky-bg)}
 .dlv-btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
@@ -816,6 +821,14 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .vhc-search-box{background:var(--surface);border-bottom:2px solid var(--border);flex-shrink:0}
 .vhc-search-title{padding:5px 14px 0;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;display:flex;align-items:center;gap:5px}
 .vhc-search-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:6px 10px;padding:6px 14px 8px}
+/* ① 반응형: 화면 폭에 따라 검색조건 컬럼 수 자동 조정
+   - 넓은 화면일수록 한 줄에 더 많은 필드, 좁으면 자동 줄바꿈(최소 컬럼폭 보장) */
+@media (max-width:1599px){
+  .vhc-search-grid{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+}
+@media (min-width:2200px){
+  .vhc-search-grid{grid-template-columns:repeat(10,1fr)}
+}
 .vhc-sg{display:flex;flex-direction:column;gap:3px}
 .vhc-sg label{font-size:10px;font-weight:700;color:var(--warning);background:rgba(245,158,11,.08);padding:2px 5px;border-radius:3px;white-space:nowrap}
 .vhc-sg input,.vhc-sg select{background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 7px;font-size:12px;width:100%}
@@ -1868,6 +1881,30 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
   margin-top:4px;padding-top:6px;
   border-top:1px dashed rgba(147,197,253,.7);
 }
+
+/* ══════════════════════════════════════════════════════════════
+   ① 검색조건 반응형(자동 줄바꿈) — 화면 폭에 맞춰 검색조건이
+      가로 스크롤 대신 여러 줄로 자동 배치되도록 함.
+      (PS배차·PS배차최적화·반품출고 공통 .psd-search-row 계열)
+      - 넓은 화면(≥1600px): 한 줄에 최대한 표시 (nowrap 유지)
+      - 좁은 화면(<1600px): 자동 줄바꿈(wrap)으로 전체 필드 노출
+   ══════════════════════════════════════════════════════════════ */
+@media (max-width:1599px){
+  .psd-search-row{flex-wrap:wrap;overflow-x:visible;row-gap:6px}
+}
+/* 초광폭(≥2200px)에서는 검색필드 간 여백을 넉넉히 — 가로 공간 활용 */
+@media (min-width:2200px){
+  .psd-search-row{gap:14px}
+  .psd-search-row2{gap:12px}
+}
+
+/* ① 출고예정정보 검색조건(2행 grid) 반응형
+   - 기본: [좌 680px | 우 출하유형] 2열 grid
+   - 좁은 화면(<1400px): 1열로 접어 세로 배치(우측 출하유형이 아래로) */
+@media (max-width:1399px){
+  .ss-cond-grid{grid-template-columns:1fr !important;row-gap:6px}
+}
+
 /* 라벨+인풋 가로 배치 */
 .psd-fg{display:flex;flex-direction:row;align-items:center;gap:5px;flex-shrink:0}
 .psd-fg label{
@@ -8799,6 +8836,62 @@ document.addEventListener('mousedown', function(e) {
   }
 });
 
+/* ══════════════════════════════════════════════════════════════
+   ② 화면비율 자동 프리셋 (공통 유틸)
+   - 창(뷰포트) 가로 폭에 따라 좌우 패널 비율을 자동으로 선택.
+     · 초광폭(≥2200px, 21:9 등) → 5:5 (좌우 균형, 가로 데이터 더 노출)
+     · 와이드(1600~2199px)      → 5:5
+     · 일반(<1600px)            → 8:2 (좌측 목록 우선)
+   - 사용자가 수동으로 비율 버튼을 눌렀거나 리사이저를 드래그하면
+     localStorage에 값이 저장되므로, 그 경우 자동 프리셋은 적용하지 않음
+     (사용자 선택 우선).
+   ══════════════════════════════════════════════════════════════ */
+function _autoRatioPreset() {
+  const w = window.innerWidth || document.documentElement.clientWidth || 0;
+  if (w >= 1600) return 50;   // 와이드/초광폭: 좌우 균형(가로 데이터 확대)
+  return 80;                  // 일반: 좌측 목록 우선
+}
+
+/* 저장된 사용자 값이 없을 때만 자동 프리셋 적용.
+   setterFn: psdSetRatio / psopSetRatio, storageKey: 해당 화면의 localStorage 키 */
+function _applyAutoRatioIfUnset(setterFn, storageKey) {
+  try {
+    const saved = parseFloat(localStorage.getItem(storageKey));
+    if (!isNaN(saved) && saved > 10 && saved < 90) return false; // 사용자 값 우선
+  } catch(_){}
+  const pct = _autoRatioPreset();
+  // setterFn이 localStorage에 기록하므로, 자동값은 별도 플래그로 표시해
+  // "사용자 수동 선택"과 구분한다.
+  requestAnimationFrame(() => {
+    if (typeof setterFn === 'function') setterFn(pct);
+    try { localStorage.removeItem(storageKey); } catch(_){}  // 자동값은 저장하지 않음
+  });
+  return true;
+}
+
+/* 창 크기 변경 시 자동 프리셋 재적용(사용자 저장값 없을 때만).
+   디바운스로 과도한 호출 방지. 현재 화면에 보이는(offsetParent!=null)
+   좌측 패널을 가진 화면에 대해서만 재적용한다. */
+let _autoRatioResizeTimer = null;
+(function _bindAutoRatioResize(){
+  window.addEventListener('resize', () => {
+    clearTimeout(_autoRatioResizeTimer);
+    _autoRatioResizeTimer = setTimeout(() => {
+      // PS배차(psd-left) 화면이 보이면 해당 비율 자동 재적용
+      const psdLeft = document.getElementById('psd-left');
+      if (psdLeft && psdLeft.offsetParent !== null) {
+        _applyAutoRatioIfUnset(psdSetRatio, PSD_RESIZER_KEY);
+      }
+      // PS배차(최적화)(psop-left) 화면이 보이면 해당 비율 자동 재적용
+      const psopLeft = document.getElementById('psop-left');
+      if (psopLeft && psopLeft.offsetParent !== null &&
+          typeof psopSetRatio === 'function') {
+        _applyAutoRatioIfUnset(psopSetRatio, PSOP_RESIZER_KEY);
+      }
+    }, 200);
+  });
+})();
+
 const PSD_RESIZER_KEY = 'psd_left_width_pct';   // localStorage 키
 
 function psdResizerMouseDown(e) {
@@ -8862,8 +8955,11 @@ function psdRestoreWidth() {
         }
         _psdSyncRatioBtns(saved);
       });
+      return;
     }
   } catch(_){}
+  // ② 저장값 없음 → 화면 폭 기반 자동 프리셋 적용
+  _applyAutoRatioIfUnset(psdSetRatio, PSD_RESIZER_KEY);
 }
 
 /* 비율 버튼 클릭 — leftPct: 좌측 패널 목표 비율(%) */
@@ -12255,8 +12351,11 @@ function psopRestoreWidth() {
         }
         _psopSyncRatioBtns(saved);
       });
+      return;
     }
   } catch(_){}
+  // ② 저장값 없음 → 화면 폭 기반 자동 프리셋 적용
+  _applyAutoRatioIfUnset(psopSetRatio, PSOP_RESIZER_KEY);
 }
 
 const PSOP_CAR_COLOR = {
@@ -17892,7 +17991,7 @@ async function renderShipSchedule() {
     </div>
 
     <!-- ── 1행: [좌] 거점 | 출하요청일자 | 납품문서  [우] 출하유형 ── -->
-    <div style="display:grid;grid-template-columns:680px 1fr;gap:0;align-items:stretch;margin-bottom:4px;">
+    <div class="ss-cond-grid" style="display:grid;grid-template-columns:680px 1fr;gap:0;align-items:stretch;margin-bottom:4px;">
 
       <!-- 좌측: 거점 / 일자 / 납품문서 -->
       <div style="display:grid;grid-template-columns:140px 300px 1fr;gap:8px;align-items:end;padding-right:10px;overflow:hidden;">
@@ -17996,7 +18095,7 @@ async function renderShipSchedule() {
 
     <!-- ── 2행: [좌] 배차상태 | 제품군 | 품목코드 | 납품처  [우] 플랜트 + 버튼 ── -->
     <!-- 1행과 동일한 680px+1fr 그리드. 좌측 680px에 배차상태~납품처, 우측 1fr에 플랜트+버튼 -->
-    <div style="display:grid;grid-template-columns:680px 1fr;gap:0;align-items:stretch;">
+    <div class="ss-cond-grid" style="display:grid;grid-template-columns:680px 1fr;gap:0;align-items:stretch;">
 
       <!-- 좌측 680px: 배차상태 / 제품군 / 품목코드 / 납품처 -->
       <div style="display:grid;grid-template-columns:160px 90px 182px 1fr;gap:8px;align-items:end;padding-right:10px;overflow:hidden;">
