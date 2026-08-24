@@ -53,6 +53,10 @@ import java.util.stream.Collectors;
 public class SapRfcService {
 
     private static final String RFC_SHIPMENT = "Z_TMS_SHIPMENT_CRDL";
+    /** 납품분할 RFC — TABLES T_DATA(STRUCTURE ZSDS112) 단일 인터페이스.
+     *  INPUT : SVBELN(분할대상 납품문서), SPOSNR(납품품목번호), SKUKEY(자재코드), SPLIT_QTY(분할수량)
+     *  RETURN: SVBELN_O(SAP 채번 분할 납품문서), MSGTY('S'/'E'), MSG(메시지) */
+    private static final String RFC_DELIVERY_SPLIT = "Z_TMS_DELIVERY_SPLIT";
 
     private static final DateTimeFormatter YMDFORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final DateTimeFormatter HMSFORMAT = DateTimeFormatter.ofPattern("HHmmss");
@@ -1075,55 +1079,260 @@ public class SapRfcService {
         reqLog.append("└────────────────────────────────────────────────────────────");
         stdoutLog(reqLog.toString());
 
-        // ── 2) SAP RFC 호출 (개발중 → if(false) 로 비활성화) ──
-        boolean rfcOk = true;   // RFC 미확정 상태에서는 성공으로 간주하고 진행
-        String  rfcMsg = "RFC 미호출(개발중) — 성공으로 간주";
-        // TODO: RFC 확정 시 아래 if(false) → if(true) 로 전환하고 실제 호출 활성화
-        if (false) {
-            try {
-                // ── 납품분할 RFC 실제 호출 로직(확정 전 임시) ─────────────────
-                //   RFC 명은 미확정. 확정되면 아래 RFC_SPLIT 상수/파라메터 매핑을 교체한다.
-                //   입력: 납품문서 단위 1회, 아이템 라인(rfcParams) 을 테이블 파라메터로 전달.
-                //
-                //   예시(확정 시 실제 코드로 교체):
-                //   JCoFunction fn = getFunction("Z_TMS_SHIPMENT_SPLIT");
-                //   JCoTable t = fn.getTableParameterList().getTable("T_SPLIT");
-                //   for (Map<String,Object> p : rfcParams) {
-                //       t.appendRow();
-                //       t.setValue("SVBELN",    str(p.get("SVBELN")));
-                //       t.setValue("SPOSNR",    str(p.get("SPOSNR")));
-                //       t.setValue("SKUKEY",    str(p.get("SKUKEY")));
-                //       t.setValue("SPLIT_QTY", String.valueOf(p.get("SPLIT_QTY")));
-                //   }
-                //   fn.execute(getDestination());
-                //   String eReturn = fn.getExportParameterList().getString("E_RETURN");
-                //   rfcOk = ... ; rfcMsg = eReturn;
-                rfcOk = true;
-            } catch (Exception ex) {
-                stdoutLog("납품분할 RFC 호출 오류: " + ex.getMessage());
-                return errMap(ex);
-            }
-        }
+        // ── 2) SAP RFC 호출 (Z_TMS_DELIVERY_SPLIT / TABLES T_DATA) ──
+        Map<String, Object> rfc = callSapRfcDeliverySplit(rfcParams);
+        boolean rfcOk  = Boolean.TRUE.equals(rfc.get("ok"));
+        String  rfcMsg = str(rfc.get("msg"));
 
         if (!rfcOk) {
             stdoutLog("납품분할 SAP RFC 실패 → WMS API 미호출: " + rfcMsg);
             Map<String, Object> r = new LinkedHashMap<>();
             r.put("ok", false);
             r.put("error", "SAP RFC 실패: " + rfcMsg);
-            r.put("splits", rfcParams);
+            r.put("rfc_msg", rfcMsg);
+            r.put("mock", rfc.get("mock"));
+            r.put("splits", rfcParams);   // 실패해도 입력값(+부분 SVBELN_O) 반환
             return r;
         }
 
+        // ── 2-1) SAP 채번 결과(SVBELN_O)를 프론트/TMS 갱신용 필드로 승격 ──
+        //   TMS 가 임시 분할했던 납품문서번호를 SAP 기준(SVBELN_O)으로 대체한다.
+        //   - SHPOKY / SVBELN : SAP 채번된 신규 납품문서번호(SVBELN_O)
+        //   - SHPOIT / SPOSNR : 품목순번(동일 유지)
+        //   - ORG_SHPOKY      : 분할 대상(원본) 납품문서번호(SVBELN)
+        //   - ORG_SHPOIT      : 원본 품목순번(SPOSNR)
+        for (Map<String, Object> p : rfcParams) {
+            String svbelnO = str(p.get("SVBELN_O"));
+            String orgVbeln = str(p.get("SVBELN"));
+            String posnr    = str(p.get("SPOSNR"));
+            if (!svbelnO.isBlank()) {
+                p.put("SHPOKY", svbelnO);
+                p.put("SVBELN", svbelnO);     // 신규 문서번호로 갱신
+            }
+            p.put("SHPOIT",     posnr);
+            p.put("ORG_SHPOKY", orgVbeln);
+            p.put("ORG_SHPOIT", posnr);
+            p.put("SKUKEY",     str(p.get("SKUKEY")));
+            p.put("QTSHPO",     toLongOr0(p.get("SPLIT_QTY")));
+            p.put("IS_SPLIT",   1);
+        }
+
         // ── 3) RFC 성공 → WMS_IFC301 API 호출 (개발환경 IP URL 사용) ──
+        //   rfcParams 각 항목에는 이미 callSapRfcDeliverySplit() 에서 SVBELN_O 가 채워져 있음.
         String env = detectEnv();
         Map<String, Object> wmsResult = callWmsIfc301Split(svbeln, rfcParams, env);
+
+        // ── 4) TMS DB(PS_DISPATCH_D) 임의 분할 납품문서번호 → SAP SVBELN_O 갱신 ──
+        //   이미 저장된 분할행(ORG_SHPOKY=원본 SVBELN, SHPOIT=SPOSNR)이 있으면
+        //   SHPOKY 를 SAP 채번번호로 갱신한다. (저장 전이면 update 0건 → 무해)
+        int updated = updateTmsSplitDocNo(svbeln, rfcParams);
 
         Map<String, Object> r = new LinkedHashMap<>();
         r.put("ok", Boolean.TRUE.equals(wmsResult.get("ok")));
         r.put("rfc_msg", rfcMsg);
+        r.put("mock", rfc.get("mock"));
         r.put("wms", wmsResult);
-        r.put("splits", rfcParams);
+        r.put("tms_updated", updated);
+        r.put("splits", rfcParams);   // SVBELN_O(=SHPOKY) 포함 → 프론트 로컬 갱신에 사용
         return r;
+    }
+
+    /**
+     * TMS 임의 분할 납품문서번호를 SAP 채번번호(SVBELN_O)로 갱신.
+     *
+     * <p>PS_DISPATCH_D 에 이미 저장된 분할행이 존재하는 경우,
+     * (ORG_SHPOKY = 원본 SVBELN, SHPOIT = SPOSNR) 로 매칭하여 SHPOKY 를 SVBELN_O 로 갱신한다.
+     * 배차저장(saveDispatch) 이전이면 매칭행이 없어 0건 갱신되며 정상 흐름이다.</p>
+     *
+     * @return 갱신된 행 수 합계
+     */
+    private int updateTmsSplitDocNo(String orgSvbeln, List<Map<String, Object>> rfcParams) {
+        int total = 0;
+        for (Map<String, Object> p : rfcParams) {
+            String svbelnO = str(p.get("SVBELN_O"));
+            String posnr   = str(p.get("SPOSNR"));
+            if (svbelnO.isBlank()) continue;               // 채번 실패행 skip
+            if (!"S".equalsIgnoreCase(str(p.get("MSGTY")))) continue;
+            try {
+                // 원본 문서(ORG_SHPOKY) + 품목순번(SHPOIT) 로 분할행 식별
+                int n = tmsJdbc.update(
+                    "UPDATE KNRAWMS.PS_DISPATCH_D " +
+                    "   SET SHPOKY=?, SVBELN=? " +
+                    " WHERE ORG_SHPOKY=? AND SHPOIT=? AND IS_SPLIT=1 " +
+                    "   AND (SHPOKY IS NULL OR SHPOKY <> ?)",
+                    svbelnO, svbelnO, orgSvbeln, posnr, svbelnO);
+                total += n;
+                if (n > 0) {
+                    stdoutLog("[납품분할][TMS갱신] ORG_SHPOKY=" + orgSvbeln
+                            + ", SHPOIT=" + posnr + " → SHPOKY=" + svbelnO + " (" + n + "건)");
+                }
+            } catch (Exception ex) {
+                // 갱신 실패는 흐름을 막지 않되 로그 남김
+                stdoutLog("[납품분할][TMS갱신-오류] ORG_SHPOKY=" + orgSvbeln
+                        + ", SHPOIT=" + posnr + " → " + ex.getMessage());
+            }
+        }
+        return total;
+    }
+
+    /**
+     * SAP RFC {@code Z_TMS_DELIVERY_SPLIT} 직접 호출 (JCo).
+     *
+     * <p>인터페이스: {@code TABLES T_DATA STRUCTURE ZSDS112} 단일 테이블.
+     * IMPORT/EXPORT 스칼라 파라미터가 없으므로 T_DATA 를 입력으로 채워 실행한 뒤,
+     * <b>같은 테이블의 각 행</b>에서 RETURN 필드(SVBELN_O/MSGTY/MSG)를 읽어온다.</p>
+     *
+     * <p>결과는 인자로 전달된 {@code rfcParams} 각 Map 에 직접 반영한다.
+     *   - SVBELN_O : SAP 채번된 분할 납품문서번호
+     *   - MSGTY    : 'S'(성공)/'E'(에러)
+     *   - MSG      : 처리 메시지</p>
+     *
+     * @param rfcParams [{SVBELN,SPOSNR,SKUKEY,SPLIT_QTY}, ...] (호출 후 SVBELN_O/MSGTY/MSG 추가됨)
+     * @return { ok, msg, mock, rows }
+     */
+    public Map<String, Object> callSapRfcDeliverySplit(List<Map<String, Object>> rfcParams) {
+        // ── Mock 모드: 실제 SAP 미연결 환경 → 가짜 SVBELN_O 채번하여 흐름 유지 ──
+        if (jcoProps.isMock()) {
+            stdoutLog("[Z_TMS_DELIVERY_SPLIT][MOCK] rows=" + rfcParams.size());
+            return deliverySplitMock(rfcParams, "mock=true");
+        }
+
+        stdoutLog("[Z_TMS_DELIVERY_SPLIT][REQ] rows=" + rfcParams.size());
+        try {
+            // 1) Destination 획득
+            JCoDestination dest = JCoDestinationManager.getDestination(SapJcoConfig.DEST_NAME);
+
+            // 2) RFC Function 객체 생성
+            JCoFunction function = dest.getRepository().getFunction(RFC_DELIVERY_SPLIT);
+            if (function == null) {
+                return errMapMsg("RFC 함수를 찾을 수 없음: " + RFC_DELIVERY_SPLIT);
+            }
+
+            // 3) TABLE T_DATA 입력 세팅 (INPUT: SVBELN/SPOSNR/SKUKEY/SPLIT_QTY)
+            //    SVBELN 은 SAP LIKP-VBELN(CHAR10) → 좌측 '0' 패딩
+            JCoTable tData = function.getTableParameterList().getTable("T_DATA");
+            for (Map<String, Object> p : rfcParams) {
+                tData.appendRow();
+                tData.setValue("SVBELN",    padVbeln10(str(p.get("SVBELN"))));
+                tData.setValue("SPOSNR",    str(p.get("SPOSNR")));
+                tData.setValue("SKUKEY",    str(p.get("SKUKEY")));
+                tData.setValue("SPLIT_QTY", String.valueOf(toLongOr0(p.get("SPLIT_QTY"))));
+            }
+            logDeliverySplitRequest(rfcParams);
+
+            // 4) RFC 실행
+            function.execute(dest);
+
+            // 5) 결과 수신 — 같은 T_DATA 테이블의 각 행에서 RETURN 필드 읽기
+            JCoTable outData = function.getTableParameterList().getTable("T_DATA");
+            boolean allOk = true;
+            StringBuilder msgAll = new StringBuilder();
+            int rowCnt = outData.getNumRows();
+            for (int i = 0; i < rowCnt && i < rfcParams.size(); i++) {
+                outData.setRow(i);
+                String svbelnO = outData.getString("SVBELN_O");
+                String msgty   = outData.getString("MSGTY");
+                String msg     = outData.getString("MSG");
+                Map<String, Object> p = rfcParams.get(i);
+                p.put("SVBELN_O", svbelnO != null ? svbelnO.trim() : "");
+                p.put("MSGTY",    msgty   != null ? msgty.trim()   : "");
+                p.put("MSG",      msg     != null ? msg.trim()     : "");
+                if (!"S".equalsIgnoreCase(str(msgty))) allOk = false;
+                if (msgAll.length() > 0) msgAll.append(" / ");
+                msgAll.append("[").append(str(msgty)).append("] ").append(str(msg));
+            }
+            logDeliverySplitResponse(allOk, rfcParams);
+
+            Map<String, Object> r = new LinkedHashMap<>();
+            r.put("ok",   allOk);
+            r.put("msg",  msgAll.toString());
+            r.put("mock", false);
+            r.put("rows", rfcParams);
+            return r;
+
+        } catch (JCoException e) {
+            String key = e.getKey() != null ? e.getKey() : "";
+            String msg = e.getMessage() != null ? e.getMessage() : "";
+            log.error("SAP JCo RFC(Z_TMS_DELIVERY_SPLIT) 호출 실패: key={}, msg={}", key, msg, e);
+            stdoutLog("[Z_TMS_DELIVERY_SPLIT][ERR] key=" + key + " msg=" + msg);
+            if (isConnError(key + " " + msg)) {
+                stdoutLog("[Z_TMS_DELIVERY_SPLIT][MOCK-FALLBACK] 사유(연결오류)=" + key);
+                return deliverySplitMock(rfcParams, "conn_error: "
+                        + (msg.length() > 120 ? msg.substring(0, 120) : msg));
+            }
+            return errMapMsg("SAP RFC 오류(" + key + "): " + msg);
+        } catch (Throwable t) {
+            // JCo 네이티브 라이브러리 미로딩 등 → mock fallback (기능 흐름 유지)
+            String msg = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
+            log.error("SAP JCo RFC(Z_TMS_DELIVERY_SPLIT) 호출 실패(런타임/네이티브): msg={}", msg, t);
+            stdoutLog("[Z_TMS_DELIVERY_SPLIT][ERR-NATIVE] msg=" + msg);
+            stdoutLog("[Z_TMS_DELIVERY_SPLIT][MOCK-FALLBACK] 사유(JCo 라이브러리 미로딩)");
+            return deliverySplitMock(rfcParams, "jco_unavailable: "
+                    + (msg.length() > 120 ? msg.substring(0, 120) : msg));
+        }
+    }
+
+    /**
+     * 납품분할 RFC Mock — 실제 SAP 미연결 환경에서 SVBELN_O 를 임시 채번하여 흐름을 유지.
+     * mock SVBELN_O 규칙: 원본 SVBELN 뒤에 "-S{index}" 접미(중복 방지). 성공(MSGTY='S') 처리.
+     */
+    private Map<String, Object> deliverySplitMock(List<Map<String, Object>> rfcParams, String reason) {
+        for (int i = 0; i < rfcParams.size(); i++) {
+            Map<String, Object> p = rfcParams.get(i);
+            String base = str(p.get("SVBELN"));
+            p.put("SVBELN_O", base + "-S" + (i + 1));
+            p.put("MSGTY",    "S");
+            p.put("MSG",      "MOCK 채번 (" + reason + ")");
+        }
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("ok",   true);
+        r.put("msg",  "MOCK: " + reason);
+        r.put("mock", true);
+        r.put("rows", rfcParams);
+        return r;
+    }
+
+    /** {ok:false, msg:...} 형태 에러 맵 */
+    private Map<String, Object> errMapMsg(String msg) {
+        stdoutLog("[Z_TMS_DELIVERY_SPLIT][FAIL] " + msg);
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("ok",   false);
+        r.put("msg",  msg);
+        r.put("mock", false);
+        return r;
+    }
+
+    /** 납품분할 RFC 요청 로그 */
+    private void logDeliverySplitRequest(List<Map<String, Object>> rfcParams) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(System.lineSeparator());
+        sb.append("┌──────────────── SAP RFC 요청 (Z_TMS_DELIVERY_SPLIT) ────────────────").append(System.lineSeparator());
+        sb.append("│ FUNCTION : ").append(RFC_DELIVERY_SPLIT).append(System.lineSeparator());
+        sb.append("│ [TABLE] T_DATA (STRUCTURE ZSDS112, ").append(rfcParams.size()).append("건)").append(System.lineSeparator());
+        for (Map<String, Object> p : rfcParams) {
+            sb.append("│   - SVBELN=").append(str(p.get("SVBELN")))
+              .append(", SPOSNR=").append(str(p.get("SPOSNR")))
+              .append(", SKUKEY=").append(str(p.get("SKUKEY")))
+              .append(", SPLIT_QTY=").append(toLongOr0(p.get("SPLIT_QTY"))).append(System.lineSeparator());
+        }
+        sb.append("└────────────────────────────────────────────────────────────");
+        stdoutLog(sb.toString());
+    }
+
+    /** 납품분할 RFC 응답 로그 (SVBELN_O/MSGTY/MSG) */
+    private void logDeliverySplitResponse(boolean allOk, List<Map<String, Object>> rfcParams) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(System.lineSeparator());
+        sb.append("┌──────────────── SAP RFC 응답 (Z_TMS_DELIVERY_SPLIT) ────────────────").append(System.lineSeparator());
+        sb.append("│ 전체성공 : ").append(allOk ? "성공" : "일부/전체 실패").append(System.lineSeparator());
+        for (Map<String, Object> p : rfcParams) {
+            sb.append("│   - SVBELN=").append(str(p.get("SVBELN")))
+              .append(" → SVBELN_O=").append(str(p.get("SVBELN_O")))
+              .append(", MSGTY=").append(str(p.get("MSGTY")))
+              .append(", MSG=").append(str(p.get("MSG"))).append(System.lineSeparator());
+        }
+        sb.append("└────────────────────────────────────────────────────────────");
+        stdoutLog(sb.toString());
     }
 
     /**
@@ -1140,9 +1349,10 @@ public class SapRfcService {
             Map<String, Object> p = rfcParams.get(i);
             if (i > 0) items.append(",");
             items.append(String.format(
-                "{\"SVBELN\":\"%s\",\"SPOSNR\":\"%s\",\"SKUKEY\":\"%s\",\"SPLIT_QTY\":%d}",
+                "{\"SVBELN\":\"%s\",\"SPOSNR\":\"%s\",\"SKUKEY\":\"%s\",\"SPLIT_QTY\":%d,\"SVBELN_O\":\"%s\"}",
                 jsonEsc(str(p.get("SVBELN"))), jsonEsc(str(p.get("SPOSNR"))),
-                jsonEsc(str(p.get("SKUKEY"))), toLongOr0(p.get("SPLIT_QTY"))));
+                jsonEsc(str(p.get("SKUKEY"))), toLongOr0(p.get("SPLIT_QTY")),
+                jsonEsc(str(p.get("SVBELN_O")))));
         }
         String payload = String.format(
             "{\"GUBUN\":\"S\",\"SVBELN\":\"%s\",\"SPLITS\":[%s]}",
