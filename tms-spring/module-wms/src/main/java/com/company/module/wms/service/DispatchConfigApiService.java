@@ -44,6 +44,20 @@ public class DispatchConfigApiService {
 
     private String today() { return LocalDate.now().format(YMDFORMAT); }
 
+    /**
+     * DS_DISPATCH_CONST.CONST_ID 채번.
+     * SEQ_DS_DISPATCH_CONST 시퀀스가 존재하면 NEXTVAL, 없으면(ORA-02289) MAX+1로 폴백.
+     * 운영 Oracle KNRAWMS에 시퀀스가 배포되지 않은 환경에서도 안전하게 INSERT 가능.
+     */
+    private Long nextConstId() {
+        try {
+            return tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_CONST.NEXTVAL FROM DUAL", Long.class);
+        } catch (Exception seqEx) {
+            return tmsJdbc.queryForObject(
+                "SELECT NVL(MAX(CONST_ID),0)+1 FROM KNRAWMS.DS_DISPATCH_CONST", Long.class);
+        }
+    }
+
     // ══════════════════════════════════════════════════════════════
     //  목적식 (DS_DISPATCH_OBJECTIVE) — MariaDB integration
     // ══════════════════════════════════════════════════════════════
@@ -357,9 +371,9 @@ public class DispatchConfigApiService {
                     );
                     Long profileId = pr.isEmpty() ? 1L : toLong(pr.get(0).get("PROFILE_ID"));
                     String constOp = List.of("ALLOW_CARTYPE","LONG_AXIS_YN").contains(field) ? "=" : "<=";
-                    tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) VALUES (SEQ_DS_DISPATCH_CONST.NEXTVAL,?,?,?,?,?,?,?,?,?,?,?,?)",
-                        profileId, "CARTYPE", field, vc(defaultVal), constOp, carclassCd, cartype, "Y", "차량유형관리 연동", 0, today(), today());
-                    constId = tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_CONST.CURRVAL FROM DUAL", Long.class);
+                    constId = nextConstId();
+                    tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        constId, profileId, "CARTYPE", field, vc(defaultVal), constOp, carclassCd, cartype, "Y", "차량유형관리 연동", 0, today(), today());
                 }
                 tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST_SET_ITEM (ITEM_ID,SET_ID,CONST_ID,ACTIVE_YN,PARAM_VALUE) VALUES (?,?,?,?,?)",
                     nextItemId++, setId, constId, "Y", vc(paramVal));
@@ -575,13 +589,14 @@ public class DispatchConfigApiService {
         Long profileId = pr.isEmpty() ? 1L : toLong(pr.get(0).get("PROFILE_ID"));
         String ctype = (type == null || type.isBlank()) ? "GLOBAL" : type;
         String cop   = (op == null || op.isBlank())     ? "="      : op;
+        Long newCid = nextConstId();
         tmsJdbc.update(
             "INSERT INTO KNRAWMS.DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) " +
-            "VALUES (SEQ_DS_DISPATCH_CONST.NEXTVAL,?,?,?,?,?,?,?,?,?,?,?,?)",
-            profileId, ctype, key, (constValue == null ? "" : constValue), cop,
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            newCid, profileId, ctype, key, (constValue == null ? "" : constValue), cop,
             (tid.isBlank() ? null : tid), (targetNm == null ? null : targetNm),
             "Y", "제약조건관리 신규 항목 자동생성", 999, today(), today());
-        return tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_CONST.CURRVAL FROM DUAL", Long.class);
+        return newCid;
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -701,9 +716,10 @@ public class DispatchConfigApiService {
                 pid, type, key, val, op, tid, tnm, act, note, sort, today(), cid);
             return cid;
         } else {
-            tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) VALUES (SEQ_DS_DISPATCH_CONST.NEXTVAL,?,?,?,?,?,?,?,?,?,?,?,?)",
-                pid, type, key, val, op, tid, tnm, act, note, sort, today(), today());
-            return tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_CONST.CURRVAL FROM DUAL", Long.class);
+            Long newCid = nextConstId();
+            tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                newCid, pid, type, key, val, op, tid, tnm, act, note, sort, today(), today());
+            return newCid;
         }
     }
 
@@ -737,8 +753,8 @@ public class DispatchConfigApiService {
                 "SELECT * FROM KNRAWMS.DS_DISPATCH_CONST WHERE PROFILE_ID=?", srcPid
             );
             for (Map<String, Object> r : srcRows) {
-                tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) VALUES (SEQ_DS_DISPATCH_CONST.NEXTVAL,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    newPid, r.get("CONST_TYPE"), r.get("CONST_KEY"), r.get("CONST_VALUE"), r.get("CONST_OP"),
+                tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    nextConstId(), newPid, r.get("CONST_TYPE"), r.get("CONST_KEY"), r.get("CONST_VALUE"), r.get("CONST_OP"),
                     r.get("TARGET_ID"), r.get("TARGET_NM"), r.get("ACTIVE_YN"), r.get("NOTE"), r.get("SORT_SEQ"), today(), today());
             }
             return Map.of("ok", true, "new_profile_id", newPid);
@@ -921,29 +937,15 @@ public class DispatchConfigApiService {
                     constType, constKey, constOp, constValue,
                     targetId, targetNm, note, activeYn, sortSeq, today(), constId);
             } else {
-                // INSERT — SEQ_DS_DISPATCH_CONST 시퀀스 사용 (존재하면 NEXTVAL, 없으면 MAX+1)
-                try {
-                    tmsJdbc.update(
-                        "INSERT INTO KNRAWMS.DS_DISPATCH_CONST " +
-                        "(CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP," +
-                        "TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) " +
-                        "VALUES (SEQ_DS_DISPATCH_CONST.NEXTVAL,?,?,?,?,?,?,?,?,?,?,?,?)",
-                        profileId, constType, constKey, constValue, constOp,
-                        targetId, targetNm, activeYn, note, sortSeq, today(), today());
-                    constId = tmsJdbc.queryForObject(
-                        "SELECT SEQ_DS_DISPATCH_CONST.CURRVAL FROM DUAL", Long.class);
-                } catch (Exception seqEx) {
-                    // 시퀀스 미존재 시 MAX+1 채번
-                    constId = tmsJdbc.queryForObject(
-                        "SELECT NVL(MAX(CONST_ID),0)+1 FROM KNRAWMS.DS_DISPATCH_CONST", Long.class);
-                    tmsJdbc.update(
-                        "INSERT INTO KNRAWMS.DS_DISPATCH_CONST " +
-                        "(CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP," +
-                        "TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) " +
-                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                        constId, profileId, constType, constKey, constValue, constOp,
-                        targetId, targetNm, activeYn, note, sortSeq, today(), today());
-                }
+                // INSERT — nextConstId(): 시퀀스 존재 시 NEXTVAL, 없으면 MAX+1 폴백
+                constId = nextConstId();
+                tmsJdbc.update(
+                    "INSERT INTO KNRAWMS.DS_DISPATCH_CONST " +
+                    "(CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP," +
+                    "TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) " +
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    constId, profileId, constType, constKey, constValue, constOp,
+                    targetId, targetNm, activeYn, note, sortSeq, today(), today());
             }
             return Map.of("ok", true, "CONST_ID", constId);
         } catch (Exception e) { return errMap(e); }
