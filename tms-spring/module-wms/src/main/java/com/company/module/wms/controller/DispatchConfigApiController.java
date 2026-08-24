@@ -127,6 +127,17 @@ public class DispatchConfigApiController {
         return ResponseEntity.ok(svc.setDynamicSave(body));
     }
 
+    // ── 납품처 통합 제약(PTNR_MULTI): 동적거리/수작업/자동배차/동적대상 4컬럼 동시 관리 ──
+    @GetMapping("/dispatch-const-set/ptnr-multi/list")
+    public ResponseEntity<Map<String, Object>> setPtnrMultiList() {
+        return ResponseEntity.ok(svc.setPtnrMultiList());
+    }
+
+    @PostMapping("/dispatch-const-set/ptnr-multi/save")
+    public ResponseEntity<Map<String, Object>> setPtnrMultiSave(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(svc.setPtnrMultiSave(body));
+    }
+
     @PostMapping("/dispatch-const-set/items/save")
     public ResponseEntity<Map<String, Object>> setItemsSave(@RequestBody Map<String, Object> body) {
         return ResponseEntity.ok(svc.setItemsSave(body));

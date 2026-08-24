@@ -180,6 +180,9 @@ public class AutoDispatchService {
 
         List<Map<String, Object>> allVehicles = new ArrayList<>();
 
+        // ── 납품처 제약(자동배차여부=N / 수작업=Y)으로 자동배차에서 제외된 그룹 ──
+        List<Map<String, Object>> excludedGroups = new ArrayList<>();
+
         // ── 각 납품처 그룹 처리 ────────────────────────────────────────
         for (Map.Entry<String, List<Map<String, Object>>> entry : groups.entrySet()) {
             String groupKey = entry.getKey();
@@ -236,6 +239,43 @@ public class AutoDispatchService {
             String rqshpd = grpItems.isEmpty() ? "" : str(grpItems.get(0).get("RQSHPD"));
             PtnrInfo pi   = ptnrInfoMap.getOrDefault(dptnky, PtnrInfo.EMPTY);
             boolean isDynBlocked = "N".equals(pi.dynamicYn);
+
+            // ── 납품처 제약조건 기반 자동배차 제외 처리 ─────────────────
+            //   ① 자동배차여부(AUTO_ALLOC_YN)=N → 자동배차 대상 아님
+            //   ② 수작업(HANDWORK_YN)=Y         → 수작업 대상 → 자동배차 제외
+            //   혼적 그룹은 포함된 납품처 중 하나라도 제외 대상이면 그룹 전체 제외.
+            {
+                List<String> chkDks;
+                if (isMixedGroup) {
+                    chkDks = grpItems.stream()
+                        .map(it -> str(it.get("DPTNKY"))).distinct().collect(Collectors.toList());
+                } else {
+                    chkDks = new ArrayList<>();
+                    chkDks.add(dptnky);
+                }
+                List<String> excReasons = new ArrayList<>();
+                for (String dk : chkDks) {
+                    PtnrInfo cpi = ptnrInfoMap.getOrDefault(dk, PtnrInfo.EMPTY);
+                    if ("N".equals(cpi.autoAllocYn)) {
+                        excReasons.add(dk + ": 자동배차여부=N");
+                    }
+                    if ("Y".equals(cpi.handworkYn)) {
+                        excReasons.add(dk + ": 수작업=Y");
+                    }
+                }
+                if (!excReasons.isEmpty()) {
+                    String reason = String.join(" / ", excReasons);
+                    log.warn("[AutoDispatch] 그룹 자동배차 제외 (납품처={}, 사유={})", dptnky, reason);
+                    Map<String, Object> ex = new LinkedHashMap<>();
+                    ex.put("dptnky", dptnky);
+                    ex.put("dptnm",  dptnm);
+                    ex.put("rqshpd", rqshpd);
+                    ex.put("item_cnt", grpItems.size());
+                    ex.put("reason", reason);
+                    excludedGroups.add(ex);
+                    continue; // 이 그룹은 자동배차에서 완전히 제외
+                }
+            }
 
             // 원지 / 판지 / 기타 분류
             List<Map<String, Object>> rollItems  = grpItems.stream().filter(it -> isRollItem(it)).collect(Collectors.toList());
@@ -387,6 +427,10 @@ public class AutoDispatchService {
         }
         result.put("split_targets",       splitTargets);
         result.put("has_split",           !splitTargets.isEmpty());
+
+        // ── 자동배차 제외 그룹 (자동배차여부=N / 수작업=Y) ──────────────
+        result.put("excluded_groups",     excludedGroups);
+        result.put("excluded_group_cnt",  excludedGroups.size());
         return result;
     }
 
@@ -1286,7 +1330,8 @@ public class AutoDispatchService {
         if (dptnkyList.isEmpty()) return Collections.emptyMap();
         String ph = dptnkyList.stream().map(x -> "?").collect(Collectors.joining(","));
         List<Map<String, Object>> rows = wmsJdbc.queryForList(
-            "SELECT PTNRKY,DEADLINE_TIME,FORKLIFT_YN,MAX_TON,DYNAMIC_YN " +
+            "SELECT PTNRKY,DEADLINE_TIME,FORKLIFT_YN,MAX_TON,DYNAMIC_YN," +
+            "       HANDWORK_YN,AUTO_ALLOC_YN,DYNAMIC_DIST_M " +
             "FROM KNRAWMS.BZPTN_DETAIL WHERE PTNRKY IN (" + ph + ") AND PTNRTY='CT'",
             dptnkyList.toArray()
         );
@@ -1304,6 +1349,10 @@ public class AutoDispatchService {
             pi.deadlineTime = str(r.get("DEADLINE_TIME"));
             pi.forkliftYn   = str(r.get("FORKLIFT_YN"));
             pi.dynamicYn    = str(r.get("DYNAMIC_YN")).toUpperCase();
+            pi.handworkYn   = str(r.get("HANDWORK_YN")).toUpperCase();
+            pi.autoAllocYn  = str(r.get("AUTO_ALLOC_YN")).toUpperCase();
+            try { pi.dynamicDistM = Double.parseDouble(str(r.get("DYNAMIC_DIST_M"))); }
+            catch (Exception ignore) { pi.dynamicDistM = 0; }
             pi.maxTonLabel  = ccMap.getOrDefault(mt, mt);
             pi.maxLoadKg    = pi.maxTonLabel.isEmpty() ? 0
                 : vehInfo.getOrDefault(pi.maxTonLabel, VehInfo.EMPTY).loadKg;
@@ -1852,6 +1901,10 @@ public class AutoDispatchService {
 
     private static class PtnrInfo {
         String deadlineTime = "", forkliftYn = "", dynamicYn = "", maxTonLabel = "";
+        // ── 납품처 통합 제약(PTNR_MULTI) 추가 필드 ──
+        String handworkYn  = "";   // 수작업 여부 (Y=수작업 대상 → 자동배차 제외)
+        String autoAllocYn = "";   // 자동배차 여부 (N=자동배차 제외)
+        double dynamicDistM = 0;   // 동적거리(동적 허용 거리, m)
         double maxLoadKg = 0;
         static final PtnrInfo EMPTY = new PtnrInfo();
     }
