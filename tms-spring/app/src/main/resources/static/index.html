@@ -1863,6 +1863,11 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psd-search-row{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;overflow-x:auto}
 .psd-search-row::-webkit-scrollbar{height:3px}
 .psd-search-row::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+/* ─ 2행(배차상태/조회/화면비율/액션버튼) : 검색필드 행 아래로 분리 배치 ─ */
+.psd-search-row2{
+  margin-top:4px;padding-top:6px;
+  border-top:1px dashed rgba(147,197,253,.7);
+}
 /* 라벨+인풋 가로 배치 */
 .psd-fg{display:flex;flex-direction:row;align-items:center;gap:5px;flex-shrink:0}
 .psd-fg label{
@@ -14329,6 +14334,9 @@ async function renderPsDispatchOpt() {
             </div>
           </div>
         </div>
+      </div>
+      <!-- ② 2행: 배차상태 / 조회 / 화면비율 / 액션 버튼 그룹 -->
+      <div class="psd-search-row psd-search-row2">
         <!-- 배차상태 -->
         <div class="psd-fg">
           <label>배차상태</label>
