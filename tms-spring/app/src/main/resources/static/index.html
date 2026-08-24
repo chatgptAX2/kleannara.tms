@@ -11296,6 +11296,8 @@ async function psdAutoDispatch() {
     if (statusEl) statusEl.textContent = '';
     /* ④ 결과 미리보기 모달 — 두 API 모두 vehicles 배열 반환 */
     const vehicles = data.vehicles || [];
+    /* 자동배차로 발생한 납품분할 대상 보관 — 배차 저장 확정 시 SAP RFC(Z_TMS_DELIVERY_SPLIT) 적용 */
+    _psdAutoSplitTargets = data.split_targets || [];
     psdShowAutoResultModal(vehicles, objNm);
   } catch(e) {
     if (statusEl) statusEl.textContent = '';
@@ -11305,6 +11307,9 @@ async function psdAutoDispatch() {
 
 /* 자동배차 미리보기(저장 전) 차량 목록 보관 — 3D 적재 시각화 버튼에서 참조 */
 let _psdAutoPreviewVehicles = [];
+/* 자동배차 납품분할 대상 보관 — 배차 저장 확정 시 SAP RFC 적용용
+   각 항목: {SVBELN(원본 납품문서), SPOSNR, SKUKEY, split_qty} */
+let _psdAutoSplitTargets = [];
 
 /* 자동배차 결과 미리보기 모달 (강화판: 원지/판지 구분, 여유중량, 2단높이, 치수정보) */
 function psdShowAutoResultModal(vehicles, objNm) {
@@ -11688,6 +11693,12 @@ async function psdSaveAutoResult(vehicles) {
     const savedCnt   = payload.saved ?? 0;
     const dispatchNos = payload.dispatch_nos || [];
     showToast(`✅ 자동배차 ${savedCnt}건 저장 완료 (${dispatchNos.join(', ')})`);
+
+    // ── 자동배차로 발생한 납품분할 → SAP RFC(Z_TMS_DELIVERY_SPLIT) 적용 ──
+    //   배차저장 확정 후, 원본 납품문서(SVBELN) 단위로 /api/ps-dispatch/split 호출.
+    //   (수동 납품분할과 동일 엔드포인트 재사용 → RFC 채번 SVBELN_O 로 TMS 문서번호 갱신)
+    await psdApplyAutoSplitRfc();
+
     // 상태 갱신
     psdState.selectedDocs.clear();
     await psdLoadVehicles();
@@ -11695,6 +11706,46 @@ async function psdSaveAutoResult(vehicles) {
   } catch(e) {
     showToast(`❌ 저장 실패: ${e.message}`);
   }
+}
+
+/* 자동배차 납품분할 대상(_psdAutoSplitTargets)에 대해 SAP RFC 납품분할 적용.
+   원본 납품문서(SVBELN) 단위로 그룹핑하여 /api/ps-dispatch/split 을 호출한다. */
+async function psdApplyAutoSplitRfc() {
+  const targets = _psdAutoSplitTargets || [];
+  if (!targets.length) return;
+
+  // SVBELN(원본 납품문서) 단위 그룹핑
+  const bySvbeln = new Map();
+  for (const t of targets) {
+    const key = t.SVBELN || '';
+    if (!key) continue;
+    if (!bySvbeln.has(key)) bySvbeln.set(key, []);
+    bySvbeln.get(key).push({
+      SVBELN:    t.SVBELN,
+      SPOSNR:    t.SPOSNR,
+      skukey:    t.SKUKEY,
+      split_qty: t.split_qty,
+    });
+  }
+
+  let rfcOkCnt = 0, rfcFailCnt = 0;
+  for (const [svbeln, splits] of bySvbeln.entries()) {
+    try {
+      const res = await fetch('/api/ps-dispatch/split', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ SVBELN: svbeln, splits })
+      });
+      const d = await res.json();
+      if (res.ok && d.ok) rfcOkCnt += splits.length;
+      else rfcFailCnt += splits.length;
+    } catch(e) {
+      rfcFailCnt += splits.length;
+    }
+  }
+  if (rfcOkCnt > 0 || rfcFailCnt > 0) {
+    showToast(`📦 납품분할 SAP 반영: 성공 ${rfcOkCnt}건${rfcFailCnt ? ` / 실패 ${rfcFailCnt}건` : ''}`);
+  }
+  _psdAutoSplitTargets = [];   // 1회 적용 후 초기화
 }
 
 /* ═══════════════════════════════════════════════════

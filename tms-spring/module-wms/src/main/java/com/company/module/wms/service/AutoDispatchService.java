@@ -361,6 +361,32 @@ public class AutoDispatchService {
         result.put("dynamic_blocked_cnt", dynBlockedCnt);
         result.put("dynamic_ok_cnt",      (long) allVehicles.size() - dynBlockedCnt);
         result.put("vehicles",            allVehicles);
+
+        // ── 자동배차 납품분할 대상 요약 (SAP RFC Z_TMS_DELIVERY_SPLIT 적용용) ──
+        //   배차 결과 아이템 중 IS_SPLIT=1 인 청크를 원본 납품문서(SVBELN)+품목(SPOSNR) 단위로
+        //   집계하여, 배차 확정 시 /api/ps-dispatch/split 과 동일한 RFC 호출에 사용한다.
+        //   ※ runAuto() 는 시뮬레이션 단계 → 여기서 SAP 를 직접 호출하지 않고
+        //     프론트가 배차 확정 시점에 RFC 를 호출하도록 대상만 전달한다.
+        List<Map<String, Object>> splitTargets = new ArrayList<>();
+        for (Map<String, Object> v : allVehicles) {
+            Object itemsObj = v.get("items");
+            if (!(itemsObj instanceof List)) continue;
+            for (Object io : (List<?>) itemsObj) {
+                if (!(io instanceof Map)) continue;
+                @SuppressWarnings("unchecked")
+                Map<String, Object> it = (Map<String, Object>) io;
+                if (toInt(it.get("IS_SPLIT")) == null || toInt(it.get("IS_SPLIT")) != 1) continue;
+                Map<String, Object> t = new LinkedHashMap<>();
+                t.put("SVBELN",    str(it.get("SVBELN")));
+                t.put("SPOSNR",    str(it.get("SPOSNR")));
+                t.put("SKUKEY",    str(it.get("SKUKEY")));
+                t.put("split_qty", it.get("SPLIT_QTY"));
+                t.put("_SPLIT_IDX", it.get("_SPLIT_IDX"));
+                splitTargets.add(t);
+            }
+        }
+        result.put("split_targets",       splitTargets);
+        result.put("has_split",           !splitTargets.isEmpty());
         return result;
     }
 
@@ -418,6 +444,16 @@ public class AutoDispatchService {
                         chunk.put("KG_WEIGHT", ckKg);
                         chunk.put("_SPLIT_FROM", it.get("SHPOIT"));
                         chunk.put("_SPLIT_IDX",  idx);
+                        // ── SAP 납품분할 RFC 적용을 위한 표준 분할 메타 ──
+                        //   자동배차 결과 확정(배차저장) 시, 이 메타로 /api/ps-dispatch/split
+                        //   과 동일하게 Z_TMS_DELIVERY_SPLIT RFC 를 호출한다.
+                        chunk.put("IS_SPLIT",   1);
+                        chunk.put("SVBELN",     str(it.get("SHPOKY")));   // 분할 대상(원본) 납품문서
+                        chunk.put("SPOSNR",     str(it.get("SHPOIT")));   // 품목순번
+                        chunk.put("SKUKEY",     str(it.get("SKUKEY")));
+                        chunk.put("SPLIT_QTY",  cr);                       // 분할수량(롤 수)
+                        chunk.put("ORG_SHPOKY", str(it.get("SHPOKY")));
+                        chunk.put("ORG_SHPOIT", str(it.get("SHPOIT")));
                         splitItems.add(chunk);
                         remain -= cr; idx++;
                     }
