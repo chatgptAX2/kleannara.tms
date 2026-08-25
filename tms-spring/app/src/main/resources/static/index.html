@@ -20200,6 +20200,10 @@ function ptnrPopupSelect(ptnrky, name01) {
         style="padding:7px 14px;font-size:12px;border-radius:6px;border:none;background:var(--warning,#f59e0b);color:#fff;cursor:pointer;white-space:nowrap;">
         🔄 사용유무 변경
       </button>
+      <button onclick="dynTargetDelete()"
+        style="padding:7px 14px;font-size:12px;border-radius:6px;border:none;background:var(--danger,#e53935);color:#fff;cursor:pointer;white-space:nowrap;">
+        🗑 삭제
+      </button>
     </div>
     <!-- 정보 바 -->
     <div style="display:flex;align-items:center;justify-content:space-between;
@@ -20209,27 +20213,27 @@ function ptnrPopupSelect(ptnrky, name01) {
     </div>
     <!-- 테이블 -->
     <div style="overflow:auto;flex:1;min-height:0;">
-      <table style="width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap;">
+      <table id="dyn-target-table" style="width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap;table-layout:fixed;">
         <thead>
-          <tr style="position:sticky;top:0;z-index:1;background:var(--surface2);">
-            <th style="padding:6px;width:34px;text-align:center;border-bottom:1px solid var(--border);">
+          <tr id="dyn-target-headrow" style="position:sticky;top:0;z-index:1;background:var(--surface2);">
+            <th data-col="chk" style="padding:6px;width:34px;text-align:center;border-bottom:1px solid var(--border);position:relative;">
               <input type="checkbox" id="dyn-target-chkall" title="전체 선택/해제" onchange="dynTargetToggleAll(this.checked)">
             </th>
-            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">번호</th>
-            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">거래처(출발)</th>
-            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">설명</th>
-            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">대표주소</th>
-            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">우편번호</th>
-            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">거래처(도착)</th>
-            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">설명</th>
-            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">대표주소</th>
-            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">우편번호</th>
-            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;text-align:right;">거리(m)</th>
-            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;text-align:right;">시간(분)</th>
-            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">사용여부</th>
-            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">생성일자</th>
-            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">생성시간</th>
-            <th style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;">생성자</th>
+            <th data-col="no"        style="padding:6px 8px;width:50px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;position:relative;">번호</th>
+            <th data-col="fromky"    style="padding:6px 8px;width:90px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;position:relative;">거래처(출발)</th>
+            <th data-col="fromnm"    style="padding:6px 8px;width:120px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;position:relative;">설명</th>
+            <th data-col="fromaddr"  style="padding:6px 8px;width:180px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;position:relative;">대표주소</th>
+            <th data-col="fromzip"   style="padding:6px 8px;width:80px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;position:relative;">우편번호</th>
+            <th data-col="toky"      style="padding:6px 8px;width:90px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;position:relative;">거래처(도착)</th>
+            <th data-col="tonm"      style="padding:6px 8px;width:120px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;position:relative;">설명</th>
+            <th data-col="toaddr"    style="padding:6px 8px;width:180px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;position:relative;">대표주소</th>
+            <th data-col="tozip"     style="padding:6px 8px;width:80px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;position:relative;">우편번호</th>
+            <th data-col="dist"      style="padding:6px 8px;width:80px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;text-align:right;position:relative;">거리(m)</th>
+            <th data-col="dur"       style="padding:6px 8px;width:70px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;text-align:right;position:relative;">시간(분)</th>
+            <th data-col="useyn"     style="padding:6px 8px;width:70px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;position:relative;">사용여부</th>
+            <th data-col="credat"    style="padding:6px 8px;width:90px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;position:relative;">생성일자</th>
+            <th data-col="cretim"    style="padding:6px 8px;width:80px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;position:relative;">생성시간</th>
+            <th data-col="creusr"    style="padding:6px 8px;width:80px;border-bottom:1px solid var(--border);color:var(--text3);font-weight:600;position:relative;">생성자</th>
           </tr>
         </thead>
         <tbody id="dyn-target-body">
@@ -20240,7 +20244,7 @@ function ptnrPopupSelect(ptnrky, name01) {
     <!-- 하단 -->
     <div style="padding:10px 16px;border-top:1px solid var(--border);flex-shrink:0;
                 display:flex;align-items:center;justify-content:space-between;">
-      <span style="font-size:11px;color:var(--text3);">💡 체크박스 선택 후 [사용유무 변경] 시 사용중→미사용, 미사용→사용 으로 USE_YN 이 토글됩니다</span>
+      <span style="font-size:11px;color:var(--text3);">💡 [사용유무 변경]=USE_YN 토글 · [삭제]=행 실제 삭제(DELETE) · 컬럼 경계를 드래그하면 너비 조절(저장됨)</span>
       <button onclick="closeDynTargetPopup()"
         style="padding:6px 14px;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;">닫기</button>
     </div>
@@ -20263,6 +20267,7 @@ function openDynTargetPopup() {
   if (pel) pel.textContent = '— ' + ptnrky;
   const q = document.getElementById('dyn-target-q'); if (q) q.value = '';
   document.getElementById('dyn-target-overlay').style.display = 'flex';
+  initDynTargetColResize();   // 컬럼 너비 드래그 조절 초기화 + 저장된 너비 적용
   loadDynTargets();
 }
 function closeDynTargetPopup() {
@@ -20388,6 +20393,89 @@ async function dynTargetToggleUse() {
   } catch (e) {
     showToast('❌ 처리 실패: ' + (e.message||e));
   }
+}
+
+/* 선택된 행 실제 삭제 (DELETE FROM BZPTN_DISTANCE) */
+async function dynTargetDelete() {
+  if (!_dynTargetState.selected.size) { showToast('삭제할 대상을 선택하세요'); return; }
+  if (!confirm(`선택한 ${_dynTargetState.selected.size}건을 실제 삭제하시겠습니까?\n(BZPTN_DISTANCE 에서 물리적으로 삭제되며 복구할 수 없습니다)`)) return;
+  const targets = Array.from(_dynTargetState.selected).map(k => {
+    const [f,t] = k.split('|');
+    return { PTNRKY_FROM:f, PTNRKY_TO:t };
+  });
+  try {
+    const res  = await fetch('/api/delivery/dynamic-targets/delete', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ targets })
+    });
+    const json = await res.json();
+    const data = json.data || json;
+    if (data.ok) {
+      showToast(`🗑 ${data.deleted}건 삭제 완료`);
+      loadDynTargets();  // 재조회 → 삭제 반영
+    } else {
+      showToast('❌ 삭제 실패');
+    }
+  } catch (e) {
+    showToast('❌ 삭제 실패: ' + (e.message||e));
+  }
+}
+
+/* ── 동적 대상 팝업 컬럼 너비 드래그 조절 + localStorage 유지 ───────────── */
+const DYN_COL_LS_KEY = 'dynTargetColWidths';
+function _dynLoadColWidths() {
+  try { return JSON.parse(localStorage.getItem(DYN_COL_LS_KEY) || '{}') || {}; }
+  catch (e) { return {}; }
+}
+function _dynSaveColWidths(map) {
+  try { localStorage.setItem(DYN_COL_LS_KEY, JSON.stringify(map)); } catch (e) {}
+}
+function _dynApplyColWidths() {
+  const saved = _dynLoadColWidths();
+  const ths = document.querySelectorAll('#dyn-target-headrow th[data-col]');
+  ths.forEach(th => {
+    const col = th.getAttribute('data-col');
+    if (saved[col]) th.style.width = saved[col] + 'px';
+  });
+}
+function initDynTargetColResize() {
+  const headRow = document.getElementById('dyn-target-headrow');
+  if (!headRow || headRow.dataset.resizeInit === '1') { _dynApplyColWidths(); return; }
+  headRow.dataset.resizeInit = '1';
+  _dynApplyColWidths();
+
+  const ths = headRow.querySelectorAll('th[data-col]');
+  ths.forEach(th => {
+    const handle = document.createElement('div');
+    handle.className = 'dyn-col-resizer';
+    handle.style.cssText =
+      'position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;user-select:none;z-index:2;';
+    th.appendChild(handle);
+
+    let startX = 0, startW = 0;
+    const onMove = (ev) => {
+      const dx = ev.pageX - startX;
+      const w = Math.max(30, startW + dx);
+      th.style.width = w + 'px';
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      const map = _dynLoadColWidths();
+      map[th.getAttribute('data-col')] = Math.round(th.offsetWidth);
+      _dynSaveColWidths(map);
+    };
+    handle.addEventListener('mousedown', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      startX = ev.pageX;
+      startW = th.offsetWidth;
+      document.body.style.cursor = 'col-resize';
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
 }
 </script>
 

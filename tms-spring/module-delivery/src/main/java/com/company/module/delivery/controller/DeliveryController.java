@@ -95,6 +95,18 @@ public class DeliveryController {
         return ResponseEntity.ok(ApiResponse.success(Map.of("ok", true, "updated", updated)));
     }
 
+    /** 동적 대상 삭제(실제 DELETE) – BZPTN_DISTANCE 행 물리 삭제
+     *  body: { targets: [{PTNRKY_FROM, PTNRKY_TO}, ...] } */
+    @PostMapping("/delivery/dynamic-targets/delete")
+    public ResponseEntity<ApiResponse<Object>> deleteDynamicTargets(
+            @RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, String>> targets =
+            (List<Map<String, String>>) body.getOrDefault("targets", List.of());
+        int deleted = deliveryService.deleteDynamicTargets(targets);
+        return ResponseEntity.ok(ApiResponse.success(Map.of("ok", true, "deleted", deleted)));
+    }
+
     /** 운송비 검색 – Flask: GET /api/route_cost/search
      *  반환: { rows, total, carclasses } */
     @GetMapping("/route_cost/search")

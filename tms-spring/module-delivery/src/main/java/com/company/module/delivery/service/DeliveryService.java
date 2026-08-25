@@ -580,6 +580,28 @@ public class DeliveryService {
         return cnt;
     }
 
+    // ── 동적 대상 삭제(실제 DELETE) — BZPTN_DISTANCE 행 물리 삭제 ─────────────────
+    //   targets: [{PTNRKY_FROM, PTNRKY_TO}, ...]
+    //   DELETE FROM KNRAWMS.BZPTN_DISTANCE WHERE PTNRKY_FROM=? AND PTNRKY_TO=?
+    //   반환: 삭제 건수
+    @Transactional(transactionManager = "tmsTransactionManager")
+    public int deleteDynamicTargets(List<Map<String, String>> targets) {
+        if (targets == null || targets.isEmpty()) return 0;
+        int cnt = 0;
+        for (Map<String, String> t : targets) {
+            String from = nullIfBlank(t.get("PTNRKY_FROM"));
+            String to   = nullIfBlank(t.get("PTNRKY_TO"));
+            if (from == null || to == null) continue;
+            cnt += tmsEm.createNativeQuery(
+                "DELETE FROM KNRAWMS.BZPTN_DISTANCE " +
+                " WHERE PTNRKY_FROM=? AND PTNRKY_TO=?")
+                .setParameter(1, from).setParameter(2, to)
+                .executeUpdate();
+        }
+        log.info("deleteDynamicTargets: {} rows deleted", cnt);
+        return cnt;
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     // util
     // ──────────────────────────────────────────────────────────────────────────
