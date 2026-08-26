@@ -6408,6 +6408,38 @@ function dlvResetForm() {
   document.querySelectorAll('.dlv-list-table tbody tr').forEach(r => r.classList.remove('selected'));
 }
 
+/* 납품처 관리 저장값(DYNAMIC_YN / DYNAMIC_DIST_M)을 제약조건 화면 캐시에 반영.
+   DCON 미로드 상태면 아무것도 하지 않는다(다음 로드 시 DB에서 최신값 조회). */
+function _syncDeliveryToConstraints(ptnrky, payload) {
+  if (typeof DCON === 'undefined' || !DCON) return;
+  const dynYn   = payload.dynamicYn || '';
+  const distVal = (payload.dynamicDistM != null ? String(payload.dynamicDistM) : '');
+  const pty = payload.ptnrty || 'CT';
+  const owk = payload.ownrky || 'KN';
+
+  /* 동적 제약(_dynamicState) — DYNAMIC_YN */
+  if (DCON._dynamicState && DCON._dynamicState[ptnrky]) {
+    DCON._dynamicState[ptnrky].dynamic_yn = dynYn;
+    DCON._dynamicState[ptnrky].ptnrty = pty;
+    DCON._dynamicState[ptnrky].ownrky = owk;
+  }
+  /* 통합 제약(_ptnrMultiState) — DYNAMIC_YN + DYNAMIC_DIST_M */
+  if (DCON._ptnrMultiState && DCON._ptnrMultiState[ptnrky]) {
+    DCON._ptnrMultiState[ptnrky].dynamic_yn     = dynYn;
+    DCON._ptnrMultiState[ptnrky].dynamic_dist_m = distVal;
+    DCON._ptnrMultiState[ptnrky].ptnrty = pty;
+    DCON._ptnrMultiState[ptnrky].ownrky = owk;
+  }
+  /* 원본 partners 배열에도 반영(재렌더 대비) */
+  (DCON._dynamicPartners || []).forEach(p => { if (p.PTNRKY === ptnrky) p.DYNAMIC_YN = dynYn; });
+  (DCON._ptnrMultiPartners || []).forEach(p => {
+    if (p.PTNRKY === ptnrky) { p.DYNAMIC_YN = dynYn; p.DYNAMIC_DIST_M = (payload.dynamicDistM != null ? payload.dynamicDistM : null); }
+  });
+  /* 다음 제약조건 화면 진입 시 DB 재조회 강제 */
+  DCON._dynamicDirty   = true;
+  DCON._ptnrMultiDirty = true;
+}
+
 async function dlvSave() {
   const ptnrky = (document.getElementById('f-PTNRKY')?.value || '').trim();
   if (!ptnrky) {
@@ -6465,6 +6497,14 @@ async function dlvSave() {
     // ApiResponse 래퍼 언래핑: {success, data:{ok, action}} → data
     const data = ('data' in raw && raw.data !== null && raw.data !== undefined) ? raw.data : raw;
     showToast(data.action === 'created' ? '✅ 납품처 상세 등록 완료' : '✅ 납품처 상세 수정 완료');
+
+    /* 제약조건 화면(동적 제약·통합 제약) 캐시 동기화:
+       납품처 관리에서 저장한 DYNAMIC_YN / DYNAMIC_DIST_M 을 이미 로드된 캐시에도
+       즉시 반영하고, dirty=true 로 표시해 다음 진입 시 DB 재조회되도록 한다. */
+    try {
+      _syncDeliveryToConstraints(ptnrky, payload);
+    } catch (e) { console.debug('constraint sync skip:', e); }
+
     // 리스트 새로고침
     await searchDelivery();
     // 저장된 행 재선택
@@ -23767,6 +23807,9 @@ function _dconPmYnChange(ptnrky, ptnrty, ownrky, col, val) {
   DCON._ptnrMultiState[ptnrky]._dirty = true;
   DCON._ptnrMultiDirty = true;
 
+  /* dynamic_yn 변경 시 동적 제약 상태/화면 동기화 (동일 DYNAMIC_YN 컬럼) */
+  if (col === 'dynamic_yn') _dconSyncDynYnToDy(ptnrky, ptnrty, ownrky, newVal);
+
   /* 해당 셀의 버튼 상태만 즉시 갱신 */
   const row = document.getElementById(`dcon-pm-row-${ptnrky}`);
   if (row) {
@@ -24134,6 +24177,66 @@ function _dconRgBulkRegion(cmcdvl, val) {
   });
 }
 
+/* ══════════════════════════════════════════════════════════════
+   DYNAMIC_YN 교차 동기화 헬퍼
+   '동적 제약'(_dynamicState)과 '납품처 통합 제약'(_ptnrMultiState)은
+   동일한 BZPTN_DETAIL.DYNAMIC_YN 컬럼을 공유하므로, 어느 한쪽에서
+   값을 바꾸면 다른 쪽 상태값과 화면 표시를 즉시 일치시킨다.
+══════════════════════════════════════════════════════════════ */
+/* 통합 제약(_ptnrMultiState) 쪽 dynamic_yn 을 newVal 로 동기화 + 화면 갱신 */
+function _dconSyncDynYnToPm(ptnrky, ptnrty, ownrky, newVal) {
+  if (!DCON._ptnrMultiState) DCON._ptnrMultiState = {};
+  const st = DCON._ptnrMultiState[ptnrky] ||
+    (DCON._ptnrMultiState[ptnrky] = { dynamic_dist_m:'', handwork_yn:'', auto_alloc_yn:'', dynamic_yn:'', ptnrty, ownrky, _dirty:false });
+  if (st.dynamic_yn === newVal) return;   // 이미 동일 → no-op
+  st.dynamic_yn = newVal;
+  st.ptnrty = ptnrty; st.ownrky = ownrky;
+  st._dirty = true;
+  DCON._ptnrMultiDirty = true;
+  /* 통합 제약 행이 렌더링돼 있으면 dynamic_yn 셀 버튼 즉시 갱신 */
+  const row = document.getElementById(`dcon-pm-row-${ptnrky}`);
+  if (row) {
+    const cell = row.querySelector('td[data-col="dynamic_yn"]');
+    if (cell) {
+      const btns = cell.querySelectorAll('.dcon-fk-btn');
+      if (btns.length >= 3) {
+        btns[0].className = `dcon-fk-btn${newVal==='Y'?' fk-active-y':''}`;
+        btns[1].className = `dcon-fk-btn${newVal==='N'?' fk-active-n':''}`;
+        btns[2].className = `dcon-fk-btn${(!newVal)?' fk-active-none':''}`;
+      }
+    }
+  }
+}
+/* 동적 제약(_dynamicState) 쪽 dynamic_yn 을 newVal 로 동기화 + 화면 갱신 */
+function _dconSyncDynYnToDy(ptnrky, ptnrty, ownrky, newVal) {
+  if (!DCON._dynamicState) DCON._dynamicState = {};
+  const st = DCON._dynamicState[ptnrky] ||
+    (DCON._dynamicState[ptnrky] = { dynamic_yn:'', ptnrty, ownrky, _dirty:false });
+  if (st.dynamic_yn === newVal) return;   // 이미 동일 → no-op
+  st.dynamic_yn = newVal;
+  st.ptnrty = ptnrty; st.ownrky = ownrky;
+  st._dirty = true;
+  DCON._dynamicDirty = true;
+  /* 동적 제약 행이 렌더링돼 있으면 버튼/배지/배경 즉시 갱신 */
+  const row = document.getElementById(`dcon-dy-row-${ptnrky}`);
+  if (row) {
+    row.className = newVal === 'Y' ? 'dy-row-y' : newVal === 'N' ? 'dy-row-n' : '';
+    if (row.cells[1]) row.cells[1].style.fontWeight = newVal === 'N' ? '600' : '400';
+    const btns = row.querySelectorAll('.dcon-dy-btn');
+    if (btns.length >= 3) {
+      btns[0].className = `dcon-dy-btn${newVal==='Y'?' dy-active-y':''}`;
+      btns[1].className = `dcon-dy-btn${newVal==='N'?' dy-active-n':''}`;
+      btns[2].className = `dcon-dy-btn${(!newVal)?' dy-active-none':''}`;
+    }
+    const statusCell = document.getElementById(`dcon-dy-status-${ptnrky}`);
+    if (statusCell) {
+      if (newVal === 'N')      statusCell.innerHTML = `<span class="dcon-dy-badge-n">🚫 동적배차 불가</span>`;
+      else if (newVal === 'Y') statusCell.innerHTML = `<span class="dcon-dy-badge-y">⚡ 동적배차 가능</span>`;
+      else                     statusCell.innerHTML = `<span class="dcon-dy-badge-none">미설정 (기본: 동적가능)</span>`;
+    }
+  }
+}
+
 function _dconDyChange(ptnrky, ptnrty, ownrky, val) {
   if (!DCON._dynamicState) DCON._dynamicState = {};
   if (!DCON._dynamicState[ptnrky]) {
@@ -24147,6 +24250,9 @@ function _dconDyChange(ptnrky, ptnrty, ownrky, val) {
   DCON._dynamicState[ptnrky].ptnrty  = ptnrty;
   DCON._dynamicState[ptnrky].ownrky  = ownrky;
   DCON._dynamicDirty = true;
+
+  /* 통합 제약 상태/화면 동기화 (동일 DYNAMIC_YN 컬럼) */
+  _dconSyncDynYnToPm(ptnrky, ptnrty, ownrky, newVal);
 
   /* 행 즉시 갱신 (전체 재렌더 없이) */
   const row = document.getElementById(`dcon-dy-row-${ptnrky}`);
@@ -24797,6 +24903,34 @@ async function _dconSpSave() {
       fkSaved = dFk.saved || 0;
       DCON._forkliftDirty = false;
     }
+
+    /* ── 저장 전 DYNAMIC_YN 정합화 ─────────────────────────────
+       '동적 제약'(_dynamicState)과 '납품처 통합 제약'(_ptnrMultiState)은
+       동일한 DYNAMIC_YN 컬럼을 공유하므로, 두 상태 중 변경(_dirty)된 값을
+       기준으로 양쪽을 동일하게 맞춰 저장 순서에 따른 덮어쓰기(불일치)를 방지. */
+    (function _reconcileDynYn() {
+      const dy = DCON._dynamicState   || (DCON._dynamicState = {});
+      const pm = DCON._ptnrMultiState || (DCON._ptnrMultiState = {});
+      const keys = new Set([...Object.keys(dy), ...Object.keys(pm)]);
+      keys.forEach(k => {
+        const dSt = dy[k], pSt = pm[k];
+        if (dSt && pSt) {
+          if (dSt.dynamic_yn === pSt.dynamic_yn) return;   // 이미 일치
+          /* 둘 중 dirty 쪽 값을 정답으로 채택 (둘 다 dirty면 동적 제약 우선) */
+          const useDy = dSt._dirty || !pSt._dirty;
+          const v = useDy ? dSt.dynamic_yn : pSt.dynamic_yn;
+          dSt.dynamic_yn = v; pSt.dynamic_yn = v;
+          dSt._dirty = true; pSt._dirty = true;
+        } else if (dSt && !pSt) {
+          pm[k] = { dynamic_dist_m:'', handwork_yn:'', auto_alloc_yn:'',
+                    dynamic_yn: dSt.dynamic_yn || '',
+                    ptnrty: dSt.ptnrty||'CT', ownrky: dSt.ownrky||'KN', _dirty:false };
+        } else if (!dSt && pSt) {
+          dy[k] = { dynamic_yn: pSt.dynamic_yn || '',
+                    ptnrty: pSt.ptnrty||'CT', ownrky: pSt.ownrky||'KN', _dirty:false };
+        }
+      });
+    })();
 
     /* DYNAMIC 저장: BZPTN_DETAIL.DYNAMIC_YN 일괄 업데이트 */
     const dyState2 = DCON._dynamicState || {};
