@@ -738,6 +738,14 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .dlv-section-header{padding:7px 14px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .dlv-section-header h3{font-size:12px;font-weight:700;color:var(--text2)}
 .dlv-list-table-wrap{overflow:auto;flex:1;min-height:0}
+/* 전체화면(리스트 확대) 모드:
+     · 리스트 영역이 남은 공간을 채우되(flex:1 1 auto) 리스트 wrap 이 세로 스크롤(요청 2)
+     · 하단 상세 폼은 숨기지 않고 최소 높이를 확보해 함께 표시(요청 3) */
+.dlv-list-section.dlv-list-expanded{max-height:none;min-height:0}
+.dlv-list-section.dlv-list-expanded .dlv-list-table-wrap{overflow-y:auto}
+.dlv-body:has(.dlv-list-section.dlv-list-expanded) .dlv-detail-section{
+  flex:0 0 auto;min-height:220px;max-height:42%;
+}
 /* ── 출고문서아이템 테이블 ── */
 .ss-table-wrap{overflow:auto;flex:1;min-height:0;border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-sm);position:relative}
 .ss-table{border-collapse:collapse;font-size:12px;table-layout:fixed}
@@ -5566,7 +5574,8 @@ function tblClearSort() {
    납품처 관리
 ═══════════════════════════════════════════════════════════ */
 const dlvState = {
-  page: 1, size: 50, total: 0,
+  // size: 페이지 분할 없이 전체를 한 번에 조회 (요청: 페이지로 행을 나누지 말 것)
+  page: 1, size: 100000, total: 0,
   selectedRow: null,
   codes: {},
   mode: 'new',
@@ -5991,15 +6000,34 @@ function dlvToggleGridExpand() {
   if (!sec) return;
   _dlvExpanded = !_dlvExpanded;
   if (_dlvExpanded) {
+    // 전체화면(리스트 확대) 모드
+    //  · 리스트 영역을 크게 확장하되 max-height 제한을 풀어 리스트 wrap 이 스크롤(overflow:auto)로
+    //    전체 행을 상하로 볼 수 있게 한다(요청 2).
+    //  · 하단 상세(등록/수정 폼)는 숨기지 않고 함께 표시하여 '행 클릭 → 하단 상세'가
+    //    전체화면 상태에서도 그대로 보이게 한다(요청 3).
+    sec.classList.add('dlv-list-expanded');
     sec.style.flex = '1 1 auto'; sec.style.maxHeight = 'none';
-    if (form) form.style.display = 'none';
-    if (rz)   rz.style.display = 'none';
+    if (form) {
+      // 상세 폼 유지(숨기지 않음) + 하단에 고정 높이 확보(:has 미지원 브라우저 대비 JS 직접 제어)
+      form.style.display = '';
+      form.style.flex = '0 0 auto';
+      form.style.maxHeight = '42%';
+      form.style.minHeight = '220px';
+    }
+    if (rz)   rz.style.display = '';             // 리사이저도 유지
     btn.textContent = '⛶ 원래대로'; btn.classList.add('active');
-    if (hbtn) hbtn.style.display = 'none';
+    if (hbtn) hbtn.style.display = '';
   } else {
+    sec.classList.remove('dlv-list-expanded');
     sec.style.flex = ''; sec.style.maxHeight = '';
     if (_dlvGridPx) { sec.style.flex = `0 0 ${_dlvGridPx}px`; sec.style.maxHeight = `${_dlvGridPx}px`; }
-    if (form) form.style.display = '';
+    if (form) {
+      form.style.display = '';
+      // 전체화면 해제 시 JS 로 덮어썼던 인라인 스타일 원복(기본 CSS flex:1 로 복귀)
+      form.style.flex = '';
+      form.style.maxHeight = '';
+      form.style.minHeight = '';
+    }
     if (rz)   rz.style.display = '';
     btn.textContent = '⛶ 전체화면'; btn.classList.remove('active');
     if (hbtn) hbtn.style.display = '';
@@ -6072,7 +6100,8 @@ function dlvClearSearch() {
 }
 
 async function searchDelivery(page) {
-  if (page) dlvState.page = page;
+  // 페이지 분할 없이 전체를 한 번에 조회 → 항상 1페이지 + 대용량 size 로 전건 로드
+  dlvState.page = 1;
   const wrap = document.getElementById('dlv-list-wrap');
   if (!wrap) return;
   wrap.innerHTML = `<div class="loading"><div class="spinner"></div>조회 중...</div>`;
@@ -6260,32 +6289,17 @@ async function dlvDeleteRow(ptnrky, ptnrty, ownrky) {
 }
 
 function renderDlvPagination(data) {
+  // 페이지 분할 없이 전건을 한 번에 조회하므로 페이지 버튼은 표시하지 않고
+  // "전체 N건 (전체 조회)" 요약 정보만 노출한다.
   const pg = document.getElementById('dlv-pg');
   if (!pg) return;
-  const page  = Number(data.page)  || 1;
-  const pages = Number(data.pages) || 1;
   const total = Number(data.total) || 0;
-  const size  = Number(data.size)  || dlvState.size || 50;
-  const start = (page - 1) * size + 1;
-  const end   = Math.min(page * size, total);
-  const from  = Math.max(1, page - 3), to = Math.min(pages, page + 3);
-  let btns = '';
-  if (from > 1) btns += `<button class="btn btn-sm" onclick="searchDelivery(1)">1</button>`;
-  if (from > 2) btns += `<span style="color:#64748b;padding:0 3px">…</span>`;
-  for (let i = from; i <= to; i++)
-    btns += `<button class="btn btn-sm ${i===page?'active':''}" onclick="searchDelivery(${i})">${i}</button>`;
-  if (to < pages - 1) btns += `<span style="color:#64748b;padding:0 3px">…</span>`;
-  if (to < pages) btns += `<button class="btn btn-sm" onclick="searchDelivery(${pages})">${pages}</button>`;
-
+  const shown = Array.isArray(data.rows) ? data.rows.length : total;
   pg.innerHTML = `
     <div style="font-size:11px;color:var(--text3)">
-      총 <strong>${fmtNum(total)}</strong>건 &nbsp;|&nbsp; ${fmtNum(start)}–${fmtNum(end)}행
+      총 <strong>${fmtNum(total)}</strong>건 &nbsp;|&nbsp; 전체 ${fmtNum(shown)}행 조회
     </div>
-    <div style="display:flex;gap:3px;flex-wrap:wrap">
-      <button class="btn btn-sm" onclick="searchDelivery(${page-1})" ${page<=1?'disabled':''}>◀</button>
-      ${btns}
-      <button class="btn btn-sm" onclick="searchDelivery(${page+1})" ${page>=pages?'disabled':''}>▶</button>
-    </div>`;
+    <div style="font-size:10px;color:var(--text3)">전체 조회 (페이지 분할 없음)</div>`;
 }
 
 async function selectDeliveryRow(idx, tr) {
@@ -6310,6 +6324,12 @@ async function selectDeliveryRow(idx, tr) {
   if (titleEl) titleEl.textContent = `✏️ 납품처 수정 — ${row.PTNRKY} (${row.NAME01||''})`;
 
   fillDeliveryForm(data);
+
+  // 전체화면(리스트 확대) 모드에서 행을 클릭하면 하단 상세가 화면에 보이도록 스크롤 이동(요청 3)
+  if (_dlvExpanded) {
+    const detailSec = document.getElementById('dlv-detail-section');
+    if (detailSec) detailSec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
 }
 
 function fillDeliveryForm(data) {
