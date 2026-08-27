@@ -78,8 +78,8 @@ public class BzptnDetail {
     @Column(name = "DEADLINE_TIME", length = 6)
     private String deadlineTime;    // 배차 마감 시간
 
-    @Column(name = "MAX_TON")
-    private Double maxTon;          // 최대 적재 중량(ton) – 차량제한
+    @Column(name = "MAX_TON", length = 20)
+    private String maxTon;          // 최대 진입 차량톤수 – 코드값(TMS_CARCLASS10). 숫자가 아닌 코드 문자열
 
     @Column(name = "DYNAMIC_DIST_M")
     private Double dynamicDistM;    // 동적 허용 거리(M) – 납품처별 동적 허용 거리값
