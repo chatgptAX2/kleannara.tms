@@ -52,14 +52,20 @@ public class WmsViewService {
      */
     private static final Set<String> ORACLE_WMS_TABLES = new HashSet<>(Arrays.asList(
         "CMCDM", "CMCDV", "WAHMA", "SKUMA", "BZPTN", "MEASI",
-        "SHPDH", "SHPDI", "IFWMS113", "RECDI", "BZPTN_DETAIL"
+        "SHPDH", "SHPDI", "IFWMS113", "RECDI", "BZPTN_DETAIL",
+        // VHCMA(차량마스터)는 Oracle KNRAWMS 실제 테이블(@Table schema=KNRAWMS, 시퀀스 KNRAWMS.VHCMA_SEQ).
+        //   차량저장/차량관리(VehicleService)는 wmsPU(Oracle KNRAWMS)로 INSERT/SELECT 하는데,
+        //   기존에는 VHCMA가 여기 없어 WmsViewService(차량마스터 화면)만 tmsDataSource(MariaDB)로 라우팅됨
+        //   → 두 화면이 서로 다른 DB를 봐서 차량마스터 등록분이 차량관리에서 조회 안 됨.
+        //   VHCMA를 Oracle(wms) 라우팅으로 통일하여 두 화면이 동일한 KNRAWMS.VHCMA를 바라보게 함.
+        "VHCMA"
     ));
 
     /**
      * Oracle KNRAWMS TMS 자체 테이블 — tmsJdbcTemplate / tmsDataSource 사용
      */
     private static final Set<String> ORACLE_TMS_TABLES = new HashSet<>(Arrays.asList(
-        "VHCMA", "ROUTE_COST", "DS_VEHICLE",
+        "ROUTE_COST", "DS_VEHICLE",
         "PS_DISPATCH_H", "PS_DISPATCH_D", "PS_DISPATCH_SPLIT",
         "DS_INCH12", "DS_INCH3",
         "DS_DISPATCH_OBJECTIVE", "DS_DISPATCH_CONST_SET", "DS_DISPATCH_CONST_SET_ITEM",
