@@ -34,6 +34,6 @@ public class DeliverySaveRequest {
     private Double  longitude;
     private String  delYn;
     private String  deadlineTime;
-    private Double  maxTon;
+    private String  maxTon;         // 최대 진입 차량톤수 — 코드값(TMS_CARCLASS10)
     private Double  dynamicDistM;   // 동적 허용 거리(M) — 납품처별 동적 허용 거리값
 }
