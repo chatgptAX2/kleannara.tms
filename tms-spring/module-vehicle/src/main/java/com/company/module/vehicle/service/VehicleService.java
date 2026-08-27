@@ -320,6 +320,19 @@ public class VehicleService {
             pageable
         );
 
+        // Object[](컬럼 순서 배열) → Map<컬럼명, 값> 변환
+        //   프론트가 row.VEHICLE_NO 처럼 컬럼명으로 접근 → 배열 그대로 주면 전부 undefined 로 보임(조회 안 됨).
+        String[] cols = com.company.module.vehicle.repository.wms.VhcmaRepositoryImpl.COLS;
+        List<Map<String, Object>> rowMaps = new ArrayList<>();
+        for (Object[] arr : pageResult.getContent()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            for (int i = 0; i < cols.length && i < arr.length; i++) {
+                Object v = arr[i];
+                m.put(cols[i], v == null ? "" : (v instanceof Number ? v : v.toString().strip()));
+            }
+            rowMaps.add(m);
+        }
+
         // 창고 목록 (Oracle KNRAWMS.WAHMA → em)
         //  ※ 실제 WAHMA 컬럼: 창고명 = WARENM (NAME01 아님), 사용여부 = ACTIVE ('Y')
         //    기존 쿼리는 존재하지 않는 NAME01/DELMAK 컬럼 참조로 예외 → 출하지점 목록이 비었음
@@ -346,7 +359,7 @@ public class VehicleService {
         result.put("page",        page);
         result.put("size",        size);
         result.put("pages",       pageResult.getTotalPages());
-        result.put("rows",        pageResult.getContent());
+        result.put("rows",        rowMaps);
         result.put("ship_points", spList);
         result.put("prod_groups", vhcmaRepo.findDistinctProductGroups());
         result.put("zones",       vhcmaRepo.findDistinctDeliveryZones());

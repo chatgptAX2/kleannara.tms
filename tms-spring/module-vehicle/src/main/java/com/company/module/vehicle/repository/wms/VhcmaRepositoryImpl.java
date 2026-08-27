@@ -23,7 +23,17 @@ public class VhcmaRepositoryImpl implements VhcmaRepositoryCustom {
     @PersistenceContext(unitName = "wmsPU")
     private EntityManager em;
 
-    private static final String SELECT_SQL = "SELECT * FROM KNRAWMS.VHCMA";
+    // ※ SELECT * 는 컬럼 순서가 DB 물리순서라 프론트(컬럼명 접근)와 매핑이 어긋남.
+    //   명시적 컬럼 목록으로 고정 → VehicleService 에서 동일 순서로 Map(컬럼명) 변환.
+    public static final String[] COLS = {
+        "VHC_ID","VEHICLE_NO","OWNRKY","SHIP_POINT","PRODUCT_GROUP","DELIVERY_ZONE",
+        "CARRIER","VEHICLE_TYPE","VEHICLE_KIND","VEHICLE_CLASS","CARTYPE","CARCLASS_CD",
+        "DRIVER_NAME","CONTACT_NO","PALLET_QTY","FLOOR_TYPE","USE_YN","OPERABLE_YN",
+        "FIX_YN","DEL_YN","DLV_TIME_FROM","DLV_TIME_TO","VEHICLE_YEAR",
+        "DELIVERY_CUSTOMER_1","DELIVERY_CUSTOMER_2",
+        "CREDAT","CRETIM","CREUSR","LMODAT","LMOTIM","LMOUSR"
+    };
+    private static final String SELECT_SQL = "SELECT " + String.join(",", COLS) + " FROM KNRAWMS.VHCMA";
     private static final String COUNT_SQL  = "SELECT COUNT(*) FROM KNRAWMS.VHCMA";
     private static final String ORDER_BY   = " ORDER BY SHIP_POINT ASC, VEHICLE_NO ASC";
 
