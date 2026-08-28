@@ -36,6 +36,13 @@ public class AutoDispatchService {
         this.tmsJdbc = tmsJdbc;
     }
 
+    /**
+     * 납품처 최대톤수(MAX_TON) 미설정 시 자동배차에 적용할 기본 진입톤수 라벨.
+     * PS제약조건관리 및 PS배차(최적화) 자동배차 공통 적용 (요구사항: 미설정=18톤).
+     * ※ CMCDV.CDESC1(=DS_VEHICLE.CARTYPE) 라벨과 일치해야 loadKg 매칭됨.
+     */
+    private static final String DEFAULT_MAX_TON_LABEL = "18톤";
+
     // ── 인치 코드 상수 (Flask PS_INCH12_CODES / PS_INCH3_CODES) ──────
     private static final Set<String> INCH12 = new HashSet<>(Arrays.asList(
         "a11","ab1","ag1","am1","111","s11","i11","k11","sm1",
@@ -1353,10 +1360,25 @@ public class AutoDispatchService {
             pi.autoAllocYn  = str(r.get("AUTO_ALLOC_YN")).toUpperCase();
             try { pi.dynamicDistM = Double.parseDouble(str(r.get("DYNAMIC_DIST_M"))); }
             catch (Exception ignore) { pi.dynamicDistM = 0; }
-            pi.maxTonLabel  = ccMap.getOrDefault(mt, mt);
+            // MAX_TON 미설정(빈 값)이면 기본 18톤을 적용 (요구사항: PS제약조건관리·PS배차 자동배차 공통)
+            if (mt == null || mt.trim().isEmpty()) {
+                pi.maxTonLabel = DEFAULT_MAX_TON_LABEL;
+            } else {
+                pi.maxTonLabel = ccMap.getOrDefault(mt, mt);
+            }
             pi.maxLoadKg    = pi.maxTonLabel.isEmpty() ? 0
                 : vehInfo.getOrDefault(pi.maxTonLabel, VehInfo.EMPTY).loadKg;
             result.put(str(r.get("PTNRKY")), pi);
+        }
+        // BZPTN_DETAIL 행 자체가 없는 납품처(=MAX_TON 미설정)도 기본 18톤 적용
+        double defaultMaxLoadKg = vehInfo.getOrDefault(DEFAULT_MAX_TON_LABEL, VehInfo.EMPTY).loadKg;
+        for (String dk : dptnkyList) {
+            if (!result.containsKey(dk)) {
+                PtnrInfo pi = new PtnrInfo();
+                pi.maxTonLabel = DEFAULT_MAX_TON_LABEL;
+                pi.maxLoadKg   = defaultMaxLoadKg;
+                result.put(dk, pi);
+            }
         }
         return result;
     }

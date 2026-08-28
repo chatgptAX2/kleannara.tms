@@ -5593,9 +5593,21 @@ async function renderDelivery() {
   c.innerHTML = `<div class="loading"><div class="spinner"></div>공통코드 로딩 중...</div>`;
 
   // 공통코드 병렬 로드
-  const codeKeys = ['SKUG05','TMS_ROUTE','TMS_UNLOADTIME','TMS_MAXHEIGHT','TMS_INBOUNDTIME','TMS_REGION','TMS_AUTOPLT','TMS_CARCLASS10'];
+  const codeKeys = ['SKUG05','TMS_ROUTE','TMS_UNLOADTIME','TMS_MAXHEIGHT','TMS_INBOUNDTIME','TMS_REGION','TMS_AUTOPLT','TMS_CARCLASS10','TMS_CARCLASS20'];
   const results  = await Promise.all(codeKeys.map(k => fetch(`/api/codes/${k}`).then(r=>r.json())));
   codeKeys.forEach((k,i) => dlvState.codes[k] = results[i]);
+  // 차량유형관리(CMCDV TMS_CARCLASS10/20)의 사용여부(use_yn) 로드 → 최대톤수 옵션 필터에 사용
+  // PS제품군(SKUG05=10) → TMS_CARCLASS10, HL제품군(SKUG05=20) → TMS_CARCLASS20
+  try {
+    const dsData = await fetch('/api/ds-vehicle').then(r=>r.json());
+    dlvState.carclassUseYn = {
+      '10': Object.fromEntries((dsData.carclass_ps || dsData.carclass_options || []).map(c => [String(c.code), String(c.use_yn||'Y').toUpperCase()])),
+      '20': Object.fromEntries((dsData.carclass_hl || []).map(c => [String(c.code), String(c.use_yn||'Y').toUpperCase()])),
+    };
+  } catch(e) {
+    console.warn('차량유형 사용여부 로드 실패 — 최대톤수 필터 미적용', e);
+    dlvState.carclassUseYn = { '10': {}, '20': {} };
+  }
   // 출하지점(WAREKY) 목록 — BZPTN_DETAIL.WAREKY 기준 하드코딩
   dlvState.codes['TMS_SHPPOINT'] = [
     { value: '1100', label: '청주공장창고' },
@@ -5710,6 +5722,38 @@ function buildDeliveryUI() {
   if (_vstelEl) _vstelEl.value = '1100';
 }
 
+/**
+ * 최대톤수(f-MAX_TON) <option> 생성 — 차량유형관리에서 사용여부(use_yn)='Y'인 톤수만 표시
+ *   itemGroup: 납품처 제품군 SKUG05 값 ('10'=PS→TMS_CARCLASS10, '20'=HL→TMS_CARCLASS20)
+ *   selectedVal: 현재 선택값(있으면 selected 유지 — 필터에서 제외되어도 기존 값 보존)
+ * 제품군 미선택 시 PS(10) 기준으로 표시.
+ */
+function _dlvBuildMaxTonOpts(itemGroup, selectedVal) {
+  const grp     = (String(itemGroup||'').trim() === '20') ? '20' : '10';
+  const useMap  = (dlvState.carclassUseYn && dlvState.carclassUseYn[grp]) || {};
+  const hasMap  = Object.keys(useMap).length > 0;   // 사용여부 데이터 없으면 필터 미적용(전체 표시)
+  const cls     = grp === '20' ? 'TMS_CARCLASS20' : 'TMS_CARCLASS10';
+  // TMS_CARCLASS20 코드가 비어있으면 TMS_CARCLASS10으로 폴백
+  let list      = dlvState.codes[cls] || [];
+  if (grp === '20' && list.length === 0) list = dlvState.codes['TMS_CARCLASS10'] || [];
+  const sel     = String(selectedVal || '');
+  return list
+    .filter(o => !hasMap || useMap[String(o.value)] === 'Y' || String(o.value) === sel)
+    .map(o => `<option value="${o.value}"${String(o.value)===sel?' selected':''}>${o.label}</option>`)
+    .join('');
+}
+
+/** 제품군 변경 시 최대톤수 옵션을 사용여부 Y 기준으로 재생성 (선택값 보존) */
+function _dlvRefreshMaxTonOpts() {
+  const grpEl = document.getElementById('f-ITEM_GROUP');
+  const tonEl = document.getElementById('f-MAX_TON');
+  if (!tonEl) return;
+  const cur = tonEl.value;
+  tonEl.innerHTML = '<option value="">선택 (최대 진입 차량톤수)</option>' +
+                    _dlvBuildMaxTonOpts(grpEl ? grpEl.value : '', cur);
+  tonEl.value = cur;   // 재생성 후 기존 선택값 복원
+}
+
 function buildDeliveryForm() {
   const routeOpts      = dlvState.codes['TMS_ROUTE'].map(o=>`<option value="${o.value}">${o.value} ${o.label}</option>`).join('');
   const skug05Opts     = dlvState.codes['SKUG05'].map(o=>`<option value="${o.value}">${o.value} ${o.label}</option>`).join('');
@@ -5718,7 +5762,9 @@ function buildDeliveryForm() {
   const inbTimeOpts    = dlvState.codes['TMS_INBOUNDTIME'].map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
   // TMS_AUTOPLT: CMCDVL=값, CDESC1=표시텍스트 (1~24)
   const autoPltOpts    = (dlvState.codes['TMS_AUTOPLT']||[]).map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
-  const carclassOpts   = (dlvState.codes['TMS_CARCLASS10']||[]).map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
+  // 최대톤수 옵션: 제품군(SKUG05)에 따라 차량유형관리에서 사용여부 Y인 톤수만 표시
+  //   PS제품군(SKUG05=10) → TMS_CARCLASS10, HL제품군(SKUG05=20) → TMS_CARCLASS20
+  const carclassOpts   = _dlvBuildMaxTonOpts('');
   // 권역 옵션: value=CMCDVL 앞2자리(KEY), 표시=CDESC2(권역명), 중복제거
   const regionOpts     = (()=>{
     const seen = new Map();
@@ -5799,7 +5845,7 @@ function buildDeliveryForm() {
     </div>
     <div class="form-group">
       <label>제품군</label>
-      <select id="f-ITEM_GROUP">
+      <select id="f-ITEM_GROUP" onchange="_dlvRefreshMaxTonOpts()">
         <option value="">선택</option>
         ${skug05Opts}
       </select>
@@ -6378,7 +6424,7 @@ function fillDeliveryForm(data) {
   setVal('f-WAREKY',       d.WAREKY);
   setVal('f-AREA_CD',      d.AREA_CD);
   setVal('f-MAX_BOX_QTY',  d.MAX_BOX_QTY);
-  setSel('f-MAX_TON',       d.MAX_TON || '');
+  // f-MAX_TON은 제품군(f-ITEM_GROUP)에 따라 옵션이 달라지므로 제품군 설정 이후에 처리(아래 참조)
   setVal('f-DYNAMIC_DIST_M', d.DYNAMIC_DIST_M);
   setVal('f-SINGLE_HEIGHT',d.SINGLE_HEIGHT);
   setVal('f-MIN_QTSIWH',   d.MIN_QTSIWH);
@@ -6388,6 +6434,15 @@ function fillDeliveryForm(data) {
   // select 필드
   setSel('f-ROUTE_CD',       d.ROUTE_CD);
   setSel('f-ITEM_GROUP',     d.ITEM_GROUP);
+  // 제품군 확정 후 최대톤수 옵션을 사용여부 Y 기준으로 재생성 → 기존 MAX_TON 값 반영
+  (function(){
+    const tonEl = document.getElementById('f-MAX_TON');
+    if (tonEl) {
+      tonEl.innerHTML = '<option value="">선택 (최대 진입 차량톤수)</option>' +
+                        _dlvBuildMaxTonOpts(d.ITEM_GROUP || '', d.MAX_TON || '');
+      tonEl.value = d.MAX_TON || '';
+    }
+  })();
   setSel('f-UNLOAD_TIME',    d.UNLOAD_TIME != null ? String(d.UNLOAD_TIME) : '');
   setVal('f-DEADLINE_TIME', d.DEADLINE_TIME || '');
   // AUTO_PLT: DB값이 REAL일 수도 있고 '01'~'24' 문자열일 수도 있음 → TMS_AUTOPLT value(01~24) 형식으로 정규화
