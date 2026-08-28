@@ -771,8 +771,9 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .ss-table tbody td{padding:3px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--tr-border);font-size:11px;box-sizing:border-box;vertical-align:middle;line-height:1.3;cursor:cell;user-select:text;}
 .ss-table tbody td.ss-cell-selected{background:rgba(59,130,246,.18)!important;outline:2px solid var(--primary);outline-offset:-2px;}
 .dlv-list-table{border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed}
-.dlv-list-table thead th{position:sticky;top:0;background:var(--th-bg);padding:0;text-align:left;font-size:11px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none;cursor:grab;box-sizing:border-box}
-.dlv-list-table thead th .th-cell{padding:6px 10px 6px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px}
+.dlv-list-table thead th{position:sticky;top:0;background:var(--th-bg);padding:0;text-align:center;font-size:11px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;user-select:none;cursor:grab;box-sizing:border-box}
+/* 컬럼명 가운데 정렬: th-cell flex 를 중앙 정렬(좌우 padding 대칭) */
+.dlv-list-table thead th .th-cell{padding:6px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:4px}
 .dlv-list-table thead th .col-rz{position:absolute;right:-1px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:10;background:transparent}
 .dlv-list-table thead th .col-rz:hover,.dlv-list-table thead th .col-rz.rz-active{background:var(--primary);opacity:.7}
 .dlv-list-table thead th.tbl-col-dragging{opacity:.35;cursor:grabbing}
@@ -4426,7 +4427,9 @@ const _sapDocColW  = {}; // SAP 납품문서 컬럼 너비 저장
 
     // ③ 같은 인덱스 td: width / min-width / max-width 모두 고정
     //    min-width 누락 시 table-layout:fixed여도 td가 수축하는 문제 방지
-    if (_thIdx >= 0) {
+    //    단, <colgroup> 을 쓰는 테이블(.dlv-list-table)은 col 이 너비를 결정하므로
+    //    td 개별 width 를 건드리면 오히려 col 과 충돌 → 건너뛴다.
+    if (_thIdx >= 0 && _tblSel !== '.dlv-list-table') {
       document.querySelectorAll(`${_tblSel} tbody tr`).forEach(tr => {
         const td = tr.children[_thIdx];
         if (td) {
@@ -4454,6 +4457,7 @@ const _sapDocColW  = {}; // SAP 납품문서 컬럼 너비 저장
     //    · sap-left-tbl: sap-left-col-{id}
     //    · sap-doc-tbl : sap-doc-col-{id}
     const colIdCandidates = {
+      '.dlv-list-table': `dlv-col-${_colId}`,
       '.psd-doc-tbl':  `psop-col-${_colId}`,
       '.sap-left-tbl': `sap-left-col-${_colId}`,
       '.sap-doc-tbl':  `sap-doc-col-${_colId}`,
@@ -6219,14 +6223,23 @@ function renderDeliveryList(data) {
       `<span class="col-rz" onmousedown="tableResizerDown(event,'${c.id}','.dlv-list-table')"></span></th>`;
   }).join('');
 
+  // table-layout:fixed 에서 컬럼 너비는 <col> 이 최우선 기준이 된다.
+  //  th/td 에 개별 width 를 주면 셀 간 충돌로 리사이즈가 부정확해지므로
+  //  <colgroup><col id="dlv-col-{id}"> 로 너비를 일원화한다.
+  const dlvColgroup = '<colgroup>' + dlvCols.map(c =>
+    `<col id="dlv-col-${c.id}" style="width:${c.w}px">`).join('') + '</colgroup>';
+
   let html = `<table class="dlv-list-table" id="dlv-list-table">
+    ${dlvColgroup}
     <thead><tr>${dlvThHtml}</tr></thead><tbody>`;
 
   rows.forEach((row, idx) => {
     const isSelected = dlvState.selectedRow?.PTNRKY === row.PTNRKY;
     const skuLabel   = skug05Map[row.ITEM_GROUP] || row.ITEM_GROUP || '';
     const hasDtl     = row.HAS_DETAIL === 'Y';
-    const dw = (id, def) => { const w = _dlvColW[id]||def; return `width:${w}px;max-width:${w}px;`; };
+    // 너비는 <colgroup><col> 이 결정하므로 td 에는 개별 width 를 주지 않는다.
+    //  (table-layout:fixed 에서 col 과 td width 가 충돌하면 리사이즈가 부정확해짐)
+    const dw = () => '';
     // colOrder 순서대로 td 생성
     const _dlvTdMap = {
       'dlv-c0': `<td style="${dw('dlv-c0',100)}color:var(--warning);font-family:monospace;font-weight:600" title="${row.PTNRKY}">${row.PTNRKY}</td>`,
