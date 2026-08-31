@@ -331,12 +331,20 @@ public class VehicleService {
         // Object[](컬럼 순서 배열) → Map<컬럼명, 값> 변환
         //   프론트가 row.VEHICLE_NO 처럼 컬럼명으로 접근 → 배열 그대로 주면 전부 undefined 로 보임(조회 안 됨).
         String[] cols = com.company.module.vehicle.repository.wms.VhcmaRepositoryImpl.COLS;
+        // COLS 항목이 'VHC_ID AS VEHICLE_ID' 처럼 별칭을 포함할 수 있으므로
+        //   Map key 는 별칭(AS 뒤) 또는 원본 컬럼명으로 정규화한다.
+        String[] keys = new String[cols.length];
+        for (int i = 0; i < cols.length; i++) {
+            String c = cols[i].trim();
+            int asPos = c.toUpperCase().lastIndexOf(" AS ");
+            keys[i] = (asPos >= 0) ? c.substring(asPos + 4).trim() : c;
+        }
         List<Map<String, Object>> rowMaps = new ArrayList<>();
         for (Object[] arr : pageResult.getContent()) {
             Map<String, Object> m = new LinkedHashMap<>();
-            for (int i = 0; i < cols.length && i < arr.length; i++) {
+            for (int i = 0; i < keys.length && i < arr.length; i++) {
                 Object v = arr[i];
-                m.put(cols[i], v == null ? "" : (v instanceof Number ? v : v.toString().strip()));
+                m.put(keys[i], v == null ? "" : (v instanceof Number ? v : v.toString().strip()));
             }
             rowMaps.add(m);
         }
