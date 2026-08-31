@@ -6752,6 +6752,14 @@ function buildVehicleUI() {
         <label>차량번호</label>
         <input id="vs-vehicle_no" type="text" placeholder="번호 입력" oninput="vhcSearchChange()">
       </div>
+      <div class="vhc-sg">
+        <label>사용여부</label>
+        <select id="vs-use_yn" onchange="vhcSearchChange()">
+          <option value="">전체</option>
+          <option value="Y" selected>사용</option>
+          <option value="N">미사용</option>
+        </select>
+      </div>
     </div>
   </div>
 
@@ -7048,10 +7056,37 @@ function _vhcBuildClassOpts(prodGroup, curVal) {
   const cmcdky  = _vhcProdGroupToCmcdky(prodGroup);
   const codes   = vhcState.codes[cmcdky] || [];
   const filtered = codes.filter(o => (o.arg1 || '').toUpperCase() === 'Y');
+  // 차량톤수(차형) 기본값 매칭: 상단 차형값(curVal)을 '코드(CMCDVL=o.value)' 우선 판단,
+  //   코드 매칭이 없으면 '라벨(o.label)' 로도 매칭 → 저장값이 코드/명 어느 쪽이든 복원.
+  const cur     = (curVal == null ? '' : String(curVal)).trim();
   return filtered.map(o => {
-    const sel = (curVal && o.label === curVal) ? ' selected' : '';
+    const sel = (cur && (String(o.value).trim() === cur || o.label === cur)) ? ' selected' : '';
     return `<option value="${o.label}"${sel}>${o.label}</option>`;
   }).join('');
+}
+
+/* 운송사 폼 값 채우기 — 코드 '0000'(기본 운송사)을 연결하여 기본값 매칭 판단
+   - 운송사 옵션(vf-CARRIER)의 value = 운송사명(o.label), 코드 = o.value(CMCDVL)
+   - DB CARRIER 값이 옵션의 라벨/코드와 매칭되면 해당 운송사 선택
+   - 매칭되는 운송사가 없으면 코드 '0000'(기본 운송사)의 라벨로 기본 선택
+   - '0000' 코드도 없으면 미선택('') */
+function _vhcFillCarrier(carrierVal) {
+  const sel = document.getElementById('vf-CARRIER');
+  if (!sel) return;
+  const codes = vhcState.codes['TMS_CARRIER'] || [];
+  const cur   = (carrierVal == null ? '' : String(carrierVal)).trim();
+
+  // 1) 코드(CMCDVL) 또는 라벨(CDESC1)로 매칭되는 운송사 탐색
+  let matched = null;
+  if (cur) {
+    matched = codes.find(o => String(o.value).trim() === cur || String(o.label).trim() === cur);
+  }
+  // 2) 매칭 실패 시 기본 운송사(코드 '0000') 로 fallback
+  if (!matched) {
+    matched = codes.find(o => String(o.value).trim() === '0000');
+  }
+  // 옵션 value 는 운송사명(label) 기준이므로 label 로 설정
+  sel.value = matched ? matched.label : '';
 }
 
 /* 차형 드롭다운 DOM 갱신 — 제품군 변경 시 호출
@@ -7556,6 +7591,8 @@ function vhcClearSearch() {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const vno = document.getElementById('vs-vehicle_no'); if (vno) vno.value = '';
+  // 사용여부 필터: 초기화 시 기본값 '사용(Y)' 로 복원
+  const useEl = document.getElementById('vs-use_yn'); if (useEl) useEl.value = 'Y';
   // 제품군 초기화이므로 차형 드롭다운도 TMS_CARCLASS10 기본으로 복원
   const pgSel = document.getElementById('vs-product_group');
   if (pgSel) pgSel._lastVal = '';
@@ -7581,6 +7618,7 @@ async function searchVehicle(page) {
     vehicle_kind:  document.getElementById('vs-vehicle_kind')?.value  || '',
     vehicle_class: document.getElementById('vs-vehicle_class')?.value || '',
     vehicle_no:    document.getElementById('vs-vehicle_no')?.value    || '',
+    use_yn:        document.getElementById('vs-use_yn')?.value        || '',
     sort_col:      vhcState.sortCol,
     sort_dir:      vhcState.sortDir,
   });
@@ -7673,7 +7711,9 @@ function renderVehicleList(data) {
       'vhc-c7':  `<td style="${vw('vhc-c7',60)}color:var(--primary);font-weight:600">${row.VEHICLE_CLASS||'-'}</td>`,
       'vhc-c8':  `<td style="${vw('vhc-c8',100)}font-weight:600" title="${row.DRIVER_NAME||''}">${row.DRIVER_NAME||'-'}</td>`,
       'vhc-c9':  `<td style="${vw('vhc-c9',130)}color:var(--text3);font-family:monospace;font-size:11px">${row.CONTACT_NO||'-'}</td>`,
-      'vhc-c10': `<td style="${vw('vhc-c10',55)}text-align:center">${row.USE_YN==='Y'?'<span class="vhc-badge use-y">사용</span>':'<span class="vhc-badge use-n">미사용</span>'}</td>`,
+      // 사용여부 = 삭제여부 기준(Y:사용/미삭제, N:미사용/삭제)
+      //   DEL_YN='Y' → 미사용, 그 외(NULL/'N') → 사용
+      'vhc-c10': `<td style="${vw('vhc-c10',55)}text-align:center">${row.DEL_YN==='Y'?'<span class="vhc-badge use-n">미사용</span>':'<span class="vhc-badge use-y">사용</span>'}</td>`,
       'vhc-c11': `<td style="${vw('vhc-c11',56)}text-align:center;padding:3px"><button class="row-del-btn" title="삭제" onclick="event.stopPropagation();vhcDeleteRow('${row.VEHICLE_NO}','${row.OWNRKY||'KN'}')">🗑</button></td>`,
     };
     html += `<tr class="${isSel?'selected':''}" onclick="selectVehicleRow(${idx},this)" data-idx="${idx}">`
@@ -7769,10 +7809,13 @@ function fillVehicleForm(row) {
     vnoEl.style.cursor  = (vhcState.mode === 'edit') ? 'not-allowed' : '';
   }
 
-  ['SHIP_POINT','PRODUCT_GROUP','DELIVERY_ZONE','CARRIER','VEHICLE_TYPE',
+  ['SHIP_POINT','PRODUCT_GROUP','DELIVERY_ZONE','VEHICLE_TYPE',
    'VEHICLE_KIND','FLOOR_TYPE','VEHICLE_YEAR',
    'PALLET_QTY','DRIVER_NAME','CONTACT_NO',
    'DELIVERY_CUSTOMER_1','DELIVERY_CUSTOMER_2'].forEach(f => setVal(`vf-${f}`, row[f]));
+
+  // 운송사: 코드 '0000'(기본 운송사) 연결하여 기본값 매칭 여부 판단
+  _vhcFillCarrier(row.CARRIER);
 
   // 제품군에 맞는 차형(톤수) 드롭다운 갱신 후 저장된 값 복원
   const prodGrp = String(row.PRODUCT_GROUP || '').trim();

@@ -46,7 +46,7 @@ public class VhcmaRepositoryImpl implements VhcmaRepositoryCustom {
     public Page<Object[]> searchPage(
             String shipPoint, String productGroup, String deliveryZone, String carrier,
             String vehicleType, String vehicleKind, String vehicleClass, String vehicleNo,
-            Pageable pageable) {
+            String useYn, Pageable pageable) {
 
         StringBuilder where = new StringBuilder();
         List<Object> params = new ArrayList<>();
@@ -59,6 +59,21 @@ public class VhcmaRepositoryImpl implements VhcmaRepositoryCustom {
         addEq(where, params, "VEHICLE_KIND",  vehicleKind);
         addEq(where, params, "VEHICLE_CLASS", vehicleClass);
         addLike(where, params, "VEHICLE_NO",  vehicleNo);
+
+        // 사용여부(=삭제여부 반대개념) 필터
+        //   요청: 사용여부의 의미를 '삭제여부'로 변경 (Y:사용, N:미사용)
+        //   VHCMA 물리 컬럼 DEL_YN 기준으로 판단 → DEL_YN='N'(또는 NULL) = 사용, DEL_YN='Y' = 미사용
+        if (useYn != null && !useYn.isEmpty()) {
+            if ("Y".equalsIgnoreCase(useYn)) {
+                // 사용 = 삭제되지 않은 행 (DEL_YN != 'Y')
+                where.append(where.length() == 0 ? " WHERE" : " AND")
+                     .append(" (DEL_YN IS NULL OR DEL_YN <> 'Y')");
+            } else if ("N".equalsIgnoreCase(useYn)) {
+                // 미사용 = 삭제된 행 (DEL_YN = 'Y')
+                where.append(where.length() == 0 ? " WHERE" : " AND")
+                     .append(" DEL_YN = 'Y'");
+            }
+        }
 
         // 1) 데이터 페이지 조회
         String pageSql = SELECT_SQL + where + ORDER_BY

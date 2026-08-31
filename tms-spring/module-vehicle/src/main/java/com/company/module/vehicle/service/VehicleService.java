@@ -324,6 +324,7 @@ public class VehicleService {
             nullIfBlank(req.getDeliveryZone()), nullIfBlank(req.getCarrier()),
             nullIfBlank(req.getVehicleType()), nullIfBlank(req.getVehicleKind()),
             nullIfBlank(req.getVehicleClass()), nullIfBlank(req.getVehicleNo()),
+            nullIfBlank(req.getUseYn()),
             pageable
         );
 
