@@ -25,9 +25,13 @@ public class VhcmaRepositoryImpl implements VhcmaRepositoryCustom {
 
     // ※ SELECT * 는 컬럼 순서가 DB 물리순서라 프론트(컬럼명 접근)와 매핑이 어긋남.
     //   명시적 컬럼 목록으로 고정 → VehicleService 에서 동일 순서로 Map(컬럼명) 변환.
+    // ※ VHCMA 물리 테이블에 미존재하는 컬럼(VHC_ID, CARTYPE, CARCLASS_CD) 제거 → ORA-00904 해소.
+    //   - VHC_ID     : PK(시퀀스 VHCMA_SEQ). 조회 SELECT 대상 아님(엔티티 매핑 전용).
+    //   - CARTYPE    : 차종명 → 실제 컬럼은 VEHICLE_KIND(차종)로 대체.
+    //   - CARCLASS_CD: 차종(차형)코드 → 실제 컬럼은 VEHICLE_CLASS(차형)로 대체.
     public static final String[] COLS = {
-        "VHC_ID","VEHICLE_NO","OWNRKY","SHIP_POINT","PRODUCT_GROUP","DELIVERY_ZONE",
-        "CARRIER","VEHICLE_TYPE","VEHICLE_KIND","VEHICLE_CLASS","CARTYPE","CARCLASS_CD",
+        "VEHICLE_NO","OWNRKY","SHIP_POINT","PRODUCT_GROUP","DELIVERY_ZONE",
+        "CARRIER","VEHICLE_TYPE","VEHICLE_KIND","VEHICLE_CLASS",
         "DRIVER_NAME","CONTACT_NO","PALLET_QTY","FLOOR_TYPE","USE_YN","OPERABLE_YN",
         "FIX_YN","DEL_YN","DLV_TIME_FROM","DLV_TIME_TO","VEHICLE_YEAR",
         "DELIVERY_CUSTOMER_1","DELIVERY_CUSTOMER_2",

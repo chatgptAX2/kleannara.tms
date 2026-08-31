@@ -158,7 +158,14 @@ public class VehicleService {
     // CMCDM, CMCDV → Oracle em / DsVehicleRepository → MariaDB 자동
     // ──────────────────────────────────────────────────────────────────────────
     public Map<String, Object> getCarclassByProduct(String productGroup) {
-        Map<String, String> cmcdkyMap = Map.of("10", "TMS_CARCLASS10", "20", "TMS_CARCLASS20");
+        // 제품군 → 차형(TMS_CARCLASS) 공통코드 키 매핑
+        //   10(제지)       → TMS_CARCLASS10
+        //   20(생활)       → TMS_CARCLASS20
+        //   00(원부자재)   → TMS_CARCLASS20
+        Map<String, String> cmcdkyMap = Map.of(
+            "10", "TMS_CARCLASS10",
+            "20", "TMS_CARCLASS20",
+            "00", "TMS_CARCLASS20");
         String cmcdky = cmcdkyMap.getOrDefault(productGroup == null ? "" : productGroup.strip(), "TMS_CARCLASS10");
 
         // Oracle KNRAWMS.CMCDM → em
@@ -395,9 +402,11 @@ public class VehicleService {
 
         if (vhcmaRepo.existsByVehicleNoAndOwnrky(vno, ownrky)) {
             // Oracle KNRAWMS.VHCMA UPDATE → em (wmsPU)
+            // VHCMA 물리 미존재 컬럼(CARTYPE, CARCLASS_CD) 제거 → ORA-00904 해소.
+            //   차종=VEHICLE_KIND, 차형(코드)=VEHICLE_CLASS 로 관리.
             em.createNativeQuery("""
                 UPDATE KNRAWMS.VHCMA SET SHIP_POINT=?,PRODUCT_GROUP=?,DELIVERY_ZONE=?,CARRIER=?,
-                VEHICLE_TYPE=?,VEHICLE_KIND=?,VEHICLE_CLASS=?,CARTYPE=?,CARCLASS_CD=?,
+                VEHICLE_TYPE=?,VEHICLE_KIND=?,VEHICLE_CLASS=?,
                 DRIVER_NAME=?,CONTACT_NO=?,PALLET_QTY=?,FLOOR_TYPE=?,USE_YN=?,OPERABLE_YN=?,
                 FIX_YN=?,DLV_TIME_FROM=?,DLV_TIME_TO=?,VEHICLE_YEAR=?,
                 DELIVERY_CUSTOMER_1=?,DELIVERY_CUSTOMER_2=?,DEL_YN=?,
@@ -411,8 +420,44 @@ public class VehicleService {
               .setParameter(5,  req.getVehicleType())
               .setParameter(6,  req.getVehicleKind())
               .setParameter(7,  req.getVehicleClass())
-              .setParameter(8,  req.getCartype())
-              .setParameter(9,  req.getCarclassCd())
+              .setParameter(8,  req.getDriverName())
+              .setParameter(9,  req.getContactNo())
+              .setParameter(10, req.getPalletQty())
+              .setParameter(11, req.getFloorType())
+              .setParameter(12, req.getUseYn())
+              .setParameter(13, req.getOperableYn())
+              .setParameter(14, req.getFixYn())
+              .setParameter(15, req.getDlvTimeFrom())
+              .setParameter(16, req.getDlvTimeTo())
+              .setParameter(17, req.getVehicleYear())
+              .setParameter(18, req.getDeliveryCustomer1())
+              .setParameter(19, req.getDeliveryCustomer2())
+              .setParameter(20, req.getDelYn())
+              .setParameter(21, nowdt).setParameter(22, nowtm).setParameter(23, "WEB")
+              .setParameter(24, vno).setParameter(25, ownrky)
+              .executeUpdate();
+            return "updated";
+        } else {
+            // Oracle KNRAWMS.VHCMA INSERT → em (wmsPU)
+            // VHCMA 물리 미존재 컬럼(CARTYPE, CARCLASS_CD) 제거 → ORA-00904 해소.
+            em.createNativeQuery("""
+                INSERT INTO KNRAWMS.VHCMA
+                (VEHICLE_NO,OWNRKY,SHIP_POINT,PRODUCT_GROUP,DELIVERY_ZONE,CARRIER,
+                 VEHICLE_TYPE,VEHICLE_KIND,VEHICLE_CLASS,
+                 DRIVER_NAME,CONTACT_NO,PALLET_QTY,FLOOR_TYPE,USE_YN,OPERABLE_YN,FIX_YN,
+                 DLV_TIME_FROM,DLV_TIME_TO,VEHICLE_YEAR,
+                 DELIVERY_CUSTOMER_1,DELIVERY_CUSTOMER_2,DEL_YN,
+                 CREDAT,CRETIM,CREUSR,LMODAT,LMOTIM,LMOUSR)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """)
+              .setParameter(1, vno).setParameter(2, ownrky)
+              .setParameter(3,  req.getShipPoint())
+              .setParameter(4,  req.getProductGroup())
+              .setParameter(5,  req.getDeliveryZone())
+              .setParameter(6,  req.getCarrier())
+              .setParameter(7,  req.getVehicleType())
+              .setParameter(8,  req.getVehicleKind())
+              .setParameter(9,  req.getVehicleClass())
               .setParameter(10, req.getDriverName())
               .setParameter(11, req.getContactNo())
               .setParameter(12, req.getPalletQty())
@@ -427,46 +472,7 @@ public class VehicleService {
               .setParameter(21, req.getDeliveryCustomer2())
               .setParameter(22, req.getDelYn())
               .setParameter(23, nowdt).setParameter(24, nowtm).setParameter(25, "WEB")
-              .setParameter(26, vno).setParameter(27, ownrky)
-              .executeUpdate();
-            return "updated";
-        } else {
-            // Oracle KNRAWMS.VHCMA INSERT → em (wmsPU)
-            em.createNativeQuery("""
-                INSERT INTO KNRAWMS.VHCMA
-                (VEHICLE_NO,OWNRKY,SHIP_POINT,PRODUCT_GROUP,DELIVERY_ZONE,CARRIER,
-                 VEHICLE_TYPE,VEHICLE_KIND,VEHICLE_CLASS,CARTYPE,CARCLASS_CD,
-                 DRIVER_NAME,CONTACT_NO,PALLET_QTY,FLOOR_TYPE,USE_YN,OPERABLE_YN,FIX_YN,
-                 DLV_TIME_FROM,DLV_TIME_TO,VEHICLE_YEAR,
-                 DELIVERY_CUSTOMER_1,DELIVERY_CUSTOMER_2,DEL_YN,
-                 CREDAT,CRETIM,CREUSR,LMODAT,LMOTIM,LMOUSR)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """)
-              .setParameter(1, vno).setParameter(2, ownrky)
-              .setParameter(3,  req.getShipPoint())
-              .setParameter(4,  req.getProductGroup())
-              .setParameter(5,  req.getDeliveryZone())
-              .setParameter(6,  req.getCarrier())
-              .setParameter(7,  req.getVehicleType())
-              .setParameter(8,  req.getVehicleKind())
-              .setParameter(9,  req.getVehicleClass())
-              .setParameter(10, req.getCartype())
-              .setParameter(11, req.getCarclassCd())
-              .setParameter(12, req.getDriverName())
-              .setParameter(13, req.getContactNo())
-              .setParameter(14, req.getPalletQty())
-              .setParameter(15, req.getFloorType())
-              .setParameter(16, req.getUseYn())
-              .setParameter(17, req.getOperableYn())
-              .setParameter(18, req.getFixYn())
-              .setParameter(19, req.getDlvTimeFrom())
-              .setParameter(20, req.getDlvTimeTo())
-              .setParameter(21, req.getVehicleYear())
-              .setParameter(22, req.getDeliveryCustomer1())
-              .setParameter(23, req.getDeliveryCustomer2())
-              .setParameter(24, req.getDelYn())
-              .setParameter(25, nowdt).setParameter(26, nowtm).setParameter(27, "WEB")
-              .setParameter(28, nowdt).setParameter(29, nowtm).setParameter(30, "WEB")
+              .setParameter(26, nowdt).setParameter(27, nowtm).setParameter(28, "WEB")
               .executeUpdate();
             return "created";
         }
