@@ -2170,6 +2170,35 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
   font-weight:800 !important;
   letter-spacing:.4px !important;
 }
+/* ── PS배차(최적화) 배차탭 우측 선적목록/납품문서 — 컬럼 좌우 간격 조정 ── */
+/* 헤더/셀 좌우 여백을 넉넉·통일하여 컬럼 항목 간 좌우측 간격을 균형있게 표시 */
+#psop-vehicle-area .psd-sap-tbl thead th,
+#psop-car-wrap .psd-sap-tbl thead th,
+#psop-veh-doc-area .psd-sap-tbl thead th{
+  padding-left:11px !important;
+  padding-right:11px !important;
+}
+#psop-vehicle-area .psd-sap-tbl tbody td,
+#psop-car-wrap .psd-sap-tbl tbody td,
+#psop-veh-doc-area .psd-sap-tbl tbody td{
+  padding-left:11px !important;
+  padding-right:11px !important;
+}
+/* 데이터 유형별 정렬 규칙 — 숫자=우측, 코드/텍스트=좌측, 상태/단위=가운데 */
+#psop-vehicle-area .psd-sap-tbl tbody td.num,
+#psop-car-wrap .psd-sap-tbl tbody td.num,
+#psop-veh-doc-area .psd-sap-tbl tbody td.num{text-align:right !important}
+#psop-vehicle-area .psd-sap-tbl tbody td.center,
+#psop-car-wrap .psd-sap-tbl tbody td.center,
+#psop-veh-doc-area .psd-sap-tbl tbody td.center{text-align:center !important}
+/* 체크박스 컬럼(첫 컬럼)은 좁게 유지 */
+#psop-vehicle-area .psd-sap-tbl thead th:first-child,
+#psop-car-wrap .psd-sap-tbl thead th:first-child,
+#psop-vehicle-area .psd-sap-tbl tbody td:first-child,
+#psop-car-wrap .psd-sap-tbl tbody td:first-child{
+  padding-left:4px !important;
+  padding-right:4px !important;
+}
 /* 납품문서 하단패널 드롭 활성 */
 #psop-veh-doc-area.psd-doc-drop-active{
   outline:2px dashed #10b981;
