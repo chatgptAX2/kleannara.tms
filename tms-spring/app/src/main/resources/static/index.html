@@ -6753,11 +6753,11 @@ function buildVehicleUI() {
         <input id="vs-vehicle_no" type="text" placeholder="번호 입력" oninput="vhcSearchChange()">
       </div>
       <div class="vhc-sg">
-        <label>사용여부</label>
+        <label>삭제여부</label>
         <select id="vs-use_yn" onchange="vhcSearchChange()">
           <option value="">전체</option>
           <option value="Y" selected>사용</option>
-          <option value="N">미사용</option>
+          <option value="N">삭제</option>
         </select>
       </div>
     </div>
@@ -7065,25 +7065,28 @@ function _vhcBuildClassOpts(prodGroup, curVal) {
   }).join('');
 }
 
-/* 운송사 폼 값 채우기 — 코드 '0000'(기본 운송사)을 연결하여 기본값 매칭 판단
+/* 운송사 폼 값 채우기 — 운송사 코드에 '0000' prefix 를 결합하여 기본값 매칭 판단
    - 운송사 옵션(vf-CARRIER)의 value = 운송사명(o.label), 코드 = o.value(CMCDVL)
-   - DB CARRIER 값이 옵션의 라벨/코드와 매칭되면 해당 운송사 선택
-   - 매칭되는 운송사가 없으면 코드 '0000'(기본 운송사)의 라벨로 기본 선택
-   - '0000' 코드도 없으면 미선택('') */
+   - DB CARRIER 값은 '0000' + 코드 형태로 저장됨 (예: 코드 300342 → 0000300342)
+   - 매칭 규칙(우선순위):
+       ① DB값 === '0000' + 코드           (예: 0000300342 === '0000'+'300342')
+       ② DB값 === 코드(CMCDVL)             (prefix 없이 저장된 레거시 대응)
+       ③ DB값 === 라벨(CDESC1, 운송사명)   (명칭으로 저장된 경우)
+   - 매칭되는 운송사가 없으면 미선택('') */
 function _vhcFillCarrier(carrierVal) {
   const sel = document.getElementById('vf-CARRIER');
   if (!sel) return;
   const codes = vhcState.codes['TMS_CARRIER'] || [];
   const cur   = (carrierVal == null ? '' : String(carrierVal)).trim();
 
-  // 1) 코드(CMCDVL) 또는 라벨(CDESC1)로 매칭되는 운송사 탐색
   let matched = null;
   if (cur) {
-    matched = codes.find(o => String(o.value).trim() === cur || String(o.label).trim() === cur);
-  }
-  // 2) 매칭 실패 시 기본 운송사(코드 '0000') 로 fallback
-  if (!matched) {
-    matched = codes.find(o => String(o.value).trim() === '0000');
+    matched = codes.find(o => {
+      const code = String(o.value).trim();
+      return ('0000' + code) === cur          // ① '0000'+코드 결합값
+          || code === cur                       // ② 코드 그대로
+          || String(o.label).trim() === cur;    // ③ 운송사명
+    });
   }
   // 옵션 value 는 운송사명(label) 기준이므로 label 로 설정
   sel.value = matched ? matched.label : '';
@@ -7654,6 +7657,7 @@ function renderVehicleList(data) {
 
   // 차량 리스트 컬럼 정의 (id, label, sortKey, defaultW)
   const _vhcColDefs = [
+    {id:'vhc-cid', label:'차량ID',   sk:'VEHICLE_ID',   w: _vhcColW['vhc-cid']|| 70},
     {id:'vhc-c0',  label:'차량번호', sk:'VEHICLE_NO',   w: _vhcColW['vhc-c0'] ||110},
     {id:'vhc-c1',  label:'출하지점', sk:'SHIP_POINT',   w: _vhcColW['vhc-c1'] || 80},
     {id:'vhc-c2',  label:'제품군',   sk:'PRODUCT_GROUP',w: _vhcColW['vhc-c2'] || 90},
@@ -7664,9 +7668,13 @@ function renderVehicleList(data) {
     {id:'vhc-c7',  label:'차형',     sk:'VEHICLE_CLASS',w: _vhcColW['vhc-c7'] || 60},
     {id:'vhc-c8',  label:'기사명',   sk:'DRIVER_NAME',  w: _vhcColW['vhc-c8'] ||100},
     {id:'vhc-c9',  label:'연락처',   sk:'',             w: _vhcColW['vhc-c9'] ||130},
-    {id:'vhc-c10', label:'사용',     sk:'USE_YN',       w: _vhcColW['vhc-c10']|| 55},
+    {id:'vhc-c10', label:'삭제',     sk:'DEL_YN',       w: _vhcColW['vhc-c10']|| 55},
     {id:'vhc-c11', label:'',         sk:'',             w: _vhcColW['vhc-c11']|| 56},
   ];
+  // 신규 컬럼(차량ID) 추가 시 기존 저장된 colOrder 에 없으면 맨 앞에 편입
+  if (vhcState.colOrder && !vhcState.colOrder.includes('vhc-cid')) {
+    vhcState.colOrder = ['vhc-cid', ...vhcState.colOrder];
+  }
   // colOrder 순서로 정렬 (드래그 후 순서 유지)
   const vhcColMap = Object.fromEntries(_vhcColDefs.map(c => [c.id, c]));
   if (!vhcState.colOrder) vhcState.colOrder = _vhcColDefs.map(c => c.id);
@@ -7701,6 +7709,7 @@ function renderVehicleList(data) {
     const vw = (id, def) => { const w = _vhcColW[id]||def; return `width:${w}px;max-width:${w}px;`; };
     // colOrder 순서대로 td 생성
     const _vhcTdMap = {
+      'vhc-cid': `<td style="${vw('vhc-cid',70)}font-family:monospace;color:var(--text3)" title="${row.VEHICLE_ID||''}">${row.VEHICLE_ID||'-'}</td>`,
       'vhc-c0':  `<td style="${vw('vhc-c0',110)}font-family:monospace;font-weight:700;color:var(--warning)" title="${row.VEHICLE_NO||''}">${row.VEHICLE_NO||'-'}</td>`,
       'vhc-c1':  `<td style="${vw('vhc-c1',80)}color:var(--text3)">${row.SHIP_POINT||'-'}</td>`,
       'vhc-c2':  `<td style="${vw('vhc-c2',90)}" title="${skuLbl}">${skuLbl}</td>`,
@@ -7711,9 +7720,8 @@ function renderVehicleList(data) {
       'vhc-c7':  `<td style="${vw('vhc-c7',60)}color:var(--primary);font-weight:600">${row.VEHICLE_CLASS||'-'}</td>`,
       'vhc-c8':  `<td style="${vw('vhc-c8',100)}font-weight:600" title="${row.DRIVER_NAME||''}">${row.DRIVER_NAME||'-'}</td>`,
       'vhc-c9':  `<td style="${vw('vhc-c9',130)}color:var(--text3);font-family:monospace;font-size:11px">${row.CONTACT_NO||'-'}</td>`,
-      // 사용여부 = 삭제여부 기준(Y:사용/미삭제, N:미사용/삭제)
-      //   DEL_YN='Y' → 미사용, 그 외(NULL/'N') → 사용
-      'vhc-c10': `<td style="${vw('vhc-c10',55)}text-align:center">${row.DEL_YN==='Y'?'<span class="vhc-badge use-n">미사용</span>':'<span class="vhc-badge use-y">사용</span>'}</td>`,
+      // 삭제여부 컬럼: DEL_YN='Y' → '삭제', 그 외(NULL/'N') → '사용'
+      'vhc-c10': `<td style="${vw('vhc-c10',55)}text-align:center">${row.DEL_YN==='Y'?'<span class="vhc-badge use-n">삭제</span>':'<span class="vhc-badge use-y">사용</span>'}</td>`,
       'vhc-c11': `<td style="${vw('vhc-c11',56)}text-align:center;padding:3px"><button class="row-del-btn" title="삭제" onclick="event.stopPropagation();vhcDeleteRow('${row.VEHICLE_NO}','${row.OWNRKY||'KN'}')">🗑</button></td>`,
     };
     html += `<tr class="${isSel?'selected':''}" onclick="selectVehicleRow(${idx},this)" data-idx="${idx}">`
