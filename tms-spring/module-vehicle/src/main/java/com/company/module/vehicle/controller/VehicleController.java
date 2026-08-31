@@ -34,9 +34,19 @@ public class VehicleController {
 
     private final VehicleService vehicleService;
 
-    /** VHCMA 차량 목록 – Flask: GET /api/vehicle/list */
+    /**
+     * VHCMA 차량 목록 – Flask: GET /api/vehicle/list
+     *
+     * NOTE(bind 이슈 수정): 프론트엔드(index.html)는 Flask 호환 형식으로 응답 최상위의
+     *   {@code total}/{@code rows}/{@code ship_points} 필드를 직접 참조한다.
+     *   (예: searchVehicle() → data.total / data.rows, /api/codes 도 List 직접 반환)
+     *   기존처럼 {@code ApiResponse.success()} 로 한 번 더 감싸면
+     *   실제 응답이 {@code {success,code,data:{total,rows,...}}} 가 되어
+     *   프론트의 data.rows/data.total 이 undefined → 화면에 결과가 바인딩되지 않았다.
+     *   → 목록 응답 Map 을 그대로(unwrap) 반환하도록 변경한다.
+     */
     @GetMapping("/vehicle/list")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getVhcmaList(
+    public ResponseEntity<Map<String, Object>> getVhcmaList(
             @RequestParam(defaultValue = "1")  int page,
             @RequestParam(defaultValue = "50") int size,
             @RequestParam(required = false) String shipPoint,
@@ -58,7 +68,7 @@ public class VehicleController {
         req.setVehicleClass(vehicleClass); req.setVehicleNo(vehicleNo);
         req.setSortCol(sortCol); req.setSortDir(sortDir);
 
-        return ResponseEntity.ok(ApiResponse.success(vehicleService.getVhcmaList(req)));
+        return ResponseEntity.ok(vehicleService.getVhcmaList(req));
     }
 
     /** VHCMA 차량 상세 – Flask: GET /api/vehicle/detail/<vehicle_no> */
