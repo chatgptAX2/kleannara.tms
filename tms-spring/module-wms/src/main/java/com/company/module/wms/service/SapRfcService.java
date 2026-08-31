@@ -701,9 +701,13 @@ public class SapRfcService {
             }
 
             // ── 동적 WHERE ──
+            // 배차확정(SAP선적) 대상 기준: 가선적번호(STDLNR) 채번 여부 (STATIT 무관).
+            //   ※ 배차저장(saveDispatch)은 STATIT 조건 없이 SHPDI.STDLNR 만 갱신한다.
+            //     따라서 여기서 STATIT='NEW' 를 강제하면 STATIT 이 'NEW' 가 아닌 문서로
+            //     저장된 배차는 SAP선적탭에 조회되지 않는 누락이 발생 → STATIT 조건 제거.
             List<String> where = new ArrayList<>();
-            where.add("SI.STATIT = 'NEW'");
-            where.add("SI.STDLNR != ' '");
+            where.add("SI.STDLNR IS NOT NULL");
+            where.add("TRIM(SI.STDLNR) != ''");
             List<Object> args = new ArrayList<>();
             if (!rqFrom.isEmpty()) { where.add("SH.RQSHPD >= ?"); args.add(rqFrom); }
             if (!rqTo.isEmpty())   { where.add("SH.RQSHPD <= ?"); args.add(rqTo); }

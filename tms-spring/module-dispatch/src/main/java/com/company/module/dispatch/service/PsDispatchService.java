@@ -388,10 +388,14 @@ public class PsDispatchService {
         for (int from = 0; from < shpokys.size(); from += CHUNK) {
             List<String> chunk = shpokys.subList(from, Math.min(from + CHUNK, shpokys.size()));
             String ph = chunk.stream().map(x -> "?").collect(Collectors.joining(","));
+            // 배차완료 판정 기준: 가선적번호(STDLNR) 부여 여부 (STATIT 무관).
+            //   ※ saveDispatch 는 STATIT 조건 없이 STDLNR 을 갱신하는데, 판정만
+            //     STATIT='NEW' 를 요구하면 STATIT 이 'NEW' 가 아닌 문서는 저장 후에도
+            //     '미배차' 로 표시되는 불일치가 발생 → STATIT 조건 제거.
             String sql =
                 "SELECT SHPOKY || '|' || SHPOIT" +
                 " FROM KNRAWMS.SHPDI" +
-                " WHERE STATIT='NEW' AND STDLNR IS NOT NULL AND STDLNR <> ' '" +
+                " WHERE STDLNR IS NOT NULL AND TRIM(STDLNR) <> ''" +
                 "   AND SHPOKY IN (" + ph + ")";
 
             var q = em.createNativeQuery(sql);
@@ -504,8 +508,11 @@ public class PsDispatchService {
             //   가선적번호(dispatchNo)를 반드시 기록해야 한다.
             //   기존 'STATIT = ''NEW''' 조건은 이미 상태가 전이된 행의 STDLNR 갱신을
             //   누락시키므로 제거하고, 요청 키(SHPOKY+SHPOIT) 기준으로 갱신한다.
+            int shpdiUpdated = 0;
+            List<String[]> notMatched = new ArrayList<>();
             for (String[] key : shpdiKeys) {
-                tmsEm.createNativeQuery("""
+                // 1차: 정확 매칭(SHPOKY + SHPOIT)
+                int n = tmsEm.createNativeQuery("""
                     UPDATE KNRAWMS.SHPDI
                     SET STDLNR  = ?,
                         LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
@@ -516,6 +523,44 @@ public class PsDispatchService {
                   .setParameter(2, key[0])
                   .setParameter(3, key[1])
                   .executeUpdate();
+
+                // 2차 폴백: 앞뒤 공백/좌측 0패딩 차이로 정확매칭 실패 시
+                //   TRIM 및 숫자비교(SHPOIT)로 재시도 (SHPDI.SHPOIT 이 '0010' vs '10' 등
+                //   포맷 차이가 있어도 동일 품목 순번을 안전하게 매칭)
+                if (n == 0) {
+                    n = tmsEm.createNativeQuery("""
+                        UPDATE KNRAWMS.SHPDI
+                        SET STDLNR  = ?,
+                            LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
+                            LMOUSR  = 'WEB'
+                        WHERE TRIM(SHPOKY) = TRIM(?)
+                          AND (TRIM(SHPOIT) = TRIM(?)
+                               OR (REGEXP_LIKE(TRIM(SHPOIT), '^[0-9]+$')
+                                   AND REGEXP_LIKE(TRIM(?), '^[0-9]+$')
+                                   AND TO_NUMBER(TRIM(SHPOIT)) = TO_NUMBER(TRIM(?))))
+                        """)
+                      .setParameter(1, dispatchNo)
+                      .setParameter(2, key[0])
+                      .setParameter(3, key[1])
+                      .setParameter(4, key[1])
+                      .setParameter(5, key[1])
+                      .executeUpdate();
+                }
+
+                shpdiUpdated += n;
+                if (n == 0) notMatched.add(key);
+            }
+
+            // 진단 로그: 저장 성공 toast 는 떴는데 미배차로 돌아오고 SAP선적탭에 안 뜨는
+            //   증상의 원인 추적용 — SHPDI.STDLNR 실제 갱신 건수를 남긴다.
+            log.info("[PsDispatch] saveDispatch dispatchNo={} 요청항목={} SHPDI.STDLNR 갱신={}건",
+                     dispatchNo, shpdiKeys.size(), shpdiUpdated);
+            if (!notMatched.isEmpty()) {
+                StringBuilder sb = new StringBuilder();
+                for (String[] k : notMatched) sb.append('[').append(k[0]).append('/').append(k[1]).append(']');
+                log.warn("[PsDispatch] saveDispatch dispatchNo={} SHPDI 매칭 실패(STDLNR 미부여) {}건 → {} "
+                         + "(배차완료 표시/ SAP선적탭 조회가 누락될 수 있음)",
+                         dispatchNo, notMatched.size(), sb);
             }
 
             // SHPDH.VEHINO = carclass_cd (Oracle KNRAWMS.SHPDH 업데이트 → tmsEm, 위와 동일 사유)
