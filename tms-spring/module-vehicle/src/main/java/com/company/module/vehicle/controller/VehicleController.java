@@ -49,28 +49,45 @@ public class VehicleController {
     public ResponseEntity<Map<String, Object>> getVhcmaList(
             @RequestParam(defaultValue = "1")  int page,
             @RequestParam(defaultValue = "50") int size,
-            @RequestParam(required = false) String shipPoint,
-            @RequestParam(required = false) String productGroup,
-            @RequestParam(required = false) String deliveryZone,
-            @RequestParam(required = false) String carrier,
-            @RequestParam(required = false) String vehicleType,
-            @RequestParam(required = false) String vehicleKind,
-            @RequestParam(required = false) String vehicleClass,
-            @RequestParam(required = false) String vehicleNo,
-            @RequestParam(required = false) String useYn,
-            @RequestParam(required = false) String sortCol,
-            @RequestParam(defaultValue = "ASC") String sortDir) {
+            // 프론트는 snake_case 파라미터명(ship_point, vehicle_type 등)으로 전송하므로
+            //   @RequestParam(name=...) 로 명시 매핑해야 값이 바인딩됨.
+            //   (미지정 시 camelCase 기대 → vehicle_type/vehicle_class/vehicle_no 등이 null 로 유실되어 필터 미적용)
+            @RequestParam(name = "ship_point",    required = false) String shipPoint,
+            @RequestParam(name = "product_group", required = false) String productGroup,
+            @RequestParam(name = "delivery_zone", required = false) String deliveryZone,
+            @RequestParam(name = "carrier",       required = false) String carrier,
+            @RequestParam(name = "vehicle_type",  required = false) String vehicleType,
+            @RequestParam(name = "vehicle_kind",  required = false) String vehicleKind,
+            @RequestParam(name = "vehicle_class", required = false) String vehicleClass,
+            @RequestParam(name = "vehicle_no",    required = false) String vehicleNo,
+            @RequestParam(name = "use_yn",        required = false) String useYn,
+            @RequestParam(name = "sort_col",      required = false) String sortCol,
+            @RequestParam(name = "sort_dir", defaultValue = "ASC")  String sortDir) {
 
         VhcmaSearchRequest req = new VhcmaSearchRequest();
         req.setPage(page); req.setSize(size);
         req.setShipPoint(shipPoint); req.setProductGroup(productGroup);
-        req.setDeliveryZone(deliveryZone); req.setCarrier(carrier);
+        req.setDeliveryZone(deliveryZone);
+        // 운송사: 프론트가 정규화 코드(0000300342)로 전송 → DB CARRIER 는 앞 '0000' 제거된
+        //   코드(300342)로 저장되어 있으므로, 선행 '0000' 을 제거한 값으로 LIKE 검색 수행.
+        req.setCarrier(stripCarrierPrefix(carrier));
         req.setVehicleType(vehicleType); req.setVehicleKind(vehicleKind);
         req.setVehicleClass(vehicleClass); req.setVehicleNo(vehicleNo);
         req.setUseYn(useYn);
         req.setSortCol(sortCol); req.setSortDir(sortDir);
 
         return ResponseEntity.ok(vehicleService.getVhcmaList(req));
+    }
+
+    /** 운송사 파라미터 정규화 — 프론트 전송값(예 0000300342)에서 선행 '0000' 제거 후 검색.
+     *  - '0000' 접두어가 있을 때만 제거(그 외 값은 원본 유지).
+     *  - 결과가 비면 null 반환(조건 미적용). */
+    private String stripCarrierPrefix(String carrier) {
+        if (carrier == null) return null;
+        String v = carrier.strip();
+        if (v.isEmpty()) return null;
+        if (v.startsWith("0000")) v = v.substring(4);
+        return v.isEmpty() ? null : v;
     }
 
     /** VHCMA 차량 상세 – Flask: GET /api/vehicle/detail/<vehicle_no> */
