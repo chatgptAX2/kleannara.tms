@@ -19,6 +19,7 @@ public interface VhcmaRepositoryCustom {
         String vehicleKind,
         String vehicleClass,
         String vehicleNo,
+        String useYn,
         Pageable pageable
     );
 }

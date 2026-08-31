@@ -57,6 +57,7 @@ public class VehicleController {
             @RequestParam(required = false) String vehicleKind,
             @RequestParam(required = false) String vehicleClass,
             @RequestParam(required = false) String vehicleNo,
+            @RequestParam(required = false) String useYn,
             @RequestParam(required = false) String sortCol,
             @RequestParam(defaultValue = "ASC") String sortDir) {
 
@@ -66,6 +67,7 @@ public class VehicleController {
         req.setDeliveryZone(deliveryZone); req.setCarrier(carrier);
         req.setVehicleType(vehicleType); req.setVehicleKind(vehicleKind);
         req.setVehicleClass(vehicleClass); req.setVehicleNo(vehicleNo);
+        req.setUseYn(useYn);
         req.setSortCol(sortCol); req.setSortDir(sortDir);
 
         return ResponseEntity.ok(vehicleService.getVhcmaList(req));

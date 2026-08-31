@@ -19,6 +19,7 @@ public class VhcmaSearchRequest {
     private String  vehicleKind;
     private String  vehicleClass;
     private String  vehicleNo;
+    private String  useYn;        // 사용여부 필터(=삭제여부 기준: Y=사용/미삭제, N=미사용/삭제)
     private String  sortCol;
     private String  sortDir = "ASC";
 }
