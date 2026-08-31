@@ -398,6 +398,13 @@ public class VehicleService {
         String ownrky = req.getOwnrky() == null ? "KN" : req.getOwnrky().strip();
         if (vno.isEmpty()) throw new IllegalArgumentException("차량번호(VEHICLE_NO)는 필수입니다");
 
+        // 운송사: 프론트가 정규화 코드(0000300342)로 전송 → 조회 검색과 동일하게 선행 '0000' 제거하여
+        //   DB CARRIER(300342)와 일관된 값으로 저장.
+        String carrier = req.getCarrier() == null ? null : req.getCarrier().strip();
+        if (carrier != null && carrier.startsWith("0000")) carrier = carrier.substring(4);
+        if (carrier != null && carrier.isEmpty()) carrier = null;
+        req.setCarrier(carrier);
+
         String nowdt = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
         String nowtm = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
 
