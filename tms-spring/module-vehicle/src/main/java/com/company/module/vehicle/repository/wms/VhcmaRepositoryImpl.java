@@ -30,6 +30,7 @@ public class VhcmaRepositoryImpl implements VhcmaRepositoryCustom {
     //   - CARTYPE    : 차종명 → 실제 컬럼은 VEHICLE_KIND(차종)로 대체.
     //   - CARCLASS_CD: 차종(차형)코드 → 실제 컬럼은 VEHICLE_CLASS(차형)로 대체.
     public static final String[] COLS = {
+        "VEHICLE_ID",
         "VEHICLE_NO","OWNRKY","SHIP_POINT","PRODUCT_GROUP","DELIVERY_ZONE",
         "CARRIER","VEHICLE_TYPE","VEHICLE_KIND","VEHICLE_CLASS",
         "DRIVER_NAME","CONTACT_NO","PALLET_QTY","FLOOR_TYPE","USE_YN","OPERABLE_YN",
@@ -58,7 +59,9 @@ public class VhcmaRepositoryImpl implements VhcmaRepositoryCustom {
         addEq(where, params, "VEHICLE_TYPE",  vehicleType);
         addEq(where, params, "VEHICLE_KIND",  vehicleKind);
         addEq(where, params, "VEHICLE_CLASS", vehicleClass);
-        addLike(where, params, "VEHICLE_NO",  vehicleNo);
+        // 차량번호 검색: VEHICLE_ID = '입력값' OR VEHICLE_NO LIKE '%입력값%'
+        //   - 숫자 형태의 정확한 차량ID 입력 시 즉시 매칭, 아니면 차량번호 부분일치
+        addVehicleNoOrId(where, params, vehicleNo);
 
         // 사용여부(=삭제여부 반대개념) 필터
         //   요청: 사용여부의 의미를 '삭제여부'로 변경 (Y:사용, N:미사용)
@@ -97,6 +100,27 @@ public class VhcmaRepositoryImpl implements VhcmaRepositoryCustom {
         if (val != null && !val.isEmpty()) {
             where.append(where.length() == 0 ? " WHERE" : " AND").append(' ').append(col).append(" = ?");
             params.add(val);
+        }
+    }
+
+    /**
+     * 차량번호 검색: VEHICLE_ID = '입력값' OR VEHICLE_NO LIKE '%입력값%'
+     *  - 입력값이 순수 숫자면 VEHICLE_ID 정확일치 OR 차량번호 부분일치.
+     *  - 숫자가 아니면(예: '37더3739') VEHICLE_ID(숫자형) 비교 시 ORA-01722 위험 →
+     *    차량번호 부분일치만 적용.
+     */
+    private void addVehicleNoOrId(StringBuilder where, List<Object> params, String val) {
+        if (val == null || val.isEmpty()) return;
+        String kw = val.strip();
+        boolean numeric = kw.matches("\\d+");
+        where.append(where.length() == 0 ? " WHERE" : " AND").append(' ');
+        if (numeric) {
+            where.append("(VEHICLE_ID = ? OR VEHICLE_NO LIKE '%' || ? || '%')");
+            params.add(kw);   // VEHICLE_ID = ?  (문자 바인딩이어도 Oracle 암시적 숫자변환)
+            params.add(kw);   // VEHICLE_NO LIKE
+        } else {
+            where.append("VEHICLE_NO LIKE '%' || ? || '%'");
+            params.add(kw);
         }
     }
 
