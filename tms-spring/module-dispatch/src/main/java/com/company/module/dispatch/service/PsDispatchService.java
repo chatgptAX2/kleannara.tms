@@ -563,6 +563,34 @@ public class PsDispatchService {
                          dispatchNo, notMatched.size(), sb);
             }
 
+            // ★ 저장 무결성 강제: SHPDI.STDLNR 이 한 건도 갱신되지 않았다면(=가선적번호 미부여)
+            //   PS_DISPATCH_H/D 만 저장되고 배차완료 판정/ SAP선적탭 조회의 유일 기준인
+            //   STDLNR 이 비어 결국 "저장 성공 toast 후 미배차로 복귀" 불일치가 발생한다.
+            //   → 이 경우 예외를 던져 전체 트랜잭션을 롤백하고, 프론트에 명확한 오류를 반환한다.
+            //   (기존에는 로그만 남기고 커밋되어 조용히 유령 저장이 됐음)
+            if (!shpdiKeys.isEmpty() && shpdiUpdated == 0) {
+                throw new IllegalStateException(
+                    "배차저장 실패: SHPDI 가선적번호(STDLNR) 갱신 대상이 없습니다. " +
+                    "납품문서 키(SHPOKY/SHPOIT)가 SHPDI 와 일치하지 않습니다. " +
+                    "[dispatchNo=" + dispatchNo + ", 요청항목=" + shpdiKeys.size() + "건]");
+            }
+
+            // ★ 저장 직후 자가검증(SELECT): 방금 채번한 dispatchNo 로 SHPDI 에서
+            //   STDLNR 이 실제로 채워졌는지 tmsEm 으로 즉시 재조회하여 로그에 남긴다.
+            //   (커밋 전 상태이지만 동일 트랜잭션 내라 반영 여부 확인 가능 →
+            //    UPDATE 성공/실패 및 실제 반영 건수를 운영 로그로 100% 특정)
+            try {
+                Object verifyCnt = tmsEm.createNativeQuery(
+                        "SELECT COUNT(*) FROM KNRAWMS.SHPDI WHERE STDLNR = ?")
+                    .setParameter(1, dispatchNo)
+                    .getSingleResult();
+                log.info("[PsDispatch] saveDispatch 자가검증 — SHPDI.STDLNR='{}' 반영 행수={}",
+                         dispatchNo, verifyCnt);
+            } catch (Exception ve) {
+                log.warn("[PsDispatch] saveDispatch 자가검증 SELECT 실패 dispatchNo={} : {}",
+                         dispatchNo, ve.getMessage());
+            }
+
             // SHPDH.VEHINO = carclass_cd (Oracle KNRAWMS.SHPDH 업데이트 → tmsEm, 위와 동일 사유)
             // ※ SHPDH 의 VEHINO/CARTON/CARNO/DRIVER/DRIVERCEL 컬럼은 Oracle 에서 NOT NULL 제약이
             //   걸려 있어 NULL 을 세팅하면 ORA-01407 이 발생한다.

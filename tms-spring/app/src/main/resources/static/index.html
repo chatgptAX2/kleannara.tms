@@ -12755,6 +12755,10 @@ const psopState = {
   _pendingSeq: 0,           // 임시 배차 ID 시퀀스
   /* ── 우측 2-split 그리드 상태 ── */
   vehSelPid:  null,         // 선택된 차량 _pendingId (하단 납품문서 표시용)
+  /* ── 방금 배차저장 완료한 항목 키(SHPOKY|SHPOIT)→가선적번호 맵 ──
+     저장 직후 재조회 시 서버 배차완료 판정이 아직 반영되지 않아도
+     UX 일관성을 위해 배차완료(STDLNR)로 유지하기 위한 세션 캐시. */
+  savedKeys:  new Map(),
 };
 
 /* 날짜 포맷 */
@@ -15168,6 +15172,21 @@ async function psopSearch() {
         }
       });
     });
+    // ★ 방금 배차저장 완료한 항목 보정:
+    //   서버 배차완료 판정(STDLNR)이 아직 반영되지 않아도(커밋 지연/캐시)
+    //   savedKeys 에 기록된 항목은 배차완료(IS_SAVED)로 강제 유지하여
+    //   "저장 성공 직후 미배차로 복귀" 표시 불일치를 방지한다.
+    //   (서버가 이미 DISPATCHED=true 로 반환하면 그대로 유지되어 무해)
+    if (psopState.savedKeys && psopState.savedKeys.size > 0) {
+      psopState.searchRows.forEach(row => {
+        const dispNo = psopState.savedKeys.get(`${row.SHPOKY}|${row.SHPOIT}`);
+        if (dispNo) {
+          row.DISPATCHED = true;
+          row.IS_SAVED   = true;
+          if (!row.STDLNR) row.STDLNR = dispNo;
+        }
+      });
+    }
     // ★ 인메모리 보정 완료 후 배차상태 필터는 psopRenderDocTable()에서 클라이언트 처리
     psopRenderDocTable();
     psopUpdateToolbar();
@@ -18158,6 +18177,8 @@ async function psopSaveDispatch() {
       const veh = vehs[idx];
       if (!veh) return;
       veh.items.forEach(it => {
+        // 방금 저장한 항목 키 → 가선적번호 기록 (재조회 후 배차완료 유지용)
+        psopState.savedKeys.set(`${it.SHPOKY}|${it.SHPOIT}`, dispNo);
         const row = psopState.searchRows.find(
           r => r.SHPOKY === it.SHPOKY && r.SHPOIT === it.SHPOIT
         );
