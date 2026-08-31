@@ -341,24 +341,16 @@ public class VehicleService {
         }
 
         // 창고 목록 (Oracle KNRAWMS.WAHMA → em)
-        //  ※ 실제 WAHMA 컬럼: 창고명 = WARENM (NAME01 아님), 사용여부 = ACTIVE ('Y')
-        //    기존 쿼리는 존재하지 않는 NAME01/DELMAK 컬럼 참조로 예외 → 출하지점 목록이 비었음
+        //  ※ 실제 WAHMA 컬럼: 창고명 = NAME01 (WARENM 아님). ACTIVE 컬럼도 미존재 → 조건 제거.
         List<Map<String, Object>> spList = new ArrayList<>();
         try {
             @SuppressWarnings("unchecked")
             List<Object[]> shipPoints = em.createNativeQuery(
-                "SELECT WAREKY, WARENM FROM KNRAWMS.WAHMA " +
-                "WHERE NVL(ACTIVE,'Y')='Y' ORDER BY WAREKY"
+                "SELECT WAREKY, NAME01 FROM KNRAWMS.WAHMA ORDER BY WAREKY"
             ).getResultList();
             for (Object[] r : shipPoints) spList.add(Map.of("value", str(r[0]), "label", str(r[1])));
         } catch (Exception e) {
-            // ACTIVE 컬럼이 없거나 조건에서 예외 발생 시 → 전체 목록으로 폴백
-            log.warn("ship_points 조회(ACTIVE 조건) 실패 → 전체 폴백: {}", e.getMessage());
-            @SuppressWarnings("unchecked")
-            List<Object[]> shipPoints = em.createNativeQuery(
-                "SELECT WAREKY, WARENM FROM KNRAWMS.WAHMA ORDER BY WAREKY"
-            ).getResultList();
-            for (Object[] r : shipPoints) spList.add(Map.of("value", str(r[0]), "label", str(r[1])));
+            log.warn("ship_points(WAHMA) 조회 실패: {}", e.getMessage());
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
