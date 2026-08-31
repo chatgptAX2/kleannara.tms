@@ -6762,9 +6762,9 @@ function buildVehicleUI() {
   // 제품군 검색 기본 선택 = 10(제지)
   const skug05Opts   = vhcState.codes['SKUG05'].map(o=>
     `<option value="${o.value}"${String(o.value)==='10'?' selected':''}>${o.value} (${o.label})</option>`).join('');
-  // 운송사(검색): value='0000'+코드(CMCDVL) 예)0000300342, 노출=운송사명(label)
+  // 운송사(검색): value=정규화 운송사코드(10자리, 예 0000300342), 노출=운송사명(label)
   const carrierOpts  = vhcState.codes['TMS_CARRIER'].map(o=>
-    `<option value="0000${o.value}">${o.label}</option>`).join('');
+    `<option value="${_vhcCarrierCode(o.value)}">${o.label}</option>`).join('');
   // 차종(검색): value=코드(CMCDVL) 예)1,2,3,4,5, 노출=명칭(label)
   const kindOpts     = vhcState.codes['TMS_CARKIND'].map(o=>
     `<option value="${o.value}">${o.label}</option>`).join('');
@@ -6903,10 +6903,10 @@ function buildVehicleForm() {
   // 제품군 폼 기본 선택 = 10(제지)
   const skug05Opts   = vhcState.codes['SKUG05'].map(o=>
     `<option value="${o.value}"${String(o.value)==='10'?' selected':''}>${o.value} (${o.label})</option>`).join('');
-  // 운송사(폼): value='0000'+코드(CMCDVL) 예)0000300342, 노출=운송사명(label)
-  //   → 차량리스트 선택 시 _vhcFillCarrier 가 '0000'+코드로 매칭하여 운송사코드 설정
+  // 운송사(폼): value=정규화 운송사코드(10자리, 예 0000300342), 노출=운송사명(label)
+  //   → 차량리스트 선택 시 _vhcFillCarrier 가 정규화 코드로 매칭하여 운송사코드 설정
   const carrierOpts  = vhcState.codes['TMS_CARRIER'].map(o=>
-    `<option value="0000${o.value}">${o.label}</option>`).join('');
+    `<option value="${_vhcCarrierCode(o.value)}">${o.label}</option>`).join('');
   // 차종(폼): value=코드(CMCDVL) 예)1,2,3,4,5, 노출=명칭(label)
   const kindOpts     = vhcState.codes['TMS_CARKIND'].map(o=>
     `<option value="${o.value}">${o.label}</option>`).join('');
@@ -7167,32 +7167,42 @@ function _vhcBuildClassOpts(prodGroup, curVal) {
   }).join('');
 }
 
-/* 운송사 폼 값 채우기 — 운송사 코드에 '0000' prefix 를 결합하여 기본값 매칭 판단
-   - 운송사 옵션(vf-CARRIER)의 value = '0000' + 코드(CMCDVL) 예)0000300342, 노출 = 운송사명(label)
-   - DB CARRIER 값은 '0000' + 코드 형태로 저장됨 (예: 코드 300342 → 0000300342)
+/* 운송사코드 정규화 — 항상 0000300342 형태(10자리) 패턴으로 통일
+   - CMCDVL(o.value)이 '300342' / '0000300342' / '00000000300342' 등 어떤 형태든
+     숫자만 추출한 뒤 오른쪽 정렬 10자리 zero-fill → '0000300342'
+   - 이미 10자리 초과면 원본 유지(오분류 방지) */
+function _vhcCarrierCode(v) {
+  const digits = String(v == null ? '' : v).replace(/\D/g, '');
+  if (!digits) return '';
+  return digits.length >= 10 ? digits : digits.padStart(10, '0');
+}
+
+/* 운송사 폼 값 채우기 — 운송사코드를 10자리(0000300342) 패턴으로 매칭
+   - 운송사 옵션(vf-CARRIER)의 value = 정규화된 운송사코드(예 0000300342), 노출 = 운송사명(label)
    - 매칭 규칙(우선순위):
-       ① DB값 === '0000' + 코드           (예: 0000300342 === '0000'+'300342')
-       ② DB값 === 코드(CMCDVL)             (prefix 없이 저장된 레거시 대응)
+       ① 정규화(DB값) === 정규화(코드)   (자리수 무관, 숫자 기준 일치)
+       ② DB값 === 코드(CMCDVL) 원본
        ③ DB값 === 라벨(CDESC1, 운송사명)   (명칭으로 저장된 경우)
    - 매칭되는 운송사가 없으면 미선택('')
-   - 옵션 value 가 '0000'+코드 이므로 선택 시 sel.value 도 '0000'+코드(운송사코드)로 설정 */
+   - 옵션 value 가 정규화 코드이므로 선택 시 sel.value 도 정규화 코드로 설정 */
 function _vhcFillCarrier(carrierVal) {
   const sel = document.getElementById('vf-CARRIER');
   if (!sel) return;
   const codes = vhcState.codes['TMS_CARRIER'] || [];
   const cur   = (carrierVal == null ? '' : String(carrierVal)).trim();
+  const curNorm = _vhcCarrierCode(cur);
 
   let matched = null;
   if (cur) {
     matched = codes.find(o => {
       const code = String(o.value).trim();
-      return ('0000' + code) === cur          // ① '0000'+코드 결합값
-          || code === cur                       // ② 코드 그대로
-          || String(o.label).trim() === cur;    // ③ 운송사명
+      return _vhcCarrierCode(code) === curNorm  // ① 정규화 코드 일치(자리수 무관)
+          || code === cur                        // ② 코드 원본 그대로
+          || String(o.label).trim() === cur;     // ③ 운송사명
     });
   }
-  // 옵션 value 는 '0000'+코드 기준이므로 '0000'+코드 로 설정 → 운송사코드 설정
-  sel.value = matched ? ('0000' + String(matched.value).trim()) : '';
+  // 옵션 value 는 정규화 운송사코드 기준
+  sel.value = matched ? _vhcCarrierCode(matched.value) : '';
 }
 
 /* 차형 드롭다운 DOM 갱신 — 제품군 변경 시 호출
@@ -7750,6 +7760,48 @@ function renderVehicleList(data) {
   }
 
   const skuMap   = Object.fromEntries(vhcState.codes['SKUG05'].map(o => [o.value, o.label]));
+
+  /* ── 코드값 → 명칭 매핑 (리스트에 명칭 노출용) ──
+     - 출하지점: WAHMA.WAREKY 기준 (프론트 하드코딩 1100=제지/1200=생활)
+     - 운송사:   TMS_CARRIER (정규화 코드/원본코드 양쪽 key 등록)
+     - 차량구분: TMS_CARART
+     - 차종:     TMS_CARKIND
+     - 차형:     제지(제품군10)=TMS_CARCLASS10, 그외=TMS_CARCLASS20  */
+  const _mapCode = (cmcdky) =>
+    Object.fromEntries((vhcState.codes[cmcdky] || []).map(o => [String(o.value).trim(), o.label]));
+  // 출하지점 명칭: 백엔드 WAHMA(WAREKY→value, NAME01→label) 우선, 없으면 하드코딩 폴백
+  const shipMap    = Object.fromEntries(VHC_SHIP_POINTS.map(o => [o.value, o.label]));
+  (data.ship_points || []).forEach(o => {
+    const k = String(o.value ?? '').trim();
+    if (k) shipMap[k] = o.label || shipMap[k] || k;
+  });
+  const vtypeMap   = _mapCode('TMS_CARART');
+  const vkindMap   = _mapCode('TMS_CARKIND');
+  const class10Map = _mapCode('TMS_CARCLASS10');
+  const class20Map = _mapCode('TMS_CARCLASS20');
+  // 운송사: 정규화 코드(10자리) + 원본 CMCDVL 둘 다 key 로 등록 → DB값 형태 무관 매핑
+  const carrierMap = {};
+  (vhcState.codes['TMS_CARRIER'] || []).forEach(o => {
+    const code = String(o.value).trim();
+    carrierMap[code] = o.label;
+    carrierMap[_vhcCarrierCode(code)] = o.label;
+  });
+  // 명칭 조회 헬퍼: 매핑 없으면 원본 코드 반환(폴백)
+  const _lbl = (map, code) => {
+    const c = (code == null ? '' : String(code)).trim();
+    if (!c) return '-';
+    return map[c] || c;
+  };
+  // 차형: 제품군에 따라 10/20 코드셋 선택하여 명칭 매핑
+  const _classLbl = (prodGroup, code) => {
+    const c = (code == null ? '' : String(code)).trim();
+    if (!c) return '-';
+    const pg = String(prodGroup || '').trim();
+    const map = (pg === '10') ? class10Map : class20Map;
+    // 선택된 제품군 코드셋에 없으면 반대 코드셋도 폴백 조회
+    return map[c] || class10Map[c] || class20Map[c] || c;
+  };
+
   /* CSS 변수에서 동적 색상 참조 */
   const cs     = getComputedStyle(document.documentElement);
   const tColor = {
@@ -7814,13 +7866,13 @@ function renderVehicleList(data) {
     const _vhcTdMap = {
       'vhc-cid': `<td style="${vw('vhc-cid',70)}font-family:monospace;color:var(--text3)" title="${row.VEHICLE_ID||''}">${row.VEHICLE_ID||'-'}</td>`,
       'vhc-c0':  `<td style="${vw('vhc-c0',110)}font-family:monospace;font-weight:700;color:var(--warning)" title="${row.VEHICLE_NO||''}">${row.VEHICLE_NO||'-'}</td>`,
-      'vhc-c1':  `<td style="${vw('vhc-c1',80)}color:var(--text3)">${row.SHIP_POINT||'-'}</td>`,
+      'vhc-c1':  `<td style="${vw('vhc-c1',80)}color:var(--text3)" title="${row.SHIP_POINT||''}">${_lbl(shipMap,row.SHIP_POINT)}</td>`,
       'vhc-c2':  `<td style="${vw('vhc-c2',90)}" title="${skuLbl}">${skuLbl}</td>`,
       'vhc-c3':  `<td style="${vw('vhc-c3',75)}">${row.DELIVERY_ZONE||'-'}</td>`,
-      'vhc-c4':  `<td style="${vw('vhc-c4',110)}" title="${row.CARRIER||''}">${row.CARRIER||'-'}</td>`,
-      'vhc-c5':  `<td style="${vw('vhc-c5',70)}"><span style="font-size:10px;font-weight:700;padding:2px 5px;border-radius:3px;background:var(--surface2);color:${tc}">${row.VEHICLE_TYPE||'-'}</span></td>`,
-      'vhc-c6':  `<td style="${vw('vhc-c6',70)}">${row.VEHICLE_KIND||'-'}</td>`,
-      'vhc-c7':  `<td style="${vw('vhc-c7',60)}color:var(--primary);font-weight:600">${row.VEHICLE_CLASS||'-'}</td>`,
+      'vhc-c4':  `<td style="${vw('vhc-c4',110)}" title="${row.CARRIER||''}">${_lbl(carrierMap,row.CARRIER)}</td>`,
+      'vhc-c5':  `<td style="${vw('vhc-c5',70)}" title="${row.VEHICLE_TYPE||''}"><span style="font-size:10px;font-weight:700;padding:2px 5px;border-radius:3px;background:var(--surface2);color:${tc}">${_lbl(vtypeMap,row.VEHICLE_TYPE)}</span></td>`,
+      'vhc-c6':  `<td style="${vw('vhc-c6',70)}" title="${row.VEHICLE_KIND||''}">${_lbl(vkindMap,row.VEHICLE_KIND)}</td>`,
+      'vhc-c7':  `<td style="${vw('vhc-c7',60)}color:var(--primary);font-weight:600" title="${row.VEHICLE_CLASS||''}">${_classLbl(row.PRODUCT_GROUP,row.VEHICLE_CLASS)}</td>`,
       'vhc-c8':  `<td style="${vw('vhc-c8',100)}font-weight:600" title="${row.DRIVER_NAME||''}">${row.DRIVER_NAME||'-'}</td>`,
       'vhc-c9':  `<td style="${vw('vhc-c9',130)}color:var(--text3);font-family:monospace;font-size:11px">${row.CONTACT_NO||'-'}</td>`,
       // 삭제여부 컬럼: DEL_YN='Y' → '삭제', 그 외(NULL/'N') → '사용'

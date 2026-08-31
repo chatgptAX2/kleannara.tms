@@ -25,12 +25,13 @@ public class VhcmaRepositoryImpl implements VhcmaRepositoryCustom {
 
     // ※ SELECT * 는 컬럼 순서가 DB 물리순서라 프론트(컬럼명 접근)와 매핑이 어긋남.
     //   명시적 컬럼 목록으로 고정 → VehicleService 에서 동일 순서로 Map(컬럼명) 변환.
-    // ※ VHCMA 물리 테이블에 미존재하는 컬럼(VHC_ID, CARTYPE, CARCLASS_CD) 제거 → ORA-00904 해소.
-    //   - VHC_ID     : PK(시퀀스 VHCMA_SEQ). 조회 SELECT 대상 아님(엔티티 매핑 전용).
+    // ※ VHCMA 물리 테이블에 미존재하는 컬럼(CARTYPE, CARCLASS_CD) 제거 → ORA-00904 해소.
+    //   - VHC_ID     : PK(시퀀스 VHCMA_SEQ). 물리 컬럼명은 VHC_ID (엔티티 @Column도 VHC_ID).
+    //                  프론트에는 VEHICLE_ID 라는 별칭으로 노출(SELECT VHC_ID AS VEHICLE_ID).
     //   - CARTYPE    : 차종명 → 실제 컬럼은 VEHICLE_KIND(차종)로 대체.
     //   - CARCLASS_CD: 차종(차형)코드 → 실제 컬럼은 VEHICLE_CLASS(차형)로 대체.
     public static final String[] COLS = {
-        "VEHICLE_ID",
+        "VHC_ID AS VEHICLE_ID",
         "VEHICLE_NO","OWNRKY","SHIP_POINT","PRODUCT_GROUP","DELIVERY_ZONE",
         "CARRIER","VEHICLE_TYPE","VEHICLE_KIND","VEHICLE_CLASS",
         "DRIVER_NAME","CONTACT_NO","PALLET_QTY","FLOOR_TYPE","USE_YN","OPERABLE_YN",
@@ -104,9 +105,10 @@ public class VhcmaRepositoryImpl implements VhcmaRepositoryCustom {
     }
 
     /**
-     * 차량번호 검색: VEHICLE_ID = '입력값' OR VEHICLE_NO LIKE '%입력값%'
-     *  - 입력값이 순수 숫자면 VEHICLE_ID 정확일치 OR 차량번호 부분일치.
-     *  - 숫자가 아니면(예: '37더3739') VEHICLE_ID(숫자형) 비교 시 ORA-01722 위험 →
+     * 차량번호 검색: VHC_ID(=VEHICLE_ID 별칭) = '입력값' OR VEHICLE_NO LIKE '%입력값%'
+     *  - 물리 PK 컬럼명은 VHC_ID (VEHICLE_ID 컬럼은 미존재 → ORA-00904 방지 위해 VHC_ID 사용).
+     *  - 입력값이 순수 숫자면 VHC_ID 정확일치 OR 차량번호 부분일치.
+     *  - 숫자가 아니면(예: '37더3739') VHC_ID(숫자형) 비교 시 ORA-01722 위험 →
      *    차량번호 부분일치만 적용.
      */
     private void addVehicleNoOrId(StringBuilder where, List<Object> params, String val) {
@@ -115,8 +117,8 @@ public class VhcmaRepositoryImpl implements VhcmaRepositoryCustom {
         boolean numeric = kw.matches("\\d+");
         where.append(where.length() == 0 ? " WHERE" : " AND").append(' ');
         if (numeric) {
-            where.append("(VEHICLE_ID = ? OR VEHICLE_NO LIKE '%' || ? || '%')");
-            params.add(kw);   // VEHICLE_ID = ?  (문자 바인딩이어도 Oracle 암시적 숫자변환)
+            where.append("(VHC_ID = ? OR VEHICLE_NO LIKE '%' || ? || '%')");
+            params.add(kw);   // VHC_ID = ?  (문자 바인딩이어도 Oracle 암시적 숫자변환)
             params.add(kw);   // VEHICLE_NO LIKE
         } else {
             where.append("VEHICLE_NO LIKE '%' || ? || '%'");
