@@ -42,10 +42,14 @@ public class CommonCodeService {
     public List<Map<String, Object>> getCodes(String cmcdky) {
         try {
             // Oracle KNRAWMS.CMCDV: SORTNO 컬럼 미존재 → SELECT/ORDER BY 제외
-            List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT CMCDVL, CDESC1, CDESC2, USARG1, USARG2, USARG3, USARG4, USARG5 " +
-                "FROM KNRAWMS.CMCDV WHERE CMCDKY = ? ORDER BY CMCDVL", cmcdky
-            );
+            // 운송사(TMS_CARRIER)는 사용여부(USARG1='Y') 코드만 조회.
+            String sql = "SELECT CMCDVL, CDESC1, CDESC2, USARG1, USARG2, USARG3, USARG4, USARG5 " +
+                         "FROM KNRAWMS.CMCDV WHERE CMCDKY = ?";
+            if ("TMS_CARRIER".equalsIgnoreCase(cmcdky)) {
+                sql += " AND USARG1 = 'Y'";
+            }
+            sql += " ORDER BY CMCDVL";
+            List<Map<String, Object>> rows = jdbc.queryForList(sql, cmcdky);
             List<Map<String, Object>> result = new ArrayList<>();
             for (Map<String, Object> r : rows) {
                 Map<String, Object> item = new LinkedHashMap<>();
