@@ -2199,6 +2199,24 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
   padding-left:4px !important;
   padding-right:4px !important;
 }
+/* ── 배차탭 선적목록/납품문서 — 마우스 컬럼 너비 조정 지원 ── */
+/* 리사이즈를 위해 table-layout:fixed (col width 최우선) 적용 */
+.psop-rz-tbl{table-layout:fixed !important}
+/* th 우측 여백 확보(리사이즈 핸들 8px 공간) + 텍스트 말줄임 */
+.psop-rz-tbl thead th{
+  position:relative;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+/* 리사이즈 핸들 — th 우측 끝 col-resize 커서 */
+.psop-rz-tbl thead th .col-rz{
+  position:absolute;right:-1px;top:0;bottom:0;width:8px;
+  cursor:col-resize;z-index:15;background:transparent;transition:background .15s;
+}
+.psop-rz-tbl thead th:hover .col-rz{background:rgba(30,58,95,.2)}
+.psop-rz-tbl thead th .col-rz:hover,
+.psop-rz-tbl thead th .col-rz.rz-active{background:var(--primary) !important;opacity:.85}
+/* 리사이즈 대상 td 도 말줄임(내용이 폭보다 길어도 컬럼폭 유지) */
+.psop-rz-tbl tbody td{overflow:hidden;text-overflow:ellipsis}
 /* 납품문서 하단패널 드롭 활성 */
 #psop-veh-doc-area.psd-doc-drop-active{
   outline:2px dashed #10b981;
@@ -4399,6 +4417,49 @@ const _ssColW     = {}; // 출고문서아이템 컬럼 너비 저장
 const _psopDocColW = {}; // PS배차(최적화) 납품문서 컬럼 너비 저장
 const _sapLeftColW = {}; // SAP 선적목록 컬럼 너비 저장
 const _sapDocColW  = {}; // SAP 납품문서 컬럼 너비 저장
+const _psopVehColW = {}; // 배차탭 선적목록(차량) 컬럼 너비 저장
+const _psopVdocColW= {}; // 배차탭 납품문서 상세 컬럼 너비 저장
+// 배차탭 선적목록(차량) 컬럼 정의 — 마우스 너비조정 기준값(w)
+const _psopVehColDefs = [
+  { id:'chk',    label:'<input type="checkbox" id="psop-veh-all-chk2" onclick="psopSelectAllVehicles(this.checked)" title="전체선택">', w:26 },
+  { id:'stdlnr', label:'가선적번호', w:68  },
+  { id:'cartype',label:'차량유형',   w:72  },
+  { id:'dptnm',  label:'납품처',     w:100 },
+  { id:'rqshpd', label:'납품일',     w:68  },
+  { id:'loadkg', label:'적재가능',   w:72  },
+  { id:'usedkg', label:'현재적재량', w:72  },
+  { id:'ratio',  label:'적재율',     w:70  },
+];
+// 배차탭 납품문서 상세 컬럼 정의
+const _psopVdocColDefs = [
+  { id:'shpoky', label:'납품문서 ↩', w:88  },
+  { id:'dptnm',  label:'납품처명',   w:100 },
+  { id:'desc01', label:'품목명',     w:120 },
+  { id:'qtshpo', label:'납품수량',   w:56  },
+  { id:'uomkey', label:'단위',       w:40  },
+  { id:'skutype',label:'유형',       w:52  },
+  { id:'inch',   label:'인치',       w:46  },
+  { id:'wgt',    label:'중량',       w:62  },
+  { id:'rollcnt',label:'원지개수',   w:56  },
+  { id:'cbm',    label:'CBM',        w:56  },
+  { id:'rqshpd', label:'납품일',     w:72  },
+  { id:'shpmty', label:'출하유형',   w:62  },
+];
+// 공통: colgroup + thead 생성 (data-rzid + col-rz 리사이즈 핸들 포함)
+function _psopBuildResizableHead(defs, store, colPrefix, tblSel){
+  const cols = defs.map(d =>
+    `<col id="${colPrefix}-${d.id}" style="width:${(store[d.id]||d.w)}px">`
+  ).join('');
+  const ths = defs.map(d => {
+    const w = store[d.id] || d.w;
+    // 체크박스 컬럼(chk)은 리사이즈 핸들 생략 — 좁은 폭 고정 유지
+    const rz = d.id === 'chk'
+      ? ''
+      : `<span class="col-rz" onmousedown="tableResizerDown(event,'${d.id}','${tblSel}')"></span>`;
+    return `<th data-rzid="${d.id}" style="width:${w}px;min-width:${w}px;max-width:${w}px;position:relative">${d.label}${rz}</th>`;
+  }).join('');
+  return { colgroup:`<colgroup>${cols}</colgroup>`, thead:`<thead><tr>${ths}</tr></thead>` };
+}
 
 (function(){
   let _dragging = false;
@@ -4421,6 +4482,8 @@ const _sapDocColW  = {}; // SAP 납품문서 컬럼 너비 저장
                : tableSelector === '.psd-doc-tbl'    ? _psopDocColW
                : tableSelector === '.sap-left-tbl'   ? _sapLeftColW
                : tableSelector === '.sap-doc-tbl'    ? _sapDocColW
+               : tableSelector === '#psop-veh-tbl'   ? _psopVehColW
+               : tableSelector === '#psop-vdoc-tbl'  ? _psopVdocColW
                : _vhcColW;
     _startX    = e.clientX;
 
@@ -4490,6 +4553,8 @@ const _sapDocColW  = {}; // SAP 납품문서 컬럼 너비 저장
       '.psd-doc-tbl':  `psop-col-${_colId}`,
       '.sap-left-tbl': `sap-left-col-${_colId}`,
       '.sap-doc-tbl':  `sap-doc-col-${_colId}`,
+      '#psop-veh-tbl':  `psop-vehcol-${_colId}`,
+      '#psop-vdoc-tbl': `psop-vdoccol-${_colId}`,
     };
     const colDomId = colIdCandidates[_tblSel];
     if (colDomId) {
@@ -15589,35 +15654,16 @@ function psopRenderVehicleArea() {
     </tr>`;
   }).join('');
 
+  const _vh = _psopBuildResizableHead(_psopVehColDefs, _psopVehColW, 'psop-vehcol', '#psop-veh-tbl');
   area.innerHTML = `
     <div id="psop-car-wrap"
          ondragover="psopVehicleAreaDragOver(event)"
          ondragleave="psopVehicleAreaDragLeave(event)"
          ondrop="psopDropToVehicleNew(event)"
          style="height:100%">
-      <table class="psd-sap-tbl">
-        <colgroup>
-          <col style="width:26px">
-          <col style="width:68px">
-          <col style="width:72px">
-          <col style="min-width:80px;max-width:120px">
-          <col style="width:68px">
-          <col style="width:72px">
-          <col style="width:72px">
-          <col style="min-width:64px">
-        </colgroup>
-        <thead>
-          <tr>
-            <th><input type="checkbox" id="psop-veh-all-chk2" onclick="psopSelectAllVehicles(this.checked)" title="전체선택"></th>
-            <th>가선적번호</th>
-            <th>차량유형</th>
-            <th>납품처</th>
-            <th style="white-space:nowrap">납품일</th>
-            <th>적재가능</th>
-            <th>현재적재량</th>
-            <th>적재율</th>
-          </tr>
-        </thead>
+      <table class="psd-sap-tbl psop-rz-tbl" id="psop-veh-tbl">
+        ${_vh.colgroup}
+        ${_vh.thead}
         <tbody>${tbody}</tbody>
       </table>
       <div class="psd-drop-hint" id="psop-drop-hint-new" style="display:none">
@@ -15746,38 +15792,11 @@ function _psopVehRenderDocs(pid) {
     </tr>`;
   }).join('');
 
+  const _vd = _psopBuildResizableHead(_psopVdocColDefs, _psopVdocColW, 'psop-vdoccol', '#psop-vdoc-tbl');
   area.innerHTML = `
-    <table class="psd-sap-tbl">
-      <colgroup>
-        <col style="width:88px">
-        <col style="min-width:100px">
-        <col style="min-width:120px">
-        <col style="width:56px">
-        <col style="width:34px">
-        <col style="width:52px">
-        <col style="width:46px">
-        <col style="width:62px">
-        <col style="width:56px">
-        <col style="width:56px">
-        <col style="width:72px">
-        <col style="width:62px">
-      </colgroup>
-      <thead>
-        <tr>
-          <th title="드래그 또는 더블클릭으로 납품문서 목록에 환원 가능">납품문서 ↩</th>
-          <th>납품처명</th>
-          <th>품목명</th>
-          <th>납품수량</th>
-          <th>단위</th>
-          <th>유형</th>
-          <th>인치</th>
-          <th>중량</th>
-          <th>원지개수</th>
-          <th>CBM</th>
-          <th>납품일</th>
-          <th>출하유형</th>
-        </tr>
-      </thead>
+    <table class="psd-sap-tbl psop-rz-tbl" id="psop-vdoc-tbl">
+      ${_vd.colgroup}
+      ${_vd.thead}
       <tbody>${tbody}</tbody>
     </table>`;
 }
