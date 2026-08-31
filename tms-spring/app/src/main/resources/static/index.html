@@ -6697,11 +6697,13 @@ function buildVehicleUI() {
   // 제품군 검색 기본 선택 = 10(제지)
   const skug05Opts   = vhcState.codes['SKUG05'].map(o=>
     `<option value="${o.value}"${String(o.value)==='10'?' selected':''}>${o.value} (${o.label})</option>`).join('');
+  // 운송사(검색): value='0000'+코드(CMCDVL) 예)0000300342, 노출=운송사명(label)
   const carrierOpts  = vhcState.codes['TMS_CARRIER'].map(o=>
-    `<option value="${o.label}">${o.label}</option>`).join('');
+    `<option value="0000${o.value}">${o.label}</option>`).join('');
+  // 차종(검색): value=코드(CMCDVL) 예)1,2,3,4,5, 노출=명칭(label)
   const kindOpts     = vhcState.codes['TMS_CARKIND'].map(o=>
-    `<option value="${o.label}">${o.label}</option>`).join('');
-  // 차형(톤수) 옵션: 제품군 기본 10(제지) → CARCLASS10 기준, arg1=Y 필터
+    `<option value="${o.value}">${o.label}</option>`).join('');
+  // 차형(톤수) 옵션: 제품군 기본 10(제지) → CARCLASS10 기준, arg1=Y 필터 / value=코드
   const classOpts    = _vhcBuildClassOpts('10');
   const fo           = vhcState.filterOpts;
   // 배송구역 옵션: value=CMCDVL 앞2자리(KEY), 표시=CDESC2(권역명), 중복제거
@@ -6714,7 +6716,8 @@ function buildVehicleUI() {
     return [...seen.entries()].sort((a,b)=>a[0].localeCompare(b[0]))
       .map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
   })();
-  const vtypeOpts    = (vhcState.codes['TMS_CARART']||[]).map(o=>`<option value="${o.label}">${o.label}</option>`).join('');
+  // 차량구분(검색): value=코드(CMCDVL) 예)Z01,Z02, 노출=명칭(label)
+  const vtypeOpts    = (vhcState.codes['TMS_CARART']||[]).map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
   // 출하지점: 1100(제지)/1200(생활) 하드코딩, 검색 기본 선택 = 1100(제지)
   const spOpts       = _vhcBuildShipPointOpts('1100');
 
@@ -6835,11 +6838,14 @@ function buildVehicleForm() {
   // 제품군 폼 기본 선택 = 10(제지)
   const skug05Opts   = vhcState.codes['SKUG05'].map(o=>
     `<option value="${o.value}"${String(o.value)==='10'?' selected':''}>${o.value} (${o.label})</option>`).join('');
+  // 운송사(폼): value='0000'+코드(CMCDVL) 예)0000300342, 노출=운송사명(label)
+  //   → 차량리스트 선택 시 _vhcFillCarrier 가 '0000'+코드로 매칭하여 운송사코드 설정
   const carrierOpts  = vhcState.codes['TMS_CARRIER'].map(o=>
-    `<option value="${o.label}">${o.label}</option>`).join('');
+    `<option value="0000${o.value}">${o.label}</option>`).join('');
+  // 차종(폼): value=코드(CMCDVL) 예)1,2,3,4,5, 노출=명칭(label)
   const kindOpts     = vhcState.codes['TMS_CARKIND'].map(o=>
-    `<option value="${o.label}">${o.label}</option>`).join('');
-  const classOpts    = _vhcBuildClassOpts('10');  // 폼 제품군 기본 10(제지) 기준
+    `<option value="${o.value}">${o.label}</option>`).join('');
+  const classOpts    = _vhcBuildClassOpts('10');  // 폼 제품군 기본 10(제지) 기준 / value=코드
   const floorOpts    = vhcState.codes['TMS_FLOORTYPE'].map(o=>
     `<option value="${o.label}">${o.label}</option>`).join('');
   const fo           = vhcState.filterOpts;
@@ -6855,7 +6861,8 @@ function buildVehicleForm() {
   })();
   // 출하지점: 1100(제지)/1200(생활) 하드코딩, 폼 기본 선택 = 1100(제지)
   const spOpts       = _vhcBuildShipPointOpts('1100');
-  const vtypeOpts    = (vhcState.codes['TMS_CARART']||[]).map(o=>`<option value="${o.label}">${o.label}</option>`).join('');
+  // 차량구분(폼): value=코드(CMCDVL) 예)Z01,Z02, 노출=명칭(label)
+  const vtypeOpts    = (vhcState.codes['TMS_CARART']||[]).map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
   const dlvTimeOpts  = (vhcState.codes['TMS_INBOUNDTIME']||[])
     .slice().sort((a,b)=>parseInt(a.value)-parseInt(b.value))
     .map(o=>{ const hh=String(parseInt(o.value)).padStart(2,'0'); return `<option value="${hh}:00">${o.label}</option>`; }).join('');
@@ -7088,20 +7095,22 @@ function _vhcBuildClassOpts(prodGroup, curVal) {
   // 차량톤수(차형) 기본값 매칭: 상단 차형값(curVal)을 '코드(CMCDVL=o.value)' 우선 판단,
   //   코드 매칭이 없으면 '라벨(o.label)' 로도 매칭 → 저장값이 코드/명 어느 쪽이든 복원.
   const cur     = (curVal == null ? '' : String(curVal)).trim();
+  // 차형(톤수) 옵션: value=코드(CMCDVL) 예)Z010,Z180, 노출=명칭(label)
   return filtered.map(o => {
     const sel = (cur && (String(o.value).trim() === cur || o.label === cur)) ? ' selected' : '';
-    return `<option value="${o.label}"${sel}>${o.label}</option>`;
+    return `<option value="${o.value}"${sel}>${o.label}</option>`;
   }).join('');
 }
 
 /* 운송사 폼 값 채우기 — 운송사 코드에 '0000' prefix 를 결합하여 기본값 매칭 판단
-   - 운송사 옵션(vf-CARRIER)의 value = 운송사명(o.label), 코드 = o.value(CMCDVL)
+   - 운송사 옵션(vf-CARRIER)의 value = '0000' + 코드(CMCDVL) 예)0000300342, 노출 = 운송사명(label)
    - DB CARRIER 값은 '0000' + 코드 형태로 저장됨 (예: 코드 300342 → 0000300342)
    - 매칭 규칙(우선순위):
        ① DB값 === '0000' + 코드           (예: 0000300342 === '0000'+'300342')
        ② DB값 === 코드(CMCDVL)             (prefix 없이 저장된 레거시 대응)
        ③ DB값 === 라벨(CDESC1, 운송사명)   (명칭으로 저장된 경우)
-   - 매칭되는 운송사가 없으면 미선택('') */
+   - 매칭되는 운송사가 없으면 미선택('')
+   - 옵션 value 가 '0000'+코드 이므로 선택 시 sel.value 도 '0000'+코드(운송사코드)로 설정 */
 function _vhcFillCarrier(carrierVal) {
   const sel = document.getElementById('vf-CARRIER');
   if (!sel) return;
@@ -7117,8 +7126,8 @@ function _vhcFillCarrier(carrierVal) {
           || String(o.label).trim() === cur;    // ③ 운송사명
     });
   }
-  // 옵션 value 는 운송사명(label) 기준이므로 label 로 설정
-  sel.value = matched ? matched.label : '';
+  // 옵션 value 는 '0000'+코드 기준이므로 '0000'+코드 로 설정 → 운송사코드 설정
+  sel.value = matched ? ('0000' + String(matched.value).trim()) : '';
 }
 
 /* 차형 드롭다운 DOM 갱신 — 제품군 변경 시 호출
@@ -7846,10 +7855,23 @@ function fillVehicleForm(row) {
     vnoEl.style.cursor  = (vhcState.mode === 'edit') ? 'not-allowed' : '';
   }
 
-  ['SHIP_POINT','PRODUCT_GROUP','DELIVERY_ZONE','VEHICLE_TYPE',
-   'VEHICLE_KIND','FLOOR_TYPE','VEHICLE_YEAR',
+  ['SHIP_POINT','PRODUCT_GROUP','DELIVERY_ZONE','FLOOR_TYPE','VEHICLE_YEAR',
    'PALLET_QTY','DRIVER_NAME','CONTACT_NO',
    'DELIVERY_CUSTOMER_1','DELIVERY_CUSTOMER_2'].forEach(f => setVal(`vf-${f}`, row[f]));
+
+  // 차량구분(TMS_CARART)/차종(TMS_CARKIND): 옵션 value=코드 → DB값이 코드/명칭 어느 쪽이든 복원
+  //   ① 코드(CMCDVL) 일치 → 코드값 세팅  ② 명칭(label) 일치 → 해당 코드값 세팅
+  const _setCodeSel = (id, cmcdky, dbVal) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const cur = (dbVal == null ? '' : String(dbVal)).trim();
+    if (!cur) { el.value = ''; return; }
+    const codes = vhcState.codes[cmcdky] || [];
+    const m = codes.find(o => String(o.value).trim() === cur || String(o.label).trim() === cur);
+    el.value = m ? String(m.value).trim() : '';
+  };
+  _setCodeSel('vf-VEHICLE_TYPE', 'TMS_CARART',  row.VEHICLE_TYPE);
+  _setCodeSel('vf-VEHICLE_KIND', 'TMS_CARKIND', row.VEHICLE_KIND);
 
   // 운송사: 코드 '0000'(기본 운송사) 연결하여 기본값 매칭 여부 판단
   _vhcFillCarrier(row.CARRIER);
