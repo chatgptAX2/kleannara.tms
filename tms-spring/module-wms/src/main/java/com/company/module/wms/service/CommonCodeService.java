@@ -108,26 +108,25 @@ public class CommonCodeService {
             List<Map<String, Object>> exists = jdbc.queryForList(
                 "SELECT WAREKY FROM KNRAWMS.WAHMA WHERE WAREKY = ?", wareky
             );
+            // ※ 실제 WAHMA 컬럼: 창고명 = NAME01 (WARENM 아님). ACTIVE 컬럼 미존재 → 제외.
             if (exists.isEmpty()) {
                 jdbc.update(
-                    "INSERT INTO KNRAWMS.WAHMA (WAREKY, WARENM, WADDR1, WADDR2, POSTCD, TELNO, FAXNO, USARG1, USARG2, ACTIVE, CREDAT, LMODAT) " +
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "INSERT INTO KNRAWMS.WAHMA (WAREKY, NAME01, WADDR1, WADDR2, POSTCD, TELNO, FAXNO, USARG1, USARG2, CREDAT, LMODAT) " +
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                     wareky, warenm,
                     body.get("WADDR1"), body.get("WADDR2"), body.get("POSTCD"),
                     body.get("TELNO"), body.get("FAXNO"),
                     body.get("USARG1"), body.get("USARG2"),
-                    body.getOrDefault("ACTIVE", "Y"),
                     today, today
                 );
             } else {
                 jdbc.update(
-                    "UPDATE KNRAWMS.WAHMA SET WARENM=?, WADDR1=?, WADDR2=?, POSTCD=?, TELNO=?, FAXNO=?, " +
-                    "USARG1=?, USARG2=?, ACTIVE=?, LMODAT=? WHERE WAREKY=?",
+                    "UPDATE KNRAWMS.WAHMA SET NAME01=?, WADDR1=?, WADDR2=?, POSTCD=?, TELNO=?, FAXNO=?, " +
+                    "USARG1=?, USARG2=?, LMODAT=? WHERE WAREKY=?",
                     warenm,
                     body.get("WADDR1"), body.get("WADDR2"), body.get("POSTCD"),
                     body.get("TELNO"), body.get("FAXNO"),
                     body.get("USARG1"), body.get("USARG2"),
-                    body.getOrDefault("ACTIVE", "Y"),
                     today, wareky
                 );
             }
