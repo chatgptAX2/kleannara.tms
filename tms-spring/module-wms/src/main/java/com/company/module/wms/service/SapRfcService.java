@@ -709,8 +709,33 @@ public class SapRfcService {
             where.add("SI.STDLNR IS NOT NULL");
             where.add("TRIM(SI.STDLNR) != ''");
             List<Object> args = new ArrayList<>();
-            if (!rqFrom.isEmpty()) { where.add("SH.RQSHPD >= ?"); args.add(rqFrom); }
-            if (!rqTo.isEmpty())   { where.add("SH.RQSHPD <= ?"); args.add(rqTo); }
+            // ── 날짜 필터 (핵심 수정) ──
+            //   기존에는 SH.RQSHPD(SHPDH 납품요청일) 범위만으로 필터했으나,
+            //   배차저장 시 SHPDH.RQSHPD 가 갱신되지 않거나 값 포맷(시간 포함 등)이
+            //   달라 저장된 선적(STDLNR)이 SAP선적탭에서 누락되는 문제가 있었다.
+            //   가선적번호(STDLNR)는 'yymmdd + seq(3) + T' 형식으로 채번일(=납품일)을
+            //   앞 6자리에 포함하므로, "SH.RQSHPD 범위" 또는 "STDLNR 앞6자리(yymmdd) 범위"
+            //   중 하나만 만족해도 조회되도록 OR 로 확장한다. (rqFrom/rqTo 는 yyyymmdd 8자리)
+            if (!rqFrom.isEmpty() || !rqTo.isEmpty()) {
+                List<String> dateConds = new ArrayList<>();
+                List<Object>  dateArgs = new ArrayList<>();
+                // (a) SHPDH.RQSHPD 범위
+                List<String> a = new ArrayList<>();
+                if (!rqFrom.isEmpty()) { a.add("SH.RQSHPD >= ?"); dateArgs.add(rqFrom); }
+                if (!rqTo.isEmpty())   { a.add("SH.RQSHPD <= ?"); dateArgs.add(rqTo);   }
+                dateConds.add("(" + String.join(" AND ", a) + ")");
+                // (b) STDLNR 앞 6자리(yymmdd) 범위  ─ rqFrom/rqTo 8자리에서 뒤 6자리 사용
+                List<String> b = new ArrayList<>();
+                if (!rqFrom.isEmpty() && rqFrom.length() >= 6) {
+                    b.add("SUBSTR(TRIM(SI.STDLNR),1,6) >= ?"); dateArgs.add(rqFrom.substring(rqFrom.length()-6));
+                }
+                if (!rqTo.isEmpty() && rqTo.length() >= 6) {
+                    b.add("SUBSTR(TRIM(SI.STDLNR),1,6) <= ?"); dateArgs.add(rqTo.substring(rqTo.length()-6));
+                }
+                if (!b.isEmpty()) dateConds.add("(" + String.join(" AND ", b) + ")");
+                where.add("(" + String.join(" OR ", dateConds) + ")");
+                args.addAll(dateArgs);
+            }
             if (!stknum.isEmpty()) { where.add("SI.STDLNR LIKE ?"); args.add("%" + stknum + "%"); }
             if (!dptnky.isEmpty()) {
                 where.add("(SH.DPTNKY LIKE ? OR CT.NAME01 LIKE ?)");
@@ -763,7 +788,33 @@ public class SapRfcService {
                 "GROUP BY SI.STDLNR " +
                 "ORDER BY MIN(SH.RQSHPD) DESC, SI.STDLNR";
 
+            log.info("[SAP-list] 조회 파라미터 rqFrom={} rqTo={} stknum={} dptnky={}",
+                     rqFrom, rqTo, stknum, dptnky);
+            log.info("[SAP-list] ==== SQL ====\n{}\nargs={}", sql, args);
+
             List<Map<String, Object>> rows = wmsJdbc.queryForList(sql, args.toArray());
+            log.info("[SAP-list] 조회 결과: {}건", rows.size());
+
+            // ── 진단: 결과 0건이면 원인 절분을 위해 필터별 건수를 개별 확인 ──
+            //   (a) STDLNR 채번 문서 자체가 있는가 (날짜/납품처 필터 완전 무시)
+            //   (b) 날짜 범위만 적용 시 건수  → 날짜 필터가 원인인지 판별
+            if (rows.isEmpty()) {
+                try {
+                    Integer totCnt = wmsJdbc.queryForObject(
+                        "SELECT COUNT(DISTINCT SI.STDLNR) FROM KNRAWMS.SHPDI SI " +
+                        "WHERE SI.STDLNR IS NOT NULL AND TRIM(SI.STDLNR) != ''", Integer.class);
+                    log.warn("[SAP-list] 결과 0건 진단 — 전체 STDLNR 채번 선적 수(필터무시)={}건", totCnt);
+
+                    Integer joinCnt = wmsJdbc.queryForObject(
+                        "SELECT COUNT(DISTINCT SI.STDLNR) FROM KNRAWMS.SHPDI SI " +
+                        "JOIN KNRAWMS.SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
+                        "WHERE SI.STDLNR IS NOT NULL AND TRIM(SI.STDLNR) != ''", Integer.class);
+                    log.warn("[SAP-list] 결과 0건 진단 — SHPDH JOIN 후 STDLNR 선적 수(날짜무시)={}건 "
+                             + "(전체와 다르면 SHPDH 매칭 누락, 같은데 결과가 0이면 날짜필터가 원인)", joinCnt);
+                } catch (Exception de) {
+                    log.warn("[SAP-list] 0건 진단 쿼리 실패: {}", de.getMessage());
+                }
+            }
 
             // ── 차량유형 코드/명칭 정규화 (Flask 로직 이식) ──
             for (Map<String, Object> d : rows) {
