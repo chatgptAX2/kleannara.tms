@@ -25,7 +25,7 @@ public class Vhcma {
     @SequenceGenerator(name = "VHCMA_SEQ",
                        sequenceName = "KNRAWMS.VHCMA_SEQ",
                        allocationSize = 1)
-    @Column(name = "VHC_ID")
+    @Column(name = "VEHICLE_ID")
     private Long vhcId;
 
     @Column(name = "VEHICLE_NO", length = 20, nullable = false)
