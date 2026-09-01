@@ -2344,6 +2344,12 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psd-load-summary-tbl th{padding:5px 8px;background:var(--th-bg);color:var(--text3);font-size:10px;font-weight:700;border-bottom:1px solid var(--border);text-align:center;white-space:nowrap}
 .psd-load-summary-tbl td{padding:5px 8px;border-bottom:1px solid var(--tr-border);color:var(--text);text-align:center;white-space:nowrap}
 .psd-load-summary-tbl tr:hover td{background:var(--tr-hover)}
+/* 적재뷰 요약 테이블 컬럼 너비 조정(리사이즈) — colgroup 기반 고정 레이아웃 */
+.psd-load-summary-tbl.lv-resizable{table-layout:fixed}
+.psd-load-summary-tbl.lv-resizable th{position:relative;overflow:hidden;text-overflow:ellipsis}
+.psd-load-summary-tbl.lv-resizable td{overflow:hidden;text-overflow:ellipsis}
+.psd-load-summary-tbl .lv-col-rz{position:absolute;right:0;top:0;bottom:0;width:6px;cursor:col-resize;background:transparent;z-index:5;user-select:none}
+.psd-load-summary-tbl .lv-col-rz:hover,.psd-load-summary-tbl .lv-col-rz.resizing{background:var(--primary);opacity:.6}
 /* 차량 내 납품문서 목록 */
 .psd-car-items{padding:4px 0}
 .psd-car-item{display:flex;align-items:center;gap:6px;padding:5px 12px;border-bottom:1px solid var(--tr-border);transition:.1s;cursor:grab;user-select:text;font-size:11px}
@@ -11419,6 +11425,7 @@ function _psdRenderLoadCanvas(v, veh) {
         </tr>
       </tbody>
     </table>`;
+  lvEnableColResize(summEl.querySelector('.psd-load-summary-tbl'));
 }
 
 /* 색상 밝게/어둡게 헬퍼 */
@@ -11442,6 +11449,105 @@ function _psdBlendColor(hex, dest, factor) {
   return `rgb(${r},${g},${b})`;
 }
 /* ── 적재 시각화 끝 ─────────────────────────────── */
+
+/* ═══════════════════════════════════════════════════════════
+   적재뷰 요약 테이블 컬럼 너비 조정(리사이즈) — 공용 인핸서
+   - .psd-load-summary-tbl 테이블에 colgroup + 헤더 리사이즈 핸들 부착
+   - 컬럼별 너비를 localStorage 에 저장(라벨 기준) → 재진입/재렌더 시 복원
+═══════════════════════════════════════════════════════════ */
+const LV_COL_W_LS_KEY = 'tms_loadview_col_widths_v1';
+
+function _lvColLoadWidths() {
+  try { return JSON.parse(localStorage.getItem(LV_COL_W_LS_KEY) || '{}') || {}; }
+  catch(_) { return {}; }
+}
+function _lvColSaveWidths(map) {
+  try { localStorage.setItem(LV_COL_W_LS_KEY, JSON.stringify(map)); } catch(_){}
+}
+
+/* 적재뷰 요약 테이블에 리사이즈 기능 부착 (렌더 직후 호출) */
+function lvEnableColResize(tbl) {
+  if (!tbl || tbl.__lvResizeReady) return;
+  const headRow = tbl.querySelector('thead tr');
+  if (!headRow) return;
+  const ths = [...headRow.children];
+  if (!ths.length) return;
+
+  tbl.classList.add('lv-resizable');
+
+  // 저장된 너비 맵 (컬럼 라벨 → px)
+  const saved = _lvColLoadWidths();
+
+  // colgroup 생성 (table-layout:fixed 에서 너비 결정)
+  let colgroup = tbl.querySelector('colgroup');
+  if (!colgroup) {
+    colgroup = document.createElement('colgroup');
+    ths.forEach(() => colgroup.appendChild(document.createElement('col')));
+    tbl.insertBefore(colgroup, tbl.firstChild);
+  }
+  const cols = [...colgroup.children];
+
+  // 각 헤더에 라벨 부여 + 저장 너비 적용 + 리사이즈 핸들 부착
+  ths.forEach((th, idx) => {
+    const label = (th.textContent || ('col' + idx)).trim();
+    th.dataset.lvCol = label;
+    const w = saved[label];
+    if (w && cols[idx]) cols[idx].style.width = w + 'px';
+
+    if (!th.querySelector('.lv-col-rz')) {
+      const rz = document.createElement('div');
+      rz.className = 'lv-col-rz';
+      rz.addEventListener('mousedown', (e) => _lvColRzDown(e, tbl, colgroup, idx, label));
+      // 더블클릭 시 해당 컬럼 너비 초기화
+      rz.addEventListener('dblclick', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        const m = _lvColLoadWidths();
+        delete m[label];
+        _lvColSaveWidths(m);
+        if (cols[idx]) cols[idx].style.width = '';
+      });
+      th.appendChild(rz);
+    }
+  });
+
+  tbl.__lvResizeReady = true;
+}
+
+let _lvRzState = null;
+function _lvColRzDown(e, tbl, colgroup, idx, label) {
+  e.preventDefault();
+  e.stopPropagation();
+  const cols = [...colgroup.children];
+  const col = cols[idx];
+  const th = tbl.querySelectorAll('thead th')[idx];
+  const startW = th ? th.getBoundingClientRect().width : 100;
+  _lvRzState = { tbl, col, idx, label, startX: e.clientX, startW };
+  e.target.classList.add('resizing');
+  document.body.style.cursor = 'col-resize';
+  document.addEventListener('mousemove', _lvColRzMove);
+  document.addEventListener('mouseup', _lvColRzUp);
+}
+function _lvColRzMove(e) {
+  if (!_lvRzState) return;
+  const delta = e.clientX - _lvRzState.startX;
+  const newW = Math.max(40, Math.round(_lvRzState.startW + delta));
+  _lvRzState.col.style.width = newW + 'px';
+}
+function _lvColRzUp() {
+  if (_lvRzState) {
+    const w = parseInt(_lvRzState.col.style.width, 10);
+    if (w > 0) {
+      const m = _lvColLoadWidths();
+      m[_lvRzState.label] = w;
+      _lvColSaveWidths(m);
+    }
+    document.querySelectorAll('.lv-col-rz.resizing').forEach(r => r.classList.remove('resizing'));
+  }
+  _lvRzState = null;
+  document.body.style.cursor = '';
+  document.removeEventListener('mousemove', _lvColRzMove);
+  document.removeEventListener('mouseup', _lvColRzUp);
+}
 
 /* ── 차량 선택 (헤더 클릭 → 단독 선택 또는 토글) ── */
 function psdSelectVehicle(dispatch_no, event) {
@@ -13392,6 +13498,7 @@ function _sapRenderLoadCanvas() {
         </tr>
       </tbody>
     </table>`;
+  lvEnableColResize(document.getElementById('sap-load-summary').querySelector('.psd-load-summary-tbl'));
 }
 
 function _sapFmtNum(n) { return Number(n||0).toLocaleString(); }
@@ -16519,6 +16626,7 @@ function _psopRenderLoadCanvas(v, veh) {
         </tr>
       </tbody>
     </table>`;
+  lvEnableColResize(summEl.querySelector('.psd-load-summary-tbl'));
 }
 
 /* 색상 밝게/어둡게 헬퍼 */
