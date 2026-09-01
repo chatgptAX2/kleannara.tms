@@ -12852,7 +12852,8 @@ function psopSwitchTab(tab) {
   if (tab === 'dispatch' && typeof psopRestoreWidth === 'function') {
     setTimeout(psopRestoreWidth, 0);
   }
-  // 배차확정(SAP) 탭 진입 → 날짜 초기화 + 자동 조회
+  // 배차확정(SAP) 탭 진입 → 최초 1회만 날짜 초기화 + 자동 조회
+  //   (재진입 시에는 자동 재조회하지 않고 이전 결과 유지 — psopSapTabInit 내부 처리)
   if (tab === 'sap') {
     psopSapTabInit();
   }
@@ -12884,28 +12885,11 @@ const _sapState = {
   selectedStknum: null,  // 현재 선택 선적번호
   checkedSet:  new Set(), // 체크박스 선택된 STKNUM Set
   docRows:     [],       // 오른쪽 납품문서
+  initialized: false,    // 최초 1회 자동 조회 여부 (탭 재진입 시 자동 재조회 방지)
 };
 
 function psopSapTabInit() {
-  // 날짜 초기값: dispatch 탭 날짜 우선 → 없으면 이번달 1일 ~ 오늘
-  const dtFrom = document.getElementById('sap-dt-from');
-  const dtTo   = document.getElementById('sap-dt-to');
-  if (dtFrom) {
-    // ① dispatch 탭 검색 날짜를 SAP 탭에 동기화 (항상 덮어씀)
-    const dispFrom = document.getElementById('psop-date-from')?.value || '';
-    const dispTo   = document.getElementById('psop-date-to')?.value   || '';
-    if (dispFrom) {
-      dtFrom.value = dispFrom;
-      dtTo.value   = dispTo || dispFrom;
-    } else if (!dtFrom.value) {
-      // ② dispatch 날짜도 없으면 이번달 1일 ~ 오늘
-      const now = new Date();
-      const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0');
-      dtFrom.value = `${y}-${m}-01`;
-      dtTo.value   = `${y}-${m}-${String(now.getDate()).padStart(2,'0')}`;
-    }
-  }
-  // localStorage 저장 순서가 있으면 컬럼초기화 버튼 표시
+  // localStorage 저장 순서가 있으면 컬럼초기화 버튼 표시 (매 진입 시 갱신)
   if (localStorage.getItem(SAP_LEFT_COL_LS_KEY)) {
     const btn = document.getElementById('sap-left-col-reset-btn');
     if (btn) btn.style.display = '';
@@ -12914,6 +12898,35 @@ function psopSapTabInit() {
     const btn = document.getElementById('sap-doc-col-reset-btn');
     if (btn) btn.style.display = '';
   }
+
+  // ── 자동 조회는 "최초 1회"만 수행 ──
+  //   조회 쿼리가 무거워 탭을 오갈 때마다 자동 재조회되면 매번 대기시간이 발생.
+  //   → 최초 진입 시에만 날짜를 동기화하고 자동 조회한다. 재진입 시에는
+  //     이전 조회 결과/날짜를 그대로 유지하고, 사용자가 [조회] 버튼을 눌러야만
+  //     재조회한다.
+  if (_sapState.initialized) {
+    // 이미 초기화됨 → 자동 재조회 없이 현재 화면 유지
+    return;
+  }
+
+  // 최초 1회: 날짜 초기값 세팅 (dispatch 탭 날짜 우선 → 없으면 이번달 1일 ~ 오늘)
+  const dtFrom = document.getElementById('sap-dt-from');
+  const dtTo   = document.getElementById('sap-dt-to');
+  if (dtFrom) {
+    const dispFrom = document.getElementById('psop-date-from')?.value || '';
+    const dispTo   = document.getElementById('psop-date-to')?.value   || '';
+    if (dispFrom) {
+      dtFrom.value = dispFrom;
+      dtTo.value   = dispTo || dispFrom;
+    } else if (!dtFrom.value) {
+      const now = new Date();
+      const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0');
+      dtFrom.value = `${y}-${m}-01`;
+      dtTo.value   = `${y}-${m}-${String(now.getDate()).padStart(2,'0')}`;
+    }
+  }
+
+  _sapState.initialized = true;
   psopLoadSapList();
 }
 
@@ -18204,6 +18217,8 @@ async function psopSaveDispatch() {
     });
 
     showToast(`✅ 배차저장 ${payload.saved ?? dispNos.length}건 완료 (${dispNos.join(', ')})`);
+    // 배차저장으로 SAP선적 내역이 바뀌었으므로, 다음 SAP 탭 진입 시 1회 자동 조회되도록 리셋
+    _sapState.initialized = false;
     // 저장 후 인메모리 비우기
     psopState.vehicles = [];
     psopState.selectedVehicles.clear();
