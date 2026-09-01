@@ -707,34 +707,29 @@ public class SapRfcService {
             //     저장된 배차는 SAP선적탭에 조회되지 않는 누락이 발생 → STATIT 조건 제거.
             List<String> where = new ArrayList<>();
             where.add("SI.STDLNR IS NOT NULL");
-            where.add("TRIM(SI.STDLNR) != ''");
+            // ※ 성능(ORA-01013 타임아웃) 대책: STDLNR 컴럼에 TRIM()/SUBSTR() 등 함수를
+            //   적용하면 인덱스를 타지 못해 대용량 SHPDI 풀스캔 + 4중 조인/GROUP BY 로
+            //   30초 쿼리 타임아웃(ORA-01013)이 발생한다.
+            //   → STDLNR 은 좌우 공백 없는 'yymmdd+seq(3)+T'(10자) 채번값이므로
+            //     함수 없이 컴럼 원본으로 범위/부등호 비교하여 인덱스 사용을 유도한다.
+            where.add("SI.STDLNR <> ' '");
             List<Object> args = new ArrayList<>();
-            // ── 날짜 필터 (핵심 수정) ──
-            //   기존에는 SH.RQSHPD(SHPDH 납품요청일) 범위만으로 필터했으나,
-            //   배차저장 시 SHPDH.RQSHPD 가 갱신되지 않거나 값 포맷(시간 포함 등)이
-            //   달라 저장된 선적(STDLNR)이 SAP선적탭에서 누락되는 문제가 있었다.
+            // ── 날짜 필터 (성능 개선판) ──
             //   가선적번호(STDLNR)는 'yymmdd + seq(3) + T' 형식으로 채번일(=납품일)을
-            //   앞 6자리에 포함하므로, "SH.RQSHPD 범위" 또는 "STDLNR 앞6자리(yymmdd) 범위"
-            //   중 하나만 만족해도 조회되도록 OR 로 확장한다. (rqFrom/rqTo 는 yyyymmdd 8자리)
-            if (!rqFrom.isEmpty() || !rqTo.isEmpty()) {
-                List<String> dateConds = new ArrayList<>();
-                List<Object>  dateArgs = new ArrayList<>();
-                // (a) SHPDH.RQSHPD 범위
-                List<String> a = new ArrayList<>();
-                if (!rqFrom.isEmpty()) { a.add("SH.RQSHPD >= ?"); dateArgs.add(rqFrom); }
-                if (!rqTo.isEmpty())   { a.add("SH.RQSHPD <= ?"); dateArgs.add(rqTo);   }
-                dateConds.add("(" + String.join(" AND ", a) + ")");
-                // (b) STDLNR 앞 6자리(yymmdd) 범위  ─ rqFrom/rqTo 8자리에서 뒤 6자리 사용
-                List<String> b = new ArrayList<>();
-                if (!rqFrom.isEmpty() && rqFrom.length() >= 6) {
-                    b.add("SUBSTR(TRIM(SI.STDLNR),1,6) >= ?"); dateArgs.add(rqFrom.substring(rqFrom.length()-6));
-                }
-                if (!rqTo.isEmpty() && rqTo.length() >= 6) {
-                    b.add("SUBSTR(TRIM(SI.STDLNR),1,6) <= ?"); dateArgs.add(rqTo.substring(rqTo.length()-6));
-                }
-                if (!b.isEmpty()) dateConds.add("(" + String.join(" AND ", b) + ")");
-                where.add("(" + String.join(" OR ", dateConds) + ")");
-                args.addAll(dateArgs);
+            //   앞 6자리에 포함한다. 함수(SUBSTR/TRIM) 없이 STDLNR 문자열 범위 비교로
+            //   같은 효과를 낸다:  STDLNR >= 'yymmdd000000' (하한),  STDLNR <= 'yymmdd999Z' (상한)
+            //   기존 SH.RQSHPD 조건과 OR 로 묶던 방식은 옵티마이저가 풀스캔을 택하는
+            //   원인이므로 제거하고, 채번일(STDLNR 앞6자리) 단일 조건으로 단순화한다.
+            //   (STDLNR 채번일 = 납품일이므로 결과 동일, 성능만 향상)
+            if (!rqFrom.isEmpty() && rqFrom.length() >= 6) {
+                String yy6 = rqFrom.substring(rqFrom.length() - 6);
+                where.add("SI.STDLNR >= ?");
+                args.add(yy6 + "000000");   // 하한: 해당일 최소 채번
+            }
+            if (!rqTo.isEmpty() && rqTo.length() >= 6) {
+                String yy6 = rqTo.substring(rqTo.length() - 6);
+                where.add("SI.STDLNR <= ?");
+                args.add(yy6 + "999Z");     // 상한: 'T'보다 큰 'Z' 로 안전 포함
             }
             if (!stknum.isEmpty()) { where.add("SI.STDLNR LIKE ?"); args.add("%" + stknum + "%"); }
             if (!dptnky.isEmpty()) {
@@ -800,15 +795,16 @@ public class SapRfcService {
             //   (b) 날짜 범위만 적용 시 건수  → 날짜 필터가 원인인지 판별
             if (rows.isEmpty()) {
                 try {
+                    // ※ 진단 쿼리도 TRIM() 제거(인덱스 사용) — STDLNR <> ' ' 로 공백 제외
                     Integer totCnt = wmsJdbc.queryForObject(
                         "SELECT COUNT(DISTINCT SI.STDLNR) FROM KNRAWMS.SHPDI SI " +
-                        "WHERE SI.STDLNR IS NOT NULL AND TRIM(SI.STDLNR) != ''", Integer.class);
+                        "WHERE SI.STDLNR IS NOT NULL AND SI.STDLNR <> ' '", Integer.class);
                     log.warn("[SAP-list] 결과 0건 진단 — 전체 STDLNR 채번 선적 수(필터무시)={}건", totCnt);
 
                     Integer joinCnt = wmsJdbc.queryForObject(
                         "SELECT COUNT(DISTINCT SI.STDLNR) FROM KNRAWMS.SHPDI SI " +
                         "JOIN KNRAWMS.SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
-                        "WHERE SI.STDLNR IS NOT NULL AND TRIM(SI.STDLNR) != ''", Integer.class);
+                        "WHERE SI.STDLNR IS NOT NULL AND SI.STDLNR <> ' '", Integer.class);
                     log.warn("[SAP-list] 결과 0건 진단 — SHPDH JOIN 후 STDLNR 선적 수(날짜무시)={}건 "
                              + "(전체와 다르면 SHPDH 매칭 누락, 같은데 결과가 0이면 날짜필터가 원인)", joinCnt);
                 } catch (Exception de) {

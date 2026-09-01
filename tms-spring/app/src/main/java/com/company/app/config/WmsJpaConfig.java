@@ -92,7 +92,11 @@ public class WmsJpaConfig {
     public JdbcTemplate wmsJdbcTemplate(
             @Qualifier("wmsDataSource") DataSource dataSource) {
         JdbcTemplate jt = new JdbcTemplate(dataSource);
-        jt.setQueryTimeout(30);   // Oracle 쿼리 타임아웃 30초
+        // Oracle 쿼리 타임아웃 60초로 상향.
+        //  ※ SAP선적탭(sapList)의 SHPDI 4중 조인/GROUP BY 집계가 30초를 초과해
+        //    ORA-01013(작업 취소)이 발생하던 문제 대응. 쿼리 자체는 STDLNR 범위
+        //    인덱스 조건으로 경량화했으나, 대상 구간이 넓을 때의 안전 마진 확보.
+        jt.setQueryTimeout(60);
         return jt;
     }
 
