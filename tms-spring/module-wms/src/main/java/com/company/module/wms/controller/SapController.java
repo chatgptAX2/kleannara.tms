@@ -42,6 +42,14 @@ public class SapController {
         return ResponseEntity.ok(sapService.sapList(body));
     }
 
+    // ── SAP 선적 진단 (배차저장 선적번호 미조회 원인 확인) ──────────
+    //   브라우저에서: GET /api/ps-sap/diag?stdlnr=260810007T
+    //   SHPDI 실제 저장 여부 / SHPDH 조인 생존 여부 / RQSHPD 값을 JSON 으로 반환
+    @GetMapping("/ps-sap/diag")
+    public ResponseEntity<Map<String, Object>> sapDiag(@RequestParam String stdlnr) {
+        return ResponseEntity.ok(sapRfcService.sapDiag(stdlnr));
+    }
+
     // ── SAP 선적 아이템 ────────────────────────────────────────────
     @PostMapping("/ps-sap/items")
     public ResponseEntity<Map<String, Object>> sapItems(@RequestBody Map<String, Object> body) {

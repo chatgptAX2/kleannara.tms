@@ -849,6 +849,51 @@ public class SapRfcService {
         } catch (Exception e) { return errMap(e); }
     }
 
+    /**
+     * 배차저장 선적번호가 SAP선적탭에 조회되지 않는 원인 진단용.
+     * 특정 가선적번호(STDLNR)로 SHPDI/SHPDH 실제 저장 상태를 그대로 반환한다.
+     * 브라우저에서 GET /api/ps-sap/diag?stdlnr=260810007T 로 즉시 확인 가능.
+     */
+    public Map<String, Object> sapDiag(String stdlnr) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        String key = stdlnr == null ? "" : stdlnr.trim();
+        out.put("input_stdlnr", key);
+        try {
+            // 1) SHPDI 에 해당 STDLNR 이 실제로 존재하는가 (배차저장 커밋 여부 직접 확인)
+            List<Map<String, Object>> siRows = wmsJdbc.queryForList(
+                "SELECT SHPOKY, SHPOIT, STDLNR, STKNUM, STATIT, SVBELN, SKUKEY " +
+                "FROM KNRAWMS.SHPDI WHERE TRIM(STDLNR) = ?", key);
+            out.put("shpdi_count", siRows.size());
+            out.put("shpdi_rows", siRows.size() > 50 ? siRows.subList(0, 50) : siRows);
+
+            // 2) 각 SHPOKY 에 대응하는 SHPDH(헤더)가 존재하는가 + RQSHPD 값 확인
+            //    (SAP선적탭은 SHPDI JOIN SHPDH INNER 조인 → 헤더 없으면 탈락)
+            if (!siRows.isEmpty()) {
+                Set<String> shpokys = new LinkedHashSet<>();
+                for (Map<String, Object> r : siRows) shpokys.add(str(r.get("SHPOKY")));
+                String ph = shpokys.stream().map(x -> "?").collect(Collectors.joining(","));
+                List<Map<String, Object>> shRows = wmsJdbc.queryForList(
+                    "SELECT SHPOKY, RQSHPD, DPTNKY, VEHINO, CARTON FROM KNRAWMS.SHPDH " +
+                    "WHERE SHPOKY IN (" + ph + ")", shpokys.toArray());
+                out.put("shpdh_count", shRows.size());
+                out.put("shpdh_rows", shRows);
+                out.put("shpoky_in_shpdi", shpokys.size());
+
+                // 3) SHPDI JOIN SHPDH 후 이 STDLNR 이 살아남는가 (SAP 쿼리의 조인 재현)
+                Integer joinCnt = wmsJdbc.queryForObject(
+                    "SELECT COUNT(*) FROM KNRAWMS.SHPDI SI " +
+                    "JOIN KNRAWMS.SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
+                    "WHERE TRIM(SI.STDLNR) = ?", Integer.class, key);
+                out.put("shpdi_join_shpdh_count", joinCnt);
+            }
+            out.put("ok", true);
+        } catch (Exception e) {
+            out.put("ok", false);
+            out.put("error", e.getMessage());
+        }
+        return out;
+    }
+
     private String firstNonEmpty(String a, String b) {
         return (a != null && !a.isEmpty()) ? a : (b == null ? "" : b);
     }
