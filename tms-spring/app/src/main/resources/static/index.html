@@ -13467,7 +13467,7 @@ function _sapRenderLoadCanvas() {
     <table class="psd-load-summary-tbl">
       <thead>
         <tr>
-          <th>#</th><th>출고문서번호</th><th>품명</th><th>유형</th>
+          <th>#</th><th>출고문서번호</th><th>품목코드</th><th>품명</th><th>유형</th>
           <th>수량(단위)</th><th>롤수/매수</th><th>직경/높이</th><th>중량(KG)</th>
         </tr>
       </thead>
@@ -13484,6 +13484,7 @@ function _sapRenderLoadCanvas() {
           return `<tr>
             <td style="color:var(--text3)">${i+1}</td>
             <td style="font-family:monospace;font-size:10px;color:var(--primary)">${raw.SHPOKY||''}</td>
+            <td style="font-family:monospace;font-size:10px;color:var(--text2)">${raw.SKUKEY||''}</td>
             <td style="text-align:left;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${raw.DESC01||''}">${raw.DESC01||raw.SKUKEY||''}</td>
             <td>${uomBadge}</td>
             <td>${_sapFmtNum(raw.QTSHPO)} ${raw.UOMKEY||'KG'}</td>
@@ -13493,7 +13494,7 @@ function _sapRenderLoadCanvas() {
           </tr>`;
         }).join('')}
         <tr style="background:var(--th-bg);font-weight:700">
-          <td colspan="7" style="text-align:right;padding-right:16px">합계</td>
+          <td colspan="8" style="text-align:right;padding-right:16px">합계</td>
           <td style="${ratioCls}">${_sapFmtNum(Math.round(usedKgV))} KG${ratioV!=null?' ('+ratioV+'%)':''}</td>
         </tr>
       </tbody>
