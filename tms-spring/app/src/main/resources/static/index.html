@@ -18170,6 +18170,19 @@ async function psopSaveDispatch() {
     if (!ok) throw new Error(data.message || data.error || `HTTP ${res.status}`);
     const payload = data.data || data;
 
+    // ★ 커밋 후 검증 결과 확인 — wms 읽기경로(SAP탭)에서 STDLNR 이 실제로 보이는지
+    //   서버가 재조회한 건수. 0 이면 tms 에는 썼는데 SAP탭 읽기경로에 반영 안 됨
+    //   → savedKeys 착시(가상 배차완료)를 만들지 말고 사용자에게 명확히 경고한다.
+    const wmsVisible = payload.wms_visible_stdlnr;
+    if (typeof wmsVisible === 'number' && wmsVisible === 0) {
+      console.error('[psopSaveDispatch] 커밋후검증 실패: wms_visible_stdlnr=0 '
+        + '(PS_DISPATCH 는 저장됐으나 SHPDI.STDLNR 이 SAP탭 읽기경로에 반영되지 않음)');
+      showToast('⚠️ 저장은 접수됐으나 SAP선적탭 반영이 확인되지 않습니다. '
+        + '관리자에게 문의하세요. (STDLNR 미반영)');
+      await psopSearch();
+      return;
+    }
+
     // ── 저장 성공: searchRows에 IS_SAVED=true, STDLNR 즉시 반영 ──
     // dispatch_nos 순서 = vehs 순서와 동일
     const dispNos = payload.dispatch_nos || [];

@@ -63,8 +63,24 @@ public class PsDispatchController {
             @Valid @RequestBody PsDispatchSaveRequest req) {
 
         List<String> saved = psDispatchService.saveDispatch(req);
+
+        // ★ 커밋 후 검증 — SAP선적탭 미조회 근본원인 진단/방어
+        //   saveDispatch(tms 트랜잭션) 리턴 시점에는 이미 커밋 완료.
+        //   별도 wms 읽기경로(REQUIRES_NEW)로 SHPDI.STDLNR 반영을 재조회하여
+        //   "tms 에는 썼는데 wms(SAP탭 읽기경로)에는 0건"인지 즉시 특정한다.
+        int wmsVisible = 0;
+        try {
+            wmsVisible = psDispatchService.verifyStdlnrViaWms(saved);
+        } catch (Exception e) {
+            // 검증 실패는 저장 자체를 실패로 만들지 않는다(로그만 남김)
+        }
+
         return ResponseEntity.ok(ApiResponse.created(
-            java.util.Map.of("saved", saved.size(), "dispatch_nos", saved)
+            java.util.Map.of(
+                "saved", saved.size(),
+                "dispatch_nos", saved,
+                "wms_visible_stdlnr", wmsVisible
+            )
         ));
     }
 
