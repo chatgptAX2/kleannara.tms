@@ -615,6 +615,49 @@ public class PsDispatchService {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
+    // 커밋 후 검증 — SAP선적탭 미조회 근본원인 진단/방어용
+    //
+    // saveDispatch 는 tmsEm(tmsPU, HikariPool-TMS) 트랜잭션에서 SHPDI.STDLNR 을
+    // 갱신·커밋한다. SAP선적탭은 wmsJdbc/em(wmsPU, HikariPool-WMS) 로 SHPDI 를 읽는다.
+    // 두 datasource 는 동일 물리 DB(KNMESWMS/KNRATMS)이므로, tms 트랜잭션이 정상
+    // 커밋되었다면 wms 읽기경로에서도 STDLNR 이 반드시 보여야 한다.
+    //
+    // 이 메서드는 saveDispatch **커밋 완료 후** 별도 wms 읽기경로(em)로 STDLNR 반영
+    // 건수를 재조회하여, "tms 에는 썼는데 wms 경로에는 0건" 상황(=커밋 미반영/격리
+    // /가상 저장)을 운영 로그로 100% 특정한다.
+    //
+    // ※ REQUIRES_NEW + wmsTransactionManager 로 별도 트랜잭션을 열어, 방금 커밋된
+    //   최신 상태를 wms 커넥션에서 조회한다.
+    // ──────────────────────────────────────────────────────────────────────────
+    @Transactional(transactionManager = "wmsTransactionManager",
+                   propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW,
+                   readOnly = true)
+    public int verifyStdlnrViaWms(List<String> dispatchNos) {
+        if (dispatchNos == null || dispatchNos.isEmpty()) return 0;
+        int total = 0;
+        for (String no : dispatchNos) {
+            try {
+                Object cnt = em.createNativeQuery(
+                        "SELECT COUNT(*) FROM KNRAWMS.SHPDI WHERE STDLNR = ?")
+                    .setParameter(1, no)
+                    .getSingleResult();
+                int n = cnt == null ? 0 : ((Number) cnt).intValue();
+                total += n;
+                if (n > 0) {
+                    log.info("[PsDispatch] 커밋후검증(wms경로) — SHPDI.STDLNR='{}' 조회 {}건 (정상: SAP탭 노출 가능)", no, n);
+                } else {
+                    log.error("[PsDispatch] 커밋후검증(wms경로) — SHPDI.STDLNR='{}' 조회 0건! "
+                            + "tms 트랜잭션이 커밋됐는데도 wms 읽기경로에 보이지 않음 → "
+                            + "커밋 미반영/트랜잭션 롤백/서로 다른 물리DB 의심", no);
+                }
+            } catch (Exception e) {
+                log.warn("[PsDispatch] 커밋후검증(wms경로) 실패 dispatchNo={} : {}", no, e.getMessage());
+            }
+        }
+        return total;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
     // 배차 목록 조회 (Flask api_ps_dispatch_list)
     // PS_DISPATCH_H + ds_vehicle → tmsEm
     //
