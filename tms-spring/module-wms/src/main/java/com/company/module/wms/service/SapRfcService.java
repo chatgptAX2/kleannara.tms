@@ -188,9 +188,12 @@ public class SapRfcService {
 
             try {
                 // 1) 해당 가선적번호의 SAP납품문서(SVBELN) 목록 조회 (Oracle KNRAWMS → wmsJdbc)
+                // ※ STATIT='NEW' 조건 제거: 배차저장(saveDispatch)은 STDLNR 만 갱신하고
+                //   STATIT 은 변경하지 않으므로, STATIT='NEW' 를 강제하면 배차저장된 선적이
+                //   조회/처리에서 누락된다. 배차 판단 기준은 STDLNR 채번 여부로 통일.
                 List<Map<String, Object>> svbelnRows = wmsJdbc.queryForList(
                     "SELECT DISTINCT SI.SVBELN FROM KNRAWMS.SHPDI SI " +
-                    "WHERE SI.STATIT='NEW' AND SI.STDLNR=? " +
+                    "WHERE SI.STDLNR=? " +
                     "AND SI.SVBELN <> ' ' ORDER BY SI.SVBELN",
                     stdlnr
                 );
@@ -232,7 +235,7 @@ public class SapRfcService {
                         try {
                             wmsJdbc.update(
                                 "UPDATE KNRAWMS.SHPDI SET STKNUM=?, LMODAT=?, LMOUSR='WEB' " +
-                                "WHERE STATIT='NEW' AND STDLNR=?",
+                                "WHERE STDLNR=?",
                                 tknum, today, stdlnr
                             );
                         } catch (Exception dbEx) {
@@ -327,7 +330,7 @@ public class SapRfcService {
                     try {
                         wmsJdbc.update(
                             "UPDATE KNRAWMS.SHPDI SET STKNUM=' ', LMODAT=?, LMOUSR='WEB' " +
-                            "WHERE STATIT='NEW' AND STDLNR=?",
+                            "WHERE STDLNR=?",
                             today, stdlnr
                         );
                     } catch (Exception dbEx) {
@@ -429,7 +432,7 @@ public class SapRfcService {
             // ② 삭제 대상 SHPOKY 수집 (SHPDH.VEHINO 초기화용, Oracle KNRAWMS → wmsJdbc)
             List<Map<String, Object>> shpokyRows = wmsJdbc.queryForList(
                 "SELECT DISTINCT SHPOKY FROM KNRAWMS.SHPDI " +
-                "WHERE STATIT='NEW' AND STDLNR IN (" + inPh + ")", args
+                "WHERE STDLNR IN (" + inPh + ")", args
             );
             List<String> shpokyList = shpokyRows.stream()
                 .map(r -> str(r.get("SHPOKY"))).filter(s -> !s.isEmpty()).collect(Collectors.toList());
@@ -437,7 +440,7 @@ public class SapRfcService {
             // ③ SHPDI.STDLNR → ' ' (기본값 공백 복원)
             int affected = wmsJdbc.update(
                 "UPDATE KNRAWMS.SHPDI SET STDLNR=' ', LMODAT=?, LMOUSR='WEB' " +
-                "WHERE STATIT='NEW' AND STDLNR IN (" + inPh + ")",
+                "WHERE STDLNR IN (" + inPh + ")",
                 concat(new Object[]{today}, args)
             );
 
@@ -669,7 +672,7 @@ public class SapRfcService {
      * 배차확정(SAP전송) 탭 — 가선적번호(STDLNR) 목록.
      *
      * ■ 조회 기준 (Flask api_ps_sap_list 이식)
-     *   SHPDI(SI).STATIT='NEW' AND TRIM(SI.STDLNR)!=''  → 가선적번호가 채번된 모든 배차
+     *   SHPDI(SI).STDLNR 채번(공백 아님)  → 가선적번호가 채번된 모든 배차 (STATIT 무관)
      *   ※ STATUS(DRAFT/CONFIRMED/SAP_CREATED) 로 필터하지 않는다.
      *     배차삭제·SAP 선적생성 대상에는 DRAFT 배차도 포함되어야 하기 때문.
      *     (SAP 선적 생성 여부는 PH.STKNUM(SAP_STKNUM) 값 유무로 화면에서 구분)
@@ -911,7 +914,9 @@ public class SapRfcService {
                     "JOIN KNRAWMS.SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
                     "LEFT JOIN KNRAWMS.SKUMA M  ON M.SKUKEY  = SI.SKUKEY " +
                     "LEFT JOIN KNRAWMS.BZPTN CT ON CT.PTNRKY = SH.DPTNKY " +
-                    "WHERE SI.STATIT = 'NEW' AND SI.STDLNR = ? " +
+                    // ※ STATIT='NEW' 제거: 배차저장은 STDLNR 만 갱신하므로 STATIT='NEW' 를
+                    //   강제하면 적재뷰 품목이 "품목 없음" 으로 누락된다. STDLNR 기준으로 통일.
+                    "WHERE SI.STDLNR = ? " +
                     "ORDER BY SI.SVBELN, SI.SHPOKY, CAST(SI.SHPOIT AS INTEGER)";
                 List<Map<String, Object>> items = wmsJdbc.queryForList(sql, stknum);
 
@@ -951,7 +956,7 @@ public class SapRfcService {
      * 선택한 가선적번호(STDLNR)에 매핑된 납품문서 상세 목록.
      * Flask: api_ps_sap_docs 이식.
      *   입력 : { stknum }  (= SHPDI.STDLNR 값)
-     *   기준 : SI.STATIT='NEW' AND SI.STDLNR = ?   (STATUS 무관 → DRAFT 포함)
+     *   기준 : SI.STDLNR = ?   (STATIT/STATUS 무관 → 배차저장·DRAFT 포함)
      *   반환 : 프론트 _sapDocColDefs 기대 컬럼
      *          (SVBELN/SHPOKY/SHPOIT/RQSHPD/DPTNKYNM/SKUKEY/DESC01/QTSHPO/UOMKEY/LINE_KG 등)
      *
@@ -975,7 +980,9 @@ public class SapRfcService {
                 "JOIN KNRAWMS.SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
                 "LEFT JOIN KNRAWMS.SKUMA M  ON M.SKUKEY  = SI.SKUKEY " +
                 "LEFT JOIN KNRAWMS.BZPTN CT ON CT.PTNRKY = SH.DPTNKY " +
-                "WHERE SI.STATIT = 'NEW' AND SI.STDLNR = ? " +
+                // ※ STATIT='NEW' 제거: 배차저장은 STDLNR 만 갱신하므로 STATIT='NEW' 를
+                //   강제하면 납품문서 상세가 누락된다. STDLNR 기준으로 통일.
+                "WHERE SI.STDLNR = ? " +
                 "ORDER BY SI.SVBELN, SI.SHPOKY, CAST(SI.SHPOIT AS INTEGER)";
             List<Map<String, Object>> rows = wmsJdbc.queryForList(sql, stknum);
             return Map.of("ok", true, "rows", rows, "total", rows.size());
