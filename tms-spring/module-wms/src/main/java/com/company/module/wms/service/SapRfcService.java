@@ -106,7 +106,7 @@ public class SapRfcService {
     private static final String WMS_SPLIT_IFC_URL =
         System.getProperty("tms.wms.split.ifc.url",
             System.getenv().getOrDefault("TMS_WMS_SPLIT_IFC_URL",
-                "https://10.2.14.190/common/tmsApi/json/TMS_IFC3012.data"));
+                "http://10.2.14.190/common/tmsApi/json/TMS_IFC3012.data"));
 
     /**
      * WMS_IFC301 호출용 HTTP 클라이언트 (JDK 내장).
@@ -1456,7 +1456,7 @@ public class SapRfcService {
     /**
      * 납품분할 확정 후 WMS 공통처리 API(TMS_IFC3012) 호출.
      *   payload: { GUBUN:"S"(분할), SVBELN, SPLITS:[{SVBELN,SPOSNR,SKUKEY,SPLIT_QTY}, ...] }
-     *   URL   : WMS_SPLIT_IFC_URL (https://10.2.14.190/common/tmsApi/json/TMS_IFC3012.data)
+     *   URL   : WMS_SPLIT_IFC_URL (http://10.2.14.190/common/tmsApi/json/TMS_IFC3012.data)
      *   ※ 선적생성/삭제(WMS_IFC301)와 다른 인터페이스이므로 전용 URL 사용.
      */
     private Map<String, Object> callWmsIfc301Split(String svbeln, List<Map<String, Object>> rfcParams, String env) {
