@@ -18848,17 +18848,30 @@ async function loadShipSchedule(pg) {
 
   /* 납품문서(SVBELN): 입력창 직접 입력값 + 팝업/붙여넣기 선택 목록 통합 */
   const svbelnInputVal = (el('ss-svbeln-input')?.value || '').trim();
+  const _svbelnTagsEl  = document.getElementById('ss-svbeln-tags');
+  const _svbelnTagMode = _svbelnTagsEl && _svbelnTagsEl.style.display !== 'none';
   if (svbelnInputVal && (window._ssSvbelnSelected || []).length === 0) {
     /* 입력창에 값이 있고 선택 배열이 비어있을 때 → 입력값 파싱하여 반영 */
     const parsed = svbelnInputVal.split(/[\n\r\t,;\s]+/).map(s => s.trim()).filter(s => s.length > 0);
     window._ssSvbelnSelected = [...new Set(parsed)];
+  } else if (!_svbelnTagMode && !svbelnInputVal) {
+    /* 태그(팝업 다중선택) 모드가 아니고 입력창이 비어있으면 → 이전 선택값이 남아있어도 비운다.
+       (X 버튼을 누르지 않고 백스페이스로 지운 경우에도 재조회에 옛 값이 새지 않도록) */
+    window._ssSvbelnSelected = [];
   }
   const svbelnArr  = (window._ssSvbelnSelected || []).slice();
 
   /* 납품처 코드 (팝업 다중선택 또는 직접 입력) */
+  const ptnrkyDirect   = el('ss-ptnrky')?.value?.trim() || '';
+  const _ptnrTagsEl    = document.getElementById('ss-ptnrky-tags');
+  const _ptnrTagMode   = _ptnrTagsEl && _ptnrTagsEl.style.display !== 'none';
+  /* 태그(팝업 다중선택) 모드가 아니고 직접입력창이 비어있으면 → 이전 선택값이 남아있어도 비운다.
+     (X 버튼을 누르지 않고 백스페이스로 지운 경우에도 재조회에 옛 값이 새지 않도록) */
+  if (!_ptnrTagMode && !ptnrkyDirect) {
+    window._ssPtnrSelected = [];
+  }
   const ptnrkyArr = (window._ssPtnrSelected || []).map(s => s.ptnrky);
   /* 직접 입력값이 있고 팝업 선택이 없을 경우 단일값으로 처리 */
-  const ptnrkyDirect = el('ss-ptnrky')?.value?.trim() || '';
   const ptnrkyFinal  = ptnrkyArr.length > 0 ? ptnrkyArr
                      : ptnrkyDirect ? [ptnrkyDirect] : [];
 
@@ -20978,7 +20991,16 @@ let _svbelnActiveTab = 'single';  // 현재 활성 탭
 
 /** 입력창 → 선택 배열 동기화 (실시간) */
 function _svbelnInputChange(val) {
-  /* 입력 중에는 단순 텍스트 유지, Enter/blur 시 파싱 */
+  /* 입력 중에는 단순 텍스트 유지, Enter/blur 시 파싱.
+     단, 입력창을 백스페이스 등으로 완전히 비운 경우(태그모드 아님)에는
+     이전 조회에서 남아있는 선택 배열(_ssSvbelnSelected)을 즉시 비워
+     X 버튼을 누르지 않아도 검색값이 사라지도록 한다. */
+  const tagsEl = document.getElementById('ss-svbeln-tags');
+  const isTagMode = tagsEl && tagsEl.style.display !== 'none';
+  if (!isTagMode && (val == null || val.trim() === '')) {
+    window._ssSvbelnSelected = [];
+    if (typeof _svbelnUpdateSelCnt === 'function') _svbelnUpdateSelCnt();
+  }
 }
 
 /** 붙여넣기 이벤트: 줄바꿈·탭·공백으로 구분된 복수 번호 처리 */
@@ -21371,6 +21393,15 @@ function clearSsPtnr() {
 function _ssPtnrInputChange(val) {
   const el = document.getElementById('ss-ptnrky');
   if (el) el.title = val ? `입력값: ${val}` : '';
+  /* 입력창을 백스페이스 등으로 완전히 비운 경우(태그모드 아님)에는
+     이전 조회에서 남아있는 선택 배열(_ssPtnrSelected)을 즉시 비워
+     X 버튼을 누르지 않아도 검색값이 사라지도록 한다. */
+  const tagsEl = document.getElementById('ss-ptnrky-tags');
+  const isTagMode = tagsEl && tagsEl.style.display !== 'none';
+  if (!isTagMode && (val == null || val.trim() === '')) {
+    window._ssPtnrSelected = [];
+    if (typeof _ssPtnrRefreshBadge === 'function') _ssPtnrRefreshBadge();
+  }
 }
 
 /* ── 검색 디바운스 ── */
