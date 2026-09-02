@@ -20,14 +20,16 @@ import lombok.*;
 @AllArgsConstructor
 public class Vhcma {
 
-    @Id @GeneratedValue(strategy = GenerationType.SEQUENCE,
-                        generator = "VHCMA_SEQ")
-    @SequenceGenerator(name = "VHCMA_SEQ",
-                       sequenceName = "KNRAWMS.VHCMA_SEQ",
-                       allocationSize = 1)
-    @Column(name = "VEHICLE_ID")
-    private Long vhcId;
+    /**
+     * 차량ID (VEHICLE_ID) — VARCHAR2(10), 사용자 입력값(검색/키워드용).
+     *   ※ 시퀀스 자동채번 PK가 아니다. 실제 물리 PK는 (VEHICLE_NO, OWNRKY).
+     *     사용자가 등록/수정 화면에서 직접 입력·수정하는 문자열 컬럼이다.
+     */
+    @Column(name = "VEHICLE_ID", length = 10)
+    private String vehicleId;
 
+    /** 차량번호 (물리 PK 일부). JPA 단일 엔티티 식별을 위해 @Id 로 지정. */
+    @Id
     @Column(name = "VEHICLE_NO", length = 20, nullable = false)
     private String vehicleNo;
 

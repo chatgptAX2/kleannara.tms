@@ -26,7 +26,7 @@ public class VhcmaRepositoryImpl implements VhcmaRepositoryCustom {
     // ※ SELECT * 는 컬럼 순서가 DB 물리순서라 프론트(컬럼명 접근)와 매핑이 어긋남.
     //   명시적 컬럼 목록으로 고정 → VehicleService 에서 동일 순서로 Map(컬럼명) 변환.
     // ※ VHCMA 물리 테이블에 미존재하는 컬럼(CARTYPE, CARCLASS_CD) 제거 → ORA-00904 해소.
-    //   - VEHICLE_ID : PK(시퀀스 VHCMA_SEQ). 물리 컬럼명은 VEHICLE_ID (VHC_ID 아님).
+    //   - VEHICLE_ID : VARCHAR2(10) 사용자 입력값(검색/키워드용). 시퀀스 PK 아님. 물리 PK=(VEHICLE_NO,OWNRKY).
     //   - CARTYPE    : 차종명 → 실제 컬럼은 VEHICLE_KIND(차종)로 대체.
     //   - CARCLASS_CD: 차종(차형)코드 → 실제 컬럼은 VEHICLE_CLASS(차형)로 대체.
     public static final String[] COLS = {
@@ -104,25 +104,18 @@ public class VhcmaRepositoryImpl implements VhcmaRepositoryCustom {
     }
 
     /**
-     * 차량번호 검색: VEHICLE_ID = '입력값' OR VEHICLE_NO LIKE '%입력값%'
-     *  - 물리 PK 컬럼명은 VEHICLE_ID (VHCMA.VEHICLE_ID 존재).
-     *  - 입력값이 순수 숫자면 VEHICLE_ID 정확일치 OR 차량번호 부분일치.
-     *  - 숫자가 아니면(예: '37더3739') VEHICLE_ID(숫자형) 비교 시 ORA-01722 위험 →
-     *    차량번호 부분일치만 적용.
+     * 차량번호/차량ID 검색: VEHICLE_ID LIKE '%입력값%' OR VEHICLE_NO LIKE '%입력값%'
+     *  - VEHICLE_ID 는 VARCHAR2(10) 문자 컬럼(사용자 입력 검색/키워드용)이므로
+     *    숫자·문자 관계없이 부분일치(LIKE)로 매칭한다. (숫자형 아님 → ORA-01722 무관)
+     *  - 차량번호(VEHICLE_NO)도 동일하게 부분일치.
      */
     private void addVehicleNoOrId(StringBuilder where, List<Object> params, String val) {
         if (val == null || val.isEmpty()) return;
         String kw = val.strip();
-        boolean numeric = kw.matches("\\d+");
         where.append(where.length() == 0 ? " WHERE" : " AND").append(' ');
-        if (numeric) {
-            where.append("(VEHICLE_ID = ? OR VEHICLE_NO LIKE '%' || ? || '%')");
-            params.add(kw);   // VEHICLE_ID = ?  (문자 바인딩이어도 Oracle 암시적 숫자변환)
-            params.add(kw);   // VEHICLE_NO LIKE
-        } else {
-            where.append("VEHICLE_NO LIKE '%' || ? || '%'");
-            params.add(kw);
-        }
+        where.append("(VEHICLE_ID LIKE '%' || ? || '%' OR VEHICLE_NO LIKE '%' || ? || '%')");
+        params.add(kw);   // VEHICLE_ID LIKE
+        params.add(kw);   // VEHICLE_NO LIKE
     }
 
     private void addLike(StringBuilder where, List<Object> params, String col, String val) {

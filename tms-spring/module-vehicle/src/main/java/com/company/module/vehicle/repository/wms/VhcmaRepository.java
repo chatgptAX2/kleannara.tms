@@ -19,7 +19,7 @@ import java.util.Optional;
  *     동적 WHERE(값 있을 때만 조건 추가) 로 전환.
  */
 @Repository
-public interface VhcmaRepository extends JpaRepository<Vhcma, Long>, VhcmaRepositoryCustom {
+public interface VhcmaRepository extends JpaRepository<Vhcma, String>, VhcmaRepositoryCustom {
 
     Optional<Vhcma> findByVehicleNoAndOwnrky(String vehicleNo, String ownrky);
 
