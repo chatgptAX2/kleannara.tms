@@ -201,19 +201,26 @@ public class StrategyService {
         }
     }
 
-    // ── 제품(SKU)별 차종 추천 — DS_VEHICLE/DS_INCH12/DS_INCH3: MariaDB
-    public Map<String, Object> getCarClassByProduct(String skukey) {
+    // ── 제품군(product_group)별 차량톤수(차형) 공통코드 조회 — CMCDV: Oracle KNRAWMS
+    //   product_group=10(제지/PS) → TMS_CARCLASS10, 20(생활/HL) → TMS_CARCLASS20
+    //   프론트(차량유형 선택 팝업)가 기대하는 형식: rows[{CMCDVL, CDESC1, USARG1~8}]
+    public Map<String, Object> getCarClassByProduct(String skukey, String productGroup) {
         try {
-            List<Map<String, Object>> vehicles = tmsJdbc.queryForList(
-                "SELECT v.*, " +
-                "       COALESCE(i12.MAX_COUNT, 0) AS MAX_ROLLS_12, " +
-                "       COALESCE(i3.MAX_COUNT, 0)  AS MAX_ROLLS_3 " +
-                "FROM KNRAWMS.DS_VEHICLE v " +
-                "LEFT JOIN KNRAWMS.DS_INCH12 i12 ON i12.CARTYPE=v.CARTYPE AND i12.GRM_COND=60 " +
-                "LEFT JOIN KNRAWMS.DS_INCH3  i3  ON i3.CARTYPE=v.CARTYPE  AND i3.GRM_COND=60 " +
-                "ORDER BY v.SORT_SEQ"
+            String cmcdky = "20".equals(productGroup != null ? productGroup.trim() : "")
+                    ? "TMS_CARCLASS20" : "TMS_CARCLASS10";
+            List<Map<String, Object>> rows = wmsJdbc.queryForList(
+                "SELECT CMCDVL, CDESC1, CDESC2, " +
+                "       USARG1, USARG2, USARG3, USARG4, USARG5, USARG6, USARG7, USARG8 " +
+                "FROM KNRAWMS.CMCDV WHERE CMCDKY=? ORDER BY CMCDVL", cmcdky
             );
-            return Map.of("ok", true, "vehicles", vehicles, "skukey", skukey != null ? skukey : "");
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("ok", true);
+            result.put("rows", rows);
+            result.put("header", List.of());   // 프론트 _vhcBuildCCTable 은 header 없으면 기본 컬럼 사용
+            result.put("cmcdky", cmcdky);
+            result.put("product_group", productGroup != null ? productGroup : "");
+            result.put("skukey", skukey != null ? skukey : "");
+            return result;
         } catch (Exception e) {
             return Map.of("ok", false, "error", e.getMessage());
         }
