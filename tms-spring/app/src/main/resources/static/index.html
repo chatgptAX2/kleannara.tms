@@ -4601,6 +4601,7 @@ const _psopDocColDefs = [
   { id:'desc01',  label:'품목명',         w:200 },
   { id:'qtshpo',  label:'납품수량',       w:72  },
   { id:'uomkey',  label:'단위',           w:44  },
+  { id:'kgwt',    label:'중량(KG)',       w:80  },
   { id:'skutyp',  label:'유형',           w:52  },
   { id:'inch',    label:'인치',           w:60  },
   { id:'unitwt',  label:'원지중량',       w:62  },
@@ -15457,6 +15458,7 @@ function psopRenderDocTable(filterText) {
       desc01:  `<td class="col-nm" title="${r.DESC01||''}">${r.DESC01||''}</td>`,
       qtshpo:  `<td style="text-align:right;font-weight:600">${psopFmtNum(r.QTSHPO)}</td>`,
       uomkey:  `<td style="text-align:center">${r.UOMKEY||''}</td>`,
+      kgwt:    `<td style="text-align:right;font-weight:600;color:${(r.KG_WEIGHT||0)>0?'#d97706':'var(--text3)'}" title="출고예정정보 기준 납품문서별 중량(KG)">${(r.KG_WEIGHT||0)>0?psopFmtNum(Math.round((r.KG_WEIGHT||0)*10)/10):'-'}</td>`,
       skutyp:  `<td style="text-align:center">${skuTypeBadge}</td>`,
       inch:    `<td style="text-align:center">${inchBadge}</td>`,
       unitwt:  `<td style="text-align:right;color:${r.SKU_TYPE==='roll'&&(r.UNIT_WEIGHT||0)>0?'var(--success)':'var(--text3)'}" title="${r.SKU_TYPE==='roll'?(r.UNIT_WEIGHT||0)>0?'원지중량: '+(r.UNIT_WEIGHT||0)+'kg/롤 (RECDI 기반)':'원지중량 미등록 (fallback 600kg 적용)':'-'}">${r.SKU_TYPE==='roll'?((r.UNIT_WEIGHT||0)>0?parseFloat(r.UNIT_WEIGHT).toFixed(0)+'kg':'-'):'-'}</td>`,
@@ -15529,13 +15531,16 @@ function psopShowDocSummary() {
 
   if (!targetRows.length) { showToast('집계할 납품문서가 없습니다.'); return; }
 
-  // 단위별 합계
+  // 단위별 합계 + 중량(KG) 합계
   const sumByUom = {};
+  let sumKg = 0;
   targetRows.forEach(r => {
     const uom = (r.UOMKEY||'KG').trim();
     const qty = parseFloat(r.QTSHPO || 0);
     sumByUom[uom] = (sumByUom[uom] || 0) + qty;
+    sumKg += parseFloat(r.KG_WEIGHT || 0);
   });
+  const sumKgRounded = Math.round(sumKg * 10) / 10;
 
   // 유형별 합계 (원지/판지/기타)
   let sumRollKg=0, sumBoardR=0, sumOther=0;
@@ -15546,23 +15551,24 @@ function psopShowDocSummary() {
     else sumOther += qty;
   });
 
-  // 합계 텍스트 조합
+  // 합계 텍스트 조합 (단위별 수량 + 중량(KG) 합계)
   const uomParts = Object.entries(sumByUom)
     .map(([uom, sum]) => `<strong>${psopFmtNum(sum)}</strong> ${uom}`)
     .join(' &nbsp;/&nbsp; ');
+  const kgPart = `<strong style="color:#d97706">${psopFmtNum(sumKgRounded)}</strong> KG`;
 
   const label = hasSel ? `선택 ${targetRows.length}건` : `전체 ${targetRows.length}건`;
   const summaryEl = document.getElementById('psop-stat-summary');
   if (summaryEl) {
     summaryEl.style.display = '';
-    summaryEl.innerHTML = `Σ ${label}: ${uomParts}`;
+    summaryEl.innerHTML = `Σ ${label}: ${uomParts} &nbsp;·&nbsp; 중량 ${kgPart}`;
   }
 
   // 토스트로도 표시
   const toastParts = Object.entries(sumByUom)
     .map(([uom, sum]) => `${psopFmtNum(sum)} ${uom}`)
     .join(' / ');
-  showToast(`📊 ${label} 납품수량 합계: ${toastParts}`);
+  showToast(`📊 ${label} 합계: ${toastParts} · 중량 ${psopFmtNum(sumKgRounded)} KG`);
 }
 
 /* ── 체크박스 선택 ────────────────────────────────── */
