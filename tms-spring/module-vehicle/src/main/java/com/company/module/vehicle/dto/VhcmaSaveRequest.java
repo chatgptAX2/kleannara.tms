@@ -16,9 +16,9 @@ import lombok.Setter;
 @Setter
 public class VhcmaSaveRequest {
 
-    // VEHICLE_ID : 시퀀스(VHCMA_SEQ) 자동채번 PK. 프론트에서 참조용으로 전송(신규=빈값, 수정=기존 ID).
-    //   INSERT는 시퀀스, UPDATE는 VEHICLE_NO+OWNRKY 기준이므로 키 변경에는 사용하지 않는다.
-    @JsonProperty("VEHICLE_ID")          private String  vehicleId;       // 차량ID(읽기전용/참조용)
+    // VEHICLE_ID : VARCHAR2(10) 사용자 입력값(검색/키워드용). 등록/수정 화면에서 직접 입력·수정.
+    //   물리 PK는 (VEHICLE_NO, OWNRKY)이며 VEHICLE_ID는 시퀀스가 아닌 일반 문자열 컬럼이다.
+    @JsonProperty("VEHICLE_ID")          private String  vehicleId;       // 차량ID(사용자 입력)
     @JsonProperty("VEHICLE_NO")          private String  vehicleNo;       // 차량번호 (필수)
     @JsonProperty("OWNRKY")              private String  ownrky;          // 사업주 코드 (기본: KN)
     @JsonProperty("SHIP_POINT")          private String  shipPoint;

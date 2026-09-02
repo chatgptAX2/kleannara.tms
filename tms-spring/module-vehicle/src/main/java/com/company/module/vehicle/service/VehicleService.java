@@ -398,6 +398,10 @@ public class VehicleService {
         String ownrky = req.getOwnrky() == null ? "KN" : req.getOwnrky().strip();
         if (vno.isEmpty()) throw new IllegalArgumentException("차량번호(VEHICLE_NO)는 필수입니다");
 
+        // 차량ID(VEHICLE_ID): VARCHAR2(10) 사용자 입력값(검색/키워드용). 빈값이면 NULL 저장.
+        String vehicleId = req.getVehicleId() == null ? null : req.getVehicleId().strip();
+        if (vehicleId != null && vehicleId.isEmpty()) vehicleId = null;
+
         // 운송사: 프론트가 정규화 코드(0000300342)로 전송 → 조회 검색과 동일하게 선행 '0000' 제거하여
         //   DB CARRIER(300342)와 일관된 값으로 저장.
         String carrier = req.getCarrier() == null ? null : req.getCarrier().strip();
@@ -413,7 +417,7 @@ public class VehicleService {
             // VHCMA 물리 미존재 컬럼(CARTYPE, CARCLASS_CD) 제거 → ORA-00904 해소.
             //   차종=VEHICLE_KIND, 차형(코드)=VEHICLE_CLASS 로 관리.
             em.createNativeQuery("""
-                UPDATE KNRAWMS.VHCMA SET SHIP_POINT=?,PRODUCT_GROUP=?,DELIVERY_ZONE=?,CARRIER=?,
+                UPDATE KNRAWMS.VHCMA SET VEHICLE_ID=?,SHIP_POINT=?,PRODUCT_GROUP=?,DELIVERY_ZONE=?,CARRIER=?,
                 VEHICLE_TYPE=?,VEHICLE_KIND=?,VEHICLE_CLASS=?,
                 DRIVER_NAME=?,CONTACT_NO=?,PALLET_QTY=?,FLOOR_TYPE=?,USE_YN=?,OPERABLE_YN=?,
                 FIX_YN=?,DLV_TIME_FROM=?,DLV_TIME_TO=?,VEHICLE_YEAR=?,
@@ -421,28 +425,29 @@ public class VehicleService {
                 LMODAT=?,LMOTIM=?,LMOUSR=?
                 WHERE VEHICLE_NO=? AND OWNRKY=?
                 """)
-              .setParameter(1,  req.getShipPoint())
-              .setParameter(2,  req.getProductGroup())
-              .setParameter(3,  req.getDeliveryZone())
-              .setParameter(4,  req.getCarrier())
-              .setParameter(5,  req.getVehicleType())
-              .setParameter(6,  req.getVehicleKind())
-              .setParameter(7,  req.getVehicleClass())
-              .setParameter(8,  req.getDriverName())
-              .setParameter(9,  req.getContactNo())
-              .setParameter(10, req.getPalletQty())
-              .setParameter(11, req.getFloorType())
-              .setParameter(12, req.getUseYn())
-              .setParameter(13, req.getOperableYn())
-              .setParameter(14, req.getFixYn())
-              .setParameter(15, req.getDlvTimeFrom())
-              .setParameter(16, req.getDlvTimeTo())
-              .setParameter(17, req.getVehicleYear())
-              .setParameter(18, req.getDeliveryCustomer1())
-              .setParameter(19, req.getDeliveryCustomer2())
-              .setParameter(20, req.getDelYn())
-              .setParameter(21, nowdt).setParameter(22, nowtm).setParameter(23, "WEB")
-              .setParameter(24, vno).setParameter(25, ownrky)
+              .setParameter(1,  vehicleId)
+              .setParameter(2,  req.getShipPoint())
+              .setParameter(3,  req.getProductGroup())
+              .setParameter(4,  req.getDeliveryZone())
+              .setParameter(5,  req.getCarrier())
+              .setParameter(6,  req.getVehicleType())
+              .setParameter(7,  req.getVehicleKind())
+              .setParameter(8,  req.getVehicleClass())
+              .setParameter(9,  req.getDriverName())
+              .setParameter(10, req.getContactNo())
+              .setParameter(11, req.getPalletQty())
+              .setParameter(12, req.getFloorType())
+              .setParameter(13, req.getUseYn())
+              .setParameter(14, req.getOperableYn())
+              .setParameter(15, req.getFixYn())
+              .setParameter(16, req.getDlvTimeFrom())
+              .setParameter(17, req.getDlvTimeTo())
+              .setParameter(18, req.getVehicleYear())
+              .setParameter(19, req.getDeliveryCustomer1())
+              .setParameter(20, req.getDeliveryCustomer2())
+              .setParameter(21, req.getDelYn())
+              .setParameter(22, nowdt).setParameter(23, nowtm).setParameter(24, "WEB")
+              .setParameter(25, vno).setParameter(26, ownrky)
               .executeUpdate();
             return "updated";
         } else {
@@ -450,37 +455,38 @@ public class VehicleService {
             // VHCMA 물리 미존재 컬럼(CARTYPE, CARCLASS_CD) 제거 → ORA-00904 해소.
             em.createNativeQuery("""
                 INSERT INTO KNRAWMS.VHCMA
-                (VEHICLE_NO,OWNRKY,SHIP_POINT,PRODUCT_GROUP,DELIVERY_ZONE,CARRIER,
+                (VEHICLE_ID,VEHICLE_NO,OWNRKY,SHIP_POINT,PRODUCT_GROUP,DELIVERY_ZONE,CARRIER,
                  VEHICLE_TYPE,VEHICLE_KIND,VEHICLE_CLASS,
                  DRIVER_NAME,CONTACT_NO,PALLET_QTY,FLOOR_TYPE,USE_YN,OPERABLE_YN,FIX_YN,
                  DLV_TIME_FROM,DLV_TIME_TO,VEHICLE_YEAR,
                  DELIVERY_CUSTOMER_1,DELIVERY_CUSTOMER_2,DEL_YN,
                  CREDAT,CRETIM,CREUSR,LMODAT,LMOTIM,LMOUSR)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """)
-              .setParameter(1, vno).setParameter(2, ownrky)
-              .setParameter(3,  req.getShipPoint())
-              .setParameter(4,  req.getProductGroup())
-              .setParameter(5,  req.getDeliveryZone())
-              .setParameter(6,  req.getCarrier())
-              .setParameter(7,  req.getVehicleType())
-              .setParameter(8,  req.getVehicleKind())
-              .setParameter(9,  req.getVehicleClass())
-              .setParameter(10, req.getDriverName())
-              .setParameter(11, req.getContactNo())
-              .setParameter(12, req.getPalletQty())
-              .setParameter(13, req.getFloorType())
-              .setParameter(14, req.getUseYn())
-              .setParameter(15, req.getOperableYn())
-              .setParameter(16, req.getFixYn())
-              .setParameter(17, req.getDlvTimeFrom())
-              .setParameter(18, req.getDlvTimeTo())
-              .setParameter(19, req.getVehicleYear())
-              .setParameter(20, req.getDeliveryCustomer1())
-              .setParameter(21, req.getDeliveryCustomer2())
-              .setParameter(22, req.getDelYn())
-              .setParameter(23, nowdt).setParameter(24, nowtm).setParameter(25, "WEB")
-              .setParameter(26, nowdt).setParameter(27, nowtm).setParameter(28, "WEB")
+              .setParameter(1, vehicleId)
+              .setParameter(2, vno).setParameter(3, ownrky)
+              .setParameter(4,  req.getShipPoint())
+              .setParameter(5,  req.getProductGroup())
+              .setParameter(6,  req.getDeliveryZone())
+              .setParameter(7,  req.getCarrier())
+              .setParameter(8,  req.getVehicleType())
+              .setParameter(9,  req.getVehicleKind())
+              .setParameter(10, req.getVehicleClass())
+              .setParameter(11, req.getDriverName())
+              .setParameter(12, req.getContactNo())
+              .setParameter(13, req.getPalletQty())
+              .setParameter(14, req.getFloorType())
+              .setParameter(15, req.getUseYn())
+              .setParameter(16, req.getOperableYn())
+              .setParameter(17, req.getFixYn())
+              .setParameter(18, req.getDlvTimeFrom())
+              .setParameter(19, req.getDlvTimeTo())
+              .setParameter(20, req.getVehicleYear())
+              .setParameter(21, req.getDeliveryCustomer1())
+              .setParameter(22, req.getDeliveryCustomer2())
+              .setParameter(23, req.getDelYn())
+              .setParameter(24, nowdt).setParameter(25, nowtm).setParameter(26, "WEB")
+              .setParameter(27, nowdt).setParameter(28, nowtm).setParameter(29, "WEB")
               .executeUpdate();
             return "created";
         }

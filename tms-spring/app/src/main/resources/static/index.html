@@ -864,13 +864,16 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 /* 차량 등록/수정 폼 */
 .vhc-form-box{flex:1;overflow-y:auto;min-height:0}
 .vhc-form-inner{padding:12px 16px 20px}
-.vhc-form-section{margin-bottom:12px}
-.vhc-form-sec-title{font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.8px;text-transform:uppercase;padding:4px 0 5px;border-bottom:1px solid var(--border);margin-bottom:8px;display:flex;align-items:center;gap:5px}
-.vhc-form-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:7px 10px}
-.vhc-fg{display:flex;flex-direction:column;gap:3px}
-.vhc-fg label{font-size:10px;font-weight:700;color:var(--warning);background:rgba(245,158,11,.08);padding:2px 5px;border-radius:3px;white-space:nowrap}
+/* 차량 등록/수정 폼 — 섹션/행 간격을 넉넉히 하여 가독성 향상 */
+.vhc-form-section{margin-bottom:20px;padding:14px 16px;background:rgba(148,163,184,.05);border:1px solid var(--border);border-radius:8px}
+.vhc-form-section:last-child{margin-bottom:0}
+.vhc-form-sec-title{font-size:11px;font-weight:700;color:var(--text3);letter-spacing:.8px;text-transform:uppercase;padding:0 0 8px;border-bottom:1px solid var(--border);margin-bottom:14px;display:flex;align-items:center;gap:6px}
+/* 8열 고정 → 반응형(최소 150px)으로 변경: 필드가 좁게 눌리지 않고 라벨/값이 잘 보임 */
+.vhc-form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px 16px}
+.vhc-fg{display:flex;flex-direction:column;gap:5px}
+.vhc-fg label{font-size:11px;font-weight:700;color:var(--warning);background:rgba(245,158,11,.08);padding:3px 6px;border-radius:3px;white-space:nowrap;align-self:flex-start}
 .vhc-fg label.req::after{content:" *";color:var(--danger)}
-.vhc-fg input,.vhc-fg select{background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 7px;font-size:12px;width:100%;transition:.15s}
+.vhc-fg input,.vhc-fg select{background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:7px 9px;font-size:12px;width:100%;transition:.15s}
 .vhc-fg input:focus,.vhc-fg select:focus{outline:none;border-color:var(--primary);background:var(--input-focus-bg)}
 .vhc-fg input[readonly]{opacity:.55;cursor:not-allowed;background:var(--bg)}
 .vhc-span2{grid-column:span 2}
@@ -6950,11 +6953,9 @@ function buildVehicleForm() {
     <div class="vhc-form-grid">
       <div class="vhc-fg">
         <label>차량ID</label>
-        <!-- VEHICLE_ID : 시퀀스(VHCMA_SEQ) 자동 채번 PK → 읽기전용 표시.
-             신규: '(저장 시 자동 부여)', 수정: 실제 ID 표시 -->
-        <input id="vf-VEHICLE_ID" type="text" readonly
-               placeholder="(저장 시 자동 부여)"
-               style="background:#f3f4f6;color:#6b7280;cursor:not-allowed;">
+        <!-- VEHICLE_ID : VARCHAR2(10) 사용자 입력값(검색/키워드용). 등록/수정 시 직접 입력·수정 가능. -->
+        <input id="vf-VEHICLE_ID" type="text" maxlength="10"
+               placeholder="검색용 ID (최대 10자)">
       </div>
       <div class="vhc-fg">
         <label class="req">차량번호</label>
@@ -8007,7 +8008,7 @@ function fillVehicleForm(row) {
     if (el) el.value = (v !== null && v !== undefined) ? String(v).trim() : '';
   };
 
-  // 차량ID(VEHICLE_ID) — 시퀀스 자동채번 PK. 수정 시 실제 ID 표시(읽기전용)
+  // 차량ID(VEHICLE_ID) — VARCHAR2(10) 사용자 입력값. 수정 시 기존값을 채워 편집 가능.
   const vidEl = document.getElementById('vf-VEHICLE_ID');
   if (vidEl) vidEl.value = (row.VEHICLE_ID !== null && row.VEHICLE_ID !== undefined && String(row.VEHICLE_ID).trim() !== '')
     ? String(row.VEHICLE_ID).trim() : '';
@@ -8075,7 +8076,7 @@ function vhcNewForm() {
   const vnoEl = document.getElementById('vf-VEHICLE_NO');
   if (vnoEl) { vnoEl.readOnly=false; vnoEl.style.opacity='1'; vnoEl.style.cursor=''; }
 
-  // 차량ID(VEHICLE_ID): 신규 등록 시 시퀀스 자동 채번 → 비워두고 placeholder 안내 표시
+  // 차량ID(VEHICLE_ID): 사용자 입력값. 신규 등록 시 빈 상태로 시작(직접 입력).
   const vidEl = document.getElementById('vf-VEHICLE_ID');
   if (vidEl) vidEl.value = '';
 
@@ -8110,8 +8111,7 @@ async function vhcSave() {
   const getNum = id => { const el=document.getElementById(id); if(!el||!el.value.trim())return null; return parseFloat(el.value)||null; };
 
   const payload = {
-    // VEHICLE_ID: 시퀀스 자동채번 PK. 신규는 빈값, 수정은 기존 ID(참조용) 전달.
-    //   실제 INSERT는 시퀀스, UPDATE는 VEHICLE_NO+OWNRKY 기준이므로 키 변경에는 미사용.
+    // VEHICLE_ID: VARCHAR2(10) 사용자 입력값(검색/키워드용). 등록/수정 시 입력값 저장.
     VEHICLE_ID:          getVal('vf-VEHICLE_ID'),
     VEHICLE_NO: vno, OWNRKY: 'KN',
     SHIP_POINT:          getVal('vf-SHIP_POINT'),
