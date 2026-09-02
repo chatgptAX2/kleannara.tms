@@ -94,6 +94,21 @@ public class SapRfcService {
                 "http://10.2.14.190:8182/common/tmsApi/json/WMS_IFC301.data"));
 
     /**
+     * 납품분할 전용 WMS 공통처리 API URL (TMS_IFC3012).
+     *
+     * ※ 납품분할(PS배차 최적화)은 선적생성/삭제(WMS_IFC301)와 다른 인터페이스인
+     *   TMS_IFC3012 를 호출한다. (2026-09 운영 확인)
+     *   SAP RFC(Z_TMS_DELIVERY_SPLIT) 정상 처리 후 이 API 로 WMS 에 분할 결과를 반영한다.
+     *
+     * 오버라이드:
+     *   -Dtms.wms.split.ifc.url=<url> / 환경변수 TMS_WMS_SPLIT_IFC_URL
+     */
+    private static final String WMS_SPLIT_IFC_URL =
+        System.getProperty("tms.wms.split.ifc.url",
+            System.getenv().getOrDefault("TMS_WMS_SPLIT_IFC_URL",
+                "https://10.2.14.190/common/tmsApi/json/TMS_IFC3012.data"));
+
+    /**
      * WMS_IFC301 호출용 HTTP 클라이언트 (JDK 내장).
      * ※ WMS 서버(https, 사내 IP/자체서명 인증서)와 통신하므로
      *   Flask 의 requests(verify=False) 와 동일하게 인증서 검증을 생략한 SSLContext 를 사용한다.
@@ -1439,12 +1454,13 @@ public class SapRfcService {
     }
 
     /**
-     * 납품분할 확정 후 WMS_IFC301 공통처리 API 호출.
+     * 납품분할 확정 후 WMS 공통처리 API(TMS_IFC3012) 호출.
      *   payload: { GUBUN:"S"(분할), SVBELN, SPLITS:[{SVBELN,SPOSNR,SKUKEY,SPLIT_QTY}, ...] }
-     *   URL   : wmsIfcUrl(env)  (개발환경은 IP http://10.2.14.190:8182 사용)
+     *   URL   : WMS_SPLIT_IFC_URL (https://10.2.14.190/common/tmsApi/json/TMS_IFC3012.data)
+     *   ※ 선적생성/삭제(WMS_IFC301)와 다른 인터페이스이므로 전용 URL 사용.
      */
     private Map<String, Object> callWmsIfc301Split(String svbeln, List<Map<String, Object>> rfcParams, String env) {
-        String url = wmsIfcUrl(env);
+        String url = WMS_SPLIT_IFC_URL;
 
         // payload JSON 구성: {"GUBUN":"S","SVBELN":"...","SPLITS":[{...}, ...]}
         StringBuilder items = new StringBuilder();
@@ -1464,7 +1480,7 @@ public class SapRfcService {
         // ── 요청 로그 ──
         StringBuilder reqLog = new StringBuilder();
         reqLog.append(System.lineSeparator());
-        reqLog.append("┌──────────────── WMS API 요청 (WMS_IFC301 / 납품분할) ────────────────").append(System.lineSeparator());
+        reqLog.append("┌──────────────── WMS API 요청 (TMS_IFC3012 / 납품분할) ────────────────").append(System.lineSeparator());
         reqLog.append("│ ENV     : ").append(env).append(System.lineSeparator());
         reqLog.append("│ METHOD  : POST").append(System.lineSeparator());
         reqLog.append("│ URL     : ").append(url).append(System.lineSeparator());
@@ -1493,7 +1509,7 @@ public class SapRfcService {
 
             StringBuilder resLog = new StringBuilder();
             resLog.append(System.lineSeparator());
-            resLog.append("┌──────────────── WMS API 응답 (WMS_IFC301 / 납품분할) ────────────────").append(System.lineSeparator());
+            resLog.append("┌──────────────── WMS API 응답 (TMS_IFC3012 / 납품분할) ────────────────").append(System.lineSeparator());
             resLog.append("│ URL     : ").append(url).append(System.lineSeparator());
             resLog.append("│ METHOD  : POST").append(System.lineSeparator());
             resLog.append("│ 성공여부 : ").append(ok ? "성공" : "실패").append(System.lineSeparator());
@@ -1505,7 +1521,7 @@ public class SapRfcService {
             resLog.append("│ BODY    : ").append(snippet.isEmpty() ? "(없음)" : snippet).append(System.lineSeparator());
             resLog.append("└────────────────────────────────────────────────────────────");
             stdoutLog(resLog.toString());
-            log.info("WMS_IFC301(납품분할) 호출: ok={}, status={}, svbeln={}, splits={}", ok, sc, svbeln, rfcParams.size());
+            log.info("TMS_IFC3012(납품분할) 호출: ok={}, status={}, svbeln={}, splits={}", ok, sc, svbeln, rfcParams.size());
             Map<String, Object> r = new LinkedHashMap<>();
             r.put("ok", ok);
             r.put("status_code", sc);
@@ -1516,7 +1532,7 @@ public class SapRfcService {
             String diag = diagnoseWmsNetworkError(url, ex);
             StringBuilder errLog = new StringBuilder();
             errLog.append(System.lineSeparator());
-            errLog.append("┌──────────────── WMS API 오류 (WMS_IFC301 / 납품분할) ────────────────").append(System.lineSeparator());
+            errLog.append("┌──────────────── WMS API 오류 (TMS_IFC3012 / 납품분할) ────────────────").append(System.lineSeparator());
             errLog.append("│ URL     : ").append(url).append(System.lineSeparator());
             errLog.append("│ SVBELN  : ").append(svbeln).append(System.lineSeparator());
             errLog.append("│ 예외유형 : ").append(ex.getClass().getName()).append(System.lineSeparator());
@@ -1524,7 +1540,7 @@ public class SapRfcService {
             errLog.append("│ ▶ 진단  : ").append(diag).append(System.lineSeparator());
             errLog.append("└────────────────────────────────────────────────────────────");
             stdoutLog(errLog.toString());
-            log.error("WMS_IFC301(납품분할) 호출 실패: svbeln={}, msg={}", svbeln, ex.getMessage(), ex);
+            log.error("TMS_IFC3012(납품분할) 호출 실패: svbeln={}, msg={}", svbeln, ex.getMessage(), ex);
             Map<String, Object> r = new LinkedHashMap<>();
             r.put("ok", false);
             r.put("error", ex.getMessage());
