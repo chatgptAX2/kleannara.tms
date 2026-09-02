@@ -15601,7 +15601,9 @@ function psopShowDocSummary() {
   });
 
   // 합계 텍스트 조합 (단위별 수량 + 중량(KG) 합계)
-  const uomParts = Object.entries(sumByUom)
+  // 단위가 'KG'인 항목은 중량 합계(sumKg)와 개념이 동일하므로 단위별 합계에서 제외한다.
+  const uomEntries = Object.entries(sumByUom).filter(([uom]) => uom !== 'KG');
+  const uomParts = uomEntries
     .map(([uom, sum]) => `<strong>${psopFmtNum(sum)}</strong> ${uom}`)
     .join(' &nbsp;/&nbsp; ');
   const kgPart = `<strong style="color:#d97706">${psopFmtNum(sumKgRounded)}</strong> KG`;
@@ -15610,14 +15612,16 @@ function psopShowDocSummary() {
   const summaryEl = document.getElementById('psop-stat-summary');
   if (summaryEl) {
     summaryEl.style.display = '';
-    summaryEl.innerHTML = `Σ ${label}: ${uomParts} &nbsp;·&nbsp; 중량 ${kgPart}`;
+    const uomSeg = uomParts ? `${uomParts} &nbsp;·&nbsp; ` : '';
+    summaryEl.innerHTML = `Σ ${label}: ${uomSeg}중량 ${kgPart}`;
   }
 
-  // 토스트로도 표시
-  const toastParts = Object.entries(sumByUom)
+  // 토스트로도 표시 (단위가 KG인 항목 제외)
+  const toastParts = uomEntries
     .map(([uom, sum]) => `${psopFmtNum(sum)} ${uom}`)
     .join(' / ');
-  showToast(`📊 ${label} 합계: ${toastParts} · 중량 ${psopFmtNum(sumKgRounded)} KG`);
+  const toastUomSeg = toastParts ? `${toastParts} · ` : '';
+  showToast(`📊 ${label} 합계: ${toastUomSeg}중량 ${psopFmtNum(sumKgRounded)} KG`);
 }
 
 /* ── 체크박스 선택 ────────────────────────────────── */
