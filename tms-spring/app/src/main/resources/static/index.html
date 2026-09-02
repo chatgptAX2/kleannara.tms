@@ -6949,6 +6949,14 @@ function buildVehicleForm() {
     <div class="vhc-form-sec-title">🔑 기본 정보</div>
     <div class="vhc-form-grid">
       <div class="vhc-fg">
+        <label>차량ID</label>
+        <!-- VEHICLE_ID : 시퀀스(VHCMA_SEQ) 자동 채번 PK → 읽기전용 표시.
+             신규: '(저장 시 자동 부여)', 수정: 실제 ID 표시 -->
+        <input id="vf-VEHICLE_ID" type="text" readonly
+               placeholder="(저장 시 자동 부여)"
+               style="background:#f3f4f6;color:#6b7280;cursor:not-allowed;">
+      </div>
+      <div class="vhc-fg">
         <label class="req">차량번호</label>
         <input id="vf-VEHICLE_NO" type="text" placeholder="예) 37더3739">
       </div>
@@ -7999,6 +8007,11 @@ function fillVehicleForm(row) {
     if (el) el.value = (v !== null && v !== undefined) ? String(v).trim() : '';
   };
 
+  // 차량ID(VEHICLE_ID) — 시퀀스 자동채번 PK. 수정 시 실제 ID 표시(읽기전용)
+  const vidEl = document.getElementById('vf-VEHICLE_ID');
+  if (vidEl) vidEl.value = (row.VEHICLE_ID !== null && row.VEHICLE_ID !== undefined && String(row.VEHICLE_ID).trim() !== '')
+    ? String(row.VEHICLE_ID).trim() : '';
+
   // 차량번호 — 수정 시 readonly
   const vnoEl = document.getElementById('vf-VEHICLE_NO');
   if (vnoEl) {
@@ -8062,6 +8075,10 @@ function vhcNewForm() {
   const vnoEl = document.getElementById('vf-VEHICLE_NO');
   if (vnoEl) { vnoEl.readOnly=false; vnoEl.style.opacity='1'; vnoEl.style.cursor=''; }
 
+  // 차량ID(VEHICLE_ID): 신규 등록 시 시퀀스 자동 채번 → 비워두고 placeholder 안내 표시
+  const vidEl = document.getElementById('vf-VEHICLE_ID');
+  if (vidEl) vidEl.value = '';
+
   ['vf-VEHICLE_NO','vf-VEHICLE_YEAR','vf-PALLET_QTY',
    'vf-DRIVER_NAME','vf-CONTACT_NO',
    'vf-DELIVERY_CUSTOMER_1','vf-DELIVERY_CUSTOMER_2'].forEach(id => {
@@ -8093,6 +8110,9 @@ async function vhcSave() {
   const getNum = id => { const el=document.getElementById(id); if(!el||!el.value.trim())return null; return parseFloat(el.value)||null; };
 
   const payload = {
+    // VEHICLE_ID: 시퀀스 자동채번 PK. 신규는 빈값, 수정은 기존 ID(참조용) 전달.
+    //   실제 INSERT는 시퀀스, UPDATE는 VEHICLE_NO+OWNRKY 기준이므로 키 변경에는 미사용.
+    VEHICLE_ID:          getVal('vf-VEHICLE_ID'),
     VEHICLE_NO: vno, OWNRKY: 'KN',
     SHIP_POINT:          getVal('vf-SHIP_POINT'),
     PRODUCT_GROUP:       getVal('vf-PRODUCT_GROUP'),
