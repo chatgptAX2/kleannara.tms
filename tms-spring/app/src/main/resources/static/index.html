@@ -6766,8 +6766,10 @@ function buildVehicleUI() {
   c.style.overflowY = 'hidden';
 
   /* ── 공통코드 기반 옵션 생성 ── */
-  // 제품군 검색 기본 선택 = 10(제지)
-  const skug05Opts   = vhcState.codes['SKUG05'].map(o=>
+  // 제품군 검색 기본 선택 = 10(제지). 00(원부자재)은 숨김 처리
+  const skug05Opts   = vhcState.codes['SKUG05']
+    .filter(o=>String(o.value).trim()!=='00')
+    .map(o=>
     `<option value="${o.value}"${String(o.value)==='10'?' selected':''}>${o.value} (${o.label})</option>`).join('');
   // 운송사(검색): value=정규화 운송사코드(10자리, 예 0000300342), 노출=운송사명(label)
   const carrierOpts  = vhcState.codes['TMS_CARRIER'].map(o=>
@@ -6812,13 +6814,13 @@ function buildVehicleUI() {
     <div class="vhc-search-grid">
       <div class="vhc-sg">
         <label>출하지점</label>
-        <select id="vs-ship_point" onchange="vhcSearchChange()">
+        <select id="vs-ship_point" onchange="_vhcOnSearchShipPointChange(this.value)">
           ${spOpts}
         </select>
       </div>
       <div class="vhc-sg">
         <label>제품군</label>
-        <select id="vs-product_group" onchange="vhcSearchChange()">
+        <select id="vs-product_group" onchange="_vhcOnSearchProdGroupChange(this.value)">
           ${skug05Opts}
         </select>
       </div>
@@ -6907,8 +6909,10 @@ function buildVehicleUI() {
 
 function buildVehicleForm() {
   /* ── 공통코드 기반 폼 옵션 ── */
-  // 제품군 폼 기본 선택 = 10(제지)
-  const skug05Opts   = vhcState.codes['SKUG05'].map(o=>
+  // 제품군 폼 기본 선택 = 10(제지). 00(원부자재)은 숨김 처리
+  const skug05Opts   = vhcState.codes['SKUG05']
+    .filter(o=>String(o.value).trim()!=='00')
+    .map(o=>
     `<option value="${o.value}"${String(o.value)==='10'?' selected':''}>${o.value} (${o.label})</option>`).join('');
   // 운송사(폼): value=정규화 운송사코드(10자리, 예 0000300342), 노출=운송사명(label)
   //   → 차량리스트 선택 시 _vhcFillCarrier 가 정규화 코드로 매칭하여 운송사코드 설정
@@ -7154,6 +7158,17 @@ function _vhcCalcCbm(v) {
 function _vhcProdGroupToCmcdky(prodGroup) {
   const map = { '10': 'TMS_CARCLASS10', '20': 'TMS_CARCLASS20', '00': 'TMS_CARCLASS20' };
   return map[String(prodGroup || '').trim()] || 'TMS_CARCLASS10';
+}
+
+/* 출하지점(WAREKY) ↔ 제품군(SKUG05) 매핑
+   - 1100(제지) ↔ 10(제지), 1200(생활) ↔ 20(생활) */
+function _vhcShipPointToProdGroup(sp) {
+  const map = { '1100': '10', '1200': '20' };
+  return map[String(sp || '').trim()] || '';
+}
+function _vhcProdGroupToShipPoint(pg) {
+  const map = { '10': '1100', '20': '1200' };
+  return map[String(pg || '').trim()] || '';
 }
 
 /* 제품군에 맞는 차형(톤수) <option> HTML 문자열 반환
@@ -7697,6 +7712,20 @@ function vhcToggleGridHide() {
 
 /* ─── 검색 ─── */
 let vhcSearchTimer = null;
+/* 검색조건: 출하지점 변경 → 제품군 같이 변경 (1100→10, 1200→20) */
+function _vhcOnSearchShipPointChange(sp) {
+  const pg = _vhcShipPointToProdGroup(sp);
+  const pgSel = document.getElementById('vs-product_group');
+  if (pgSel && pg && pgSel.value !== pg) pgSel.value = pg;
+  vhcSearchChange();
+}
+/* 검색조건: 제품군 변경 → 출하지점 같이 변경 (10→1100, 20→1200) */
+function _vhcOnSearchProdGroupChange(pg) {
+  const sp = _vhcProdGroupToShipPoint(pg);
+  const spSel = document.getElementById('vs-ship_point');
+  if (spSel && sp && spSel.value !== sp) spSel.value = sp;
+  vhcSearchChange();
+}
 function vhcSearchChange() {
   // 검색 제품군이 바뀌면 차형 드롭다운을 해당 제품군 코드로 갱신
   const pgSel = document.getElementById('vs-product_group');

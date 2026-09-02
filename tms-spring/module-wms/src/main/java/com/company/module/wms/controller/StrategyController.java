@@ -45,8 +45,9 @@ public class StrategyController {
 
     @GetMapping("/carclass-by-product")
     public ResponseEntity<Map<String, Object>> getCarClassByProduct(
-            @RequestParam(required = false) String skukey) {
-        return ResponseEntity.ok(strategyService.getCarClassByProduct(skukey));
+            @RequestParam(required = false) String skukey,
+            @RequestParam(name = "product_group", required = false) String productGroup) {
+        return ResponseEntity.ok(strategyService.getCarClassByProduct(skukey, productGroup));
     }
 
     @GetMapping("/ds-vehicle")
