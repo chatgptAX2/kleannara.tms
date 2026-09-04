@@ -97,6 +97,8 @@ public class PsDispatchSaveRequest {
         private String shpoky;
         @JsonAlias({"SHPOIT"})
         private String shpoit;
+        @JsonAlias({"SVBELN"})
+        private String svbeln;        // SAP 납품문서번호 (STDLNR 매칭 3차 폴백용)
         @JsonAlias({"SKUKEY"})
         private String skukey;
         @JsonAlias({"DESC01", "SKUNM"})
