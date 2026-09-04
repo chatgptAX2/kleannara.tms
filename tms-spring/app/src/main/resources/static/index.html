@@ -10662,14 +10662,47 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
     let lMm = sdims.lengthMm || 700;
     const gsm = sdims.gsm || 300;
 
-    // 번들(연) 수 & 1번들 높이
-    const totalKg = kgWeight > 0 ? kgWeight : (grswgt > 0 && qty > 0 ? grswgt*qty : qty);
-    const reams   = uom==='R' ? Math.round(qty) : Math.round(totalKg / Math.max(grswgt||1,1));
-    const bundles = Math.max(1, reams);   // 1연 = 1번들 블록
-    // 1번들 높이(m): 1연(500장) 두께. t = gsm/1.2e6 m/장 × 500장, 최소 2cm
+    // ── 판지 적재 단위 산출 (Req AA) ───────────────────────────────────
+    //  · 판지 SKUKEY 끝자리: 'B' = 벌크(분할 불가), 'A' = 속포장(속 단위 분할 허용).
+    //  · PLT_PER_UNIT(출고예정정보 'PLT당 개수') 기준 1PLT = 1단(段).
+    //    - 벌크            → PLT_CNT(=CEIL(연수/PLT당개수))만큼 '단' 적층.
+    //    - 속포장 비분할    → 벌크와 동일 1PLT = 1'단' (온전한 PLT: 연수가 PLT당개수의 정수배).
+    //    - 속포장 분할/비정수→ '속(SOK)' 단위로 세분화 표현(명칭 '속').
+    //                        속 개수 = 연수(R) × SOK_PER_R(1R당 SOK 환산계수).
+    //  · 명칭 필드 unitKind('단'|'속') 을 블록에 실어 2D/3D 렌더러 라벨에 반영.
+    const lastCh      = sk.slice(-1).toUpperCase();
+    const isBulk      = lastCh === 'B';   // 벌크
+    const isInner     = lastCh === 'A';   // 속포장
+    const pltPerUnit  = Number(it.PLT_PER_UNIT||0);   // PLT당 개수(연수/PLT)
+    const sokPerR     = Number(it.SOK_PER_R||0);      // 1R당 SOK
+
+    // fallback(기존 산식): PLT당개수 미조회 시 연 수를 단 수로 사용
+    const totalKg     = kgWeight > 0 ? kgWeight : (grswgt > 0 && qty > 0 ? grswgt*qty : qty);
+    const reamsFb     = uom==='R' ? Math.round(qty) : Math.round(totalKg / Math.max(grswgt||1,1));
+
+    // PLT 개수 = CEIL(연수 ÷ PLT당개수). PLT당개수 미조회 시 fallback.
+    const pltCnt      = pltPerUnit > 0 ? Math.ceil(qty / pltPerUnit) : Math.max(1, reamsFb);
+    // 온전한 PLT(정수배) 여부 — 속포장 분할 판정 기준.
+    const isWholePlt  = pltPerUnit > 0 && Math.abs(qty % pltPerUnit) < 1e-6;
+
+    // 적재 단위(unit) 결정: {count(개수), kind('단'|'속')}
+    let unitCount, unitKind;
+    if (isInner && !isWholePlt) {
+      // 속포장 & 정수배 아님(분할) → 연수에 맞는 속(SOK) 단위로 세분화
+      const sokCnt = sokPerR > 0 ? Math.round(qty * sokPerR) : 0;
+      unitCount = Math.max(1, sokCnt > 0 ? sokCnt : pltCnt);
+      unitKind  = sokCnt > 0 ? '속' : '단';   // SOK 미등록 시 부득이 '단'
+    } else {
+      // 벌크 / 속포장 비분할(온전 PLT) → 1PLT = 1단
+      unitCount = Math.max(1, pltCnt);
+      unitKind  = '단';
+    }
+
+    // 1단위(단/속) 높이(m): 1연(500장) 두께 기준. t = gsm/1.2e6 m/장 × 500장, 최소 2cm.
+    //  ※ 시각 표현용 높이. unitKind 와 무관하게 한 블록의 두께로 사용.
     const oneReamM = Math.max(gsm/1200000.0*500.0, 0.02);
     let hMm = Math.max(1.0, oneReamM * 1000.0);
-    if (boardCapMm > 0) hMm = Math.min(hMm, boardCapMm); // 1번들이 상한 넘으면 clamp
+    if (boardCapMm > 0) hMm = Math.min(hMm, boardCapMm); // 상한 넘으면 clamp
 
     // 방향 선택(백엔드 로직): 차량너비에 잔재 적은 방향
     let bw, bl;
@@ -10681,22 +10714,23 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
     else if (lMm <= carWmm)   { bw = lMm; bl = wMm; }
     else { bw = Math.min(wMm,carWmm); bl = Math.max(wMm,lMm); }
 
-    const tiers = Math.max(1, Math.floor(boardCapMm / Math.max(1.0, hMm)));
-    let remaining = bundles, no = 0;
+    const tiersCap = Math.max(1, Math.floor(boardCapMm / Math.max(1.0, hMm)));
+    let remaining = unitCount, no = 0;
     while (remaining > 0) {
       // 새 shelf 행 필요?
       if (curX + bw > carWmm + 0.5) { curY += curShelfL + GAP; curX = 0; curShelfL = bl; }
       if (curShelfL <= 0) curShelfL = bl;
       if (curY + bl > carLmm + 0.5) break; // Y 초과 → 중단
-      // 이 X열에 tiers 단 적층
-      const place = Math.min(tiers, remaining);
+      // 이 X열에 tiersCap 단위(단/속)까지 적층
+      const place = Math.min(tiersCap, remaining);
       for (let ti = 0; ti < place; ti++) {
         blocks.push({
           x: curX, y: curY, z: ti*hMm,
           w: bw, l: bl, h: hMm,
           color, type:'board', label, idx,
           cyl:false, no: ++no,
-          tier: ti+1, totalTiers: place       // 단수
+          tier: ti+1, totalTiers: place,      // (몇 번째 / 이 열 총) 단위 수
+          unitKind                            // '단'(벌크·비분할) | '속'(속포장 분할)
         });
       }
       remaining -= place;
@@ -10959,9 +10993,9 @@ function _lvRender3D(containerId, placement, opts) {
       const rim = new THREE.LineSegments(rimGeo, new THREE.LineBasicMaterial({ color: _psdDarken(b.color,.45) }));
       rim.position.set(cxm, cym, czm);
       grp.add(rim);
-      // ── 단수 라벨 스프라이트 (2단 이상일 때만) ──
+      // ── 단수 라벨 스프라이트 (2단 이상일 때만) ── (원지는 항상 '단')
       if ((b.totalTiers||1) > 1) {
-        const tl = _lvTierSprite(`${b.tier}단`);
+        const tl = _lvTierSprite(`${b.tier}${b.unitKind||'단'}`);
         tl.position.set(cxm, cym, czm + r*0.98);
         tl.scale.set(carW*0.16, carW*0.06, 1);
         grp.add(tl);
@@ -10980,7 +11014,7 @@ function _lvRender3D(containerId, placement, opts) {
       eg.position.copy(mesh.position);
       grp.add(eg);
       if ((b.totalTiers||1) > 1) {
-        const tl = _lvTierSprite(`${b.tier}단`);
+        const tl = _lvTierSprite(`${b.tier}${b.unitKind||'단'}`);   // 판지: '단'(벌크·비분할) | '속'(속포장 분할)
         tl.position.set(cxm, cym, czm + bl*0.5 + 0.001);
         tl.scale.set(carW*0.16, carW*0.06, 1);
         grp.add(tl);
@@ -11314,25 +11348,34 @@ function _lvRenderLoadCanvas2D(canvas, wrap, items, veh, view, rollLayout) {
       ctx.beginPath(); ctx.moveTo(x0, yTop+h0-0.5); ctx.lineTo(x0+w0, yTop+h0-0.5); ctx.stroke();
     }
 
-    /* 단수 표시 */
+    /* 단위 표시 — 판지 속포장 분할은 '속', 그 외 '단' */
     if (w0 > 20 && h0 > 14) {
       ctx.fillStyle='rgba(255,255,255,.95)';
       ctx.font=`bold ${Math.min(12, w0*.3)}px sans-serif`; ctx.textAlign='center';
-      ctx.fillText(`${b.tier||1}단`, cxc, cyc+3);
+      ctx.fillText(`${b.tier||1}${b.unitKind||'단'}`, cxc, cyc+3);
     }
 
     drawn.push({ idx:b.idx, topMm: zTop, xMidMm: gStart + footMm/2, color: b.color });
   });
 
   /* ── 범례 (품목별 1회) ── */
+  //  판지: 총 적재 단위 개수·명칭('단'/'속') 을 blocks 에서 idx별 집계해 표기.
+  const _boardUnit = {};   // idx → {cnt, kind}
+  (placement.blocks||[]).forEach(b => {
+    if (b.type !== 'board') return;
+    if (!_boardUnit[b.idx]) _boardUnit[b.idx] = { cnt:0, kind:(b.unitKind||'단') };
+    _boardUnit[b.idx].cnt++;
+  });
   const _legSeen = new Set();
   (placement.blocks||[]).forEach(b => {
     if (_legSeen.has(b.idx)) return; _legSeen.add(b.idx);
     const vz = vizItems[b.idx] || {};
     if (vz.type === 'roll')
       legendItems.push({ color:vz.color, label:`${vz.label} (롤×${vz.rollCount}, Ø${(vz.diamMm/10).toFixed(0)}cm, 폭${(vz.widMm/10).toFixed(0)}cm, ${b.totalTiers||1}단)` });
-    else if (vz.type === 'board')
-      legendItems.push({ color:vz.color, label:`${vz.label} (판지 ${psdFmtNum(vz.reams)}연, H${((vz.fullStackHgtM||vz.stackHgtM)*100).toFixed(0)}cm)` });
+    else if (vz.type === 'board') {
+      const bu = _boardUnit[b.idx] || { cnt:1, kind:'단' };
+      legendItems.push({ color:vz.color, label:`${vz.label} (판지 ${psdFmtNum(vz.reams)}연, ${psdFmtNum(bu.cnt)}${bu.kind}, H${((vz.fullStackHgtM||vz.stackHgtM)*100).toFixed(0)}cm)` });
+    }
   });
 
   /* ── ★ 폭방향 실제 열(cols) 안내 배지 (정면뷰 전용) ──

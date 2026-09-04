@@ -925,7 +925,23 @@ public class SapRfcService {
                     "  SI.QTSHPO, SI.UOMKEY, " +
                     "  ROUND(SI.QTSHPO * COALESCE(M.NETWGT,0), 1) AS KG_WEIGHT, " +
                     "  COALESCE(M.NETWGT, 0) AS GRSWGT, " +
-                    "  SH.DPTNKY, COALESCE(CT.NAME01, SH.DPTNKY) AS DPTNM " +
+                    "  SH.DPTNKY, COALESCE(CT.NAME01, SH.DPTNKY) AS DPTNM, " +
+                    // ── 적재뷰(3D) 판지 단수 산출용 추가 필드 (출고예정정보 ShipmentService 동일 산식) ──
+                    //  · SOK_PER_R : 1R당 SOK 환산계수(MEASI UOMKEY='SOK'). 속포장 분할단위 표현용.
+                    //  · PLT_PER_UNIT : 판지(SKUG05='10') RECDI 최근입고 QTYRCV(LOTA 일치, STATIT='FRV').
+                    //                   '출고예정정보 PLT당 개수' 와 동일. 벌크/속포장 1PLT=1단 기준.
+                    "  COALESCE((SELECT ME.QTAUOM FROM KNRAWMS.MEASI ME " +
+                    "             WHERE ME.WAREKY=SH.WAREKY AND ME.MEASKY=SI.MEASKY " +
+                    "               AND ME.UOMKEY='SOK' AND ROWNUM=1), 0) AS SOK_PER_R, " +
+                    "  CASE WHEN SI.SKUG05='10' THEN " +
+                    "       COALESCE((SELECT rd.QTYRCV FROM KNRAWMS.RECDI rd " +
+                    "                  WHERE rd.SKUKEY = SI.SKUKEY " +
+                    "                    AND rd.STATIT = 'FRV' " +
+                    "                    AND rd.LOTA01 = SI.LOTA01 " +
+                    "                    AND rd.LOTA02 = SI.LOTA02 " +
+                    "                  ORDER BY rd.RECVKY DESC " +
+                    "                  FETCH FIRST 1 ROW ONLY), 0) " +
+                    "       ELSE 0 END AS PLT_PER_UNIT " +
                     "FROM KNRAWMS.SHPDI SI " +
                     "JOIN KNRAWMS.SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
                     "LEFT JOIN KNRAWMS.SKUMA M  ON M.SKUKEY  = SI.SKUKEY " +
