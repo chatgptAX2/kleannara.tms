@@ -499,7 +499,8 @@ public class PsDispatchService {
                       .setParameter(15, it.getKgWeight() == null ? 0.0 : it.getKgWeight())
                       .executeUpdate();
 
-                    shpdiKeys.add(new String[]{shpoky, shpoit});
+                    // key[2] = SVBELN(SAP 납품문서번호) — STDLNR 매칭 3차 폴백용
+                    shpdiKeys.add(new String[]{shpoky, shpoit, str(it.getSvbeln())});
                     shpokySet.add(shpoky);
                 }
             }
@@ -553,6 +554,35 @@ public class PsDispatchService {
                       .executeUpdate();
                 }
 
+                // 3차 폴백: SHPOKY 매칭 실패 시 SVBELN(SAP 납품문서번호) 기준 매칭.
+                //   [개선] SAP 납품분할로 신규 생성된 문서는 프론트가 보유한 SHPOKY 와
+                //   SHPDI 실제 SHPOKY 가 어긋날 수 있으나(분할 반영 타이밍/키 포맷 차이),
+                //   SVBELN + SHPOIT 는 동일하므로 이를 기준으로 STDLNR 을 부여한다.
+                //   → 분할문서 배차저장이 "갱신 0건"으로 전체 롤백되던 문제를 방지.
+                if (n == 0 && key.length > 2 && !isBlank(key[2])) {
+                    n = tmsEm.createNativeQuery("""
+                        UPDATE KNRAWMS.SHPDI
+                        SET STDLNR  = ?,
+                            LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
+                            LMOUSR  = 'WEB'
+                        WHERE TRIM(SVBELN) = TRIM(?)
+                          AND (TRIM(SHPOIT) = TRIM(?)
+                               OR (REGEXP_LIKE(TRIM(SHPOIT), '^[0-9]+$')
+                                   AND REGEXP_LIKE(TRIM(?), '^[0-9]+$')
+                                   AND TO_NUMBER(TRIM(SHPOIT)) = TO_NUMBER(TRIM(?))))
+                        """)
+                      .setParameter(1, dispatchNo)
+                      .setParameter(2, key[2])
+                      .setParameter(3, key[1])
+                      .setParameter(4, key[1])
+                      .setParameter(5, key[1])
+                      .executeUpdate();
+                    if (n > 0) {
+                        log.info("[PsDispatch] saveDispatch STDLNR 3차 폴백(SVBELN) 매칭 성공 "
+                                 + "svbeln={}, shpoit={} → {}건", key[2], key[1], n);
+                    }
+                }
+
                 shpdiUpdated += n;
                 if (n == 0) notMatched.add(key);
             }
@@ -563,7 +593,10 @@ public class PsDispatchService {
                      dispatchNo, shpdiKeys.size(), shpdiUpdated);
             if (!notMatched.isEmpty()) {
                 StringBuilder sb = new StringBuilder();
-                for (String[] k : notMatched) sb.append('[').append(k[0]).append('/').append(k[1]).append(']');
+                for (String[] k : notMatched) {
+                    sb.append("[SHPOKY=").append(k[0]).append(", SHPOIT=").append(k[1])
+                      .append(", SVBELN=").append(k.length > 2 ? k[2] : "").append(']');
+                }
                 log.warn("[PsDispatch] saveDispatch dispatchNo={} SHPDI 매칭 실패(STDLNR 미부여) {}건 → {} "
                          + "(배차완료 표시/ SAP선적탭 조회가 누락될 수 있음)",
                          dispatchNo, notMatched.size(), sb);
@@ -575,10 +608,15 @@ public class PsDispatchService {
             //   → 이 경우 예외를 던져 전체 트랜잭션을 롤백하고, 프론트에 명확한 오류를 반환한다.
             //   (기존에는 로그만 남기고 커밋되어 조용히 유령 저장이 됐음)
             if (!shpdiKeys.isEmpty() && shpdiUpdated == 0) {
+                StringBuilder keyInfo = new StringBuilder();
+                for (String[] k : shpdiKeys) {
+                    keyInfo.append("[SHPOKY=").append(k[0]).append(", SHPOIT=").append(k[1])
+                           .append(", SVBELN=").append(k.length > 2 ? k[2] : "").append(']');
+                }
                 throw new IllegalStateException(
                     "배차저장 실패: SHPDI 가선적번호(STDLNR) 갱신 대상이 없습니다. " +
-                    "납품문서 키(SHPOKY/SHPOIT)가 SHPDI 와 일치하지 않습니다. " +
-                    "[dispatchNo=" + dispatchNo + ", 요청항목=" + shpdiKeys.size() + "건]");
+                    "납품문서 키(SHPOKY/SHPOIT/SVBELN)가 SHPDI 와 일치하지 않습니다. " +
+                    "[dispatchNo=" + dispatchNo + ", 요청항목=" + shpdiKeys.size() + "건] " + keyInfo);
             }
 
             // ★ 저장 직후 자가검증(SELECT): 방금 채번한 dispatchNo 로 SHPDI 에서
