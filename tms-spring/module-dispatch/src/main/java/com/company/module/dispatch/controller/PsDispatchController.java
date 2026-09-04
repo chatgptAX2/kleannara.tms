@@ -125,6 +125,38 @@ public class PsDispatchController {
     }
 
     /**
+     * 배차 삭제 (선택 배차 물리 삭제 + SHPDI/SHPDH 원복)
+     * Flask: POST /api/ps-dispatch/delete
+     *   입력 : { dispatch_nos: ["260728001T", ...] }
+     *   출력 : { ok, deleted }  (프론트 psdDeleteDispatch / psopDeleteDispatch 대응)
+     *
+     * ※ 프론트가 {ok, deleted} 를 최상위에서 소비하므로 ApiResponse 로 감싸지 않고
+     *    Map 그대로 반환한다. (load-for-edit 와 동일 패턴)
+     */
+    @PostMapping("/delete")
+    public ResponseEntity<java.util.Map<String, Object>> delete(
+            @RequestBody java.util.Map<String, Object> body) {
+
+        @SuppressWarnings("unchecked")
+        List<String> nos = body.get("dispatch_nos") instanceof List
+            ? (List<String>) body.get("dispatch_nos")
+            : java.util.Collections.emptyList();
+
+        try {
+            int deleted = psDispatchService.deleteDispatch(nos);
+            return ResponseEntity.ok(java.util.Map.of(
+                "ok", true,
+                "deleted", deleted
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.ok(java.util.Map.of(
+                "ok", false,
+                "error", e.getMessage() == null ? "배차 삭제 실패" : e.getMessage()
+            ));
+        }
+    }
+
+    /**
      * 저장배차 불러오기 (편집용)
      * Flask: POST /api/ps-dispatch/load-for-edit
      *   입력 : { dispatch_nos: ["260728001T", ...] }

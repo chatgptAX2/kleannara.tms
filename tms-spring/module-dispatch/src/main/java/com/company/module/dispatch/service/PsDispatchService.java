@@ -702,6 +702,87 @@ public class PsDispatchService {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
+    // 배차 삭제 (배차대기/대시보드 물량 실시간 반영)
+    //
+    // ■ 문제
+    //   배차 삭제 시 PS_DISPATCH_H/D 와 SHPDI.STDLNR(가선적번호)이 그대로 남아
+    //   대시보드(오늘 총 물량/이번주 총 차량/운송현황/운송효율성)에 삭제분이
+    //   계속 누적 집계되었다. (기존에는 delete API 자체가 없어 프론트 인메모리에서만
+    //   제거되고 DB 는 정리되지 않았음)
+    //
+    // ■ 개선
+    //   1) SHPDI.STDLNR = dispatchNo 인 행의 STDLNR 을 NULL 로 원복 → 미배차 전환
+    //      (배차저장 시 STDLNR=dispatchNo 로 세팅한 것을 역방향으로 되돌림)
+    //   2) SHPDH.VEHINO 원복(공백) → 저장 시 세팅한 차량정보 해제
+    //   3) PS_DISPATCH_D → PS_DISPATCH_H 물리 삭제 → 대시보드 집계에서 완전히 제외
+    //
+    //   ※ saveDispatch 와 동일하게 tmsTransactionManager 컨텍스트에서 실행하여
+    //     동일 물리 Oracle DB 를 단일 트랜잭션으로 정리한다.
+    // ──────────────────────────────────────────────────────────────────────────
+    @Transactional(transactionManager = "tmsTransactionManager")
+    public int deleteDispatch(List<String> dispatchNos) {
+        if (dispatchNos == null || dispatchNos.isEmpty()) return 0;
+
+        int deleted = 0;
+        for (String rawNo : dispatchNos) {
+            String dispatchNo = rawNo == null ? "" : rawNo.strip();
+            if (dispatchNo.isEmpty()) continue;
+
+            // 1) SHPDI.STDLNR 원복 (가선적번호 해제 → 미배차 전환)
+            //    저장 시 STDLNR = dispatchNo 로 기록했으므로 동일 값 기준으로 되돌린다.
+            int shpdiReverted = tmsEm.createNativeQuery("""
+                UPDATE KNRAWMS.SHPDI
+                SET STDLNR  = NULL,
+                    LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
+                    LMOUSR  = 'WEB'
+                WHERE TRIM(STDLNR) = TRIM(?)
+                """)
+              .setParameter(1, dispatchNo)
+              .executeUpdate();
+
+            // 2) SHPDH.VEHINO 원복 — 삭제 배차에 속한 SHPOKY 들의 차량정보 해제
+            //    PS_DISPATCH_D 에서 이 배차의 SHPOKY 목록을 구해 SHPDH 를 원복한다.
+            @SuppressWarnings("unchecked")
+            List<Object> shpokyRows = tmsEm.createNativeQuery(
+                    "SELECT DISTINCT SHPOKY FROM KNRAWMS.PS_DISPATCH_D WHERE DISPATCH_NO = ?")
+                .setParameter(1, dispatchNo)
+                .getResultList();
+            Set<String> shpokySet = new LinkedHashSet<>();
+            for (Object o : shpokyRows) {
+                String sk = str(o);
+                if (!sk.isEmpty()) shpokySet.add(sk);
+            }
+            if (!shpokySet.isEmpty()) {
+                String ph = shpokySet.stream().map(x -> "?").collect(Collectors.joining(","));
+                var q = tmsEm.createNativeQuery(
+                    "UPDATE KNRAWMS.SHPDH SET VEHINO=' ', CARTON=' '," +
+                    " CARNO=' ', DRIVER=' ', DRIVERCEL=' '," +
+                    " LMODAT=TO_CHAR(SYSDATE,'YYYYMMDD'), LMOUSR='WEB' WHERE SHPOKY IN (" + ph + ")"
+                );
+                int idx = 1;
+                for (String sk : shpokySet) { q.setParameter(idx++, sk); }
+                q.executeUpdate();
+            }
+
+            // 3) PS_DISPATCH_D → PS_DISPATCH_H 물리 삭제 (자식 먼저)
+            tmsEm.createNativeQuery(
+                    "DELETE FROM KNRAWMS.PS_DISPATCH_D WHERE DISPATCH_NO = ?")
+                .setParameter(1, dispatchNo)
+                .executeUpdate();
+            int hDeleted = tmsEm.createNativeQuery(
+                    "DELETE FROM KNRAWMS.PS_DISPATCH_H WHERE DISPATCH_NO = ?")
+                .setParameter(1, dispatchNo)
+                .executeUpdate();
+
+            deleted += hDeleted;
+            log.info("[PsDispatch] deleteDispatch dispatchNo={} 삭제완료 "
+                     + "(SHPDI.STDLNR 원복={}건, SHPDH 원복 SHPOKY={}건, PS_DISPATCH_H 삭제={}건)",
+                     dispatchNo, shpdiReverted, shpokySet.size(), hDeleted);
+        }
+        return deleted;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
     // 배차 목록 조회 (Flask api_ps_dispatch_list)
     // PS_DISPATCH_H + ds_vehicle → tmsEm
     //

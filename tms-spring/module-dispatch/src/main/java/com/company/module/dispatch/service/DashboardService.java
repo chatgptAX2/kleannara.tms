@@ -32,13 +32,16 @@ public class DashboardService {
         String[] range = resolveRange(dateFrom, dateTo, 7);
 
         // 1-1. 일자별 배차대기/배차완료 차량대수
+        //  ※ 실제 상태 컬럼은 STATUS(DRAFT/CONFIRMED). 삭제는 물리삭제로 처리되어
+        //    배차 삭제 시 자동으로 집계에서 제외된다. (기존 STAT_CD 는 미사용 컬럼)
         String dailySql = """
             SELECT RQSHPD,
-                   SUM(CASE WHEN STAT_CD = 'PENDING'   THEN 1 ELSE 0 END) AS PENDING_CNT,
-                   SUM(CASE WHEN STAT_CD = 'CONFIRMED' THEN 1 ELSE 0 END) AS CONFIRMED_CNT,
+                   SUM(CASE WHEN STATUS = 'DRAFT'     THEN 1 ELSE 0 END) AS PENDING_CNT,
+                   SUM(CASE WHEN STATUS = 'CONFIRMED' THEN 1 ELSE 0 END) AS CONFIRMED_CNT,
                    COUNT(*) AS TOTAL_CNT
             FROM KNRAWMS.PS_DISPATCH_H
             WHERE RQSHPD >= ? AND RQSHPD <= ?
+              AND NVL(STATUS, 'DRAFT') <> 'CANCELLED'
             GROUP BY RQSHPD
             ORDER BY RQSHPD
             """;
@@ -53,6 +56,7 @@ public class DashboardService {
                 ROUND(SUM(TOTAL_KG) / 1000, 2) AS TOTAL_TON
             FROM KNRAWMS.PS_DISPATCH_H
             WHERE RQSHPD >= ? AND RQSHPD <= ?
+              AND NVL(STATUS, 'DRAFT') <> 'CANCELLED'
             GROUP BY
                 CASE WHEN MATERIAL_TYPE IS NULL OR MATERIAL_TYPE = '' THEN 'OTHER'
                      ELSE MATERIAL_TYPE END
@@ -88,7 +92,7 @@ public class DashboardService {
                 COUNT(*) AS CAR_CNT
             FROM KNRAWMS.PS_DISPATCH_H
             WHERE RQSHPD >= ? AND RQSHPD <= ?
-              AND STAT_CD <> 'CANCELLED'
+              AND NVL(STATUS, 'DRAFT') <> 'CANCELLED'
             GROUP BY
                 CASE
                     WHEN LOAD_KG IS NULL OR LOAD_KG = 0 THEN '데이터없음'
@@ -116,7 +120,7 @@ public class DashboardService {
                 ROUND(SUM(h.TOTAL_KG) / 1000, 2) AS TOTAL_TON
             FROM KNRAWMS.PS_DISPATCH_H h
             WHERE h.RQSHPD >= ? AND h.RQSHPD <= ?
-              AND h.STAT_CD <> 'CANCELLED'
+              AND NVL(h.STATUS, 'DRAFT') <> 'CANCELLED'
             GROUP BY NVL(SUBSTR(h.DPTNKY, 1, 2), '기타')
             ORDER BY TOTAL_TON DESC
             FETCH FIRST 10 ROWS ONLY
@@ -133,7 +137,7 @@ public class DashboardService {
                 ROUND(MIN(CASE WHEN LOAD_KG > 0 THEN TOTAL_KG / LOAD_KG * 100 ELSE NULL END), 1) AS MIN_RATE
             FROM KNRAWMS.PS_DISPATCH_H
             WHERE RQSHPD >= ? AND RQSHPD <= ?
-              AND STAT_CD <> 'CANCELLED'
+              AND NVL(STATUS, 'DRAFT') <> 'CANCELLED'
             GROUP BY ROLLUP(MATERIAL_TYPE)
             ORDER BY AVG_RATE DESC NULLS LAST
             """;
@@ -147,7 +151,7 @@ public class DashboardService {
                 ROUND(AVG(CASE WHEN LOAD_KG > 0 THEN TOTAL_KG / LOAD_KG * 100 ELSE NULL END), 1) AS AVG_RATE
             FROM KNRAWMS.PS_DISPATCH_H
             WHERE RQSHPD >= ? AND RQSHPD <= ?
-              AND STAT_CD <> 'CANCELLED'
+              AND NVL(STATUS, 'DRAFT') <> 'CANCELLED'
               AND CARTYPE IS NOT NULL
             GROUP BY CARTYPE
             ORDER BY CAR_CNT DESC
@@ -174,20 +178,25 @@ public class DashboardService {
         String weekStart = LocalDate.now().minusDays(6).format(FMT);
 
         // 오늘 현황
+        //  ※ 상태 컬럼은 STATUS(DRAFT/CONFIRMED). 배차대기=DRAFT, 배차완료=CONFIRMED.
+        //    삭제는 물리삭제이므로 COUNT/SUM 에서 자동 제외되어
+        //    배차 삭제 시 오늘 총 물량/배차대기 건수가 즉시 감산된다.
         String todaySql = """
             SELECT
-                SUM(CASE WHEN STAT_CD = 'PENDING'   THEN 1 ELSE 0 END) AS PENDING,
-                SUM(CASE WHEN STAT_CD = 'CONFIRMED' THEN 1 ELSE 0 END) AS CONFIRMED,
-                SUM(CASE WHEN STAT_CD = 'CANCELLED' THEN 1 ELSE 0 END) AS CANCELLED,
+                SUM(CASE WHEN STATUS = 'DRAFT'     THEN 1 ELSE 0 END) AS PENDING,
+                SUM(CASE WHEN STATUS = 'CONFIRMED' THEN 1 ELSE 0 END) AS CONFIRMED,
+                SUM(CASE WHEN STATUS = 'CANCELLED' THEN 1 ELSE 0 END) AS CANCELLED,
                 COUNT(*) AS TOTAL,
                 ROUND(SUM(TOTAL_KG)/1000, 2) AS TOTAL_TON
             FROM KNRAWMS.PS_DISPATCH_H
             WHERE RQSHPD = ?
+              AND NVL(STATUS, 'DRAFT') <> 'CANCELLED'
             """;
         Map<String, Object> todayRow = safeQueryForMap(todaySql, today);
 
         // 전일 건수 (증감 비교)
-        String yestSql = "SELECT COUNT(*) AS TOTAL FROM KNRAWMS.PS_DISPATCH_H WHERE RQSHPD = ?";
+        String yestSql = "SELECT COUNT(*) AS TOTAL FROM KNRAWMS.PS_DISPATCH_H "
+                       + "WHERE RQSHPD = ? AND NVL(STATUS, 'DRAFT') <> 'CANCELLED'";
         Map<String, Object> yestRow = safeQueryForMap(yestSql, yesterday);
 
         // 이번주 합계
@@ -197,7 +206,7 @@ public class DashboardService {
                    ROUND(AVG(CASE WHEN LOAD_KG > 0 THEN TOTAL_KG/LOAD_KG*100 ELSE NULL END), 1) AS AVG_LOAD_RATE
             FROM KNRAWMS.PS_DISPATCH_H
             WHERE RQSHPD >= ? AND RQSHPD <= ?
-              AND STAT_CD <> 'CANCELLED'
+              AND NVL(STATUS, 'DRAFT') <> 'CANCELLED'
             """;
         Map<String, Object> weekRow = safeQueryForMap(weekSql, weekStart, today);
 
