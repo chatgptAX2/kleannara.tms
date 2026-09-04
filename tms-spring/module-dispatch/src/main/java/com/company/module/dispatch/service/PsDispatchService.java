@@ -197,7 +197,12 @@ public class PsDispatchService {
         String vSkug05 = (req.getSkug05() != null && !req.getSkug05().isBlank())
                          ? req.getSkug05().strip() : "10";
 
-        StringBuilder where = new StringBuilder(" WHERE h.WAREKY = ? AND i.SKUG05 = ?");
+        // ── WAREKY / SKUG05 는 TRIM 비교(정규화)로 매칭한다. ──────────────────
+        //   [개선] SAP 납품분할로 신규 생성된 납품문서(SHPDI)의 WAREKY/SKUG05 값에
+        //   앞뒤 공백/포맷 차이가 있으면 정확일치(=)에서 걸러져 PS배차 조회에
+        //   나타나지 않는 문제가 있었다(출고예정정보는 해당 조건이 없어 정상 조회).
+        //   → TRIM 후 비교하여 공백 차이로 인한 누락을 방지한다.
+        StringBuilder where = new StringBuilder(" WHERE TRIM(h.WAREKY) = ? AND TRIM(i.SKUG05) = ?");
         List<Object> params = new ArrayList<>();
         params.add(vWareky);
         params.add(vSkug05);
@@ -220,7 +225,8 @@ public class PsDispatchService {
             // 납품문서 검색 조건: 기존 (SHPOKY LIKE %..% OR SVBELN LIKE %..%) 는
             // 선행 와일드카드로 인덱스를 타지 못해 성능이 느림 →
             // SVBELN(납품문서번호) 정확일치(=)로 변경하여 인덱스 사용 유도.
-            where.append(" AND i.SVBELN = ?");
+            // [개선] 분할문서 등 SVBELN 값에 앞뒤 공백이 섞여 있어도 매칭되도록 TRIM 비교.
+            where.append(" AND TRIM(i.SVBELN) = ?");
             params.add(shpoky.trim());
         }
         if (shpmtyList != null && !shpmtyList.isEmpty()) {
