@@ -26,7 +26,7 @@ import java.util.Optional;
  *   - 저장: saveReturnDispatch() → DISPATCH_TYPE='GR' + IFWMS103.STKNUM(가선적번호) UPDATE
  *
  * ■ DataSource 라우팅
- *   - em     (wmsPU, Oracle KNRAWMS): IFWMS103, SKUMA, BZPTN, SZF_GET_CONVERT_QTY
+ *   - em     (wmsPU, Oracle KNRAWMS): IFWMS103, SKUMA, BZPTN, KNRAWMS.SZF_GET_CONVERT_QTY
  *   - tmsEm  (tmsPU, Oracle KNRAWMS): PS_DISPATCH_H, PS_DISPATCH_D
  *   ※ IFWMS103/SKUMA/BZPTN/PS_DISPATCH_* 는 모두 동일 KNRAWMS DB.
  *     저장 트랜잭션은 tmsTransactionManager 이므로 IFWMS103 UPDATE 도 tmsEm 으로 실행하여
@@ -41,7 +41,7 @@ public class PsReturnService {
     /** 배차번호 채번 재사용 (MariaDB PS_DISPATCH_H prefix 최대값) */
     private final PsDispatchHRepository dispatchHRepo;
 
-    /** Oracle WMS — KNRAWMS.IFWMS103 / SKUMA / BZPTN (SZF_GET_CONVERT_QTY 함수 포함) */
+    /** Oracle WMS — KNRAWMS.IFWMS103 / SKUMA / BZPTN (KNRAWMS.SZF_GET_CONVERT_QTY 함수 포함) */
     @PersistenceContext(unitName = "wmsPU")
     private EntityManager em;
 
@@ -78,10 +78,12 @@ public class PsReturnService {
         String lifnr  = req.getLifnr() == null ? "" : req.getLifnr().strip();
         String ebeln  = req.getEbeln() == null ? "" : req.getEbeln().strip();
 
-        // SZF_GET_CONVERT_QTY 환산에 사용할 실수량 표현식 (요구 쿼리 그대로)
+        // KNRAWMS.SZF_GET_CONVERT_QTY 환산에 사용할 실수량 표현식 (요구 쿼리 그대로)
+        //  ※ 사용자 정의 함수는 스키마(KNRAWMS) 프리픽스를 명시해야 ORA-00904 미발생
+        //    (접속 계정 기본 스키마가 KNRAWMS 가 아닐 수 있음 → 테이블과 동일하게 KNRAWMS. 부착).
         String qtyExpr = "(CASE WHEN PO.IFFLG != 'N' THEN PO.MENGE_R "
                        + "ELSE (PO.MENGE - PO.MENGE_R) END)";
-        String conv = "NVL(TRIM(SZF_GET_CONVERT_QTY('1100', PO.SKUKEY, " + qtyExpr + ", PO.MEINS, '%s')),'0.000')";
+        String conv = "NVL(TRIM(KNRAWMS.SZF_GET_CONVERT_QTY('1100', PO.SKUKEY, " + qtyExpr + ", PO.MEINS, '%s')),'0.000')";
 
         StringBuilder sql = new StringBuilder();
         sql.append("SELECT PO.SEQNO, PO.EBELN, PO.EBELP, PO.WAREKY, PO.BWART, PO.EINDT, ")
@@ -95,8 +97,8 @@ public class PsReturnService {
            .append(String.format(conv, "SOK")).append(" AS SOK, ")
            .append(String.format(conv, "EA")).append(" AS EA, ")
            .append("CASE WHEN ").append(qtyExpr).append(" = 0 THEN 0 ")
-           .append("ELSE NVL((TRIM(SZF_GET_CONVERT_QTY('1100', PO.SKUKEY, ").append(qtyExpr).append(", PO.MEINS, 'BAG')) / ")
-           .append("TRIM(SZF_GET_CONVERT_QTY('1100', PO.SKUKEY, ").append(qtyExpr).append(", PO.MEINS, 'BOX'))),'0.000') END AS BOXBAG ")
+           .append("ELSE NVL((TRIM(KNRAWMS.SZF_GET_CONVERT_QTY('1100', PO.SKUKEY, ").append(qtyExpr).append(", PO.MEINS, 'BAG')) / ")
+           .append("TRIM(KNRAWMS.SZF_GET_CONVERT_QTY('1100', PO.SKUKEY, ").append(qtyExpr).append(", PO.MEINS, 'BOX'))),'0.000') END AS BOXBAG ")
            .append("FROM KNRAWMS.IFWMS103 PO ")
            .append("LEFT OUTER JOIN KNRAWMS.SKUMA SM ON SM.OWNRKY = 'KN' AND SM.SKUKEY = PO.SKUKEY ")
            .append("LEFT OUTER JOIN KNRAWMS.BZPTN BZ ON BZ.PTNRKY = PO.LIFNR AND BZ.OWNRKY = 'KN' AND BZ.PTNRTY = PO.PTNRTY ")
