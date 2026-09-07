@@ -941,7 +941,17 @@ public class SapRfcService {
                     "                    AND rd.LOTA02 = SI.LOTA02 " +
                     "                  ORDER BY rd.RECVKY DESC " +
                     "                  FETCH FIRST 1 ROW ONLY), 0) " +
-                    "       ELSE 0 END AS PLT_PER_UNIT " +
+                    "       ELSE 0 END AS PLT_PER_UNIT, " +
+                    // ── 적재뷰(3D) 판지 1단(1PLT) 높이 산출용 두께 (출고예정정보 '높이(cm)' 산식 동일) ──
+                    //  · THICKNESS : TMS_THICKNESS 공통코드(CMCDV) CDESC1(µm).
+                    //                코드값 = SKUKEY 3~8번째 자리(SUBSTR(SKUKEY,3,6)) = 프론트 slice(2,8) 동일.
+                    //  · 높이(cm) = (QTSHPO × 500 × THICKNESS) / PLT_CNT / 10000  (프론트에서 산출)
+                    "  COALESCE((SELECT CASE WHEN REGEXP_LIKE(TRIM(CV.CDESC1),'^[0-9]+(\\.[0-9]+)?$') " +
+                    "                          THEN TO_NUMBER(TRIM(CV.CDESC1)) ELSE 0 END " +
+                    "             FROM KNRAWMS.CMCDV CV " +
+                    "             WHERE CV.CMCDKY='TMS_THICKNESS' " +
+                    "               AND CV.CMCDVL=SUBSTR(SI.SKUKEY,3,6) " +
+                    "               AND ROWNUM=1), 0) AS THICKNESS " +
                     "FROM KNRAWMS.SHPDI SI " +
                     "JOIN KNRAWMS.SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
                     "LEFT JOIN KNRAWMS.SKUMA M  ON M.SKUKEY  = SI.SKUKEY " +
