@@ -10698,11 +10698,30 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
       unitKind  = '단';
     }
 
-    // 1단위(단/속) 높이(m): 1연(500장) 두께 기준. t = gsm/1.2e6 m/장 × 500장, 최소 2cm.
-    //  ※ 시각 표현용 높이. unitKind 와 무관하게 한 블록의 두께로 사용.
-    const oneReamM = Math.max(gsm/1200000.0*500.0, 0.02);
-    let hMm = Math.max(1.0, oneReamM * 1000.0);
-    if (boardCapMm > 0) hMm = Math.min(hMm, boardCapMm); // 상한 넘으면 clamp
+    // ── 1블록(1단/1속) 높이 산출 — 출고예정정보 '높이(cm)' 산식과 통일 (Req) ──
+    //   [출고예정정보 높이(cm)] = (QTSHPO × 500 × 두께µm) / PLT개수 / 10,000  ← 1PLT(=1단) 높이
+    //     · QTSHPO×500 : 총매수 (1R=500매)  · 두께 : TMS_THICKNESS(µm)  · PLT개수 : PLT_CNT
+    //   · '단'(벌크/속포장 비분할) → 1블록 = 1PLT → hMm = 1PLT 높이
+    //   · '속'(속포장 분할)        → 1블록 = 1속  → hMm = 속당높이
+    //        속당높이(cm) = (QTSHPO × 500 / SOK총수) × 두께 / PLT개수 / 10,000
+    //   · 두께 미조회(0) 시 기존 1연두께(gsm/1.2e6×500) 로 fallback.
+    const thickness = Number(it.THICKNESS||0);        // TMS_THICKNESS(µm)
+    const sheetsTot = qty * 500;                       // 총매수(1R=500매)
+    let oneUnitCm;                                     // 1블록 높이(cm)
+    if (thickness > 0 && pltCnt > 0) {
+      const onePltCm = (sheetsTot * thickness) / pltCnt / 10000.0;   // 1PLT(1단) 높이
+      if (unitKind === '속') {
+        // 1속 높이 = 1PLT높이 ÷ (총속수 ÷ PLT수) = 속당높이
+        oneUnitCm = unitCount > 0 ? (onePltCm * pltCnt / unitCount) : onePltCm;
+      } else {
+        oneUnitCm = onePltCm;
+      }
+    } else {
+      // fallback: 1연(500장) 두께 기준
+      oneUnitCm = Math.max(gsm/1200000.0*500.0, 0.02) * 100.0;
+    }
+    let hMm = Math.max(1.0, oneUnitCm * 10.0);          // cm → mm
+    if (boardCapMm > 0) hMm = Math.min(hMm, boardCapMm); // 차량 유효높이 상한 clamp
 
     // 방향 선택(백엔드 로직): 차량너비에 잔재 적은 방향
     let bw, bl;
@@ -11171,8 +11190,14 @@ function _lvRenderLoadCanvas2D(canvas, wrap, items, veh, view, rollLayout) {
       const totalKg=kgWeight>0?kgWeight:(grswgt>0&&qty>0?grswgt*qty:qty);
       const reams=uom==='R'?Math.round(qty):Math.round(totalKg/Math.max(grswgt||1,1));
       const sheetCount=Math.max(1,reams*500);
+      // ── 범례 총 적재높이 — 출고예정정보 '높이(cm)' 산식과 통일 ──
+      //   총 적재높이(cm) = (QTSHPO × 500 × 두께µm) / 10,000  (= 1PLT높이 × PLT수)
+      //   두께 미조회 시 기존 1연두께(gsm/1.2e6×500) × 연수 로 fallback.
+      const thickness=Number(it.THICKNESS||0);
       const oneReamM=Math.max(gsm/1200000.0*500.0,0.02);
-      const fullStackHgtM=Math.max(0.02,oneReamM*reams);
+      const fullStackHgtM = thickness>0
+        ? Math.max(0.02, (qty*500*thickness)/10000.0/100.0)   // cm → m
+        : Math.max(0.02, oneReamM*reams);
       const stackHgtM=Math.min(fullStackHgtM,effHgt);
       vizItems.push({ type:'board', label, color, widMm, lenMm, gsm, sheetCount, reams, oneReamM, fullStackHgtM, stackHgtM, totalKg });
     } else {
