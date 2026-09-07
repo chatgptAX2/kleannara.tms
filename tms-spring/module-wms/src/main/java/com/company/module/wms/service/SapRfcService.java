@@ -14,6 +14,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -446,30 +448,33 @@ public class SapRfcService {
             }
 
             // ② 삭제 대상 SHPOKY 수집 (SHPDH.VEHINO 초기화용, Oracle KNRAWMS → wmsJdbc)
-            List<Map<String, Object>> shpokyRows = wmsJdbc.queryForList(
-                "SELECT DISTINCT SHPOKY FROM KNRAWMS.SHPDI " +
-                "WHERE STDLNR IN (" + inPh + ")", args
-            );
-            List<String> shpokyList = shpokyRows.stream()
-                .map(r -> str(r.get("SHPOKY"))).filter(s -> !s.isEmpty()).collect(Collectors.toList());
+            //   [A] 전역 60초 타임아웃을 우회해 개별 180초로 실행(ORA-01013 방지).
+            //   [B] LMODAT 은 아래 ③④ 에서 SQL 함수(TO_CHAR(SYSDATE)) 로 세팅 → 바인드 인자 축소.
+            List<String> shpokyList = wmsQueryStrListLongTimeout(
+                "SELECT DISTINCT SHPOKY FROM KNRAWMS.SHPDI WHERE STDLNR IN (" + inPh + ")",
+                args
+            ).stream().filter(s -> !s.isEmpty()).collect(Collectors.toList());
 
             // ③ SHPDI.STDLNR → ' ' (기본값 공백 복원)
-            int affected = wmsJdbc.update(
-                "UPDATE KNRAWMS.SHPDI SET STDLNR=' ', LMODAT=?, LMOUSR='WEB' " +
+            //   [A] 개별 180초 타임아웃.  [B] LMODAT=TO_CHAR(SYSDATE,'YYYYMMDD') 로 통일
+            //        (정상 언배차 로직 PsDispatchService 와 동일 패턴 — DB 시각 기준, 결과 동일).
+            int affected = wmsUpdateLongTimeout(
+                "UPDATE KNRAWMS.SHPDI SET STDLNR=' ', LMODAT=TO_CHAR(SYSDATE,'YYYYMMDD'), LMOUSR='WEB' " +
                 "WHERE STDLNR IN (" + inPh + ")",
-                concat(new Object[]{today}, args)
+                args
             );
 
             // ④ SHPDH.VEHINO / CARTON → ' ' (배차 차량유형 초기화)
             // ※ SHPDH 의 VEHINO/CARTON/CARNO/DRIVER/DRIVERCEL 컬럼은 Oracle 에서 NOT NULL 제약이라
             //   NULL 을 세팅하면 ORA-01407 이 발생한다. 배차저장(PsDispatchService) 과 동일하게
             //   NULL 대신 공백 1칸(' ')으로 복원한다. (SHPDI.STDLNR=' ' 복원과 동일 패턴)
+            //   [A] 개별 180초 타임아웃.  [B] LMODAT SQL 함수화.
             if (!shpokyList.isEmpty()) {
                 String inPh2 = String.join(",", Collections.nCopies(shpokyList.size(), "?"));
-                wmsJdbc.update(
-                    "UPDATE KNRAWMS.SHPDH SET VEHINO=' ', CARTON=' ', LMODAT=?, LMOUSR='WEB' " +
+                wmsUpdateLongTimeout(
+                    "UPDATE KNRAWMS.SHPDH SET VEHINO=' ', CARTON=' ', LMODAT=TO_CHAR(SYSDATE,'YYYYMMDD'), LMOUSR='WEB' " +
                     "WHERE SHPOKY IN (" + inPh2 + ")",
-                    concat(new Object[]{today}, shpokyList.toArray())
+                    shpokyList.toArray()
                 );
             }
 
@@ -503,6 +508,44 @@ public class SapRfcService {
         System.arraycopy(head, 0, out, 0, head.length);
         System.arraycopy(tail, 0, out, head.length, tail.length);
         return out;
+    }
+
+    // ── 긴 타임아웃 전용 WMS 실행 헬퍼 (ORA-01013 대응) ──────────────────────
+    //  wmsJdbcTemplate 전역 queryTimeout(60초)은 SAP선적탭 조회 보호용이다.
+    //  배차삭제(sapDelete)의 SHPDI/SHPDH 갱신은 대상 구간이 넓을 때 60초를 초과해
+    //  ORA-01013(작업 취소)이 발생하므로, 이 작업에 한해 PreparedStatement 에
+    //  개별 queryTimeout 을 크게(기본 180초) 지정해 실행한다. (기능·결과는 동일)
+    private static final int WMS_DELETE_TIMEOUT_SEC = 180;
+
+    /** 개별 타임아웃을 지정해 WMS UPDATE 실행 (반환: 영향 행수) */
+    private int wmsUpdateLongTimeout(String sql, Object[] args) {
+        Integer n = wmsJdbc.execute((java.sql.Connection con) -> {
+            try (PreparedStatement ps = con.prepareStatement(sql)) {
+                ps.setQueryTimeout(WMS_DELETE_TIMEOUT_SEC);   // 전역 60초 → 180초로 개별 상향
+                for (int i = 0; i < args.length; i++) ps.setObject(i + 1, args[i]);
+                return ps.executeUpdate();
+            }
+        });
+        return n == null ? 0 : n;
+    }
+
+    /** 개별 타임아웃을 지정해 WMS 단일컬럼 문자열 목록 조회 */
+    private List<String> wmsQueryStrListLongTimeout(String sql, Object[] args) {
+        List<String> out = wmsJdbc.execute((java.sql.Connection con) -> {
+            List<String> list = new ArrayList<>();
+            try (PreparedStatement ps = con.prepareStatement(sql)) {
+                ps.setQueryTimeout(WMS_DELETE_TIMEOUT_SEC);
+                for (int i = 0; i < args.length; i++) ps.setObject(i + 1, args[i]);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String v = rs.getString(1);
+                        list.add(v == null ? "" : v.trim());
+                    }
+                }
+            }
+            return list;
+        });
+        return out == null ? Collections.emptyList() : out;
     }
 
     // ════════════════════════════════════════════════════════════════
