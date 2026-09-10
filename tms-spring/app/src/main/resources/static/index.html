@@ -13895,6 +13895,20 @@ async function psopSapShipmentDelete() {
     // 결과 모달 표시
     _sapShowRfcResultModal('SAP 선적삭제 결과', data.results || [], data.env || '');
 
+    // ── 성공 처리 알림 (SAP선적생성과 동일 UX) ──────────────────────────
+    //   RFC 성공(results[].ok) 건수를 집계해 완료 토스트 표시.
+    //   ※ showToast 는 메시지만 사용(타입 미지원) → 이모지로 성공/실패 구분.
+    const results  = Array.isArray(data.results) ? data.results : [];
+    const okCnt    = results.filter(r => r && r.ok).length;
+    const failCnt  = results.length - okCnt;
+    if (data.ok || okCnt > 0) {
+      let msg = `✅ SAP 선적삭제 완료 (${okCnt}건)`;
+      if (failCnt > 0) msg += ` · 실패 ${failCnt}건`;
+      showToast(msg);
+    } else {
+      showToast('❌ SAP 선적삭제 실패');
+    }
+
     if (data.ok) {
       _sapState.checkedSet.clear();
       await psopLoadSapList();
