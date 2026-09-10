@@ -58,7 +58,7 @@ public class PsReturnController {
 
     /**
      * 반품 배차 저장
-     *  - PS_DISPATCH_H INSERT (DISPATCH_TYPE='GR') + PS_DISPATCH_D INSERT
+     *  - TMS_PS_DISPATCH_H INSERT (DISPATCH_TYPE='GR') + TMS_PS_DISPATCH_D INSERT
      *  - UPDATE IFWMS103 SET STKNUM=가선적번호(DISPATCH_NO) (저장 시점 실행)
      */
     @PostMapping("/save")

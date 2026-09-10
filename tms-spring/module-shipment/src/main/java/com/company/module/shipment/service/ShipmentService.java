@@ -49,8 +49,8 @@ public class ShipmentService {
     /** 출고현황 COUNT SQL BASE (WHERE 는 동적 구성) */
     private static final String SCHEDULE_COUNT_BASE_SQL =
         "SELECT COUNT(*)" +
-        " FROM KNRAWMS.SHPDI SI" +
-        " INNER JOIN KNRAWMS.SHPDH SH ON SH.SHPOKY = SI.SHPOKY" +
+        " FROM KNRAWMS.TMS_SHPDI SI" +
+        " INNER JOIN KNRAWMS.TMS_SHPDH SH ON SH.SHPOKY = SI.SHPOKY" +
         " LEFT  JOIN KNRAWMS.SKUMA M  ON SI.SKUKEY = M.SKUKEY AND SH.OWNRKY = M.OWNRKY";
 
     /** 출고현황 본문 SQL ORDER BY */
@@ -119,10 +119,10 @@ public class ShipmentService {
         "                    ORDER BY rd.RECVKY DESC" +
         "                    FETCH FIRST 1 ROW ONLY), 0)" +
         "         ELSE 0 END                AS PLT_PER_UNIT," +
-        // 52:STKNUM — SAP 선적번호(선적생성 시 SHPDI.STKNUM 에 기록). 미생성 시 공백 → 화면 '-'
+        // 52:STKNUM — SAP 선적번호(선적생성 시 TMS_SHPDI.STKNUM 에 기록). 미생성 시 공백 → 화면 '-'
         "    TRIM(COALESCE(SI.STKNUM,''))   AS STKNUM" +
-        " FROM KNRAWMS.SHPDI SI" +
-        " INNER JOIN KNRAWMS.SHPDH SH ON SH.SHPOKY = SI.SHPOKY" +
+        " FROM KNRAWMS.TMS_SHPDI SI" +
+        " INNER JOIN KNRAWMS.TMS_SHPDH SH ON SH.SHPOKY = SI.SHPOKY" +
         " LEFT  JOIN KNRAWMS.BZPTN CT ON CT.OWNRKY=SH.OWNRKY AND CT.PTNRTY='CT' AND CT.PTNRKY=SH.DPTNKY" +
         " LEFT  JOIN KNRAWMS.BZPTN VD ON VD.OWNRKY=SH.OWNRKY AND VD.PTNRTY='VD' AND VD.PTNRKY=SH.PTRCVR" +
         " LEFT  JOIN KNRAWMS.CMCDV ST ON ST.CMCDKY='STATDO' AND ST.CMCDVL=SH.STATDO" +
@@ -181,8 +181,8 @@ public class ShipmentService {
 
         StringBuilder where = new StringBuilder();
         // ── 고정 제외조건: 취소/삭제된 납품문서는 항상 비노출 ──────────────────
-        //   · SHPDI.STATIT = 'FCO' : 납품문서(아이템) 취소
-        //   · SHPDH.STATDO = 'OCN' : 오더취소
+        //   · TMS_SHPDI.STATIT = 'FCO' : 납품문서(아이템) 취소
+        //   · TMS_SHPDH.STATDO = 'OCN' : 오더취소
         //   사용자 필터(statdo 등)와 무관하게 항상 적용한다.
         where.append(where.length() == 0 ? " WHERE" : " AND")
              .append(" TRIM(COALESCE(SI.STATIT,'')) <> 'FCO'")

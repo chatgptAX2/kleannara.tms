@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * DS_VEHICLE Repository — MariaDB (tmsPU)
+ * TMS_DS_VEHICLE Repository — MariaDB (tmsPU)
  *
  * ■ DataSource: TmsJpaConfig (MariaDB integration DB)
  *   TmsJpaConfig.basePackageClasses → DsVehicleRepository.class

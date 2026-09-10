@@ -4,7 +4,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * DS_VEHICLE / CMCDV 저장 요청 DTO
+ * TMS_DS_VEHICLE / CMCDV 저장 요청 DTO
  * Flask: POST /api/carclass/save (table: 'carclass'|'vehicle'|'vehicle_delete')
  */
 @Getter
@@ -23,7 +23,7 @@ public class VehicleSaveRequest {
     private String usarg4;
     private String usarg5;
 
-    // ── DS_VEHICLE 필드 (table='vehicle') ──
+    // ── TMS_DS_VEHICLE 필드 (table='vehicle') ──
     private String  carclassCd;
     private String  cartype;
     private Double  lengthM;

@@ -23,8 +23,8 @@ import java.util.stream.Collectors;
  *        / api_ps_dispatch_confirm 대응
  *
  * ■ DataSource 라우팅
- *   - em     (wmsPU, Oracle KNRAWMS): SHPDI, SHPDH, BZPTN, CMCDV, SKUMA, RECDI
- *   - tmsEm  (tmsPU, Oracle KNRAWMS): PS_DISPATCH_H, PS_DISPATCH_D, DS_VEHICLE
+ *   - em     (wmsPU, Oracle KNRAWMS): TMS_SHPDI, TMS_SHPDH, BZPTN, CMCDV, SKUMA, RECDI
+ *   - tmsEm  (tmsPU, Oracle KNRAWMS): TMS_PS_DISPATCH_H, TMS_PS_DISPATCH_D, TMS_DS_VEHICLE
  */
 @Slf4j
 @Service
@@ -35,11 +35,11 @@ public class PsDispatchService {
     private final PsDispatchHRepository dispatchHRepo;
     private final PsDispatchIRepository dispatchIRepo;
 
-    /** Oracle WMS — KNRAWMS.SHPDI / SHPDH / BZPTN / CMCDV / SKUMA / RECDI */
+    /** Oracle WMS — KNRAWMS.TMS_SHPDI / TMS_SHPDH / BZPTN / CMCDV / SKUMA / RECDI */
     @PersistenceContext(unitName = "wmsPU")
     private EntityManager em;
 
-    /** Oracle KNRAWMS TMS — PS_DISPATCH_H / PS_DISPATCH_D / DS_VEHICLE */
+    /** Oracle KNRAWMS TMS — TMS_PS_DISPATCH_H / TMS_PS_DISPATCH_D / TMS_DS_VEHICLE */
     @PersistenceContext(unitName = "tmsPU")
     private EntityManager tmsEm;
 
@@ -122,7 +122,7 @@ public class PsDispatchService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 배차번호 채번 (Flask _ps_next_dispatch_no)
-    // MariaDB PS_DISPATCH_H 에서 채번 → tmsTransactionManager
+    // MariaDB TMS_PS_DISPATCH_H 에서 채번 → tmsTransactionManager
     // ──────────────────────────────────────────────────────────────────────────
     @Transactional(transactionManager = "tmsTransactionManager")
     public String nextDispatchNo(String yyyymmdd) {
@@ -140,7 +140,7 @@ public class PsDispatchService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 납품문서 검색 (Flask api_ps_dispatch_search)
-    // Oracle WMS: SHPDI, SHPDH, BZPTN, CMCDV, SKUMA, RECDI → em(wmsPU)
+    // Oracle WMS: TMS_SHPDI, TMS_SHPDH, BZPTN, CMCDV, SKUMA, RECDI → em(wmsPU)
     //
     // ■ 동적 WHERE 설계 (소프트파싱용 '? IS NULL OR ...' 고정조건 제거)
     //   기존에는 Shared Pool 재사용(소프트파싱)을 위해 모든 조건을
@@ -167,8 +167,8 @@ public class PsDispatchService {
         "        FROM KNRAWMS.RECDI rd" +
         "        WHERE rd.SKUKEY = i.SKUKEY) AS UNIT_WEIGHT," +
         "       TRIM(COALESCE(i.SPOSNR,'')) AS SPOSNR" +
-        " FROM KNRAWMS.SHPDI i" +
-        " JOIN KNRAWMS.SHPDH h ON i.SHPOKY = h.SHPOKY" +
+        " FROM KNRAWMS.TMS_SHPDI i" +
+        " JOIN KNRAWMS.TMS_SHPDH h ON i.SHPOKY = h.SHPOKY" +
         " LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY = h.DPTNKY AND b.PTNRTY = 'CT'" +
         " LEFT JOIN KNRAWMS.CMCDV c ON c.CMCDKY = 'TASOTY' AND c.CMCDVL = h.SHPMTY" +
         " LEFT JOIN KNRAWMS.SKUMA m ON m.SKUKEY = i.SKUKEY";
@@ -178,7 +178,7 @@ public class PsDispatchService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 납품문서 검색 (Flask api_ps_dispatch_search)
-    // Oracle WMS: SHPDI, SHPDH, BZPTN, CMCDV, SKUMA, RECDI → em(wmsPU)
+    // Oracle WMS: TMS_SHPDI, TMS_SHPDH, BZPTN, CMCDV, SKUMA, RECDI → em(wmsPU)
     // ──────────────────────────────────────────────────────────────────────────
     public List<PsDispatchDocResponse> searchDocs(PsDispatchSearchRequest req) {
         String dateFrom  = req.normalizedDateFrom();
@@ -198,14 +198,14 @@ public class PsDispatchService {
                          ? req.getSkug05().strip() : "10";
 
         // ── WAREKY / SKUG05 는 TRIM 비교(정규화)로 매칭한다. ──────────────────
-        //   [개선] SAP 납품분할로 신규 생성된 납품문서(SHPDI)의 WAREKY/SKUG05 값에
+        //   [개선] SAP 납품분할로 신규 생성된 납품문서(TMS_SHPDI)의 WAREKY/SKUG05 값에
         //   앞뒤 공백/포맷 차이가 있으면 정확일치(=)에서 걸러져 PS배차 조회에
         //   나타나지 않는 문제가 있었다(출고예정정보는 해당 조건이 없어 정상 조회).
         //   → TRIM 후 비교하여 공백 차이로 인한 누락을 방지한다.
         StringBuilder where = new StringBuilder(" WHERE TRIM(h.WAREKY) = ? AND TRIM(i.SKUG05) = ?");
         // ── 고정 제외조건: 취소/삭제된 납품문서는 배차 대상에서 항상 비노출 ──────
-        //   · SHPDI.STATIT = 'FCO' : 납품문서(아이템) 취소
-        //   · SHPDH.STATDO = 'OCN' : 오더취소
+        //   · TMS_SHPDI.STATIT = 'FCO' : 납품문서(아이템) 취소
+        //   · TMS_SHPDH.STATDO = 'OCN' : 오더취소
         where.append(" AND TRIM(COALESCE(i.STATIT,'')) <> 'FCO'")
              .append(" AND TRIM(COALESCE(h.STATDO,'')) <> 'OCN'");
         List<Object> params = new ArrayList<>();
@@ -249,7 +249,7 @@ public class PsDispatchService {
 
         // ── 동적 SQL 실행 (값 있는 필터만 WHERE 에 반영) ─────────────────────
         //   ※ 배차완료 키(dispatchedSet) 조회를 메인 검색 뒤로 이동:
-        //     기존에는 SHPDI 전체(WAREKY/일자/문서 필터 없음)를 매번 풀스캔하여
+        //     기존에는 TMS_SHPDI 전체(WAREKY/일자/문서 필터 없음)를 매번 풀스캔하여
         //     실제 검색결과가 2건이어도 17초 이상 소요됐음.
         //     → 메인 검색 결과의 SHPOKY 목록으로만 배차여부를 조회(인덱스 IN)하도록 변경.
         log.info("[PsDispatch] ==== SQL BEGIN ====\n{}", searchSql);
@@ -266,7 +266,7 @@ public class PsDispatchService {
         log.info("[PsDispatch] DB \uc870\ud68c \uacb0\uacfc: {}건 (dispStat={})", rows.size(), dispStat);
 
         // ── 배차완료 키+값(STDLNR/STKNUM) 조회: 검색결과의 SHPOKY 로만 스코프 ──
-        //   (SHPDI 전체 풀스캔 방지 — 결과 문서번호로만 IN 조회)
+        //   (TMS_SHPDI 전체 풀스캔 방지 — 결과 문서번호로만 IN 조회)
         Map<String, String[]> dispatchedMap = loadDispatchedKeys(rows);  // key → [STDLNR, STKNUM]
         List<PsDispatchDocResponse> result = new ArrayList<>();
 
@@ -373,7 +373,7 @@ public class PsDispatchService {
     /**
      * 배차완료 키(SHPOKY|SHPOIT) 집합 조회.
      *
-     * <p>기존에는 {@code KNRAWMS.SHPDI} 전체(WAREKY/일자/문서번호 필터 없음)를 매번 스캔하여
+     * <p>기존에는 {@code KNRAWMS.TMS_SHPDI} 전체(WAREKY/일자/문서번호 필터 없음)를 매번 스캔하여
      * 배차완료 키 전체를 가져왔다. 이 때문에 실제 검색결과가 소량(예: 2건)이어도
      * 대용량 테이블 풀스캔으로 17초 이상 소요되는 성능 병목이 있었다.</p>
      *
@@ -419,7 +419,7 @@ public class PsDispatchService {
             //   → 양쪽 모두 TRIM 되도록 WHERE TRIM(SHPOKY) IN (...) 로 비교한다.
             String sql =
                 "SELECT SHPOKY, SHPOIT, TRIM(COALESCE(STDLNR,'')), TRIM(COALESCE(STKNUM,''))" +
-                " FROM KNRAWMS.SHPDI" +
+                " FROM KNRAWMS.TMS_SHPDI" +
                 " WHERE STDLNR IS NOT NULL AND TRIM(STDLNR) <> ''" +
                 "   AND TRIM(SHPOKY) IN (" + ph + ")";
 
@@ -441,7 +441,7 @@ public class PsDispatchService {
                 String diagSql =
                     "SELECT TRIM(SHPOKY), TRIM(SHPOIT), TRIM(COALESCE(STDLNR,''))," +
                     "       TRIM(COALESCE(STKNUM,''))" +
-                    " FROM KNRAWMS.SHPDI" +
+                    " FROM KNRAWMS.TMS_SHPDI" +
                     " WHERE TRIM(SHPOKY) IN (" + ph + ")";
                 var dq = em.createNativeQuery(diagSql);
                 for (int i = 0; i < chunk.size(); i++) dq.setParameter(i + 1, chunk.get(i));
@@ -458,11 +458,11 @@ public class PsDispatchService {
                           .append(" STKNUM=").append(str(dr[3])).append("] ");
                     }
                 }
-                log.info("[PsDispatch][DIAG] IN param 건수={}, SHPDI 매칭행={}, STDLNR보유행={}, 배차완료map={}",
+                log.info("[PsDispatch][DIAG] IN param 건수={}, TMS_SHPDI 매칭행={}, STDLNR보유행={}, 배차완료map={}",
                         chunk.size(), diagRows.size(), withStdlnr, map.size());
                 log.info("[PsDispatch][DIAG] IN params(앞10)={}",
                         chunk.subList(0, Math.min(10, chunk.size())));
-                log.info("[PsDispatch][DIAG] SHPDI 실제값(앞부분)={}", sb.toString());
+                log.info("[PsDispatch][DIAG] TMS_SHPDI 실제값(앞부분)={}", sb.toString());
             } catch (Exception ex) {
                 log.warn("[PsDispatch][DIAG] 진단쿼리 실패: {}", ex.getMessage());
             }
@@ -472,8 +472,8 @@ public class PsDispatchService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 배차 저장 (Flask api_ps_dispatch_save)
-    // PS_DISPATCH_H/D → MariaDB tmsEm
-    // SHPDI.STDLNR, SHPDH.VEHINO 업데이트 → Oracle em
+    // TMS_PS_DISPATCH_H/D → MariaDB tmsEm
+    // TMS_SHPDI.STDLNR, TMS_SHPDH.VEHINO 업데이트 → Oracle em
     // ──────────────────────────────────────────────────────────────────────────
     @Transactional(transactionManager = "tmsTransactionManager")
     public List<String> saveDispatch(PsDispatchSaveRequest req) {
@@ -487,11 +487,11 @@ public class PsDispatchService {
             double totalKg     = veh.getTotalKg() == null ? 0.0 : veh.getTotalKg();
             int    totalCnt    = veh.getItems() == null ? 0 : veh.getItems().size();
 
-            // PS_DISPATCH_H INSERT → MariaDB tmsEm
+            // TMS_PS_DISPATCH_H INSERT → MariaDB tmsEm
             // DISPATCH_TYPE : PS(판매/이송) 배차 저장 시 'GI'(출고) 로 고정
             //   ─ 반품 배차(배차(반품) 탭)는 별도 저장 경로에서 'GR' 로 저장한다.
             tmsEm.createNativeQuery("""
-                INSERT INTO KNRAWMS.PS_DISPATCH_H
+                INSERT INTO KNRAWMS.TMS_PS_DISPATCH_H
                   (DISPATCH_NO, DISPATCH_DT, RQSHPD, DPTNKY, DPTNM,
                    CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR, DISPATCH_TYPE)
                 VALUES (?,?,?,?,?,?,'DRAFT',?,?,?,?,'GI')
@@ -516,7 +516,7 @@ public class PsDispatchService {
                 int seq = 1;
                 for (PsDispatchSaveRequest.ItemBlock it : items) {
                     // ── SHPOKY / SHPOIT 검증 및 보정 ──────────────────────────────
-                    //  PS_DISPATCH_D.SHPOKY / SHPOIT 는 NOT NULL(Oracle).
+                    //  TMS_PS_DISPATCH_D.SHPOKY / SHPOIT 는 NOT NULL(Oracle).
                     //  프론트 키 대소문자 불일치 등으로 null 이 들어오면 ORA-01400 발생.
                     //  1) shpoky 가 비어있고 orgShpoky 가 있으면 원본 값으로 보정
                     //  2) 그래도 비어있으면 어떤 항목이 잘못됐는지 명시하여 예외 → 전체 롤백
@@ -529,9 +529,9 @@ public class PsDispatchService {
                             ", SHPOKY=" + str(it.getShpoky()) + ", SHPOIT=" + str(it.getShpoit()) + "]");
                     }
 
-                    // PS_DISPATCH_D INSERT → MariaDB tmsEm
+                    // TMS_PS_DISPATCH_D INSERT → MariaDB tmsEm
                     tmsEm.createNativeQuery("""
-                        INSERT INTO KNRAWMS.PS_DISPATCH_D
+                        INSERT INTO KNRAWMS.TMS_PS_DISPATCH_D
                           (DISPATCH_NO,SEQ,SHPOKY,SHPOIT,SKUKEY,DESC01,
                            QTSHPO,UOMKEY,DPTNKY,DPTNM,IS_SPLIT,ORG_SHPOKY,ORG_SHPOIT,
                            GRSWGT,KG_WEIGHT)
@@ -560,13 +560,13 @@ public class PsDispatchService {
                 }
             }
 
-            // SHPDI.STDLNR = DISPATCH_NO (Oracle KNRAWMS.SHPDI 업데이트)
+            // TMS_SHPDI.STDLNR = DISPATCH_NO (Oracle KNRAWMS.TMS_SHPDI 업데이트)
             // ※ saveDispatch 는 @Transactional(transactionManager="tmsTransactionManager")
             //   컨텍스트에서 실행되므로, wmsPU(em)로 executeUpdate() 하면 해당 EM의
             //   트랜잭션이 없어 TransactionRequiredException 이 발생한다.
-            //   SHPDI/SHPDH/PS_DISPATCH_* 는 모두 동일한 Oracle KNRAWMS DB에 존재하므로,
+            //   TMS_SHPDI/TMS_SHPDH/PS_DISPATCH_* 는 모두 동일한 Oracle KNRAWMS DB에 존재하므로,
             //   활성 트랜잭션(tmsPU)에 속한 tmsEm 으로 갱신하여 단일 트랜잭션 일관성을 확보한다.
-            // ※ 가선적 성공 시, 요청에 포함된 SHPDI(SHPOKY, SHPOIT) 행의 STDLNR 에
+            // ※ 가선적 성공 시, 요청에 포함된 TMS_SHPDI(SHPOKY, SHPOIT) 행의 STDLNR 에
             //   가선적번호(dispatchNo)를 반드시 기록해야 한다.
             //   기존 'STATIT = ''NEW''' 조건은 이미 상태가 전이된 행의 STDLNR 갱신을
             //   누락시키므로 제거하고, 요청 키(SHPOKY+SHPOIT) 기준으로 갱신한다.
@@ -575,7 +575,7 @@ public class PsDispatchService {
             for (String[] key : shpdiKeys) {
                 // 1차: 정확 매칭(SHPOKY + SHPOIT)
                 int n = tmsEm.createNativeQuery("""
-                    UPDATE KNRAWMS.SHPDI
+                    UPDATE KNRAWMS.TMS_SHPDI
                     SET STDLNR  = ?,
                         LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
                         LMOUSR  = 'WEB'
@@ -587,11 +587,11 @@ public class PsDispatchService {
                   .executeUpdate();
 
                 // 2차 폴백: 앞뒤 공백/좌측 0패딩 차이로 정확매칭 실패 시
-                //   TRIM 및 숫자비교(SHPOIT)로 재시도 (SHPDI.SHPOIT 이 '0010' vs '10' 등
+                //   TRIM 및 숫자비교(SHPOIT)로 재시도 (TMS_SHPDI.SHPOIT 이 '0010' vs '10' 등
                 //   포맷 차이가 있어도 동일 품목 순번을 안전하게 매칭)
                 if (n == 0) {
                     n = tmsEm.createNativeQuery("""
-                        UPDATE KNRAWMS.SHPDI
+                        UPDATE KNRAWMS.TMS_SHPDI
                         SET STDLNR  = ?,
                             LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
                             LMOUSR  = 'WEB'
@@ -611,12 +611,12 @@ public class PsDispatchService {
 
                 // 3차 폴백: SHPOKY 매칭 실패 시 SVBELN(SAP 납품문서번호) 기준 매칭.
                 //   [개선] SAP 납품분할로 신규 생성된 문서는 프론트가 보유한 SHPOKY 와
-                //   SHPDI 실제 SHPOKY 가 어긋날 수 있으나(분할 반영 타이밍/키 포맷 차이),
+                //   TMS_SHPDI 실제 SHPOKY 가 어긋날 수 있으나(분할 반영 타이밍/키 포맷 차이),
                 //   SVBELN + SHPOIT 는 동일하므로 이를 기준으로 STDLNR 을 부여한다.
                 //   → 분할문서 배차저장이 "갱신 0건"으로 전체 롤백되던 문제를 방지.
                 if (n == 0 && key.length > 2 && !isBlank(key[2])) {
                     n = tmsEm.createNativeQuery("""
-                        UPDATE KNRAWMS.SHPDI
+                        UPDATE KNRAWMS.TMS_SHPDI
                         SET STDLNR  = ?,
                             LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
                             LMOUSR  = 'WEB'
@@ -643,8 +643,8 @@ public class PsDispatchService {
             }
 
             // 진단 로그: 저장 성공 toast 는 떴는데 미배차로 돌아오고 SAP선적탭에 안 뜨는
-            //   증상의 원인 추적용 — SHPDI.STDLNR 실제 갱신 건수를 남긴다.
-            log.info("[PsDispatch] saveDispatch dispatchNo={} 요청항목={} SHPDI.STDLNR 갱신={}건",
+            //   증상의 원인 추적용 — TMS_SHPDI.STDLNR 실제 갱신 건수를 남긴다.
+            log.info("[PsDispatch] saveDispatch dispatchNo={} 요청항목={} TMS_SHPDI.STDLNR 갱신={}건",
                      dispatchNo, shpdiKeys.size(), shpdiUpdated);
             if (!notMatched.isEmpty()) {
                 StringBuilder sb = new StringBuilder();
@@ -652,13 +652,13 @@ public class PsDispatchService {
                     sb.append("[SHPOKY=").append(k[0]).append(", SHPOIT=").append(k[1])
                       .append(", SVBELN=").append(k.length > 2 ? k[2] : "").append(']');
                 }
-                log.warn("[PsDispatch] saveDispatch dispatchNo={} SHPDI 매칭 실패(STDLNR 미부여) {}건 → {} "
+                log.warn("[PsDispatch] saveDispatch dispatchNo={} TMS_SHPDI 매칭 실패(STDLNR 미부여) {}건 → {} "
                          + "(배차완료 표시/ SAP선적탭 조회가 누락될 수 있음)",
                          dispatchNo, notMatched.size(), sb);
             }
 
-            // ★ 저장 무결성 강제: SHPDI.STDLNR 이 한 건도 갱신되지 않았다면(=가선적번호 미부여)
-            //   PS_DISPATCH_H/D 만 저장되고 배차완료 판정/ SAP선적탭 조회의 유일 기준인
+            // ★ 저장 무결성 강제: TMS_SHPDI.STDLNR 이 한 건도 갱신되지 않았다면(=가선적번호 미부여)
+            //   TMS_PS_DISPATCH_H/D 만 저장되고 배차완료 판정/ SAP선적탭 조회의 유일 기준인
             //   STDLNR 이 비어 결국 "저장 성공 toast 후 미배차로 복귀" 불일치가 발생한다.
             //   → 이 경우 예외를 던져 전체 트랜잭션을 롤백하고, 프론트에 명확한 오류를 반환한다.
             //   (기존에는 로그만 남기고 커밋되어 조용히 유령 저장이 됐음)
@@ -669,35 +669,35 @@ public class PsDispatchService {
                            .append(", SVBELN=").append(k.length > 2 ? k[2] : "").append(']');
                 }
                 throw new IllegalStateException(
-                    "배차저장 실패: SHPDI 가선적번호(STDLNR) 갱신 대상이 없습니다. " +
-                    "납품문서 키(SHPOKY/SHPOIT/SVBELN)가 SHPDI 와 일치하지 않습니다. " +
+                    "배차저장 실패: TMS_SHPDI 가선적번호(STDLNR) 갱신 대상이 없습니다. " +
+                    "납품문서 키(SHPOKY/SHPOIT/SVBELN)가 TMS_SHPDI 와 일치하지 않습니다. " +
                     "[dispatchNo=" + dispatchNo + ", 요청항목=" + shpdiKeys.size() + "건] " + keyInfo);
             }
 
-            // ★ 저장 직후 자가검증(SELECT): 방금 채번한 dispatchNo 로 SHPDI 에서
+            // ★ 저장 직후 자가검증(SELECT): 방금 채번한 dispatchNo 로 TMS_SHPDI 에서
             //   STDLNR 이 실제로 채워졌는지 tmsEm 으로 즉시 재조회하여 로그에 남긴다.
             //   (커밋 전 상태이지만 동일 트랜잭션 내라 반영 여부 확인 가능 →
             //    UPDATE 성공/실패 및 실제 반영 건수를 운영 로그로 100% 특정)
             try {
                 Object verifyCnt = tmsEm.createNativeQuery(
-                        "SELECT COUNT(*) FROM KNRAWMS.SHPDI WHERE STDLNR = ?")
+                        "SELECT COUNT(*) FROM KNRAWMS.TMS_SHPDI WHERE STDLNR = ?")
                     .setParameter(1, dispatchNo)
                     .getSingleResult();
-                log.info("[PsDispatch] saveDispatch 자가검증 — SHPDI.STDLNR='{}' 반영 행수={}",
+                log.info("[PsDispatch] saveDispatch 자가검증 — TMS_SHPDI.STDLNR='{}' 반영 행수={}",
                          dispatchNo, verifyCnt);
             } catch (Exception ve) {
                 log.warn("[PsDispatch] saveDispatch 자가검증 SELECT 실패 dispatchNo={} : {}",
                          dispatchNo, ve.getMessage());
             }
 
-            // SHPDH.VEHINO = carclass_cd (Oracle KNRAWMS.SHPDH 업데이트 → tmsEm, 위와 동일 사유)
-            // ※ SHPDH 의 VEHINO/CARTON/CARNO/DRIVER/DRIVERCEL 컬럼은 Oracle 에서 NOT NULL 제약이
+            // TMS_SHPDH.VEHINO = carclass_cd (Oracle KNRAWMS.TMS_SHPDH 업데이트 → tmsEm, 위와 동일 사유)
+            // ※ TMS_SHPDH 의 VEHINO/CARTON/CARNO/DRIVER/DRIVERCEL 컬럼은 Oracle 에서 NOT NULL 제약이
             //   걸려 있어 NULL 을 세팅하면 ORA-01407 이 발생한다.
             //   → NVL(?, ' ') / 리터럴 ' ' 로 NULL 을 공백 1칸으로 치환하여 제약 위반을 방지한다.
             if (!shpokySet.isEmpty()) {
                 String ph = shpokySet.stream().map(x -> "?").collect(Collectors.joining(","));
                 var q = tmsEm.createNativeQuery(
-                    "UPDATE KNRAWMS.SHPDH SET VEHINO=NVL(?, ' '), CARTON=NVL(?, ' ')," +
+                    "UPDATE KNRAWMS.TMS_SHPDH SET VEHINO=NVL(?, ' '), CARTON=NVL(?, ' ')," +
                     " CARNO=' ', DRIVER=' ', DRIVERCEL=' '," +
                     " LMODAT=TO_CHAR(SYSDATE,'YYYYMMDD'), LMOUSR='WEB' WHERE SHPOKY IN (" + ph + ")"
                 );
@@ -716,8 +716,8 @@ public class PsDispatchService {
     // ──────────────────────────────────────────────────────────────────────────
     // 커밋 후 검증 — SAP선적탭 미조회 근본원인 진단/방어용
     //
-    // saveDispatch 는 tmsEm(tmsPU, HikariPool-TMS) 트랜잭션에서 SHPDI.STDLNR 을
-    // 갱신·커밋한다. SAP선적탭은 wmsJdbc/em(wmsPU, HikariPool-WMS) 로 SHPDI 를 읽는다.
+    // saveDispatch 는 tmsEm(tmsPU, HikariPool-TMS) 트랜잭션에서 TMS_SHPDI.STDLNR 을
+    // 갱신·커밋한다. SAP선적탭은 wmsJdbc/em(wmsPU, HikariPool-WMS) 로 TMS_SHPDI 를 읽는다.
     // 두 datasource 는 동일 물리 DB(KNMESWMS/KNRATMS)이므로, tms 트랜잭션이 정상
     // 커밋되었다면 wms 읽기경로에서도 STDLNR 이 반드시 보여야 한다.
     //
@@ -737,15 +737,15 @@ public class PsDispatchService {
         for (String no : dispatchNos) {
             try {
                 Object cnt = em.createNativeQuery(
-                        "SELECT COUNT(*) FROM KNRAWMS.SHPDI WHERE STDLNR = ?")
+                        "SELECT COUNT(*) FROM KNRAWMS.TMS_SHPDI WHERE STDLNR = ?")
                     .setParameter(1, no)
                     .getSingleResult();
                 int n = cnt == null ? 0 : ((Number) cnt).intValue();
                 total += n;
                 if (n > 0) {
-                    log.info("[PsDispatch] 커밋후검증(wms경로) — SHPDI.STDLNR='{}' 조회 {}건 (정상: SAP탭 노출 가능)", no, n);
+                    log.info("[PsDispatch] 커밋후검증(wms경로) — TMS_SHPDI.STDLNR='{}' 조회 {}건 (정상: SAP탭 노출 가능)", no, n);
                 } else {
-                    log.error("[PsDispatch] 커밋후검증(wms경로) — SHPDI.STDLNR='{}' 조회 0건! "
+                    log.error("[PsDispatch] 커밋후검증(wms경로) — TMS_SHPDI.STDLNR='{}' 조회 0건! "
                             + "tms 트랜잭션이 커밋됐는데도 wms 읽기경로에 보이지 않음 → "
                             + "커밋 미반영/트랜잭션 롤백/서로 다른 물리DB 의심", no);
                 }
@@ -760,16 +760,16 @@ public class PsDispatchService {
     // 배차 삭제 (배차대기/대시보드 물량 실시간 반영)
     //
     // ■ 문제
-    //   배차 삭제 시 PS_DISPATCH_H/D 와 SHPDI.STDLNR(가선적번호)이 그대로 남아
+    //   배차 삭제 시 TMS_PS_DISPATCH_H/D 와 TMS_SHPDI.STDLNR(가선적번호)이 그대로 남아
     //   대시보드(오늘 총 물량/이번주 총 차량/운송현황/운송효율성)에 삭제분이
     //   계속 누적 집계되었다. (기존에는 delete API 자체가 없어 프론트 인메모리에서만
     //   제거되고 DB 는 정리되지 않았음)
     //
     // ■ 개선
-    //   1) SHPDI.STDLNR = dispatchNo 인 행의 STDLNR 을 NULL 로 원복 → 미배차 전환
+    //   1) TMS_SHPDI.STDLNR = dispatchNo 인 행의 STDLNR 을 NULL 로 원복 → 미배차 전환
     //      (배차저장 시 STDLNR=dispatchNo 로 세팅한 것을 역방향으로 되돌림)
-    //   2) SHPDH.VEHINO 원복(공백) → 저장 시 세팅한 차량정보 해제
-    //   3) PS_DISPATCH_D → PS_DISPATCH_H 물리 삭제 → 대시보드 집계에서 완전히 제외
+    //   2) TMS_SHPDH.VEHINO 원복(공백) → 저장 시 세팅한 차량정보 해제
+    //   3) TMS_PS_DISPATCH_D → TMS_PS_DISPATCH_H 물리 삭제 → 대시보드 집계에서 완전히 제외
     //
     //   ※ saveDispatch 와 동일하게 tmsTransactionManager 컨텍스트에서 실행하여
     //     동일 물리 Oracle DB 를 단일 트랜잭션으로 정리한다.
@@ -783,10 +783,10 @@ public class PsDispatchService {
             String dispatchNo = rawNo == null ? "" : rawNo.strip();
             if (dispatchNo.isEmpty()) continue;
 
-            // 1) SHPDI.STDLNR 원복 (가선적번호 해제 → 미배차 전환)
+            // 1) TMS_SHPDI.STDLNR 원복 (가선적번호 해제 → 미배차 전환)
             //    저장 시 STDLNR = dispatchNo 로 기록했으므로 동일 값 기준으로 되돌린다.
             int shpdiReverted = tmsEm.createNativeQuery("""
-                UPDATE KNRAWMS.SHPDI
+                UPDATE KNRAWMS.TMS_SHPDI
                 SET STDLNR  = NULL,
                     LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
                     LMOUSR  = 'WEB'
@@ -795,11 +795,11 @@ public class PsDispatchService {
               .setParameter(1, dispatchNo)
               .executeUpdate();
 
-            // 2) SHPDH.VEHINO 원복 — 삭제 배차에 속한 SHPOKY 들의 차량정보 해제
-            //    PS_DISPATCH_D 에서 이 배차의 SHPOKY 목록을 구해 SHPDH 를 원복한다.
+            // 2) TMS_SHPDH.VEHINO 원복 — 삭제 배차에 속한 SHPOKY 들의 차량정보 해제
+            //    TMS_PS_DISPATCH_D 에서 이 배차의 SHPOKY 목록을 구해 TMS_SHPDH 를 원복한다.
             @SuppressWarnings("unchecked")
             List<Object> shpokyRows = tmsEm.createNativeQuery(
-                    "SELECT DISTINCT SHPOKY FROM KNRAWMS.PS_DISPATCH_D WHERE DISPATCH_NO = ?")
+                    "SELECT DISTINCT SHPOKY FROM KNRAWMS.TMS_PS_DISPATCH_D WHERE DISPATCH_NO = ?")
                 .setParameter(1, dispatchNo)
                 .getResultList();
             Set<String> shpokySet = new LinkedHashSet<>();
@@ -810,7 +810,7 @@ public class PsDispatchService {
             if (!shpokySet.isEmpty()) {
                 String ph = shpokySet.stream().map(x -> "?").collect(Collectors.joining(","));
                 var q = tmsEm.createNativeQuery(
-                    "UPDATE KNRAWMS.SHPDH SET VEHINO=' ', CARTON=' '," +
+                    "UPDATE KNRAWMS.TMS_SHPDH SET VEHINO=' ', CARTON=' '," +
                     " CARNO=' ', DRIVER=' ', DRIVERCEL=' '," +
                     " LMODAT=TO_CHAR(SYSDATE,'YYYYMMDD'), LMOUSR='WEB' WHERE SHPOKY IN (" + ph + ")"
                 );
@@ -819,19 +819,19 @@ public class PsDispatchService {
                 q.executeUpdate();
             }
 
-            // 3) PS_DISPATCH_D → PS_DISPATCH_H 물리 삭제 (자식 먼저)
+            // 3) TMS_PS_DISPATCH_D → TMS_PS_DISPATCH_H 물리 삭제 (자식 먼저)
             tmsEm.createNativeQuery(
-                    "DELETE FROM KNRAWMS.PS_DISPATCH_D WHERE DISPATCH_NO = ?")
+                    "DELETE FROM KNRAWMS.TMS_PS_DISPATCH_D WHERE DISPATCH_NO = ?")
                 .setParameter(1, dispatchNo)
                 .executeUpdate();
             int hDeleted = tmsEm.createNativeQuery(
-                    "DELETE FROM KNRAWMS.PS_DISPATCH_H WHERE DISPATCH_NO = ?")
+                    "DELETE FROM KNRAWMS.TMS_PS_DISPATCH_H WHERE DISPATCH_NO = ?")
                 .setParameter(1, dispatchNo)
                 .executeUpdate();
 
             deleted += hDeleted;
             log.info("[PsDispatch] deleteDispatch dispatchNo={} 삭제완료 "
-                     + "(SHPDI.STDLNR 원복={}건, SHPDH 원복 SHPOKY={}건, PS_DISPATCH_H 삭제={}건)",
+                     + "(TMS_SHPDI.STDLNR 원복={}건, TMS_SHPDH 원복 SHPOKY={}건, TMS_PS_DISPATCH_H 삭제={}건)",
                      dispatchNo, shpdiReverted, shpokySet.size(), hDeleted);
         }
         return deleted;
@@ -839,7 +839,7 @@ public class PsDispatchService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 배차 목록 조회 (Flask api_ps_dispatch_list)
-    // PS_DISPATCH_H + ds_vehicle → tmsEm
+    // TMS_PS_DISPATCH_H + ds_vehicle → tmsEm
     //
     // ■ 동적 WHERE 설계 (소프트파싱용 '? IS NULL OR ...' 고정조건 제거)
     //   값이 존재하는 필터만 WHERE 절에 동적으로 추가한다.
@@ -850,8 +850,8 @@ public class PsDispatchService {
         "       h.DPTNKY, h.DPTNM, h.CARTYPE, h.STATUS," +
         "       h.TOTAL_KG, h.TOTAL_CNT, h.NOTE, h.CREDAT," +
         "       COALESCE(v.LOAD_TON, 0) AS LOAD_TON" +
-        " FROM KNRAWMS.PS_DISPATCH_H h" +
-        " LEFT JOIN KNRAWMS.DS_VEHICLE v ON v.CARTYPE = h.CARTYPE";
+        " FROM KNRAWMS.TMS_PS_DISPATCH_H h" +
+        " LEFT JOIN KNRAWMS.TMS_DS_VEHICLE v ON v.CARTYPE = h.CARTYPE";
 
     private static final String GET_LIST_ORDER_BY =
         " ORDER BY h.RQSHPD DESC, h.DISPATCH_NO";
@@ -903,14 +903,14 @@ public class PsDispatchService {
             double loadTon = toDouble(r[11]);
             Double loadKg  = loadTon > 0 ? Math.round(loadTon * 1000.0 * 10.0) / 10.0 : null;
 
-            // ── Step 1: PS_DISPATCH_D → MariaDB tmsEm ──
+            // ── Step 1: TMS_PS_DISPATCH_D → MariaDB tmsEm ──
             @SuppressWarnings("unchecked")
             List<Object[]> details = tmsEm.createNativeQuery("""
                 SELECT d.ITEM_ID, d.SEQ, d.SHPOKY, d.SHPOIT, d.SKUKEY, d.DESC01,
                        d.QTSHPO, d.UOMKEY, d.DPTNKY, d.DPTNM,
                        d.IS_SPLIT, d.ORG_SHPOKY, d.ORG_SHPOIT,
                        COALESCE(d.GRSWGT,0), COALESCE(d.KG_WEIGHT,0)
-                FROM KNRAWMS.PS_DISPATCH_D d
+                FROM KNRAWMS.TMS_PS_DISPATCH_D d
                 WHERE d.DISPATCH_NO = ?
                 ORDER BY d.SEQ
                 """)
@@ -1007,14 +1007,14 @@ public class PsDispatchService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 배차 확정 (Flask api_ps_dispatch_confirm)
-    // PS_DISPATCH_H.STATUS 업데이트 → MariaDB tmsEm
+    // TMS_PS_DISPATCH_H.STATUS 업데이트 → MariaDB tmsEm
     // ──────────────────────────────────────────────────────────────────────────
     @Transactional(transactionManager = "tmsTransactionManager")
     public int confirmDispatch(PsDispatchConfirmRequest req) {
         List<String> nos = req.getDispatchNos();
         String ph = nos.stream().map(x -> "?").collect(Collectors.joining(","));
         var q = tmsEm.createNativeQuery(
-            "UPDATE KNRAWMS.PS_DISPATCH_H SET STATUS='CONFIRMED' WHERE DISPATCH_NO IN (" + ph + ")"
+            "UPDATE KNRAWMS.TMS_PS_DISPATCH_H SET STATUS='CONFIRMED' WHERE DISPATCH_NO IN (" + ph + ")"
         );
         for (int i = 0; i < nos.size(); i++) q.setParameter(i + 1, nos.get(i));
         return q.executeUpdate();

@@ -13,7 +13,7 @@ import lombok.Getter;
 @Builder
 public class ShipmentRowResponse {
 
-    // ── 출고헤더 (SHPDH) ─────────────────────────────────────
+    // ── 출고헤더 (TMS_SHPDH) ─────────────────────────────────────
     @JsonProperty("SHPOKY")
     private String shpoky;          // 출고전표 키
 
@@ -57,7 +57,7 @@ public class ShipmentRowResponse {
     @JsonProperty("VEHINO")
     private String vehino;          // 차종코드
 
-    // ── 출고아이템 (SHPDI) ───────────────────────────────────
+    // ── 출고아이템 (TMS_SHPDI) ───────────────────────────────────
     @JsonProperty("SHPOIT")
     private String shpoit;          // 출고아이템번호
 
@@ -83,7 +83,7 @@ public class ShipmentRowResponse {
     private String stdlnr;          // 가선적번호(배차번호)
 
     @JsonProperty("STKNUM")
-    private String stknum;          // SAP 선적번호(선적생성 완료 시 SHPDI.STKNUM)
+    private String stknum;          // SAP 선적번호(선적생성 완료 시 TMS_SHPDI.STKNUM)
 
     @JsonProperty("SVBELN")
     private String svbeln;          // SAP 납품문서번호

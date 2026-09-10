@@ -15,9 +15,9 @@ import java.util.*;
  *
  * ■ DataSource 라우팅
  *   - wmsJdbc (Oracle KNRAWMS): CMCDV
- *   - tmsJdbc (Oracle KNRAWMS):      DS_VEHICLE, DS_INCH12, DS_INCH3
+ *   - tmsJdbc (Oracle KNRAWMS):      TMS_DS_VEHICLE, TMS_DS_INCH12, TMS_DS_INCH3
  *
- *   ※ Cross-DB 조인(KNRAWMS.CMCDV ↔ DS_VEHICLE) 불가 → 2-step 분리
+ *   ※ Cross-DB 조인(KNRAWMS.CMCDV ↔ TMS_DS_VEHICLE) 불가 → 2-step 분리
  */
 @Slf4j
 @Service
@@ -37,18 +37,18 @@ public class StrategyService {
 
     private static final DateTimeFormatter YMDFORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
 
-    // ── 배차전략 조회 (DS_INCH12 + DS_INCH3 + DS_VEHICLE + CMCDV) ────
+    // ── 배차전략 조회 (TMS_DS_INCH12 + TMS_DS_INCH3 + TMS_DS_VEHICLE + CMCDV) ────
     public Map<String, Object> getStrategy() {
         try {
-            // Oracle KNRAWMS: DS_VEHICLE, DS_INCH12, DS_INCH3
+            // Oracle KNRAWMS: TMS_DS_VEHICLE, TMS_DS_INCH12, TMS_DS_INCH3
             List<Map<String, Object>> vehicles = tmsJdbc.queryForList(
-                "SELECT * FROM KNRAWMS.DS_VEHICLE ORDER BY SORT_SEQ"
+                "SELECT * FROM KNRAWMS.TMS_DS_VEHICLE ORDER BY SORT_SEQ"
             );
             List<Map<String, Object>> inch12 = tmsJdbc.queryForList(
-                "SELECT * FROM KNRAWMS.DS_INCH12 ORDER BY GRM_COND, CARTYPE"
+                "SELECT * FROM KNRAWMS.TMS_DS_INCH12 ORDER BY GRM_COND, CARTYPE"
             );
             List<Map<String, Object>> inch3 = tmsJdbc.queryForList(
-                "SELECT * FROM KNRAWMS.DS_INCH3 ORDER BY GRM_COND, CARTYPE"
+                "SELECT * FROM KNRAWMS.TMS_DS_INCH3 ORDER BY GRM_COND, CARTYPE"
             );
 
             // Oracle KNRAWMS: TMS_CARCLASS10(PS), TMS_CARCLASS20(HL)
@@ -98,7 +98,7 @@ public class StrategyService {
         }
     }
 
-    // ── 배차전략 저장 — DS_INCH12/DS_INCH3: Oracle KNRAWMS (MERGE INTO) ──────────
+    // ── 배차전략 저장 — TMS_DS_INCH12/TMS_DS_INCH3: Oracle KNRAWMS (MERGE INTO) ──────────
     @Transactional(transactionManager = "tmsTransactionManager")
     public Map<String, Object> saveStrategy(Map<String, Object> body) {
         String today = LocalDate.now().format(YMDFORMAT);
@@ -113,7 +113,7 @@ public class StrategyService {
                     Object maxCount = row.get("MAX_COUNT");
                     if (cartype == null || grm == null) continue;
                     tmsJdbc.update(
-                        "MERGE INTO KNRAWMS.DS_INCH12 t " +
+                        "MERGE INTO KNRAWMS.TMS_DS_INCH12 t " +
                         "USING (SELECT ? AS CARTYPE, ? AS GRM_COND FROM DUAL) s " +
                         "ON (t.CARTYPE=s.CARTYPE AND t.GRM_COND=s.GRM_COND) " +
                         "WHEN MATCHED THEN UPDATE SET t.MAX_COUNT=?, t.LMODAT=? " +
@@ -132,7 +132,7 @@ public class StrategyService {
                     Object maxCount = row.get("MAX_COUNT");
                     if (cartype == null || grm == null) continue;
                     tmsJdbc.update(
-                        "MERGE INTO KNRAWMS.DS_INCH3 t " +
+                        "MERGE INTO KNRAWMS.TMS_DS_INCH3 t " +
                         "USING (SELECT ? AS CARTYPE, ? AS GRM_COND FROM DUAL) s " +
                         "ON (t.CARTYPE=s.CARTYPE AND t.GRM_COND=s.GRM_COND) " +
                         "WHEN MATCHED THEN UPDATE SET t.MAX_COUNT=?, t.LMODAT=? " +
@@ -156,10 +156,10 @@ public class StrategyService {
             if (items == null || items.isEmpty())
                 return Map.of("ok", false, "error", "items 필수");
 
-            // DS_VEHICLE: MariaDB
+            // TMS_DS_VEHICLE: MariaDB
             List<Map<String, Object>> vehicles = tmsJdbc.queryForList(
                 "SELECT CARTYPE, LOAD_TON, LENGTH_M, WIDTH_M, HEIGHT_M, PALLET_HEIGHT_M, " +
-                "SORT_SEQ, PALLET_CNT, LONG_AXIS_YN FROM KNRAWMS.DS_VEHICLE WHERE USE_YN IS NULL OR USE_YN='Y' " +
+                "SORT_SEQ, PALLET_CNT, LONG_AXIS_YN FROM KNRAWMS.TMS_DS_VEHICLE WHERE USE_YN IS NULL OR USE_YN='Y' " +
                 "ORDER BY SORT_SEQ"
             );
             return Map.of("ok", true, "vehicles", vehicles,
@@ -170,7 +170,7 @@ public class StrategyService {
     }
 
     // ── 차종 목록 (CMCDV TMS_CARCLASS10 기반) ─────────────────────
-    // Cross-DB 조인 불가(Oracle CMCDV ↔ MariaDB DS_VEHICLE) → 2-step
+    // Cross-DB 조인 불가(Oracle CMCDV ↔ MariaDB TMS_DS_VEHICLE) → 2-step
     public Map<String, Object> getCarClass() {
         try {
             // Step 1: Oracle KNRAWMS.CMCDV → wmsJdbc
@@ -178,9 +178,9 @@ public class StrategyService {
                 "SELECT c.CMCDVL AS value, c.CDESC1 AS label, c.USARG1 " +
                 "FROM KNRAWMS.CMCDV c WHERE c.CMCDKY = 'TMS_CARCLASS10' ORDER BY c.CMCDVL"
             );
-            // Step 2: MariaDB DS_VEHICLE → tmsJdbc
+            // Step 2: MariaDB TMS_DS_VEHICLE → tmsJdbc
             List<Map<String, Object>> vehRows = tmsJdbc.queryForList(
-                "SELECT CARTYPE, LOAD_TON, LENGTH_M, WIDTH_M, HEIGHT_M FROM KNRAWMS.DS_VEHICLE"
+                "SELECT CARTYPE, LOAD_TON, LENGTH_M, WIDTH_M, HEIGHT_M FROM KNRAWMS.TMS_DS_VEHICLE"
             );
             Map<String, Map<String, Object>> vehByCartype = new LinkedHashMap<>();
             for (Map<String, Object> v : vehRows) vehByCartype.put(str(v.get("CARTYPE")), v);
@@ -226,15 +226,15 @@ public class StrategyService {
         }
     }
 
-    // ── DS_VEHICLE 전체 목록 — DS_VEHICLE: MariaDB / CMCDV: Oracle → 2-step
+    // ── TMS_DS_VEHICLE 전체 목록 — TMS_DS_VEHICLE: MariaDB / CMCDV: Oracle → 2-step
     public Map<String, Object> getDsVehicle() {
         try {
-            // Step 1: MariaDB DS_VEHICLE
+            // Step 1: MariaDB TMS_DS_VEHICLE
             List<Map<String, Object>> vehicles = tmsJdbc.queryForList(
                 "SELECT v.CARCLASS_CD, v.CARTYPE, v.LENGTH_M, v.WIDTH_M, v.HEIGHT_M, " +
                 "       v.LOAD_TON, v.PALLET_HEIGHT_M, v.SORT_SEQ, " +
                 "       v.PALLET_CNT, v.LONG_AXIS_YN, v.DEFAULT_VEH_CNT " +
-                "FROM KNRAWMS.DS_VEHICLE v ORDER BY v.SORT_SEQ"
+                "FROM KNRAWMS.TMS_DS_VEHICLE v ORDER BY v.SORT_SEQ"
             );
             // Step 2: Oracle KNRAWMS.CMCDV
             List<Map<String, Object>> cc10 = wmsJdbc.queryForList(
@@ -261,7 +261,7 @@ public class StrategyService {
         }
     }
 
-    // ── 차종 저장 (DS_VEHICLE UPSERT) — MariaDB ──────────────────
+    // ── 차종 저장 (TMS_DS_VEHICLE UPSERT) — MariaDB ──────────────────
     @Transactional(transactionManager = "tmsTransactionManager")
     public Map<String, Object> saveCarClass(Map<String, Object> body) {
         String today = LocalDate.now().format(YMDFORMAT);
@@ -270,12 +270,12 @@ public class StrategyService {
             return Map.of("ok", false, "error", "CARCLASS_CD 필수");
         try {
             List<Map<String, Object>> exists = tmsJdbc.queryForList(
-                "SELECT CARCLASS_CD FROM KNRAWMS.DS_VEHICLE WHERE CARCLASS_CD=?", carclassCd
+                "SELECT CARCLASS_CD FROM KNRAWMS.TMS_DS_VEHICLE WHERE CARCLASS_CD=?", carclassCd
             );
             if (exists.isEmpty()) {
-                // DS_VEHICLE 의 갱신일자 컬럼은 UPDDAT(+UPDUSR) 이며 CREDAT/LMODAT 컬럼은 없다.
+                // TMS_DS_VEHICLE 의 갱신일자 컬럼은 UPDDAT(+UPDUSR) 이며 CREDAT/LMODAT 컬럼은 없다.
                 tmsJdbc.update(
-                    "INSERT INTO KNRAWMS.DS_VEHICLE (CARCLASS_CD, CARTYPE, LENGTH_M, WIDTH_M, HEIGHT_M, " +
+                    "INSERT INTO KNRAWMS.TMS_DS_VEHICLE (CARCLASS_CD, CARTYPE, LENGTH_M, WIDTH_M, HEIGHT_M, " +
                     "LOAD_TON, PALLET_HEIGHT_M, SORT_SEQ, PALLET_CNT, LONG_AXIS_YN, DEFAULT_VEH_CNT, UPDDAT, UPDUSR) " +
                     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     carclassCd, body.get("CARTYPE"), body.get("LENGTH_M"), body.get("WIDTH_M"),
@@ -301,12 +301,12 @@ public class StrategyService {
                         args.add(body.get(col));
                     }
                 }
-                // DS_VEHICLE 갱신일자 컬럼명은 UPDDAT (LMODAT 컬럼 없음 → bad SQL grammar 원인)
+                // TMS_DS_VEHICLE 갱신일자 컬럼명은 UPDDAT (LMODAT 컬럼 없음 → bad SQL grammar 원인)
                 sets.add("UPDDAT=?");
                 args.add(today);
                 args.add(carclassCd);
                 tmsJdbc.update(
-                    "UPDATE KNRAWMS.DS_VEHICLE SET " + String.join(", ", sets) +
+                    "UPDATE KNRAWMS.TMS_DS_VEHICLE SET " + String.join(", ", sets) +
                     " WHERE CARCLASS_CD=?",
                     args.toArray()
                 );

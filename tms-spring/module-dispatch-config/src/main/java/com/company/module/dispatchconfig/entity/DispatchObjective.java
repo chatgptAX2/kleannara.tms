@@ -4,11 +4,11 @@ import jakarta.persistence.*;
 import lombok.*;
 
 /**
- * 배차 목적식 (DS_DISPATCH_OBJECTIVE)
+ * 배차 목적식 (TMS_DS_DISPATCH_OBJECTIVE)
  * Flask: api_obj_list / api_obj_save / api_obj_delete / api_obj_activate / api_obj_active
  */
 @Entity
-@Table(name = "DS_DISPATCH_OBJECTIVE")
+@Table(name = "TMS_DS_DISPATCH_OBJECTIVE")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Builder

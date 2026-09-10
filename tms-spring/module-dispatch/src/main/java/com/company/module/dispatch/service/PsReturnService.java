@@ -27,7 +27,7 @@ import java.util.Optional;
  *
  * ■ DataSource 라우팅
  *   - em     (wmsPU, Oracle KNRAWMS): IFWMS103, SKUMA, BZPTN, KNRAWMS.SZF_GET_CONVERT_QTY
- *   - tmsEm  (tmsPU, Oracle KNRAWMS): PS_DISPATCH_H, PS_DISPATCH_D
+ *   - tmsEm  (tmsPU, Oracle KNRAWMS): TMS_PS_DISPATCH_H, TMS_PS_DISPATCH_D
  *   ※ IFWMS103/SKUMA/BZPTN/PS_DISPATCH_* 는 모두 동일 KNRAWMS DB.
  *     저장 트랜잭션은 tmsTransactionManager 이므로 IFWMS103 UPDATE 도 tmsEm 으로 실행하여
  *     단일 트랜잭션 일관성을 확보한다(조회는 readOnly 로 em 사용).
@@ -38,14 +38,14 @@ import java.util.Optional;
 @Transactional(readOnly = true, transactionManager = "tmsTransactionManager")
 public class PsReturnService {
 
-    /** 배차번호 채번 재사용 (MariaDB PS_DISPATCH_H prefix 최대값) */
+    /** 배차번호 채번 재사용 (MariaDB TMS_PS_DISPATCH_H prefix 최대값) */
     private final PsDispatchHRepository dispatchHRepo;
 
     /** Oracle WMS — KNRAWMS.IFWMS103 / SKUMA / BZPTN (KNRAWMS.SZF_GET_CONVERT_QTY 함수 포함) */
     @PersistenceContext(unitName = "wmsPU")
     private EntityManager em;
 
-    /** Oracle KNRAWMS TMS — PS_DISPATCH_H / PS_DISPATCH_D (+ 저장 트랜잭션 내 IFWMS103 UPDATE) */
+    /** Oracle KNRAWMS TMS — TMS_PS_DISPATCH_H / TMS_PS_DISPATCH_D (+ 저장 트랜잭션 내 IFWMS103 UPDATE) */
     @PersistenceContext(unitName = "tmsPU")
     private EntityManager tmsEm;
 
@@ -175,8 +175,8 @@ public class PsReturnService {
 
     // ──────────────────────────────────────────────────────────────────────────
     // 반품 배차 저장
-    //  1) PS_DISPATCH_H INSERT (DISPATCH_TYPE='GR', STATUS='DRAFT')  → tmsEm
-    //  2) PS_DISPATCH_D INSERT (SHPOKY=EBELN, SHPOIT=EBELP 로 매핑)  → tmsEm
+    //  1) TMS_PS_DISPATCH_H INSERT (DISPATCH_TYPE='GR', STATUS='DRAFT')  → tmsEm
+    //  2) TMS_PS_DISPATCH_D INSERT (SHPOKY=EBELN, SHPOIT=EBELP 로 매핑)  → tmsEm
     //  3) UPDATE IFWMS103 SET STKNUM=가선적번호(DISPATCH_NO)          → tmsEm
     //       WHERE EBELN=? AND EBELP=? AND STATUS != 'D'  (저장 시점 실행)
     //  ※ 가선적번호 = DISPATCH_NO (PS배차 채번 규칙과 동일)
@@ -193,9 +193,9 @@ public class PsReturnService {
             double totalKg    = veh.getTotalKg() == null ? 0.0 : veh.getTotalKg();
             int    totalCnt   = veh.getItems() == null ? 0 : veh.getItems().size();
 
-            // 1) PS_DISPATCH_H INSERT (DISPATCH_TYPE='GR')
+            // 1) TMS_PS_DISPATCH_H INSERT (DISPATCH_TYPE='GR')
             tmsEm.createNativeQuery("""
-                INSERT INTO KNRAWMS.PS_DISPATCH_H
+                INSERT INTO KNRAWMS.TMS_PS_DISPATCH_H
                   (DISPATCH_NO, DISPATCH_DT, RQSHPD, DPTNKY, DPTNM,
                    CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR, DISPATCH_TYPE)
                 VALUES (?,?,?,?,?,?,'DRAFT',?,?,?,?,'GR')
@@ -219,7 +219,7 @@ public class PsReturnService {
                 int seq = 1;
                 for (PsReturnSaveRequest.ItemBlock it : items) {
                     // 반품 문서 키: EBELN(납품문서번호)/EBELP(아이템)
-                    //  PS_DISPATCH_D.SHPOKY/SHPOIT 는 NOT NULL → EBELN/EBELP 로 매핑(호환).
+                    //  TMS_PS_DISPATCH_D.SHPOKY/SHPOIT 는 NOT NULL → EBELN/EBELP 로 매핑(호환).
                     String ebeln = it.getEbeln() == null ? "" : it.getEbeln().strip();
                     String ebelp = it.getEbelp() == null ? "" : it.getEbelp().strip();
                     if (isBlank(ebeln) || isBlank(ebelp)) {
@@ -229,9 +229,9 @@ public class PsReturnService {
                             ", EBELN=" + str(it.getEbeln()) + ", EBELP=" + str(it.getEbelp()) + "]");
                     }
 
-                    // 2) PS_DISPATCH_D INSERT (SHPOKY=EBELN, SHPOIT=EBELP)
+                    // 2) TMS_PS_DISPATCH_D INSERT (SHPOKY=EBELN, SHPOIT=EBELP)
                     tmsEm.createNativeQuery("""
-                        INSERT INTO KNRAWMS.PS_DISPATCH_D
+                        INSERT INTO KNRAWMS.TMS_PS_DISPATCH_D
                           (DISPATCH_NO,SEQ,SHPOKY,SHPOIT,SKUKEY,DESC01,
                            QTSHPO,UOMKEY,DPTNKY,DPTNM,IS_SPLIT,ORG_SHPOKY,ORG_SHPOIT,
                            GRSWGT,KG_WEIGHT)
@@ -281,7 +281,7 @@ public class PsReturnService {
 
     /**
      * 배차번호 채번 (PS배차 nextDispatchNo 규칙과 동일: yymmdd + 3자리 + 'T').
-     * MariaDB PS_DISPATCH_H 의 동일 prefix 최대값 기준 +1.
+     * MariaDB TMS_PS_DISPATCH_H 의 동일 prefix 최대값 기준 +1.
      */
     @Transactional(transactionManager = "tmsTransactionManager")
     public String nextDispatchNo(String yyyymmdd) {

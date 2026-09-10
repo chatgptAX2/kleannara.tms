@@ -4,7 +4,7 @@ import java.io.Serializable;
 import lombok.*;
 
 /**
- * SHPDI 복합키 (SHPOKY + SHPOIT)
+ * TMS_SHPDI 복합키 (SHPOKY + SHPOIT)
  */
 @Getter
 @EqualsAndHashCode

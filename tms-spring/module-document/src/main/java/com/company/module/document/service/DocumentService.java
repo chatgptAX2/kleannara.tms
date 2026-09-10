@@ -23,7 +23,7 @@ import java.util.*;
 
 /**
  * 서류관리 서비스
- * Flask: /api/doc/* → DOC_FOLDER, DOC_FILE + 로컬 파일 저장
+ * Flask: /api/doc/* → TMS_DOC_FOLDER, TMS_DOC_FILE + 로컬 파일 저장
  */
 @Slf4j
 @Service
@@ -41,7 +41,7 @@ public class DocumentService {
     private static final DateTimeFormatter YMDFORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final DateTimeFormatter HMSFORMAT = DateTimeFormatter.ofPattern("HHmmss");
 
-    /* DOC_FILE.OP_DATE(운행일자) 컬럼 존재 여부 캐시.
+    /* TMS_DOC_FILE.OP_DATE(운행일자) 컬럼 존재 여부 캐시.
        운영 DB에 아직 컬럼 추가 SQL(FIX_DOC_FILE_ADD_OP_DATE.sql)이 적용되지 않았을 수 있어,
        런타임에 컬럼 존재를 감지하여 SQL 을 자동 적응시킨다(ORA-00904 방지). */
     private volatile Boolean opDateColExists = null;
@@ -53,7 +53,7 @@ public class DocumentService {
         try {
             Integer cnt = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM ALL_TAB_COLUMNS " +
-                "WHERE OWNER='KNRAWMS' AND TABLE_NAME='DOC_FILE' AND COLUMN_NAME='OP_DATE'",
+                "WHERE OWNER='KNRAWMS' AND TABLE_NAME='TMS_DOC_FILE' AND COLUMN_NAME='OP_DATE'",
                 Integer.class);
             exists = cnt != null && cnt > 0;
         } catch (Exception e) {
@@ -72,16 +72,16 @@ public class DocumentService {
             if (parentId != null) {
                 rows = jdbc.queryForList(
                     "SELECT f.*, " +
-                    "       (SELECT COUNT(*) FROM KNRAWMS.DOC_FILE df WHERE df.FOLDER_ID=f.FOLDER_ID AND df.DEL_YN='N') AS FILE_CNT " +
-                    "FROM KNRAWMS.DOC_FOLDER f WHERE f.PARENT_ID=? AND f.DEL_YN='N' ORDER BY f.SORT_SEQ, f.FOLDER_NM",
+                    "       (SELECT COUNT(*) FROM KNRAWMS.TMS_DOC_FILE df WHERE df.FOLDER_ID=f.FOLDER_ID AND df.DEL_YN='N') AS FILE_CNT " +
+                    "FROM KNRAWMS.TMS_DOC_FOLDER f WHERE f.PARENT_ID=? AND f.DEL_YN='N' ORDER BY f.SORT_SEQ, f.FOLDER_NM",
                     parentId
                 );
             } else {
                 // 전체 트리 반환
                 rows = jdbc.queryForList(
                     "SELECT f.*, " +
-                    "       (SELECT COUNT(*) FROM KNRAWMS.DOC_FILE df WHERE df.FOLDER_ID=f.FOLDER_ID AND df.DEL_YN='N') AS FILE_CNT " +
-                    "FROM KNRAWMS.DOC_FOLDER f WHERE f.DEL_YN='N' ORDER BY f.PARENT_ID, f.SORT_SEQ, f.FOLDER_NM"
+                    "       (SELECT COUNT(*) FROM KNRAWMS.TMS_DOC_FILE df WHERE df.FOLDER_ID=f.FOLDER_ID AND df.DEL_YN='N') AS FILE_CNT " +
+                    "FROM KNRAWMS.TMS_DOC_FOLDER f WHERE f.DEL_YN='N' ORDER BY f.PARENT_ID, f.SORT_SEQ, f.FOLDER_NM"
                 );
             }
             return Map.of("ok", true, "folders", rows);
@@ -108,9 +108,9 @@ public class DocumentService {
                → 타 모듈 표준과 동일하게 MAX(FOLDER_ID)+1 로 채번한다.
                [ORA-18734 FIX] parent_id=null(루트 폴더) 등은 argTypes(java.sql.Types) 명시. */
             Long newId = jdbc.queryForObject(
-                "SELECT NVL(MAX(FOLDER_ID),0)+1 FROM KNRAWMS.DOC_FOLDER", Long.class);
+                "SELECT NVL(MAX(FOLDER_ID),0)+1 FROM KNRAWMS.TMS_DOC_FOLDER", Long.class);
             jdbc.update(
-                "INSERT INTO KNRAWMS.DOC_FOLDER (FOLDER_ID, FOLDER_NM, PARENT_ID, SORT_SEQ, CREDAT, CRETIM, LMODAT, DEL_YN) " +
+                "INSERT INTO KNRAWMS.TMS_DOC_FOLDER (FOLDER_ID, FOLDER_NM, PARENT_ID, SORT_SEQ, CREDAT, CRETIM, LMODAT, DEL_YN) " +
                 "VALUES (?,?,?,?,?,?,?,?)",
                 new Object[]{ newId, folderNm.trim(), parentId, 0, today, now, today, "N" },
                 new int[]{ Types.NUMERIC, Types.VARCHAR, Types.NUMERIC, Types.NUMERIC,
@@ -134,7 +134,7 @@ public class DocumentService {
 
         String today = LocalDate.now().format(YMDFORMAT);
         try {
-            jdbc.update("UPDATE KNRAWMS.DOC_FOLDER SET FOLDER_NM=?, LMODAT=? WHERE FOLDER_ID=?",
+            jdbc.update("UPDATE KNRAWMS.TMS_DOC_FOLDER SET FOLDER_NM=?, LMODAT=? WHERE FOLDER_ID=?",
                         newNm.trim(), today, folderId);
             return Map.of("ok", true);
         } catch (Exception e) {
@@ -148,9 +148,9 @@ public class DocumentService {
         String today = LocalDate.now().format(YMDFORMAT);
         try {
             // 하위 파일 소프트 삭제
-            jdbc.update("UPDATE KNRAWMS.DOC_FILE SET DEL_YN='Y', LMODAT=? WHERE FOLDER_ID=?", today, folderId);
+            jdbc.update("UPDATE KNRAWMS.TMS_DOC_FILE SET DEL_YN='Y', LMODAT=? WHERE FOLDER_ID=?", today, folderId);
             // 폴더 소프트 삭제
-            jdbc.update("UPDATE KNRAWMS.DOC_FOLDER SET DEL_YN='Y', LMODAT=? WHERE FOLDER_ID=?", today, folderId);
+            jdbc.update("UPDATE KNRAWMS.TMS_DOC_FOLDER SET DEL_YN='Y', LMODAT=? WHERE FOLDER_ID=?", today, folderId);
             return Map.of("ok", true);
         } catch (Exception e) {
             return Map.of("ok", false, "error", e.getMessage());
@@ -171,7 +171,7 @@ public class DocumentService {
                 (hasOpDate ? "OP_DATE" : "NULL AS OP_DATE") + ", " +
                 "CREDAT AS UPLOAD_DAT, CRETIM AS UPLOAD_TIM, " +
                 "CREDAT, CRETIM, DOWNLOAD_CNT " +
-                "FROM KNRAWMS.DOC_FILE WHERE DEL_YN='N' ");
+                "FROM KNRAWMS.TMS_DOC_FILE WHERE DEL_YN='N' ");
             List<Object> args = new ArrayList<>();
             List<Integer> types = new ArrayList<>();
             if (folderId != null) { sql.append("AND FOLDER_ID=? ");            args.add(folderId); types.add(Types.NUMERIC); }
@@ -225,10 +225,10 @@ public class DocumentService {
                 /* [ORA-02289] SEQ 미존재 대비 MAX+1 채번. [ORA-18734] argTypes 명시.
                    OP_DATE 컬럼 미존재 DB 대비: 있으면 포함, 없으면 컬럼 제외 INSERT. */
                 Long newId = jdbc.queryForObject(
-                    "SELECT NVL(MAX(FILE_ID),0)+1 FROM KNRAWMS.DOC_FILE", Long.class);
+                    "SELECT NVL(MAX(FILE_ID),0)+1 FROM KNRAWMS.TMS_DOC_FILE", Long.class);
                 if (hasOpDate) {
                     jdbc.update(
-                        "INSERT INTO KNRAWMS.DOC_FILE (FILE_ID, FOLDER_ID, FILE_NM, FILE_PATH, FILE_SIZE, FILE_TYPE, FILE_EXT, " +
+                        "INSERT INTO KNRAWMS.TMS_DOC_FILE (FILE_ID, FOLDER_ID, FILE_NM, FILE_PATH, FILE_SIZE, FILE_TYPE, FILE_EXT, " +
                         "OP_DATE, NOTE, CREDAT, CRETIM, CREUSR, LMODAT, DEL_YN, DOWNLOAD_CNT) " +
                         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         new Object[]{
@@ -245,7 +245,7 @@ public class DocumentService {
                     );
                 } else {
                     jdbc.update(
-                        "INSERT INTO KNRAWMS.DOC_FILE (FILE_ID, FOLDER_ID, FILE_NM, FILE_PATH, FILE_SIZE, FILE_TYPE, FILE_EXT, " +
+                        "INSERT INTO KNRAWMS.TMS_DOC_FILE (FILE_ID, FOLDER_ID, FILE_NM, FILE_PATH, FILE_SIZE, FILE_TYPE, FILE_EXT, " +
                         "NOTE, CREDAT, CRETIM, CREUSR, LMODAT, DEL_YN, DOWNLOAD_CNT) " +
                         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         new Object[]{
@@ -319,7 +319,7 @@ public class DocumentService {
     public FileResult getFile(Long fileId, boolean inline) {
         try {
             List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT * FROM KNRAWMS.DOC_FILE WHERE FILE_ID=? AND DEL_YN='N'", fileId
+                "SELECT * FROM KNRAWMS.TMS_DOC_FILE WHERE FILE_ID=? AND DEL_YN='N'", fileId
             );
             if (rows.isEmpty()) return FileResult.notFound();
 
@@ -339,7 +339,7 @@ public class DocumentService {
 
             // 다운로드 카운트 증가
             if (!inline) {
-                jdbc.update("UPDATE KNRAWMS.DOC_FILE SET DOWNLOAD_CNT=DOWNLOAD_CNT+1 WHERE FILE_ID=?", fileId);
+                jdbc.update("UPDATE KNRAWMS.TMS_DOC_FILE SET DOWNLOAD_CNT=DOWNLOAD_CNT+1 WHERE FILE_ID=?", fileId);
             }
 
             String encoded = URLEncoder.encode(fileNm, StandardCharsets.UTF_8).replace("+", "%20");
@@ -356,13 +356,13 @@ public class DocumentService {
         String today = LocalDate.now().format(YMDFORMAT);
         try {
             List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT FILE_PATH FROM KNRAWMS.DOC_FILE WHERE FILE_ID=?", fileId
+                "SELECT FILE_PATH FROM KNRAWMS.TMS_DOC_FILE WHERE FILE_ID=?", fileId
             );
             if (!rows.isEmpty()) {
                 String filePath = (String) rows.get(0).get("FILE_PATH");
                 try { Files.deleteIfExists(Paths.get(filePath)); } catch (Exception ignored) {}
             }
-            jdbc.update("UPDATE KNRAWMS.DOC_FILE SET DEL_YN='Y', LMODAT=? WHERE FILE_ID=?", today, fileId);
+            jdbc.update("UPDATE KNRAWMS.TMS_DOC_FILE SET DEL_YN='Y', LMODAT=? WHERE FILE_ID=?", today, fileId);
             return Map.of("ok", true);
         } catch (Exception e) {
             return Map.of("ok", false, "error", e.getMessage());
@@ -385,16 +385,16 @@ public class DocumentService {
                 ? Long.valueOf(body.get("folder_id").toString()) : null;
 
             if (fileNm != null)
-                jdbc.update("UPDATE KNRAWMS.DOC_FILE SET FILE_NM=?, LMODAT=? WHERE FILE_ID=?", fileNm.trim(), today, fileId);
+                jdbc.update("UPDATE KNRAWMS.TMS_DOC_FILE SET FILE_NM=?, LMODAT=? WHERE FILE_ID=?", fileNm.trim(), today, fileId);
             if (note != null)
-                jdbc.update("UPDATE KNRAWMS.DOC_FILE SET NOTE=?, LMODAT=? WHERE FILE_ID=?", note.trim(), today, fileId);
+                jdbc.update("UPDATE KNRAWMS.TMS_DOC_FILE SET NOTE=?, LMODAT=? WHERE FILE_ID=?", note.trim(), today, fileId);
             if (opDate != null && hasOpDateColumn())
                 jdbc.update(
-                    "UPDATE KNRAWMS.DOC_FILE SET OP_DATE=?, LMODAT=? WHERE FILE_ID=?",
+                    "UPDATE KNRAWMS.TMS_DOC_FILE SET OP_DATE=?, LMODAT=? WHERE FILE_ID=?",
                     new Object[]{ opDate.isBlank() ? null : opDate.trim(), today, fileId },
                     new int[]{ Types.VARCHAR, Types.VARCHAR, Types.NUMERIC });
             if (folderId != null)
-                jdbc.update("UPDATE KNRAWMS.DOC_FILE SET FOLDER_ID=?, LMODAT=? WHERE FILE_ID=?", folderId, today, fileId);
+                jdbc.update("UPDATE KNRAWMS.TMS_DOC_FILE SET FOLDER_ID=?, LMODAT=? WHERE FILE_ID=?", folderId, today, fileId);
             return Map.of("ok", true);
         } catch (Exception e) {
             return Map.of("ok", false, "error", e.getMessage());

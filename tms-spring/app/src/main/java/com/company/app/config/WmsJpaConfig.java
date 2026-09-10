@@ -19,14 +19,14 @@ import java.util.Properties;
  *
  * ■ Oracle 전용 Repository — basePackageClasses 로 정확한 클래스만 지정
  *   (basePackages 재귀 스캔 시 tms 서브패키지 Repository 중복 등록 방지)
- *   - ShpdHRepository       : SHPDH  — Oracle KNRAWMS
+ *   - ShpdHRepository       : TMS_SHPDH  — Oracle KNRAWMS
  *   - VhcmaRepository       : VHCMA  — Oracle KNRAWMS
  *
  * ■ BZPTN_DETAIL 은 TmsJpaConfig 에서 관리 (TMS DB 소속)
  *   delivery(BZPTN_DETAIL) → TmsJpaConfig (tmsDataSource) 로 이동
  *
  * ■ MariaDB 테이블은 TmsJpaConfig 에서 관리
- *   dispatch(PS_DISPATCH_H/D), vehicle(DS_VEHICLE), delivery.RouteCost(ROUTE_COST) — Oracle KNRAWMS
+ *   dispatch(TMS_PS_DISPATCH_H/D), vehicle(TMS_DS_VEHICLE), delivery.RouteCost(TMS_ROUTE_COST) — Oracle KNRAWMS
  *
  * WMS JdbcTemplate 빈:
  *   @Qualifier("wmsJdbcTemplate") 로 주입
@@ -36,7 +36,7 @@ import java.util.Properties;
 @Configuration
 @EnableJpaRepositories(
     basePackageClasses = {
-        com.company.module.shipment.repository.ShpdHRepository.class,               // SHPDH  — Oracle KNRAWMS
+        com.company.module.shipment.repository.ShpdHRepository.class,               // TMS_SHPDH  — Oracle KNRAWMS
         com.company.module.vehicle.repository.wms.VhcmaRepository.class             // VHCMA  — Oracle KNRAWMS
     },
     entityManagerFactoryRef = "wmsEntityManagerFactory",
@@ -93,7 +93,7 @@ public class WmsJpaConfig {
             @Qualifier("wmsDataSource") DataSource dataSource) {
         JdbcTemplate jt = new JdbcTemplate(dataSource);
         // Oracle 쿼리 타임아웃 60초로 상향.
-        //  ※ SAP선적탭(sapList)의 SHPDI 4중 조인/GROUP BY 집계가 30초를 초과해
+        //  ※ SAP선적탭(sapList)의 TMS_SHPDI 4중 조인/GROUP BY 집계가 30초를 초과해
         //    ORA-01013(작업 취소)이 발생하던 문제 대응. 쿼리 자체는 STDLNR 범위
         //    인덱스 조건으로 경량화했으나, 대상 구간이 넓을 때의 안전 마진 확보.
         jt.setQueryTimeout(60);

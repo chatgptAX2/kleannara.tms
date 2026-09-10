@@ -31,7 +31,7 @@ public class RouteCostRepositoryImpl implements RouteCostRepositoryCustom {
         "  EFF_DATE AS DATE_START, " +
         "  EXP_DATE AS DATE_END, " +
         "  'KRW'    AS UNIT " +
-        "FROM KNRAWMS.ROUTE_COST";
+        "FROM KNRAWMS.TMS_ROUTE_COST";
 
     private static final String ORDER_BY = " ORDER BY WAREKY, PTNRKY, CARTYPE";
 

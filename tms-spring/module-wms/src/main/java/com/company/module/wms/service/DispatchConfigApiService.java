@@ -19,10 +19,10 @@ import java.util.*;
  *   TMS/WMS DataSource 는 동일 Oracle DB (KNMESWMS) / 동일 계정 (KNRATMS).
  *   tmsJdbc 단독으로 BZPTN JOIN BZPTN_DETAIL 직접 수행 가능.
  *
- *   - tmsJdbc: DS_VEHICLE, DS_DISPATCH_PROFILE, DS_DISPATCH_CONST,
- *              DS_DISPATCH_CONST_SET, DS_DISPATCH_CONST_SET_ITEM,
- *              DS_DISPATCH_CONSTRAINT, ROUTE_COST, BZPTN, BZPTN_DETAIL
- *   - wmsJdbc: CMCDV, SHPDH (기존 호출 유지)
+ *   - tmsJdbc: TMS_DS_VEHICLE, TMS_DS_DISPATCH_PROFILE, TMS_DS_DISPATCH_CONST,
+ *              TMS_DS_DISPATCH_CONST_SET, TMS_DS_DISPATCH_CONST_SET_ITEM,
+ *              TMS_DS_DISPATCH_CONSTRAINT, TMS_ROUTE_COST, BZPTN, BZPTN_DETAIL
+ *   - wmsJdbc: CMCDV, TMS_SHPDH (기존 호출 유지)
  */
 @Slf4j
 @Service
@@ -45,7 +45,7 @@ public class DispatchConfigApiService {
     private String today() { return LocalDate.now().format(YMDFORMAT); }
 
     /**
-     * DS_DISPATCH_CONST.CONST_ID 채번.
+     * TMS_DS_DISPATCH_CONST.CONST_ID 채번.
      * SEQ_DS_DISPATCH_CONST 시퀀스가 존재하면 NEXTVAL, 없으면(ORA-02289) MAX+1로 폴백.
      * 운영 Oracle KNRAWMS에 시퀀스가 배포되지 않은 환경에서도 안전하게 INSERT 가능.
      */
@@ -54,18 +54,18 @@ public class DispatchConfigApiService {
             return tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_CONST.NEXTVAL FROM DUAL", Long.class);
         } catch (Exception seqEx) {
             return tmsJdbc.queryForObject(
-                "SELECT NVL(MAX(CONST_ID),0)+1 FROM KNRAWMS.DS_DISPATCH_CONST", Long.class);
+                "SELECT NVL(MAX(CONST_ID),0)+1 FROM KNRAWMS.TMS_DS_DISPATCH_CONST", Long.class);
         }
     }
 
     // ══════════════════════════════════════════════════════════════
-    //  목적식 (DS_DISPATCH_OBJECTIVE) — MariaDB integration
+    //  목적식 (TMS_DS_DISPATCH_OBJECTIVE) — MariaDB integration
     // ══════════════════════════════════════════════════════════════
 
     public Map<String, Object> objList() {
         try {
             List<Map<String, Object>> rows = tmsJdbc.queryForList(
-                "SELECT * FROM KNRAWMS.DS_DISPATCH_OBJECTIVE ORDER BY SORT_SEQ, OBJ_ID"
+                "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE ORDER BY SORT_SEQ, OBJ_ID"
             );
             return Map.of("ok", true, "rows", rows);
         } catch (Exception e) { return errMap(e); }
@@ -85,10 +85,10 @@ public class DispatchConfigApiService {
             if (code.isBlank()) return Map.of("ok", false, "error", "OBJ_CODE 필수");
 
             if (objId != null) {
-                tmsJdbc.update("UPDATE KNRAWMS.DS_DISPATCH_OBJECTIVE SET OBJ_CODE=?,OBJ_NM=?,OBJ_ICON=?,OBJ_ALGO=?,OBJ_DESC=?,SORT_SEQ=?,ACTIVE_YN=?,LMODAT=? WHERE OBJ_ID=?",
+                tmsJdbc.update("UPDATE KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE SET OBJ_CODE=?,OBJ_NM=?,OBJ_ICON=?,OBJ_ALGO=?,OBJ_DESC=?,SORT_SEQ=?,ACTIVE_YN=?,LMODAT=? WHERE OBJ_ID=?",
                     code, nm, icon, algo, desc, sort, act, today(), objId);
             } else {
-                tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_OBJECTIVE (OBJ_ID,OBJ_CODE,OBJ_NM,OBJ_ICON,OBJ_ALGO,OBJ_DESC,SORT_SEQ,ACTIVE_YN,CREDAT,LMODAT) VALUES (SEQ_DS_DISPATCH_OBJECTIVE.NEXTVAL,?,?,?,?,?,?,?,?,?)",
+                tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE (OBJ_ID,OBJ_CODE,OBJ_NM,OBJ_ICON,OBJ_ALGO,OBJ_DESC,SORT_SEQ,ACTIVE_YN,CREDAT,LMODAT) VALUES (SEQ_DS_DISPATCH_OBJECTIVE.NEXTVAL,?,?,?,?,?,?,?,?,?)",
                     code, nm, icon, algo, desc, sort, act, today(), today());
                 objId = tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_OBJECTIVE.CURRVAL FROM DUAL", Long.class);
             }
@@ -101,7 +101,7 @@ public class DispatchConfigApiService {
         Long objId = toLong(body.get("OBJ_ID"));
         if (objId == null) return Map.of("ok", false, "error", "OBJ_ID 필수");
         try {
-            tmsJdbc.update("DELETE FROM KNRAWMS.DS_DISPATCH_OBJECTIVE WHERE OBJ_ID=?", objId);
+            tmsJdbc.update("DELETE FROM KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE WHERE OBJ_ID=?", objId);
             return Map.of("ok", true);
         } catch (Exception e) { return errMap(e); }
     }
@@ -111,8 +111,8 @@ public class DispatchConfigApiService {
         Long objId = toLong(body.get("OBJ_ID"));
         if (objId == null) return Map.of("ok", false, "error", "OBJ_ID 필수");
         try {
-            tmsJdbc.update("UPDATE KNRAWMS.DS_DISPATCH_OBJECTIVE SET ACTIVE_YN='N', LMODAT=?", today());
-            tmsJdbc.update("UPDATE KNRAWMS.DS_DISPATCH_OBJECTIVE SET ACTIVE_YN='Y', LMODAT=? WHERE OBJ_ID=?", today(), objId);
+            tmsJdbc.update("UPDATE KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE SET ACTIVE_YN='N', LMODAT=?", today());
+            tmsJdbc.update("UPDATE KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE SET ACTIVE_YN='Y', LMODAT=? WHERE OBJ_ID=?", today(), objId);
             return Map.of("ok", true);
         } catch (Exception e) { return errMap(e); }
     }
@@ -121,20 +121,20 @@ public class DispatchConfigApiService {
         try {
             // Oracle: FETCH FIRST 1 ROWS ONLY
             List<Map<String, Object>> rows = tmsJdbc.queryForList(
-                "SELECT * FROM KNRAWMS.DS_DISPATCH_OBJECTIVE WHERE ACTIVE_YN='Y' ORDER BY OBJ_ID FETCH FIRST 1 ROWS ONLY"
+                "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE WHERE ACTIVE_YN='Y' ORDER BY OBJ_ID FETCH FIRST 1 ROWS ONLY"
             );
             Map<String, Object> objective = rows.isEmpty() ?
-                tmsJdbc.queryForList("SELECT * FROM KNRAWMS.DS_DISPATCH_OBJECTIVE ORDER BY SORT_SEQ, OBJ_ID FETCH FIRST 1 ROWS ONLY")
+                tmsJdbc.queryForList("SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE ORDER BY SORT_SEQ, OBJ_ID FETCH FIRST 1 ROWS ONLY")
                     .stream().findFirst().orElse(null) : rows.get(0);
 
             if (objective == null) return Map.of("ok", false, "error", "목적식 없음");
 
             String objCode = (String) objective.get("OBJ_CODE");
             List<Map<String, Object>> profiles = tmsJdbc.queryForList(
-                "SELECT * FROM KNRAWMS.DS_DISPATCH_PROFILE WHERE OBJECTIVE=? AND ACTIVE_YN='Y' ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY", objCode
+                "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE WHERE OBJECTIVE=? AND ACTIVE_YN='Y' ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY", objCode
             );
             Map<String, Object> profile = profiles.isEmpty() ?
-                tmsJdbc.queryForList("SELECT * FROM KNRAWMS.DS_DISPATCH_PROFILE WHERE OBJECTIVE=? ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY", objCode)
+                tmsJdbc.queryForList("SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE WHERE OBJECTIVE=? ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY", objCode)
                     .stream().findFirst().orElse(null) : profiles.get(0);
 
             return Map.of("ok", true, "objective", objective, "profile", profile != null ? profile : "");
@@ -142,14 +142,14 @@ public class DispatchConfigApiService {
     }
 
     // ══════════════════════════════════════════════════════════════
-    //  제약조건 세트 (DS_DISPATCH_CONST_SET) — MariaDB integration
+    //  제약조건 세트 (TMS_DS_DISPATCH_CONST_SET) — MariaDB integration
     // ══════════════════════════════════════════════════════════════
 
     public Map<String, Object> setList() {
         try {
             List<Map<String, Object>> rows = tmsJdbc.queryForList(
-                "SELECT s.*, (SELECT COUNT(*) FROM KNRAWMS.DS_DISPATCH_CONST_SET_ITEM i WHERE i.SET_ID=s.SET_ID) AS ITEM_CNT " +
-                "FROM KNRAWMS.DS_DISPATCH_CONST_SET s ORDER BY s.SET_ID"
+                "SELECT s.*, (SELECT COUNT(*) FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM i WHERE i.SET_ID=s.SET_ID) AS ITEM_CNT " +
+                "FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET s ORDER BY s.SET_ID"
             );
             return Map.of("ok", true, "rows", rows);
         } catch (Exception e) { return errMap(e); }
@@ -165,13 +165,13 @@ public class DispatchConfigApiService {
             if (nm.isBlank()) return Map.of("ok", false, "error", "SET_NM 필수");
 
             if (setId != null) {
-                tmsJdbc.update("UPDATE KNRAWMS.DS_DISPATCH_CONST_SET SET SET_NM=?,SET_DESC=?,ACTIVE_YN=?,LMODAT=? WHERE SET_ID=?",
+                tmsJdbc.update("UPDATE KNRAWMS.TMS_DS_DISPATCH_CONST_SET SET SET_NM=?,SET_DESC=?,ACTIVE_YN=?,LMODAT=? WHERE SET_ID=?",
                     nm, desc, act, today(), setId);
             } else {
                 // SEQ_DS_DISPATCH_CONST_SET 시퀀스 미존재 → MAX+1 채번
                 setId = tmsJdbc.queryForObject(
-                    "SELECT NVL(MAX(SET_ID),0)+1 FROM KNRAWMS.DS_DISPATCH_CONST_SET", Integer.class);
-                tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST_SET (SET_ID,SET_NM,SET_DESC,ACTIVE_YN,CREDAT,LMODAT) VALUES (?,?,?,?,?,?)",
+                    "SELECT NVL(MAX(SET_ID),0)+1 FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET", Integer.class);
+                tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_CONST_SET (SET_ID,SET_NM,SET_DESC,ACTIVE_YN,CREDAT,LMODAT) VALUES (?,?,?,?,?,?)",
                     setId, nm, desc, act, today(), today());
             }
             return Map.of("ok", true, "SET_ID", setId);
@@ -183,9 +183,9 @@ public class DispatchConfigApiService {
         Integer setId = toInteger(body.get("SET_ID"));
         if (setId == null) return Map.of("ok", false, "error", "SET_ID 필수");
         try {
-            tmsJdbc.update("DELETE FROM KNRAWMS.DS_DISPATCH_CONST_SET_ITEM WHERE SET_ID=?", setId);
-            tmsJdbc.update("DELETE FROM KNRAWMS.DS_DISPATCH_CONST_SET WHERE SET_ID=?", setId);
-            tmsJdbc.update("UPDATE KNRAWMS.DS_DISPATCH_PROFILE SET SET_ID=NULL WHERE SET_ID=?", setId);
+            tmsJdbc.update("DELETE FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM WHERE SET_ID=?", setId);
+            tmsJdbc.update("DELETE FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET WHERE SET_ID=?", setId);
+            tmsJdbc.update("UPDATE KNRAWMS.TMS_DS_DISPATCH_PROFILE SET SET_ID=NULL WHERE SET_ID=?", setId);
             return Map.of("ok", true);
         } catch (Exception e) { return errMap(e); }
     }
@@ -198,8 +198,8 @@ public class DispatchConfigApiService {
                     "SELECT i.ITEM_ID, i.SET_ID, i.CONST_ID, i.ACTIVE_YN, i.PARAM_VALUE, " +
                     "       c.CONST_TYPE, c.CONST_KEY, c.CONST_OP, c.CONST_VALUE, " +
                     "       c.TARGET_ID, c.TARGET_NM, c.NOTE, c.SORT_SEQ " +
-                    "FROM KNRAWMS.DS_DISPATCH_CONST_SET_ITEM i " +
-                    "JOIN KNRAWMS.DS_DISPATCH_CONST c ON c.CONST_ID=i.CONST_ID " +
+                    "FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM i " +
+                    "JOIN KNRAWMS.TMS_DS_DISPATCH_CONST c ON c.CONST_ID=i.CONST_ID " +
                     "WHERE i.SET_ID=? ORDER BY c.CONST_TYPE, c.SORT_SEQ, c.CONST_ID", setId
                 );
             }
@@ -209,18 +209,18 @@ public class DispatchConfigApiService {
 
     public Map<String, Object> setFull(Integer setId) {
         try {
-            /* ── ① DS_DISPATCH_CONST 마스터 전체 조회 (tabMgr 전체 목록 표시용) ──
+            /* ── ① TMS_DS_DISPATCH_CONST 마스터 전체 조회 (tabMgr 전체 목록 표시용) ──
                PROFILE LEFT JOIN으로 orphan CONST도 포함. */
             List<Map<String, Object>> allConsts = tmsJdbc.queryForList(
                 "SELECT c.CONST_ID, c.PROFILE_ID, c.CONST_TYPE, c.CONST_KEY, c.CONST_OP, " +
                 "       c.CONST_VALUE, c.TARGET_ID, c.TARGET_NM, c.NOTE, c.ACTIVE_YN, c.SORT_SEQ, " +
                 "       p.PROFILE_NM " +
-                "FROM KNRAWMS.DS_DISPATCH_CONST c " +
-                "LEFT JOIN KNRAWMS.DS_DISPATCH_PROFILE p ON p.PROFILE_ID=c.PROFILE_ID " +
+                "FROM KNRAWMS.TMS_DS_DISPATCH_CONST c " +
+                "LEFT JOIN KNRAWMS.TMS_DS_DISPATCH_PROFILE p ON p.PROFILE_ID=c.PROFILE_ID " +
                 "ORDER BY c.CONST_TYPE, c.SORT_SEQ, c.CONST_ID"
             );
 
-            /* ── ② DS_DISPATCH_CONST_SET_ITEM 조회 (세트에 저장된 항목 — IN_SET=1 기준) ──
+            /* ── ② TMS_DS_DISPATCH_CONST_SET_ITEM 조회 (세트에 저장된 항목 — IN_SET=1 기준) ──
                Oracle JDBC는 NUMBER를 BigDecimal로 반환하며 precision/scale 차이로
                BigDecimal.equals() 비교 시 miss 발생 가능 → String 키로 정규화. */
             Map<String, Map<String, Object>> includedMap = new HashMap<>();
@@ -230,9 +230,9 @@ public class DispatchConfigApiService {
                     "       c.CONST_TYPE, c.CONST_KEY, c.CONST_OP, c.CONST_VALUE, " +
                     "       c.TARGET_ID, c.TARGET_NM, c.NOTE, c.ACTIVE_YN AS MASTER_YN, " +
                     "       c.SORT_SEQ, c.PROFILE_ID, p.PROFILE_NM " +
-                    "FROM KNRAWMS.DS_DISPATCH_CONST_SET_ITEM i " +
-                    "LEFT JOIN KNRAWMS.DS_DISPATCH_CONST c ON c.CONST_ID = i.CONST_ID " +
-                    "LEFT JOIN KNRAWMS.DS_DISPATCH_PROFILE p ON p.PROFILE_ID = c.PROFILE_ID " +
+                    "FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM i " +
+                    "LEFT JOIN KNRAWMS.TMS_DS_DISPATCH_CONST c ON c.CONST_ID = i.CONST_ID " +
+                    "LEFT JOIN KNRAWMS.TMS_DS_DISPATCH_PROFILE p ON p.PROFILE_ID = c.PROFILE_ID " +
                     "WHERE i.SET_ID = ? " +
                     "ORDER BY c.CONST_TYPE, c.SORT_SEQ, i.CONST_ID",
                     setId
@@ -260,7 +260,7 @@ public class DispatchConfigApiService {
                 result.add(d);
             }
 
-            /* ── ④ SET_ITEM에는 있지만 DS_DISPATCH_CONST 마스터에 없는 항목(orphan) 보완 ──
+            /* ── ④ SET_ITEM에는 있지만 TMS_DS_DISPATCH_CONST 마스터에 없는 항목(orphan) 보완 ──
                세트에 저장된 CONST_ID가 마스터에 없더라도 IN_SET=1로 반드시 화면에 표시한다.
                SET_ITEM LEFT JOIN CONST 결과에서 CONST_KEY 등을 그대로 사용하므로
                저장 당시 마스터가 삭제된 경우에도 저장값은 유지·표시된다. */
@@ -287,7 +287,7 @@ public class DispatchConfigApiService {
                     row.put("ITEM_ACTIVE", item.get("ACTIVE_YN"));
                     row.put("PARAM_VALUE", item.get("PARAM_VALUE"));
                     result.add(row);
-                    log.warn("setFull orphan ITEM: CONST_ID={} SET_ITEM exists but not in DS_DISPATCH_CONST master", entry.getKey());
+                    log.warn("setFull orphan ITEM: CONST_ID={} SET_ITEM exists but not in TMS_DS_DISPATCH_CONST master", entry.getKey());
                 }
             }
             return Map.of("ok", true, "rows", result);
@@ -296,12 +296,12 @@ public class DispatchConfigApiService {
 
     public Map<String, Object> setVehicleTypes() {
         try {
-            // DS_VEHICLE: tmsJdbc
+            // TMS_DS_VEHICLE: tmsJdbc
             List<Map<String, Object>> vehicles = tmsJdbc.queryForList(
                 "SELECT v.CARCLASS_CD, v.CARTYPE, v.LENGTH_M, v.WIDTH_M, v.HEIGHT_M, " +
                 "       v.LOAD_TON, v.PALLET_HEIGHT_M, v.SORT_SEQ, " +
                 "       v.PALLET_CNT, v.LONG_AXIS_YN, v.DEFAULT_VEH_CNT " +
-                "FROM KNRAWMS.DS_VEHICLE v ORDER BY v.SORT_SEQ"
+                "FROM KNRAWMS.TMS_DS_VEHICLE v ORDER BY v.SORT_SEQ"
             );
             // CMCDV10: Oracle
             List<Map<String, Object>> cc10 = wmsJdbc.queryForList(
@@ -337,11 +337,11 @@ public class DispatchConfigApiService {
 
         try {
             // CARTYPE 아이템 삭제 후 재삽입
-            tmsJdbc.update("DELETE FROM KNRAWMS.DS_DISPATCH_CONST_SET_ITEM WHERE SET_ID=? AND CONST_ID IN " +
-                        "(SELECT CONST_ID FROM KNRAWMS.DS_DISPATCH_CONST WHERE CONST_TYPE='CARTYPE')", setId);
+            tmsJdbc.update("DELETE FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM WHERE SET_ID=? AND CONST_ID IN " +
+                        "(SELECT CONST_ID FROM KNRAWMS.TMS_DS_DISPATCH_CONST WHERE CONST_TYPE='CARTYPE')", setId);
             // SEQ_DS_DISPATCH_CONST_SET_ITEM 시퀀스 미존재 → 루프 전 MAX+1 채번 시작값 확보
             Long nextItemId = tmsJdbc.queryForObject(
-                "SELECT NVL(MAX(ITEM_ID),0)+1 FROM KNRAWMS.DS_DISPATCH_CONST_SET_ITEM", Long.class);
+                "SELECT NVL(MAX(ITEM_ID),0)+1 FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM", Long.class);
             int saved = 0;
             for (Map<String, Object> it : items) {
                 if (!"Y".equals(it.get("active_yn"))) continue;
@@ -351,31 +351,31 @@ public class DispatchConfigApiService {
                 Object paramVal   = it.get("param_value");
                 if (carclassCd.isBlank() || field.isBlank()) continue;
 
-                // DS_DISPATCH_CONST 조회 또는 생성
+                // TMS_DS_DISPATCH_CONST 조회 또는 생성
                 List<Map<String, Object>> existing = tmsJdbc.queryForList(
-                    "SELECT CONST_ID FROM KNRAWMS.DS_DISPATCH_CONST WHERE CONST_TYPE='CARTYPE' AND CONST_KEY=? AND TARGET_ID=?",
+                    "SELECT CONST_ID FROM KNRAWMS.TMS_DS_DISPATCH_CONST WHERE CONST_TYPE='CARTYPE' AND CONST_KEY=? AND TARGET_ID=?",
                     field, carclassCd
                 );
                 Long constId;
                 if (!existing.isEmpty()) {
                     constId = toLong(existing.get(0).get("CONST_ID"));
                 } else {
-                    // DS_VEHICLE에서 기본값
+                    // TMS_DS_VEHICLE에서 기본값
                     List<Map<String, Object>> vr = tmsJdbc.queryForList(
-                        "SELECT * FROM KNRAWMS.DS_VEHICLE WHERE CARCLASS_CD=?", carclassCd
+                        "SELECT * FROM KNRAWMS.TMS_DS_VEHICLE WHERE CARCLASS_CD=?", carclassCd
                     );
                     String defaultVal = vr.isEmpty() ? null : Objects.toString(vr.get(0).get(field), null);
                     // 첫 번째 프로파일 ID
                     List<Map<String, Object>> pr = tmsJdbc.queryForList(
-                        "SELECT PROFILE_ID FROM KNRAWMS.DS_DISPATCH_PROFILE ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY"
+                        "SELECT PROFILE_ID FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY"
                     );
                     Long profileId = pr.isEmpty() ? 1L : toLong(pr.get(0).get("PROFILE_ID"));
                     String constOp = List.of("ALLOW_CARTYPE","LONG_AXIS_YN").contains(field) ? "=" : "<=";
                     constId = nextConstId();
-                    tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         constId, profileId, "CARTYPE", field, vc(defaultVal), constOp, carclassCd, cartype, "Y", "차량유형관리 연동", 0, today(), today());
                 }
-                tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST_SET_ITEM (ITEM_ID,SET_ID,CONST_ID,ACTIVE_YN,PARAM_VALUE) VALUES (?,?,?,?,?)",
+                tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM (ITEM_ID,SET_ID,CONST_ID,ACTIVE_YN,PARAM_VALUE) VALUES (?,?,?,?,?)",
                     nextItemId++, setId, constId, "Y", vc(paramVal));
                 saved++;
             }
@@ -389,13 +389,13 @@ public class DispatchConfigApiService {
             List<Map<String, Object>> tmsRegions = wmsJdbc.queryForList(
                 "SELECT CMCDVL, CDESC1, CDESC2, USARG3, USARG4 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_REGION' ORDER BY CMCDVL"
             );
-            // SHPDH JOIN BZPTN JOIN BZPTN_DETAIL — tmsJdbc 단독 (동일 DB이므로 JOIN 가능)
+            // TMS_SHPDH JOIN BZPTN JOIN BZPTN_DETAIL — tmsJdbc 단독 (동일 DB이므로 JOIN 가능)
             // REGION_YN은 BZPTN_DETAIL에 없음 → '' 리터럴로 대체 (TMS 측 관리 예정)
             List<Map<String, Object>> partners = tmsJdbc.queryForList(
                 "SELECT DISTINCT h.DPTNKY AS PTNRKY, COALESCE(b.NAME01,h.DPTNKY) AS NAME01, " +
                 "       COALESCE(b.POSTCD,'') AS POSTCD, COALESCE(d.AREA_CD,'') AS AREA_CD, " +
                 "       '' AS REGION_YN " +
-                "FROM KNRAWMS.SHPDH h LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT' " +
+                "FROM KNRAWMS.TMS_SHPDH h LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT' " +
                 "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=h.DPTNKY AND d.PTNRTY='CT' " +
                 "WHERE h.DPTNKY IS NOT NULL AND h.DPTNKY <> ' ' ORDER BY h.DPTNKY"
             );
@@ -558,17 +558,17 @@ public class DispatchConfigApiService {
             /* CARTYPE 타입 항목은 cartypeSave()에서 별도 관리하므로 여기서는 삭제 제외.
                전체 DELETE를 하면 cartypeItems=0일 때 CARTYPE 데이터가 영구 소실된다. */
             tmsJdbc.update(
-                "DELETE FROM KNRAWMS.DS_DISPATCH_CONST_SET_ITEM " +
+                "DELETE FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM " +
                 "WHERE SET_ID=? AND CONST_ID NOT IN " +
-                "(SELECT CONST_ID FROM KNRAWMS.DS_DISPATCH_CONST WHERE CONST_TYPE='CARTYPE')",
+                "(SELECT CONST_ID FROM KNRAWMS.TMS_DS_DISPATCH_CONST WHERE CONST_TYPE='CARTYPE')",
                 setId);
             // SEQ_DS_DISPATCH_CONST_SET_ITEM 시퀀스 미존재 → 루프 전 MAX+1 로 채번 시작값 확보
             Long nextItemId = tmsJdbc.queryForObject(
-                "SELECT NVL(MAX(ITEM_ID),0)+1 FROM KNRAWMS.DS_DISPATCH_CONST_SET_ITEM", Long.class);
+                "SELECT NVL(MAX(ITEM_ID),0)+1 FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM", Long.class);
             for (Map<String, Object> it : items) {
                 Long constId = toLong(it.get("const_id"));
                 /* ── const_id 미존재(신규 파라미터 키) → 마스터 자동 find-or-create ──
-                   ALLOW_MATERIAL_MIX / MIX_3D_CHECK_YN 등 신규 파라미터 키는 DS_DISPATCH_CONST
+                   ALLOW_MATERIAL_MIX / MIX_3D_CHECK_YN 등 신규 파라미터 키는 TMS_DS_DISPATCH_CONST
                    마스터 행이 없어 프론트 3-tier 매칭이 실패한다. 이때 프론트는 const_id=null +
                    const_key/const_type 를 전송하므로, 여기서 마스터를 find-or-create 한 뒤 저장한다. */
                 if (constId == null) {
@@ -587,14 +587,14 @@ public class DispatchConfigApiService {
                 if (constId == null) continue;
                 String yn   = Objects.toString(it.get("active_yn"), "Y").trim();
                 Object pval = it.get("param_value");
-                tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST_SET_ITEM (ITEM_ID,SET_ID,CONST_ID,ACTIVE_YN,PARAM_VALUE) VALUES (?,?,?,?,?)",
+                tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM (ITEM_ID,SET_ID,CONST_ID,ACTIVE_YN,PARAM_VALUE) VALUES (?,?,?,?,?)",
                     nextItemId++, setId, constId, yn, vc(pval));
             }
             return Map.of("ok", true, "saved", items.size());
         } catch (Exception e) { return errMap(e); }
     }
 
-    /* ── 신규 파라미터 키(예: ALLOW_MATERIAL_MIX)의 DS_DISPATCH_CONST 마스터 find-or-create ──
+    /* ── 신규 파라미터 키(예: ALLOW_MATERIAL_MIX)의 TMS_DS_DISPATCH_CONST 마스터 find-or-create ──
        세트 항목 저장 시 const_id 가 없는 신규 키를 처리한다. 동일 CONST_KEY(+TARGET_ID) 가
        이미 있으면 그 CONST_ID 재사용, 없으면 첫 번째 프로파일에 마스터를 생성한다. */
     private Long findOrCreateConstMaster(String key, String type, String op,
@@ -605,25 +605,25 @@ public class DispatchConfigApiService {
         List<Map<String, Object>> existing;
         if (tid.isBlank()) {
             existing = tmsJdbc.queryForList(
-                "SELECT CONST_ID FROM KNRAWMS.DS_DISPATCH_CONST " +
+                "SELECT CONST_ID FROM KNRAWMS.TMS_DS_DISPATCH_CONST " +
                 "WHERE CONST_KEY=? AND (TARGET_ID IS NULL OR TARGET_ID='') ORDER BY CONST_ID FETCH FIRST 1 ROWS ONLY",
                 key);
         } else {
             existing = tmsJdbc.queryForList(
-                "SELECT CONST_ID FROM KNRAWMS.DS_DISPATCH_CONST " +
+                "SELECT CONST_ID FROM KNRAWMS.TMS_DS_DISPATCH_CONST " +
                 "WHERE CONST_KEY=? AND TARGET_ID=? ORDER BY CONST_ID FETCH FIRST 1 ROWS ONLY",
                 key, tid);
         }
         if (!existing.isEmpty()) return toLong(existing.get(0).get("CONST_ID"));
         // ② 없으면 첫 번째 프로파일에 마스터 생성
         List<Map<String, Object>> pr = tmsJdbc.queryForList(
-            "SELECT PROFILE_ID FROM KNRAWMS.DS_DISPATCH_PROFILE ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY");
+            "SELECT PROFILE_ID FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY");
         Long profileId = pr.isEmpty() ? 1L : toLong(pr.get(0).get("PROFILE_ID"));
         String ctype = (type == null || type.isBlank()) ? "GLOBAL" : type;
         String cop   = (op == null || op.isBlank())     ? "="      : op;
         Long newCid = nextConstId();
         tmsJdbc.update(
-            "INSERT INTO KNRAWMS.DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) " +
+            "INSERT INTO KNRAWMS.TMS_DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) " +
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             newCid, profileId, ctype, key, (constValue == null ? "" : constValue), cop,
             (tid.isBlank() ? null : tid), (targetNm == null ? null : targetNm),
@@ -632,13 +632,13 @@ public class DispatchConfigApiService {
     }
 
     // ══════════════════════════════════════════════════════════════
-    //  제약조건 프로파일 (DS_DISPATCH_PROFILE + DS_DISPATCH_CONST) — MariaDB
+    //  제약조건 프로파일 (TMS_DS_DISPATCH_PROFILE + TMS_DS_DISPATCH_CONST) — MariaDB
     // ══════════════════════════════════════════════════════════════
 
     public Map<String, Object> profiles() {
         try {
             List<Map<String, Object>> rows = tmsJdbc.queryForList(
-                "SELECT * FROM KNRAWMS.DS_DISPATCH_PROFILE ORDER BY PROFILE_ID"
+                "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE ORDER BY PROFILE_ID"
             );
             return Map.of("ok", true, "rows", rows);
         } catch (Exception e) { return errMap(e); }
@@ -655,10 +655,10 @@ public class DispatchConfigApiService {
             if (nm.isBlank()) return Map.of("ok", false, "error", "PROFILE_NM 필수");
 
             if (pid != null) {
-                tmsJdbc.update("UPDATE KNRAWMS.DS_DISPATCH_PROFILE SET PROFILE_NM=?,OBJECTIVE=?,ACTIVE_YN=?,NOTE=?,LMODAT=? WHERE PROFILE_ID=?",
+                tmsJdbc.update("UPDATE KNRAWMS.TMS_DS_DISPATCH_PROFILE SET PROFILE_NM=?,OBJECTIVE=?,ACTIVE_YN=?,NOTE=?,LMODAT=? WHERE PROFILE_ID=?",
                     nm, obj, act, note, today(), pid);
             } else {
-                tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_PROFILE (PROFILE_ID,PROFILE_NM,OBJECTIVE,ACTIVE_YN,NOTE,CREDAT,LMODAT) VALUES (SEQ_DS_DISPATCH_PROFILE.NEXTVAL,?,?,?,?,?,?)",
+                tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_PROFILE (PROFILE_ID,PROFILE_NM,OBJECTIVE,ACTIVE_YN,NOTE,CREDAT,LMODAT) VALUES (SEQ_DS_DISPATCH_PROFILE.NEXTVAL,?,?,?,?,?,?)",
                     nm, obj, act, note, today(), today());
                 pid = tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_PROFILE.CURRVAL FROM DUAL", Long.class);
             }
@@ -671,8 +671,8 @@ public class DispatchConfigApiService {
         Long pid = toLong(body.get("PROFILE_ID"));
         if (pid == null) return Map.of("ok", false, "error", "PROFILE_ID 필수");
         try {
-            tmsJdbc.update("DELETE FROM KNRAWMS.DS_DISPATCH_CONST WHERE PROFILE_ID=?", pid);
-            tmsJdbc.update("DELETE FROM KNRAWMS.DS_DISPATCH_PROFILE WHERE PROFILE_ID=?", pid);
+            tmsJdbc.update("DELETE FROM KNRAWMS.TMS_DS_DISPATCH_CONST WHERE PROFILE_ID=?", pid);
+            tmsJdbc.update("DELETE FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE WHERE PROFILE_ID=?", pid);
             return Map.of("ok", true);
         } catch (Exception e) { return errMap(e); }
     }
@@ -683,7 +683,7 @@ public class DispatchConfigApiService {
         Integer setId = toInteger(body.get("set_id"));
         if (profId == null) return Map.of("ok", false, "error", "profile_id 필수");
         try {
-            tmsJdbc.update("UPDATE KNRAWMS.DS_DISPATCH_PROFILE SET SET_ID=?, LMODAT=? WHERE PROFILE_ID=?", setId, today(), profId);
+            tmsJdbc.update("UPDATE KNRAWMS.TMS_DS_DISPATCH_PROFILE SET SET_ID=?, LMODAT=? WHERE PROFILE_ID=?", setId, today(), profId);
             return Map.of("ok", true);
         } catch (Exception e) { return errMap(e); }
     }
@@ -691,8 +691,8 @@ public class DispatchConfigApiService {
     public Map<String, Object> constraintAll() {
         try {
             List<Map<String, Object>> rows = tmsJdbc.queryForList(
-                "SELECT c.*, p.PROFILE_NM FROM KNRAWMS.DS_DISPATCH_CONST c " +
-                "JOIN KNRAWMS.DS_DISPATCH_PROFILE p ON p.PROFILE_ID=c.PROFILE_ID " +
+                "SELECT c.*, p.PROFILE_NM FROM KNRAWMS.TMS_DS_DISPATCH_CONST c " +
+                "JOIN KNRAWMS.TMS_DS_DISPATCH_PROFILE p ON p.PROFILE_ID=c.PROFILE_ID " +
                 "ORDER BY c.CONST_TYPE, c.SORT_SEQ, c.CONST_ID"
             );
             return Map.of("ok", true, "rows", rows);
@@ -704,10 +704,10 @@ public class DispatchConfigApiService {
             List<Map<String, Object>> rows;
             if (profileId != null) {
                 rows = tmsJdbc.queryForList(
-                    "SELECT * FROM KNRAWMS.DS_DISPATCH_CONST WHERE PROFILE_ID=? ORDER BY SORT_SEQ,CONST_ID", profileId
+                    "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_CONST WHERE PROFILE_ID=? ORDER BY SORT_SEQ,CONST_ID", profileId
                 );
             } else {
-                rows = tmsJdbc.queryForList("SELECT * FROM KNRAWMS.DS_DISPATCH_CONST ORDER BY PROFILE_ID,SORT_SEQ,CONST_ID");
+                rows = tmsJdbc.queryForList("SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_CONST ORDER BY PROFILE_ID,SORT_SEQ,CONST_ID");
             }
             return Map.of("ok", true, "rows", rows);
         } catch (Exception e) { return errMap(e); }
@@ -744,12 +744,12 @@ public class DispatchConfigApiService {
         int sort     = toInt(row.get("SORT_SEQ"), 0);
 
         if (cid != null) {
-            tmsJdbc.update("UPDATE KNRAWMS.DS_DISPATCH_CONST SET PROFILE_ID=?,CONST_TYPE=?,CONST_KEY=?,CONST_VALUE=?,CONST_OP=?,TARGET_ID=?,TARGET_NM=?,ACTIVE_YN=?,NOTE=?,SORT_SEQ=?,LMODAT=? WHERE CONST_ID=?",
+            tmsJdbc.update("UPDATE KNRAWMS.TMS_DS_DISPATCH_CONST SET PROFILE_ID=?,CONST_TYPE=?,CONST_KEY=?,CONST_VALUE=?,CONST_OP=?,TARGET_ID=?,TARGET_NM=?,ACTIVE_YN=?,NOTE=?,SORT_SEQ=?,LMODAT=? WHERE CONST_ID=?",
                 pid, type, key, val, op, tid, tnm, act, note, sort, today(), cid);
             return cid;
         } else {
             Long newCid = nextConstId();
-            tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 newCid, pid, type, key, val, op, tid, tnm, act, note, sort, today(), today());
             return newCid;
         }
@@ -762,7 +762,7 @@ public class DispatchConfigApiService {
         if (ids == null || ids.isEmpty()) return Map.of("ok", false, "error", "ids 필수");
         try {
             String ph = String.join(",", Collections.nCopies(ids.size(), "?"));
-            tmsJdbc.update("DELETE FROM KNRAWMS.DS_DISPATCH_CONST WHERE CONST_ID IN (" + ph + ")", ids.toArray());
+            tmsJdbc.update("DELETE FROM KNRAWMS.TMS_DS_DISPATCH_CONST WHERE CONST_ID IN (" + ph + ")", ids.toArray());
             return Map.of("ok", true);
         } catch (Exception e) { return errMap(e); }
     }
@@ -774,18 +774,18 @@ public class DispatchConfigApiService {
         if (srcPid == null || newNm.isBlank()) return Map.of("ok", false, "error", "src_profile_id, new_name 필수");
         try {
             List<Map<String, Object>> src = tmsJdbc.queryForList(
-                "SELECT * FROM KNRAWMS.DS_DISPATCH_PROFILE WHERE PROFILE_ID=?", srcPid
+                "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE WHERE PROFILE_ID=?", srcPid
             );
             if (src.isEmpty()) return Map.of("ok", false, "error", "원본 프로파일 없음");
             Map<String, Object> s = src.get(0);
-            tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_PROFILE (PROFILE_ID,PROFILE_NM,OBJECTIVE,ACTIVE_YN,NOTE,CREDAT,LMODAT) VALUES (SEQ_DS_DISPATCH_PROFILE.NEXTVAL,?,?,?,?,?,?)",
+            tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_PROFILE (PROFILE_ID,PROFILE_NM,OBJECTIVE,ACTIVE_YN,NOTE,CREDAT,LMODAT) VALUES (SEQ_DS_DISPATCH_PROFILE.NEXTVAL,?,?,?,?,?,?)",
                 newNm, s.get("OBJECTIVE"), "N", "복사본: " + s.get("PROFILE_NM"), today(), today());
             Long newPid = tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_PROFILE.CURRVAL FROM DUAL", Long.class);
             List<Map<String, Object>> srcRows = tmsJdbc.queryForList(
-                "SELECT * FROM KNRAWMS.DS_DISPATCH_CONST WHERE PROFILE_ID=?", srcPid
+                "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_CONST WHERE PROFILE_ID=?", srcPid
             );
             for (Map<String, Object> r : srcRows) {
-                tmsJdbc.update("INSERT INTO KNRAWMS.DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     nextConstId(), newPid, r.get("CONST_TYPE"), r.get("CONST_KEY"), r.get("CONST_VALUE"), r.get("CONST_OP"),
                     r.get("TARGET_ID"), r.get("TARGET_NM"), r.get("ACTIVE_YN"), r.get("NOTE"), r.get("SORT_SEQ"), today(), today());
             }
@@ -795,19 +795,19 @@ public class DispatchConfigApiService {
 
     public Map<String, Object> constraintMeta() {
         try {
-            // DS_VEHICLE: MariaDB
+            // TMS_DS_VEHICLE: MariaDB
             List<Map<String, Object>> vehicles = tmsJdbc.queryForList(
                 "SELECT CARCLASS_CD, CARTYPE, LOAD_TON, LENGTH_M, WIDTH_M, HEIGHT_M, PALLET_HEIGHT_M, SORT_SEQ " +
-                "FROM KNRAWMS.DS_VEHICLE ORDER BY SORT_SEQ"
+                "FROM KNRAWMS.TMS_DS_VEHICLE ORDER BY SORT_SEQ"
             );
             // CMCDV: Oracle KNRAWMS
             List<Map<String, Object>> carclasses = wmsJdbc.queryForList(
                 "SELECT CMCDVL, CDESC1 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10' ORDER BY CMCDVL"
             );
-            // ROUTE_COST JOIN BZPTN — tmsJdbc 단독 (동일 DB/계정이므로 JOIN 가능)
+            // TMS_ROUTE_COST JOIN BZPTN — tmsJdbc 단독 (동일 DB/계정이므로 JOIN 가능)
             List<Map<String, Object>> partners = tmsJdbc.queryForList(
                 "SELECT DISTINCT r.PTNRKY, COALESCE(b.NAME01,r.PTNRKY) AS PTNRNM " +
-                "FROM KNRAWMS.ROUTE_COST r " +
+                "FROM KNRAWMS.TMS_ROUTE_COST r " +
                 "LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY=r.PTNRKY AND b.PTNRTY='CT' " +
                 "ORDER BY r.PTNRKY FETCH FIRST 300 ROWS ONLY"
             );
@@ -964,8 +964,8 @@ public class DispatchConfigApiService {
 
     // ══════════════════════════════════════════════════════════════
     //  제약조건 항목 관리 (/api/const-item/*)
-    //  대상 테이블: DS_DISPATCH_CONST (마스터 제약조건 목록)
-    //              DS_DISPATCH_CONST_SET_ITEM (세트별 설정값)
+    //  대상 테이블: TMS_DS_DISPATCH_CONST (마스터 제약조건 목록)
+    //              TMS_DS_DISPATCH_CONST_SET_ITEM (세트별 설정값)
     // ══════════════════════════════════════════════════════════════
 
     /**
@@ -983,9 +983,9 @@ public class DispatchConfigApiService {
                     "       c.NOTE, c.ACTIVE_YN, c.SORT_SEQ, " +
                     "       p.PROFILE_NM, " +
                     "       i.ITEM_ID, i.ACTIVE_YN AS USE_YN, i.PARAM_VALUE AS SETTING_VAL " +
-                    "FROM KNRAWMS.DS_DISPATCH_CONST c " +
-                    "LEFT JOIN KNRAWMS.DS_DISPATCH_PROFILE p ON p.PROFILE_ID = c.PROFILE_ID " +
-                    "LEFT JOIN KNRAWMS.DS_DISPATCH_CONST_SET_ITEM i " +
+                    "FROM KNRAWMS.TMS_DS_DISPATCH_CONST c " +
+                    "LEFT JOIN KNRAWMS.TMS_DS_DISPATCH_PROFILE p ON p.PROFILE_ID = c.PROFILE_ID " +
+                    "LEFT JOIN KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM i " +
                     "       ON i.CONST_ID = c.CONST_ID AND i.SET_ID = ? " +
                     "ORDER BY c.CONST_TYPE, c.SORT_SEQ, c.CONST_ID",
                     setId
@@ -996,8 +996,8 @@ public class DispatchConfigApiService {
                     "       c.CONST_OP, c.CONST_VALUE, c.TARGET_ID, c.TARGET_NM, " +
                     "       c.NOTE, c.ACTIVE_YN, c.SORT_SEQ, " +
                     "       p.PROFILE_NM " +
-                    "FROM KNRAWMS.DS_DISPATCH_CONST c " +
-                    "LEFT JOIN KNRAWMS.DS_DISPATCH_PROFILE p ON p.PROFILE_ID = c.PROFILE_ID " +
+                    "FROM KNRAWMS.TMS_DS_DISPATCH_CONST c " +
+                    "LEFT JOIN KNRAWMS.TMS_DS_DISPATCH_PROFILE p ON p.PROFILE_ID = c.PROFILE_ID " +
                     "ORDER BY c.CONST_TYPE, c.SORT_SEQ, c.CONST_ID"
                 );
             }
@@ -1006,7 +1006,7 @@ public class DispatchConfigApiService {
     }
 
     /**
-     * 제약조건 항목 저장 (INSERT or UPDATE DS_DISPATCH_CONST).
+     * 제약조건 항목 저장 (INSERT or UPDATE TMS_DS_DISPATCH_CONST).
      * const_id 없으면 INSERT, 있으면 UPDATE.
      */
     @Transactional(transactionManager = "tmsTransactionManager")
@@ -1029,14 +1029,14 @@ public class DispatchConfigApiService {
             Long profileId = toLong(body.get("profile_id"));
             if (profileId == null) {
                 List<Map<String, Object>> pr = tmsJdbc.queryForList(
-                    "SELECT PROFILE_ID FROM KNRAWMS.DS_DISPATCH_PROFILE ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY");
+                    "SELECT PROFILE_ID FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY");
                 profileId = pr.isEmpty() ? 1L : toLong(pr.get(0).get("PROFILE_ID"));
             }
 
             if (constId != null) {
                 // UPDATE
                 tmsJdbc.update(
-                    "UPDATE KNRAWMS.DS_DISPATCH_CONST SET CONST_TYPE=?,CONST_KEY=?,CONST_OP=?,CONST_VALUE=?," +
+                    "UPDATE KNRAWMS.TMS_DS_DISPATCH_CONST SET CONST_TYPE=?,CONST_KEY=?,CONST_OP=?,CONST_VALUE=?," +
                     "TARGET_ID=?,TARGET_NM=?,NOTE=?,ACTIVE_YN=?,SORT_SEQ=?,LMODAT=? WHERE CONST_ID=?",
                     constType, constKey, constOp, constValue,
                     targetId, targetNm, note, activeYn, sortSeq, today(), constId);
@@ -1044,7 +1044,7 @@ public class DispatchConfigApiService {
                 // INSERT — nextConstId(): 시퀀스 존재 시 NEXTVAL, 없으면 MAX+1 폴백
                 constId = nextConstId();
                 tmsJdbc.update(
-                    "INSERT INTO KNRAWMS.DS_DISPATCH_CONST " +
+                    "INSERT INTO KNRAWMS.TMS_DS_DISPATCH_CONST " +
                     "(CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP," +
                     "TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) " +
                     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -1057,22 +1057,22 @@ public class DispatchConfigApiService {
 
     /**
      * 제약조건 항목 삭제.
-     * DS_DISPATCH_CONST_SET_ITEM 연관 행도 함께 삭제.
+     * TMS_DS_DISPATCH_CONST_SET_ITEM 연관 행도 함께 삭제.
      */
     @Transactional(transactionManager = "tmsTransactionManager")
     public Map<String, Object> constItemDelete(Map<String, Object> body) {
         Long constId = toLong(body.get("const_id"));
         if (constId == null) return Map.of("ok", false, "error", "const_id 필수");
         try {
-            tmsJdbc.update("DELETE FROM KNRAWMS.DS_DISPATCH_CONST_SET_ITEM WHERE CONST_ID=?", constId);
-            int del = tmsJdbc.update("DELETE FROM KNRAWMS.DS_DISPATCH_CONST WHERE CONST_ID=?", constId);
+            tmsJdbc.update("DELETE FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM WHERE CONST_ID=?", constId);
+            int del = tmsJdbc.update("DELETE FROM KNRAWMS.TMS_DS_DISPATCH_CONST WHERE CONST_ID=?", constId);
             return Map.of("ok", true, "deleted", del);
         } catch (Exception e) { return errMap(e); }
     }
 
     /**
      * 세트별 제약조건 설정값 저장 (USE_YN / PARAM_VALUE).
-     * DS_DISPATCH_CONST_SET_ITEM MERGE (있으면 UPDATE, 없으면 INSERT).
+     * TMS_DS_DISPATCH_CONST_SET_ITEM MERGE (있으면 UPDATE, 없으면 INSERT).
      */
     @Transactional(transactionManager = "tmsTransactionManager")
     public Map<String, Object> constItemSettingSave(Map<String, Object> body) {
@@ -1085,7 +1085,7 @@ public class DispatchConfigApiService {
 
         try {
             Long nextItemId = tmsJdbc.queryForObject(
-                "SELECT NVL(MAX(ITEM_ID),0)+1 FROM KNRAWMS.DS_DISPATCH_CONST_SET_ITEM", Long.class);
+                "SELECT NVL(MAX(ITEM_ID),0)+1 FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM", Long.class);
             int saved = 0;
             for (Map<String, Object> s : settings) {
                 Long constId  = toLong(s.get("const_id"));
@@ -1096,15 +1096,15 @@ public class DispatchConfigApiService {
 
                 // 이미 ITEM_ID 있으면 UPDATE, 없으면 INSERT
                 List<Map<String, Object>> existing = tmsJdbc.queryForList(
-                    "SELECT ITEM_ID FROM KNRAWMS.DS_DISPATCH_CONST_SET_ITEM WHERE SET_ID=? AND CONST_ID=?",
+                    "SELECT ITEM_ID FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM WHERE SET_ID=? AND CONST_ID=?",
                     setId, constId);
                 if (!existing.isEmpty()) {
                     tmsJdbc.update(
-                        "UPDATE KNRAWMS.DS_DISPATCH_CONST_SET_ITEM SET ACTIVE_YN=?,PARAM_VALUE=? WHERE SET_ID=? AND CONST_ID=?",
+                        "UPDATE KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM SET ACTIVE_YN=?,PARAM_VALUE=? WHERE SET_ID=? AND CONST_ID=?",
                         useYn, vc(paramVal.isEmpty() ? null : paramVal), setId, constId);
                 } else {
                     tmsJdbc.update(
-                        "INSERT INTO KNRAWMS.DS_DISPATCH_CONST_SET_ITEM (ITEM_ID,SET_ID,CONST_ID,ACTIVE_YN,PARAM_VALUE) VALUES (?,?,?,?,?)",
+                        "INSERT INTO KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM (ITEM_ID,SET_ID,CONST_ID,ACTIVE_YN,PARAM_VALUE) VALUES (?,?,?,?,?)",
                         nextItemId++, setId, constId, useYn, vc(paramVal.isEmpty() ? null : paramVal));
                 }
                 saved++;

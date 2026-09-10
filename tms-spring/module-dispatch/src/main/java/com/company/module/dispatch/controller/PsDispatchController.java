@@ -66,7 +66,7 @@ public class PsDispatchController {
 
         // ★ 커밋 후 검증 — SAP선적탭 미조회 근본원인 진단/방어
         //   saveDispatch(tms 트랜잭션) 리턴 시점에는 이미 커밋 완료.
-        //   별도 wms 읽기경로(REQUIRES_NEW)로 SHPDI.STDLNR 반영을 재조회하여
+        //   별도 wms 읽기경로(REQUIRES_NEW)로 TMS_SHPDI.STDLNR 반영을 재조회하여
         //   "tms 에는 썼는데 wms(SAP탭 읽기경로)에는 0건"인지 즉시 특정한다.
         int wmsVisible = 0;
         try {
@@ -125,7 +125,7 @@ public class PsDispatchController {
     }
 
     /**
-     * 배차 삭제 (선택 배차 물리 삭제 + SHPDI/SHPDH 원복)
+     * 배차 삭제 (선택 배차 물리 삭제 + TMS_SHPDI/TMS_SHPDH 원복)
      * Flask: POST /api/ps-dispatch/delete
      *   입력 : { dispatch_nos: ["260728001T", ...] }
      *   출력 : { ok, deleted }  (프론트 psdDeleteDispatch / psopDeleteDispatch 대응)

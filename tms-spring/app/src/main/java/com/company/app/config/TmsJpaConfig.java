@@ -20,12 +20,12 @@ import java.util.Properties;
  * ■ TMS 테이블 Repository — basePackageClasses 로 정확한 클래스만 지정
  *   (basePackages 재귀 스캔 시 wms 서브패키지 Repository 중복 등록 방지)
  *   - DispatchObjectiveRepository : PS제약조건관리 — Oracle KNRAWMS
- *   - PsDispatchHRepository       : PS_DISPATCH_H  — Oracle KNRAWMS
- *   - DsVehicleRepository         : DS_VEHICLE     — Oracle KNRAWMS (vehicle.repository.tms)
- *   - RouteCostRepository         : ROUTE_COST     — Oracle KNRAWMS
+ *   - PsDispatchHRepository       : TMS_PS_DISPATCH_H  — Oracle KNRAWMS
+ *   - DsVehicleRepository         : TMS_DS_VEHICLE     — Oracle KNRAWMS (vehicle.repository.tms)
+ *   - RouteCostRepository         : TMS_ROUTE_COST     — Oracle KNRAWMS
  *
  * ■ Oracle WMS 전용 테이블은 WmsJpaConfig 에서 관리
- *   shipment(SHPDH/SHPDI), delivery(BZPTN_DETAIL), vehicle.wms(VHCMA) — Oracle KNRAWMS
+ *   shipment(TMS_SHPDH/TMS_SHPDI), delivery(BZPTN_DETAIL), vehicle.wms(VHCMA) — Oracle KNRAWMS
  *
  * 트랜잭션 한정자: @Transactional("tmsTransactionManager") 또는 @Transactional (기본)
  */
@@ -33,9 +33,9 @@ import java.util.Properties;
 @EnableJpaRepositories(
     basePackageClasses = {
         com.company.module.dispatchconfig.repository.DispatchObjectiveRepository.class, // PS제약조건관리 — Oracle KNRAWMS
-        com.company.module.dispatch.repository.PsDispatchHRepository.class,             // PS_DISPATCH_H  — Oracle KNRAWMS
-        com.company.module.vehicle.repository.tms.DsVehicleRepository.class,           // DS_VEHICLE     — Oracle KNRAWMS
-        com.company.module.delivery.repository.tms.RouteCostRepository.class,          // ROUTE_COST     — Oracle KNRAWMS
+        com.company.module.dispatch.repository.PsDispatchHRepository.class,             // TMS_PS_DISPATCH_H  — Oracle KNRAWMS
+        com.company.module.vehicle.repository.tms.DsVehicleRepository.class,           // TMS_DS_VEHICLE     — Oracle KNRAWMS
+        com.company.module.delivery.repository.tms.RouteCostRepository.class,          // TMS_ROUTE_COST     — Oracle KNRAWMS
         com.company.module.delivery.repository.wms.BzptnDetailRepository.class         // BZPTN_DETAIL   — TMS DB 소속
     },
     entityManagerFactoryRef = "tmsEntityManagerFactory",

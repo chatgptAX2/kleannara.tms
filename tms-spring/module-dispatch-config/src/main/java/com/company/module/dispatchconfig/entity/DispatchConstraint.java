@@ -5,7 +5,7 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "DS_DISPATCH_CONSTRAINT")
+@Table(name = "TMS_DS_DISPATCH_CONSTRAINT")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Builder

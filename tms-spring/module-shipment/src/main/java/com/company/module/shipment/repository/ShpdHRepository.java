@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import java.util.List;
 
 /**
- * 출고 헤더 Repository (SHPDH)
+ * 출고 헤더 Repository (TMS_SHPDH)
  */
 public interface ShpdHRepository extends JpaRepository<ShpdH, String> {
 
@@ -15,7 +15,7 @@ public interface ShpdHRepository extends JpaRepository<ShpdH, String> {
      * 창고별 WAREKY 목록
      */
     @Query(value = """
-        SELECT DISTINCT WAREKY FROM KNRAWMS.SHPDH
+        SELECT DISTINCT WAREKY FROM KNRAWMS.TMS_SHPDH
         WHERE WAREKY IS NOT NULL AND WAREKY <> ' '
         ORDER BY WAREKY
         """, nativeQuery = true)

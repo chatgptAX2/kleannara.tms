@@ -19,7 +19,7 @@ public class StrategyController {
 
     private final StrategyService strategyService;
 
-    // ── 배차전략 (DS_INCH12/DS_INCH3) ────────────────────────────
+    // ── 배차전략 (TMS_DS_INCH12/TMS_DS_INCH3) ────────────────────────────
 
     @GetMapping("/dispatch/strategy")
     public ResponseEntity<Map<String, Object>> getStrategy() {
@@ -36,7 +36,7 @@ public class StrategyController {
         return ResponseEntity.ok(strategyService.simulate(body));
     }
 
-    // ── 차종 (DS_VEHICLE / CMCDV) ─────────────────────────────────
+    // ── 차종 (TMS_DS_VEHICLE / CMCDV) ─────────────────────────────────
 
     @GetMapping("/carclass")
     public ResponseEntity<Map<String, Object>> getCarClass() {

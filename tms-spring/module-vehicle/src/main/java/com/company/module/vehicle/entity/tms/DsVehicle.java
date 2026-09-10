@@ -5,7 +5,7 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 /**
- * 차량 제원 마스터 (DS_VEHICLE) — MariaDB (tmsPU)
+ * 차량 제원 마스터 (TMS_DS_VEHICLE) — MariaDB (tmsPU)
  *
  * ■ DataSource: TmsJpaConfig (MariaDB integration DB)
  *   TmsJpaConfig.setPackagesToScan → com.company.module.vehicle.entity.tms
@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
  *    → tms/wms 서브패키지를 완전히 분리하여 각 Config가 겹치지 않도록 구조화.
  */
 @Entity
-@Table(name = "DS_VEHICLE")
+@Table(name = "TMS_DS_VEHICLE")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Builder

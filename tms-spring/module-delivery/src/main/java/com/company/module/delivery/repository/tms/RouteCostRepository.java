@@ -7,7 +7,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 /**
- * 경로별 운송비 Repository (TMS Oracle 19C — KNRAWMS.ROUTE_COST 테이블)
+ * 경로별 운송비 Repository (TMS Oracle 19C — KNRAWMS.TMS_ROUTE_COST 테이블)
  *
  * ■ TmsJpaConfig 에서 관리 (Oracle TmsDataSource)
  *   - searchList: 프론트엔드 기대 컬럼명으로 alias 반환

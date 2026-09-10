@@ -4,11 +4,11 @@ import jakarta.persistence.*;
 import lombok.*;
 
 /**
- * 배차제약 프로파일 (DS_DISPATCH_PROFILE)
+ * 배차제약 프로파일 (TMS_DS_DISPATCH_PROFILE)
  * Flask: api_dcon_profiles / api_dcon_profile_save / api_dcon_profile_delete
  */
 @Entity
-@Table(name = "DS_DISPATCH_PROFILE")
+@Table(name = "TMS_DS_DISPATCH_PROFILE")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Builder

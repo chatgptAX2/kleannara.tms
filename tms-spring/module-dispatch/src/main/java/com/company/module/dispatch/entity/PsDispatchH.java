@@ -5,11 +5,11 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 /**
- * PS 배차 헤더 (PS_DISPATCH_H)
- * Flask: PS_DISPATCH_H 테이블 대응
+ * PS 배차 헤더 (TMS_PS_DISPATCH_H)
+ * Flask: TMS_PS_DISPATCH_H 테이블 대응
  */
 @Entity
-@Table(name = "PS_DISPATCH_H")
+@Table(name = "TMS_PS_DISPATCH_H")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Builder

@@ -97,16 +97,16 @@ public class PsDispatchDocResponse {
 
     // ── 배차 상태 ──────────────────────────────────────────────
     @JsonProperty("DISPATCHED")
-    private Boolean dispatched;     // 배차완료 여부 (SHPDI.STDLNR 채번 여부)
+    private Boolean dispatched;     // 배차완료 여부 (TMS_SHPDI.STDLNR 채번 여부)
 
     @JsonProperty("IS_SAVED")
     private Boolean isSaved;        // 배차저장 완료 여부 (STDLNR 채번 = DB 반영됨)
 
     @JsonProperty("STDLNR")
-    private String stdlnr;          // 가선적번호 (SHPDI.STDLNR)
+    private String stdlnr;          // 가선적번호 (TMS_SHPDI.STDLNR)
 
     @JsonProperty("STKNUM")
-    private String stknum;          // SAP 선적번호 (SHPDI.STKNUM, 선적생성 완료 시)
+    private String stknum;          // SAP 선적번호 (TMS_SHPDI.STKNUM, 선적생성 완료 시)
 
     @JsonProperty("IS_SPLIT")
     private Boolean isSplit;        // 분할문서 여부 (SHPOKY '-S' 패턴)
