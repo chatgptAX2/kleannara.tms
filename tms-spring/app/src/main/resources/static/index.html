@@ -9813,6 +9813,7 @@ function psdRenderDocTable(filterText) {
 
   const rows = psdState.searchRows.filter(r => {
     if (fText && !(
+      (r.SVBELN||'').toLowerCase().includes(fText) ||
       (r.DPTNKY||'').toLowerCase().includes(fText) ||
       (r.DPTNM||'').toLowerCase().includes(fText) ||
       (r.SHPOKY||'').toLowerCase().includes(fText) ||
@@ -9884,7 +9885,7 @@ function psdRenderDocTable(filterText) {
         <input type="checkbox" class="psd-doc-chk" data-key="${key}"
                ${sel?'checked':''} onchange="psdChkDoc('${key}',this.checked)">
       </td>
-      <td style="font-family:monospace;color:var(--primary);font-weight:600">${r.SHPOKY}${splitBadge}</td>
+      <td style="font-family:monospace;color:var(--primary);font-weight:600" title="출하문서: ${r.SHPOKY||''}">${r.SVBELN||r.SHPOKY}${splitBadge}</td>
       <td style="text-align:center">${r.SHPOIT}</td>
       <td title="${r.DPTNKY||''}">${r.DPTNKY||''}</td>
       <td class="col-nm" title="${r.DPTNM||''}">${r.DPTNM||''}</td>
