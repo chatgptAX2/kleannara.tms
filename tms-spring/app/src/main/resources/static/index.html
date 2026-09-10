@@ -4621,6 +4621,7 @@ const _psopDocColDefs = [
   { id:'disp',    label:'배차',           w:62  },
   { id:'saved',   label:'배차저장',       w:68  },
   { id:'stdlnr',  label:'가선적번호',     w:120 },
+  { id:'sapstknum', label:'SAP선적번호',  w:120 },
 ];
 
 /* 현재 활성 컬럼 순서(id 배열) — lazy init */
@@ -15560,6 +15561,10 @@ function psopRenderDocTable(filterText) {
     const stdlnrCell = (r.STDLNR && r.IS_SAVED)
       ? `<span class="psd-stdlnr-cell" title="${r.STDLNR}">${r.STDLNR}</span>`
       : `<span style="color:var(--text3);font-size:10px">-</span>`;
+    // SAP선적번호(STKNUM): 선적생성 완료 시 값 존재. 없으면 '-'
+    const sapStknumCell = (r.STKNUM && String(r.STKNUM).trim())
+      ? `<span class="psd-stdlnr-cell" style="color:#0369a1" title="${r.STKNUM}">${r.STKNUM}</span>`
+      : `<span style="color:var(--text3);font-size:10px">-</span>`;
     const isSplitDoc = (r.SHPOKY||'').includes('-S') || r.IS_SPLIT;
     const splitBadge = isSplitDoc
       ? `<span style="font-size:9px;font-weight:700;color:#f59e0b;background:rgba(245,158,11,.15);border:1px solid #f59e0b;border-radius:3px;padding:1px 4px;vertical-align:middle;margin-left:3px">분할</span>`
@@ -15593,6 +15598,7 @@ function psopRenderDocTable(filterText) {
       disp:    `<td style="text-align:center">${dispBadge}</td>`,
       saved:   `<td style="text-align:center">${savedBadge}</td>`,
       stdlnr:  `<td style="text-align:left;padding-left:6px">${stdlnrCell}</td>`,
+      sapstknum: `<td style="text-align:left;padding-left:6px">${sapStknumCell}</td>`,
     };
 
     const tds = order.map(id => cellMap[id] || `<td></td>`).join('');

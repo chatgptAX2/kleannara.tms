@@ -265,9 +265,9 @@ public class PsDispatchService {
         List<Object[]> rows = query.getResultList();
         log.info("[PsDispatch] DB \uc870\ud68c \uacb0\uacfc: {}건 (dispStat={})", rows.size(), dispStat);
 
-        // ── 배차완료 키(SHPOKY|SHPOIT) 조회: 검색결과의 SHPOKY 로만 스코프 ──
+        // ── 배차완료 키+값(STDLNR/STKNUM) 조회: 검색결과의 SHPOKY 로만 스코프 ──
         //   (SHPDI 전체 풀스캔 방지 — 결과 문서번호로만 IN 조회)
-        Set<String> dispatchedSet = loadDispatchedKeys(rows);
+        Map<String, String[]> dispatchedMap = loadDispatchedKeys(rows);  // key → [STDLNR, STKNUM]
         List<PsDispatchDocResponse> result = new ArrayList<>();
 
         for (Object[] r : rows) {
@@ -279,7 +279,10 @@ public class PsDispatchService {
             double unitW   = toDouble(r[16]);
 
             String key    = str(r[0]) + "|" + str(r[1]);
-            boolean isDisp = dispatchedSet.contains(key);
+            String[] dispVal = dispatchedMap.get(key);   // null=미배차, 아니면 [STDLNR, STKNUM]
+            boolean isDisp = dispVal != null;
+            String  stdlnrVal = isDisp ? dispVal[0] : "";
+            String  stknumVal = isDisp ? dispVal[1] : "";
             if ("dispatched".equals(dispStat) && !isDisp) continue;
             if ("undispatched".equals(dispStat) && isDisp) continue;
 
@@ -357,6 +360,9 @@ public class PsDispatchService {
                 .inch("board".equals(skuType) ? "" : psGetInch(sk))
                 .grmCond(psGetGrm(sk))
                 .dispatched(isDisp)
+                .isSaved(isDisp)                     // STDLNR 채번 = DB 반영(배차저장 완료)
+                .stdlnr(stdlnrVal)                   // 가선적번호 (재조회 시에도 유지)
+                .stknum(stknumVal)                   // SAP 선적번호 (선적생성 완료 시)
                 .lota03(str(r[15]))
                 .isSplit(str(r[0]).contains("-S"))   // 분할문서 여부
                 .build());
@@ -378,8 +384,8 @@ public class PsDispatchService {
      * @param rows 메인 검색 결과 (r[0]=SHPOKY, r[1]=SHPOIT)
      * @return "SHPOKY|SHPOIT" 형식의 배차완료 키 집합
      */
-    private Set<String> loadDispatchedKeys(List<Object[]> rows) {
-        if (rows == null || rows.isEmpty()) return java.util.Collections.emptySet();
+    private Map<String, String[]> loadDispatchedKeys(List<Object[]> rows) {
+        if (rows == null || rows.isEmpty()) return java.util.Collections.emptyMap();
 
         // 검색결과에 등장한 SHPOKY(납품문서번호) 만 distinct 수집
         LinkedHashSet<String> shpokySet = new LinkedHashSet<>();
@@ -387,15 +393,18 @@ public class PsDispatchService {
             String shpoky = str(r[0]);
             if (!shpoky.isEmpty()) shpokySet.add(shpoky);
         }
-        if (shpokySet.isEmpty()) return java.util.Collections.emptySet();
+        if (shpokySet.isEmpty()) return java.util.Collections.emptyMap();
 
         List<String> shpokys = new ArrayList<>(shpokySet);
 
         // ── Oracle IN 절 1,000개 제한(ORA-01795) 회피: 1,000개 단위로 청크 분할 조회 ──
         //   넓은 기간(예: 8월 1~21일) 조회 시 검색결과 문서 수(distinct SHPOKY)가
         //   1,000개를 초과할 수 있어, IN 절을 여러 번으로 나눠 실행하고 결과를 합친다.
+        //   [개선] 배차완료 판정(STDLNR 유무)뿐 아니라 STDLNR(가선적번호)·STKNUM(SAP선적번호)
+        //          실제 값도 함께 조회해, 재조회 시에도 '배차/배차저장/가선적번호/SAP선적번호'
+        //          표시가 유지되도록 한다. (기존: 키 집합만 반환 → 재조회 시 값 소실)
         final int CHUNK = 1000;
-        Set<String> keys = new HashSet<>();
+        Map<String, String[]> map = new HashMap<>();   // "SHPOKY|SHPOIT" → [STDLNR, STKNUM]
         for (int from = 0; from < shpokys.size(); from += CHUNK) {
             List<String> chunk = shpokys.subList(from, Math.min(from + CHUNK, shpokys.size()));
             String ph = chunk.stream().map(x -> "?").collect(Collectors.joining(","));
@@ -404,7 +413,7 @@ public class PsDispatchService {
             //     STATIT='NEW' 를 요구하면 STATIT 이 'NEW' 가 아닌 문서는 저장 후에도
             //     '미배차' 로 표시되는 불일치가 발생 → STATIT 조건 제거.
             String sql =
-                "SELECT SHPOKY || '|' || SHPOIT" +
+                "SELECT SHPOKY, SHPOIT, TRIM(COALESCE(STDLNR,'')), TRIM(COALESCE(STKNUM,''))" +
                 " FROM KNRAWMS.SHPDI" +
                 " WHERE STDLNR IS NOT NULL AND TRIM(STDLNR) <> ''" +
                 "   AND SHPOKY IN (" + ph + ")";
@@ -414,10 +423,13 @@ public class PsDispatchService {
                 q.setParameter(i + 1, chunk.get(i));
             }
             @SuppressWarnings("unchecked")
-            List<String> chunkKeys = q.getResultList();
-            keys.addAll(chunkKeys);
+            List<Object[]> chunkRows = q.getResultList();
+            for (Object[] cr : chunkRows) {
+                String key = str(cr[0]) + "|" + str(cr[1]);
+                map.put(key, new String[]{ str(cr[2]), str(cr[3]) });   // [STDLNR, STKNUM]
+            }
         }
-        return keys;
+        return map;
     }
 
     // ──────────────────────────────────────────────────────────────────────────

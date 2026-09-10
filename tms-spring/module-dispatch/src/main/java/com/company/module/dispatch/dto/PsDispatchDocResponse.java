@@ -99,7 +99,15 @@ public class PsDispatchDocResponse {
     @JsonProperty("DISPATCHED")
     private Boolean dispatched;     // 배차완료 여부 (SHPDI.STDLNR 채번 여부)
 
-    /** IS_SAVED, STDLNR: Service 레이어에서 추가로 설정하지 않으면 null/false */
+    @JsonProperty("IS_SAVED")
+    private Boolean isSaved;        // 배차저장 완료 여부 (STDLNR 채번 = DB 반영됨)
+
+    @JsonProperty("STDLNR")
+    private String stdlnr;          // 가선적번호 (SHPDI.STDLNR)
+
+    @JsonProperty("STKNUM")
+    private String stknum;          // SAP 선적번호 (SHPDI.STKNUM, 선적생성 완료 시)
+
     @JsonProperty("IS_SPLIT")
     private Boolean isSplit;        // 분할문서 여부 (SHPOKY '-S' 패턴)
 }
