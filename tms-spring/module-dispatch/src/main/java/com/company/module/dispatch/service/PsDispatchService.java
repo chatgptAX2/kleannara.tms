@@ -412,11 +412,16 @@ public class PsDispatchService {
             //   ※ saveDispatch 는 STATIT 조건 없이 STDLNR 을 갱신하는데, 판정만
             //     STATIT='NEW' 를 요구하면 STATIT 이 'NEW' 가 아닌 문서는 저장 후에도
             //     '미배차' 로 표시되는 불일치가 발생 → STATIT 조건 제거.
+            // [버그수정] 메인 SELECT 의 i.SHPOKY 는 raw(TRIM 없음)이며 오라클 CHAR 컬럼
+            //   특성상 우측 공백 패딩이 있을 수 있다. 반면 IN 파라미터는 str()로 strip 된
+            //   값이 전달되므로, WHERE SHPOKY IN (...) 로 비교하면 패딩된 DB 값과 strip 된
+            //   파라미터가 불일치하여 배차완료 건이 0건으로 조회되는 문제가 있었다.
+            //   → 양쪽 모두 TRIM 되도록 WHERE TRIM(SHPOKY) IN (...) 로 비교한다.
             String sql =
                 "SELECT SHPOKY, SHPOIT, TRIM(COALESCE(STDLNR,'')), TRIM(COALESCE(STKNUM,''))" +
                 " FROM KNRAWMS.SHPDI" +
                 " WHERE STDLNR IS NOT NULL AND TRIM(STDLNR) <> ''" +
-                "   AND SHPOKY IN (" + ph + ")";
+                "   AND TRIM(SHPOKY) IN (" + ph + ")";
 
             var q = em.createNativeQuery(sql);
             for (int i = 0; i < chunk.size(); i++) {
