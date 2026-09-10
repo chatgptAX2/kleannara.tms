@@ -178,6 +178,13 @@ public class ShipmentService {
         if (svbeln != null && svbeln.equals(",,")) svbeln = null;
 
         StringBuilder where = new StringBuilder();
+        // ── 고정 제외조건: 취소/삭제된 납품문서는 항상 비노출 ──────────────────
+        //   · SHPDI.STATIT = 'FCO' : 납품문서(아이템) 취소
+        //   · SHPDH.STATDO = 'OCN' : 오더취소
+        //   사용자 필터(statdo 등)와 무관하게 항상 적용한다.
+        where.append(where.length() == 0 ? " WHERE" : " AND")
+             .append(" TRIM(COALESCE(SI.STATIT,'')) <> 'FCO'")
+             .append(" AND TRIM(COALESCE(SH.STATDO,'')) <> 'OCN'");
         if (wareky != null) {
             where.append(where.length() == 0 ? " WHERE" : " AND").append(" SH.WAREKY = ?");
             params.add(wareky);
