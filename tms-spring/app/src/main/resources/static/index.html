@@ -19246,23 +19246,21 @@ function _ssColDefs() {
         const thickness = tmap[code];
         if(!thickness || isNaN(thickness) || thickness<=0) return '-';
 
-        /* ── 속당높이(cm) 산식 ──────────────────────────────────
-           속당높이 = (QTSHPO × 500 ÷ SOK) × 두께 ÷ PLT개수 ÷ 10,000
-             - QTSHPO × 500 : 총매수 (1R(연)당 500매 기준)
-                              [도메인 확정] 1R = 500매, 1R 안에 여러 속(SOK)이 존재.
-                              500은 'R(연)' 기준이며 '속' 기준이 아님.
-             - ÷ SOK        : 총매수를 속수로 나눠 1속당 매수로 환산
-             - × 두께       : TMS_THICKNESS[SKUKEY 3~8자리] (µm)
-             - ÷ PLT개수    : PLT_CNT (파렛트 갯수)
-             - ÷ 10,000     : µm·매 → cm 단위환산
-           검증식: 속당높이(cm) × SOK = 높이(cm)  (아래 heightCm 와 일치)
+        /* ── 속당높이(cm) 산식 (수정) ────────────────────────────
+           [정의] '높이(cm)' 컬럼값은 1PLT(1단)당 높이 = (QTSHPO×500×두께)/PLT개수/10,000.
+                  SOK 컬럼값은 '전체 납품수량 기준 총 속(SOK) 수'(= QTSHPO × 1R당속수).
+           [기존버그] 속당높이를 (1PLT높이) ÷ (전체SOK) 로 계산 → 기준 불일치로
+                     실제보다 PLT개수배 작게 나옴(예: 3.5 이어야 하나 0.58 표시).
+           [정정] 속당높이 = 1PLT높이 ÷ (1PLT당 속수),  1PLT당 속수 = SOK ÷ PLT개수
+                  = heightCm × PLT개수 ÷ SOK
+           검증(예): 높이35, PLT개수6, SOK60 → 35 × 6 / 60 = 3.5cm
+             · 1R당 속수 = SOK/QTSHPO = 60/15 = 4,  1R당 높이 = 전체높이/QTSHPO = 210/15 = 14
+             · 속당높이 = 1R당높이 ÷ 1R당속수 = 14/4 = 3.5  (동일 결과)
+           검증식: 속당높이 × (SOK ÷ PLT개수) = 1PLT '높이(cm)'
         */
-        const sheetsPerSok = (qtshpo * 500) / sok;                        // 1속당 매수
-        const perSok       = (sheetsPerSok * thickness) / pltCnt / 10_000;
-
-        /* [검증] 속당높이 × SOK = 높이(_HEIGHT 컬럼 산식과 동일해야 정상) */
-        const heightCm = ((qtshpo * 500) * thickness) / pltCnt / 10_000;  // = 벌크 '높이' 산식
-        // perSok * sok === heightCm  (수학적으로 항상 성립)
+        const heightCm = ((qtshpo * 500) * thickness) / pltCnt / 10_000;  // 1PLT(1단)당 높이 = '높이(cm)' 컬럼
+        const sokPerPlt = sok / pltCnt;                                    // 1PLT당 속수
+        const perSok    = sokPerPlt > 0 ? heightCm / sokPerPlt : 0;        // 속당높이 = 1PLT높이 ÷ 1PLT당속수
 
         const rounded = Math.round(perSok * 100) / 100;
         return rounded.toLocaleString(undefined, {maximumFractionDigits:2});
