@@ -4,14 +4,14 @@ import jakarta.persistence.*;
 import lombok.*;
 
 /**
- * 경로별 운송비 마스터 (ROUTE_COST) — MariaDB TMS 테이블
+ * 경로별 운송비 마스터 (TMS_ROUTE_COST) — MariaDB TMS 테이블
  * Flask: api_route_cost_search / api_route_cost_pivot 대응
  *
  * ■ TmsJpaConfig (MariaDB) 에서 엔티티 스캔
  *   delivery.entity.tms 패키지 → tmsEntityManagerFactory
  */
 @Entity
-@Table(name = "ROUTE_COST", schema = "KNRAWMS")
+@Table(name = "TMS_ROUTE_COST", schema = "KNRAWMS")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Builder

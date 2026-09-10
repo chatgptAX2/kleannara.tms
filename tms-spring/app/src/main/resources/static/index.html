@@ -3233,8 +3233,8 @@ thead th:hover .th-drag-handle{opacity:.8}
   <div class="nav-item" onclick="showPage('VHCMA')" id="nav-VHCMA">
     <span class="icon">🚛</span> 차량마스터<span class="cnt" id="cnt-VHCMA">-</span>
   </div>
-  <div class="nav-item" onclick="showPage('ROUTE_COST')" id="nav-ROUTE_COST">
-    <span class="icon">💰</span> 운송경로비용<span class="cnt" id="cnt-ROUTE_COST">-</span>
+  <div class="nav-item" onclick="showPage('TMS_ROUTE_COST')" id="nav-TMS_ROUTE_COST">
+    <span class="icon">💰</span> 운송경로비용<span class="cnt" id="cnt-TMS_ROUTE_COST">-</span>
   </div>
   <div class="nav-section">인터페이스 관리</div>
   <div class="nav-item" onclick="showPage('shipSchedule')" id="nav-shipSchedule">
@@ -3442,7 +3442,7 @@ const TABLE_DESC = {
   BZPTN:'거래처', MEASI:'단위구성 아이템', SHPDH:'출고문서 헤더',
   SHPDI:'출고문서 아이템', IFWMS113:'ERP→WMS 출고 오더',
   BZPTN_DETAIL:'납품처 상세정보(TMS)', VHCMA:'차량 마스터(TMS)',
-  ROUTE_COST:'운송경로별 비용(TMS)'
+  TMS_ROUTE_COST:'운송경로별 비용(TMS)'
 };
 
 const state = {
@@ -3514,7 +3514,7 @@ const PAGE_META = {
   delivery:      { title:'납품처 관리',       badge:'납품처관리',      crumb:['홈','기준정보 관리','납품처 관리'] },
   vehicle:       { title:'차량관리',          badge:'차량관리',        crumb:['홈','기준정보 관리','차량관리'] },
   wahma:         { title:'물류센터(창고) 관리', badge:'WAHMA',         crumb:['홈','마스터관리','물류센터(창고)'] },
-  ROUTE_COST:    { title:'운송경로비용',       badge:'ROUTE_COST',     crumb:['홈','기준정보 관리','운송경로비용'] },
+  TMS_ROUTE_COST:    { title:'운송경로비용',       badge:'TMS_ROUTE_COST',     crumb:['홈','기준정보 관리','운송경로비용'] },
   CMCDM:         { title:'공통코드헤더',       badge:'CMCDM',          crumb:['홈','마스터관리','공통코드헤더'] },
   CMCDV:         { title:'공통코드값',         badge:'CMCDV',          crumb:['홈','마스터관리','공통코드값'] },
   SKUMA:         { title:'상품(SKU)',          badge:'SKUMA',          crumb:['홈','마스터관리','상품(SKU)'] },
@@ -3554,7 +3554,7 @@ const PAGE_ICON = {
   delivery:'📍', vehicle:'🚛', wahma:'🏭',
   CMCDM:'📋', CMCDV:'📌', SKUMA:'📦', BZPTN:'🏢',
   MEASI:'📐', SHPDH:'🚚', SHPDI:'📄', shipSchedule:'📋', IFWMS113:'🔄',
-  BZPTN_DETAIL:'🗺️', VHCMA:'🚛', ROUTE_COST:'💰',
+  BZPTN_DETAIL:'🗺️', VHCMA:'🚛', TMS_ROUTE_COST:'💰',
   psDispatch:'🚚',
   psDispatchOpt:'🚀',
   returnOut:'↩️',
@@ -3849,7 +3849,7 @@ function _doShowPage(p) {
   } else if (p === 'wahma') {
     srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderWahma();
-  } else if (p === 'ROUTE_COST') {
+  } else if (p === 'TMS_ROUTE_COST') {
     state.table = p;
     srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderRouteCost();
@@ -7067,16 +7067,16 @@ function buildVehicleForm() {
     </div>
   </div>
 
-  <!-- 차량사양 섹션 — DS_VEHICLE 차량유형 연동 -->
+  <!-- 차량사양 섹션 — TMS_DS_VEHICLE 차량유형 연동 -->
   <div class="vhc-form-section">
     <div class="vhc-form-sec-title">🔧 차량 사양
       <button type="button" class="vhc-type-sel-btn" onclick="openVhcTypePopup()"
-              title="차량유형관리(DS_VEHICLE)에서 제원 자동 입력">
+              title="차량유형관리(TMS_DS_VEHICLE)에서 제원 자동 입력">
         🚛 차량유형 선택
       </button>
     </div>
     <div class="vhc-spec-display" id="vhc-spec-display">
-      <div class="vhc-spec-empty">← 차량유형을 선택하면 DS_VEHICLE 제원이 자동 표시됩니다</div>
+      <div class="vhc-spec-empty">← 차량유형을 선택하면 TMS_DS_VEHICLE 제원이 자동 표시됩니다</div>
     </div>
     <input type="hidden" id="vf-selected-cartype" value="">
     <input type="hidden" id="vf-selected-carclass-cd" value="">
@@ -7154,12 +7154,12 @@ function vhcInitYN(field, val) {
 }
 
 /* ─── 차량유형 팝업 (제품군별 TMS_CARCLASS10/20 공통코드 기반) ─── */
-let _vhcTypeCache    = null;  // DS_VEHICLE 캐시 (레거시 호환용)
+let _vhcTypeCache    = null;  // TMS_DS_VEHICLE 캐시 (레거시 호환용)
 let _vhcTypeSelIdx   = -1;    // 팝업 내 현재 선택 행 인덱스
 let _vhcCCCache      = {};    // 공통코드 캐시: { '10': {cmcdky, header, rows}, '20': {...} }
 let _vhcCCRows       = [];    // 현재 팝업의 CMCDV 행 목록 (전역 참조용)
 
-/* CBM 계산 헬퍼 (USARG6=길이, USARG7=너비, USARG8=높이 또는 DS_VEHICLE 필드) */
+/* CBM 계산 헬퍼 (USARG6=길이, USARG7=너비, USARG8=높이 또는 TMS_DS_VEHICLE 필드) */
 function _vhcCalcCbm(v) {
   const len  = parseFloat(v.LENGTH_M || v.USARG6) || 0;
   const wRaw = String(v.WIDTH_M || v.USARG7 || '');
@@ -7488,11 +7488,11 @@ function _selectVhcTypeCC(r) {
   showToast(`✅ 차량유형 [${r.CDESC1 || r.CMCDVL}] (코드: ${r.CMCDVL}) 선택됨`);
 }
 
-/* 레거시 호환: DS_VEHICLE CARTYPE 기반 선택 (구버전 코드에서 호출 시) */
+/* 레거시 호환: TMS_DS_VEHICLE CARTYPE 기반 선택 (구버전 코드에서 호출 시) */
 function selectVhcType(cartype) {
   const v = (_vhcTypeCache || []).find(r => r.CARTYPE === cartype);
   if (v) {
-    // DS_VEHICLE 레코드가 있으면 기존 방식 유지
+    // TMS_DS_VEHICLE 레코드가 있으면 기존 방식 유지
     const hidCartype = document.getElementById('vf-selected-cartype');
     if (hidCartype) hidCartype.value = cartype;
     const hidCode = document.getElementById('vf-selected-carclass-cd');
@@ -7533,7 +7533,7 @@ function _vhcRenderSpecDisplayCC(r) {
     <div class="vhc-spec-badge"><span class="spec-label">파렛트수</span><span class="spec-value">${pltV || '-'}</span></div>`;
 }
 
-/* DS_VEHICLE 기반 제원 표시 박스 렌더링 (레거시) */
+/* TMS_DS_VEHICLE 기반 제원 표시 박스 렌더링 (레거시) */
 function _vhcRenderSpecDisplay(v) {
   const specEl = document.getElementById('vhc-spec-display');
   if (!specEl) return;
@@ -7592,7 +7592,7 @@ function _vhcRestoreSpecDisplay(row) {
     return true;
   };
 
-  // 공통코드 캐시 우선 → DS_VEHICLE 캐시 순서로 시도
+  // 공통코드 캐시 우선 → TMS_DS_VEHICLE 캐시 순서로 시도
   if (savedCode) {
     if (_vhcCCCache[prodGroup]) {
       if (tryRenderCC()) return;
@@ -8055,7 +8055,7 @@ function fillVehicleForm(row) {
   const prodGrp = String(row.PRODUCT_GROUP || '').trim();
   _vhcRefreshClassSelect('vf-VEHICLE_CLASS', prodGrp, String(row.VEHICLE_CLASS || '').trim());
 
-  // 차량유형(DS_VEHICLE CARTYPE) 표시 복원
+  // 차량유형(TMS_DS_VEHICLE CARTYPE) 표시 복원
   // VEHICLE_CLASS 값으로 선택된 차량유형 표시 (저장된 CARTYPE 없으면 빈 상태)
   _vhcRestoreSpecDisplay(row);
 
@@ -8106,7 +8106,7 @@ function vhcNewForm() {
   const hidCode = document.getElementById('vf-selected-carclass-cd');
   if (hidCode) hidCode.value = '';
   const specEl = document.getElementById('vhc-spec-display');
-  if (specEl) specEl.innerHTML = '<div class="vhc-spec-empty">← 차량유형을 선택하면 DS_VEHICLE 제원이 자동 표시됩니다</div>';
+  if (specEl) specEl.innerHTML = '<div class="vhc-spec-empty">← 차량유형을 선택하면 TMS_DS_VEHICLE 제원이 자동 표시됩니다</div>';
   ['USE_YN','OPERABLE_YN','FIX_YN','DEL_YN'].forEach(f => vhcInitYN(f, null));
   document.querySelectorAll('.vhc-table tbody tr').forEach(r => r.classList.remove('selected'));
 }
@@ -8129,7 +8129,7 @@ async function vhcSave() {
     VEHICLE_TYPE:        getVal('vf-VEHICLE_TYPE'),
     VEHICLE_KIND:        getVal('vf-VEHICLE_KIND'),
     VEHICLE_CLASS:       getVal('vf-VEHICLE_CLASS'),
-    CARCLASS_CD:         getVal('vf-selected-carclass-cd'), // DS_VEHICLE 차량유형코드 저장
+    CARCLASS_CD:         getVal('vf-selected-carclass-cd'), // TMS_DS_VEHICLE 차량유형코드 저장
     DRIVER_NAME:         getVal('vf-DRIVER_NAME'),
     CONTACT_NO:          getVal('vf-CONTACT_NO'),
     FLOOR_TYPE:          getVal('vf-FLOOR_TYPE'),
@@ -8184,7 +8184,7 @@ async function vhcDelete() {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   ROUTE_COST 전용 조회 화면
+   TMS_ROUTE_COST 전용 조회 화면
 ═══════════════════════════════════════════════════════════ */
 const RC_CARCLASS_LABEL = {
   Z010:'1톤', Z025:'2.5톤', Z050:'5톤', Z080:'8톤', Z110:'11톤', Z180:'18톤', Z250:'25톤'
@@ -8569,7 +8569,7 @@ async function renderDispatchStrategy() {
 
 /* ── DS 전역 상태 ── */
 const _dsState = {
-  vehicle:         [],   // DS_VEHICLE rows 전체 [{CARTYPE,LENGTH_M,...,_id,_new?,USE_YN,tab}]
+  vehicle:         [],   // TMS_DS_VEHICLE rows 전체 [{CARTYPE,LENGTH_M,...,_id,_new?,USE_YN,tab}]
   vehiclePS:       [],   // TMS_CARCLASS10 기반 PS 탭 rows
   vehicleHL:       [],   // TMS_CARCLASS20 기반 HL 탭 rows
   activeTab:       'PS', // 'PS' | 'HL'
@@ -8588,7 +8588,7 @@ function _dsRender(data) {
   _dsState.carclassPS      = data.carclass_ps  || data.carclass_options || [];
   _dsState.carclassHL      = data.carclass_hl  || [];
 
-  // DS_VEHICLE rows에 USE_YN 주입:
+  // TMS_DS_VEHICLE rows에 USE_YN 주입:
   // CARCLASS_CD로 공통코드 USARG1 조회 → USE_YN 결정
   const psMap = {};
   const hlMap = {};
@@ -8623,7 +8623,7 @@ function _dsRender(data) {
 }
 
 /* ══════════════════════════════════════════════════════
-   차량 제원 테이블 (DS_VEHICLE) — PS / HL 탭 분리
+   차량 제원 테이블 (TMS_DS_VEHICLE) — PS / HL 탭 분리
 ══════════════════════════════════════════════════════ */
 function _dsBuildVehicleTableHTML() {
   const activeTab = _dsState.activeTab || 'PS';
@@ -8644,7 +8644,7 @@ function _dsBuildVehicleTableHTML() {
 
   return `<div class="ds-section ds-vehicle-section" id="ds-vhc-section">
     <div class="ds-section-hdr">
-      <h3>🚚 차량 제원 및 상차량 기준 <span class="ds-badge" style="background:var(--success)">DS_VEHICLE</span></h3>
+      <h3>🚚 차량 제원 및 상차량 기준 <span class="ds-badge" style="background:var(--success)">TMS_DS_VEHICLE</span></h3>
       <div style="display:flex;align-items:center;gap:8px">
         <button class="ds-add-row-btn" onclick="dsAddVehicleRow()" title="차량 행 추가">＋ 행 추가</button>
         <button class="ds-save-section-btn" onclick="dsSaveVehicle()" title="차량제원 저장">💾 저장</button>
@@ -8926,8 +8926,8 @@ function _dsCollectVehicleRows() {
   _dsSyncCurrentTabRows();
 
   // PS와 HL을 합쳐서 저장 (백엔드는 tab 필드로 구분해 CMCDV 업데이트)
-  // CARCLASS_CD 중복 제거: PS/HL 모두 같은 DS_VEHICLE row를 공유하므로
-  // 실제 저장은 DS_VEHICLE에 CARCLASS_CD 기준 단일 row (중복 없음)
+  // CARCLASS_CD 중복 제거: PS/HL 모두 같은 TMS_DS_VEHICLE row를 공유하므로
+  // 실제 저장은 TMS_DS_VEHICLE에 CARCLASS_CD 기준 단일 row (중복 없음)
   // USE_YN은 PS 탭 값을 TMS_CARCLASS10, HL 탭 값을 TMS_CARCLASS20에 각각 반영
 
   const result = [];
@@ -8960,11 +8960,11 @@ function _dsCollectVehicleRows() {
   });
 
   // HL 탭 rows → tab:'HL' (USE_YN만 별도로 CMCDV 업데이트용으로 포함)
-  // DS_VEHICLE은 PS/HL 공유이므로 CARCLASS_CD 중복 시 USE_YN만 덮어쓰기
+  // TMS_DS_VEHICLE은 PS/HL 공유이므로 CARCLASS_CD 중복 시 USE_YN만 덮어쓰기
   _dsState.vehicleHL.forEach(r => {
     const ct = (r.CARTYPE || '').trim();
     if (!ct) return;
-    // DS_VEHICLE에 이미 있는 row는 PS에서 저장됨 — HL은 USE_YN/CMCDV 업데이트만 별도 항목 추가
+    // TMS_DS_VEHICLE에 이미 있는 row는 PS에서 저장됨 — HL은 USE_YN/CMCDV 업데이트만 별도 항목 추가
     const existing = result.find(x => x.CARCLASS_CD === r.CARCLASS_CD || x.CARTYPE === ct);
     const useYn = (document.getElementById(`ds-vuyn-${r._id}`)?.value || r.USE_YN || 'Y').toUpperCase();
     if (existing) {
@@ -10239,7 +10239,7 @@ function psdBindVehicleCard(dispatch_no) {
    적재 시각화 모달  (psdShowLoadImage / psdCloseLoadModal)
    ════════════════════════════════════════════════════════════ */
 
-/* DS_VEHICLE 캐시 */
+/* TMS_DS_VEHICLE 캐시 */
 let _psdVehInfoCache = null;  // {CARTYPE: {...}}
 
 async function _psdGetVehInfo() {
@@ -10304,7 +10304,7 @@ async function psdShowLoadImage(dispatch_no) {
   const v = (psdState.vehicles || []).find(x => x.dispatch_no === dispatch_no);
   if (!v) { alert('배차 데이터를 찾을 수 없습니다.'); return; }
 
-  /* DS_VEHICLE 제원 로드 */
+  /* TMS_DS_VEHICLE 제원 로드 */
   const vehInfo = await _psdGetVehInfo();
   const veh = vehInfo[v.cartype] || null;
 
@@ -10379,7 +10379,7 @@ function _psdItemColor(idx) { return _psdPalette[idx % _psdPalette.length]; }
    ★ 적재뷰 공용 헬퍼 (2D/3D 공통) — PS배차·배차확정 양쪽에서 사용
    ══════════════════════════════════════════════════════════════════ */
 
-/* 차량 너비(m) 파싱 — DS_VEHICLE.WIDTH_M 은 "2.3~2.4" 범위 문자열일 수 있음.
+/* 차량 너비(m) 파싱 — TMS_DS_VEHICLE.WIDTH_M 은 "2.3~2.4" 범위 문자열일 수 있음.
    백엔드 parseVehicleWidth 와 동일: '~' 있으면 하한값, 없으면 그대로.
    WIDTH_M_NUM(있으면 우선) → WIDTH_M(범위 파싱) → 기본 2.4 */
 function _lvVehWidthM(veh) {
@@ -12349,7 +12349,7 @@ async function psdShowAutoLoadImage(idx) {
   const v = _psdAutoPreviewVehicles[idx];
   if (!v) { alert('배차 데이터를 찾을 수 없습니다.'); return; }
 
-  /* 차량 제원 로드 (DS_VEHICLE) */
+  /* 차량 제원 로드 (TMS_DS_VEHICLE) */
   const vehInfo = await _psdGetVehInfo();
   const veh = vehInfo[v.cartype] || null;
 
@@ -12459,7 +12459,7 @@ async function psdShowManualCarSelect(items) {
   const existing = document.getElementById('psd-manual-modal');
   if (existing) existing.remove();
 
-  // DS_VEHICLE 테이블에서 차량유형 목록 동적 조회 (SORT_SEQ 오름차순)
+  // TMS_DS_VEHICLE 테이블에서 차량유형 목록 동적 조회 (SORT_SEQ 오름차순)
   const vehInfo  = await _psdGetVehInfo();
   const vehicles = Object.values(vehInfo).sort((a,b) => (a.SORT_SEQ||0)-(b.SORT_SEQ||0));
   const totalKg  = items.reduce((s,it)=>s+parseFloat(it.QTSHPO||0),0);
@@ -13416,7 +13416,7 @@ async function _sapShowLoadImage(stknum, cartype, carclassCd) {
 
   // 캐시 없으면 API 호출
   if (!_sapLoadItemsCache[stknum]) {
-    /* 차량 제원(veh)은 항상 DS_VEHICLE 캐시에서 확보 (응답 veh 유무와 무관) */
+    /* 차량 제원(veh)은 항상 TMS_DS_VEHICLE 캐시에서 확보 (응답 veh 유무와 무관) */
     let vehObj = null;
     try {
       const vi = await _psdGetVehInfo();
@@ -14002,7 +14002,7 @@ function _sapShowRfcResultModal(title, results, env) {
 /* ══════════════════════════════════════════════════
    SAP탭 차량선택 팝업
 ══════════════════════════════════════════════════ */
-/* SAP 탭 전용 DS_VEHICLE 역방향 캐시: CARCLASS_CD → DS_VEHICLE row */
+/* SAP 탭 전용 TMS_DS_VEHICLE 역방향 캐시: CARCLASS_CD → TMS_DS_VEHICLE row */
 let _sapVehInfoCache = null;  // { 'Z010': { CARCLASS_CD:'Z010', CARTYPE:'1톤', ... }, ... }
 async function _sapGetVehInfo() {
   if (_sapVehInfoCache) return _sapVehInfoCache;
@@ -14162,11 +14162,11 @@ async function _sapVehPickSelect(vehicleNo, driverName, contactNo) {
 }
 
 /* ══════════════════════════════════════════════════
-   배차대상 차량 탭 — DS_VEHICLE 조회 & DEFAULT_VEH_CNT 수정
+   배차대상 차량 탭 — TMS_DS_VEHICLE 조회 & DEFAULT_VEH_CNT 수정
 ══════════════════════════════════════════════════ */
 /* 탭 전용 상태 */
 const _psopVehTab = {
-  rows: [],          // DS_VEHICLE 데이터 (SORT_SEQ 오름차순)
+  rows: [],          // TMS_DS_VEHICLE 데이터 (SORT_SEQ 오름차순)
   dirty: new Set(),  // 변경된 CARTYPE Set
 };
 
@@ -14263,7 +14263,7 @@ async function psopToggleUseYn(cartype, checked) {
     const res  = await fetch('/api/dispatch/strategy/save', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      /* table='vehicle' 전체 저장 → DS_VEHICLE + CMCDV.USARG1 + DS_INCH 동시 갱신 */
+      /* table='vehicle' 전체 저장 → TMS_DS_VEHICLE + CMCDV.USARG1 + DS_INCH 동시 갱신 */
       body: JSON.stringify({
         table: 'vehicle',
         rows:  _psopVehTab.rows.map(r => ({ ...r, tab: 'PS', USE_YN: r.USE_YN || 'Y' }))
@@ -14952,7 +14952,7 @@ async function renderPsDispatchOpt() {
       <!-- 툴바 -->
       <div class="psop-vt-toolbar">
         <h3>🚚 배차대상 차량</h3>
-        <span class="psop-vt-desc">DS_VEHICLE 기준 | 가용차량대수만 수정 가능</span>
+        <span class="psop-vt-desc">TMS_DS_VEHICLE 기준 | 가용차량대수만 수정 가능</span>
         <button class="psop-vt-save-all-btn" onclick="psopSaveAllVehCnt()" id="psop-vt-save-all-btn">
           💾 전체 저장
         </button>
@@ -15420,7 +15420,7 @@ async function psopSearch() {
     const rows = (json && json.data != null) ? json.data : (json.rows || json);
     psopState.searchRows = Array.isArray(rows) ? rows : [];
     // 인메모리 vehicles의 items → DISPATCHED 강제 true 재설정
-    // (서버는 SHPDI.STDLNR='' 인 미저장/pending 배차를 항상 DISPATCHED=false 로 반환하기 때문)
+    // (서버는 TMS_SHPDI.STDLNR='' 인 미저장/pending 배차를 항상 DISPATCHED=false 로 반환하기 때문)
     // ★ localStorage에서 복원된 pending vehicles도 포함
     // ★ IS_SAVED=true인 row는 서버 값 우선 — pending vehicle만 DISPATCHED=true 처리
     psopState.vehicles.forEach(v => {
@@ -16304,7 +16304,7 @@ function psopBindVehicleCard(dispatch_no) {
    적재 시각화 모달  (psopShowLoadImage / psopCloseLoadModal)
    ════════════════════════════════════════════════════════════ */
 
-/* DS_VEHICLE 캐시 */
+/* TMS_DS_VEHICLE 캐시 */
 let _psopVehInfoCache = null;  // {CARTYPE: {...}}
 
 async function _psopGetVehInfo() {
@@ -17940,7 +17940,7 @@ async function psopShowManualCarSelect(items) {
   const existing = document.getElementById('psop-manual-modal');
   if (existing) existing.remove();
 
-  // DS_VEHICLE 테이블에서 차량유형 목록 동적 조회 (SORT_SEQ 오름차순)
+  // TMS_DS_VEHICLE 테이블에서 차량유형 목록 동적 조회 (SORT_SEQ 오름차순)
   const vehInfo  = await _psopGetVehInfo();
   const vehicles = Object.values(vehInfo).sort((a,b) => (a.SORT_SEQ||0)-(b.SORT_SEQ||0));
   const totalKg  = items.reduce((s,it)=>s+parseFloat(it.QTSHPO||0),0);
@@ -18453,7 +18453,7 @@ async function psopSaveDispatch() {
     const wmsVisible = payload.wms_visible_stdlnr;
     if (typeof wmsVisible === 'number' && wmsVisible === 0) {
       console.error('[psopSaveDispatch] 커밋후검증 실패: wms_visible_stdlnr=0 '
-        + '(PS_DISPATCH 는 저장됐으나 SHPDI.STDLNR 이 SAP탭 읽기경로에 반영되지 않음)');
+        + '(PS_DISPATCH 는 저장됐으나 TMS_SHPDI.STDLNR 이 SAP탭 읽기경로에 반영되지 않음)');
       showToast('⚠️ 저장은 접수됐으나 SAP선적탭 반영이 확인되지 않습니다. '
         + '관리자에게 문의하세요. (STDLNR 미반영)');
       await psopSearch();
@@ -19625,23 +19625,23 @@ async function loadSchema(tbl){
    SQL CONSOLE
 ═══════════════════════════════════════════════════════════ */
 const SQL_EXAMPLES = [
-  {label:'출고문서 최근 50건',      sql:`SELECT *\nFROM KNRAWMS.SHPDH\nORDER BY DOCDAT DESC\nFETCH FIRST 50 ROWS ONLY`},
+  {label:'출고문서 최근 50건',      sql:`SELECT *\nFROM KNRAWMS.TMS_SHPDH\nORDER BY DOCDAT DESC\nFETCH FIRST 50 ROWS ONLY`},
   {label:'품목 마스터 검색',        sql:`SELECT *\nFROM KNRAWMS.SKUMA\nWHERE DELMAK = ' '\nORDER BY SKUKEY\nFETCH FIRST 100 ROWS ONLY`},
   {label:'거래처 CT유형',           sql:`SELECT *\nFROM KNRAWMS.BZPTN\nWHERE PTNRTY = 'CT'\nORDER BY PTNRKY\nFETCH FIRST 100 ROWS ONLY`},
   {label:'공통코드 목록',           sql:`SELECT m.CMCDKY, m.SHORTX, v.CMCDVL, v.CDESC1, v.USARG1\nFROM KNRAWMS.CMCDM m\nJOIN KNRAWMS.CMCDV v ON m.CMCDKY = v.CMCDKY\nORDER BY m.CMCDKY, v.CMCDVL\nFETCH FIRST 200 ROWS ONLY`},
   {label:'ERP 오더 상태별 집계',    sql:`SELECT STATUS,\n  COUNT(*) AS 건수,\n  SUM(QTSHP) AS 총수량\nFROM KNRAWMS.IFWMS113\nGROUP BY STATUS\nORDER BY 건수 DESC`},
-  {label:'출고문서-아이템 조인',    sql:`SELECT h.SHPOKY, h.STATDO, h.DOCDAT, h.DPTNKY,\n  i.SHPOIT, i.SKUKEY, i.DESC01, i.QTSHPO, i.QTSHPD\nFROM KNRAWMS.SHPDH h\nJOIN KNRAWMS.SHPDI i ON h.SHPOKY = i.SHPOKY\nORDER BY h.DOCDAT DESC\nFETCH FIRST 200 ROWS ONLY`},
+  {label:'출고문서-아이템 조인',    sql:`SELECT h.SHPOKY, h.STATDO, h.DOCDAT, h.DPTNKY,\n  i.SHPOIT, i.SKUKEY, i.DESC01, i.QTSHPO, i.QTSHPD\nFROM KNRAWMS.TMS_SHPDH h\nJOIN KNRAWMS.TMS_SHPDI i ON h.SHPOKY = i.SHPOKY\nORDER BY h.DOCDAT DESC\nFETCH FIRST 200 ROWS ONLY`},
   {label:'SKU 단위구성',            sql:`SELECT s.SKUKEY, s.DESC01, m.UOMKEY, m.QTPUOM, m.LENGTH, m.WIDTHW, m.HEIGHT, m.CUBICM\nFROM KNRAWMS.SKUMA s\nJOIN KNRAWMS.MEASI m ON s.SKUKEY = m.MEASKY\nWHERE s.DELMAK = ' '\nFETCH FIRST 100 ROWS ONLY`},
-  {label:'운송사별 집계',           sql:`SELECT TDLNR AS 운송사, COUNT(*) AS 출고건수,\n  SUM(QTSHPO) AS 총출고수량\nFROM KNRAWMS.SHPDH\nWHERE TDLNR != ' '\nGROUP BY TDLNR\nORDER BY 출고건수 DESC`},
+  {label:'운송사별 집계',           sql:`SELECT TDLNR AS 운송사, COUNT(*) AS 출고건수,\n  SUM(QTSHPO) AS 총출고수량\nFROM KNRAWMS.TMS_SHPDH\nWHERE TDLNR != ' '\nGROUP BY TDLNR\nORDER BY 출고건수 DESC`},
   {label:'[TMS] 납품처 상세 전체',  sql:`SELECT *\nFROM KNRAWMS.BZPTN_DETAIL\nORDER BY PTNRKY\nFETCH FIRST 50 ROWS ONLY`},
   {label:'[TMS] 차량 마스터 전체',  sql:`SELECT *\nFROM KNRAWMS.VHCMA\nORDER BY VEHICLE_NO\nFETCH FIRST 50 ROWS ONLY`},
   {label:'[TMS] 권역별 납품처 집계',sql:`SELECT AREA_CD AS 권역,\n  COUNT(*) AS 납품처수,\n  AVG(UNLOAD_TIME) AS 평균하차시간,\n  SUM(CASE WHEN AUTO_ALLOC_YN='Y' THEN 1 ELSE 0 END) AS 자동배차수\nFROM KNRAWMS.BZPTN_DETAIL\nGROUP BY AREA_CD\nORDER BY 납품처수 DESC`},
   {label:'[TMS] 운송사별 차량현황', sql:`SELECT CARRIER AS 운송사,\n  VEHICLE_CLASS AS 차형,\n  COUNT(*) AS 차량수\nFROM KNRAWMS.VHCMA\nGROUP BY CARRIER, VEHICLE_CLASS\nORDER BY 운송사, 차량수 DESC`},
   {label:'[TMS] 납품처+거래처 조인',sql:`SELECT b.PTNRKY, bp.NAME01 AS 거래처명, b.AREA_CD AS 권역,\n  b.ROUTE_CD AS 유통경로, b.UNLOAD_TIME AS 하차시간,\n  b.MAX_BOX_QTY AS 최대박스수, b.AUTO_ALLOC_YN AS 자동배차,\n  b.LATITUDE AS 위도, b.LONGITUDE AS 경도\nFROM KNRAWMS.BZPTN_DETAIL b\nLEFT JOIN KNRAWMS.BZPTN bp ON b.PTNRKY=bp.PTNRKY AND bp.PTNRTY='CT'\nORDER BY b.AREA_CD, b.PTNRKY`},
-  {label:'[TMS] 경로별 비용 전체',sql:`SELECT SHPPT, ROUTE, PTNRKY, CARCLASS, COST, UNIT, DATE_START, DATE_END\nFROM KNRAWMS.ROUTE_COST\nORDER BY ROUTE, PTNRKY, CARCLASS\nFETCH FIRST 200 ROWS ONLY`},
-  {label:'[TMS] 경로별 평균비용',sql:`SELECT ROUTE,\n  COUNT(DISTINCT PTNRKY) AS 납품처수,\n  ROUND(AVG(COST),0) AS 평균비용,\n  MIN(COST) AS 최저비용,\n  MAX(COST) AS 최고비용\nFROM KNRAWMS.ROUTE_COST\nGROUP BY ROUTE\nORDER BY 평균비용 DESC`},
-  {label:'[TMS] 차량톤수별 비용통계',sql:`SELECT CARCLASS AS 차량톤수,\n  COUNT(*) AS 건수,\n  ROUND(AVG(COST),0) AS 평균비용,\n  MIN(COST) AS 최저비용,\n  MAX(COST) AS 최고비용\nFROM KNRAWMS.ROUTE_COST\nGROUP BY CARCLASS\nORDER BY CARCLASS`},
-  {label:'[TMS] 경로+납품처 피벗(샘플)',sql:`SELECT ROUTE, PTNRKY,\n  MAX(CASE WHEN CARCLASS='Z010' THEN COST END) AS Z010_1톤,\n  MAX(CASE WHEN CARCLASS='Z025' THEN COST END) AS Z025_2p5톤,\n  MAX(CASE WHEN CARCLASS='Z050' THEN COST END) AS Z050_5톤,\n  MAX(CASE WHEN CARCLASS='Z080' THEN COST END) AS Z080_8톤,\n  MAX(CASE WHEN CARCLASS='Z110' THEN COST END) AS Z110_11톤,\n  MAX(CASE WHEN CARCLASS='Z180' THEN COST END) AS Z180_18톤,\n  MAX(CASE WHEN CARCLASS='Z250' THEN COST END) AS Z250_25톤\nFROM KNRAWMS.ROUTE_COST\nGROUP BY ROUTE, PTNRKY\nORDER BY ROUTE, PTNRKY\nFETCH FIRST 50 ROWS ONLY`},
+  {label:'[TMS] 경로별 비용 전체',sql:`SELECT SHPPT, ROUTE, PTNRKY, CARCLASS, COST, UNIT, DATE_START, DATE_END\nFROM KNRAWMS.TMS_ROUTE_COST\nORDER BY ROUTE, PTNRKY, CARCLASS\nFETCH FIRST 200 ROWS ONLY`},
+  {label:'[TMS] 경로별 평균비용',sql:`SELECT ROUTE,\n  COUNT(DISTINCT PTNRKY) AS 납품처수,\n  ROUND(AVG(COST),0) AS 평균비용,\n  MIN(COST) AS 최저비용,\n  MAX(COST) AS 최고비용\nFROM KNRAWMS.TMS_ROUTE_COST\nGROUP BY ROUTE\nORDER BY 평균비용 DESC`},
+  {label:'[TMS] 차량톤수별 비용통계',sql:`SELECT CARCLASS AS 차량톤수,\n  COUNT(*) AS 건수,\n  ROUND(AVG(COST),0) AS 평균비용,\n  MIN(COST) AS 최저비용,\n  MAX(COST) AS 최고비용\nFROM KNRAWMS.TMS_ROUTE_COST\nGROUP BY CARCLASS\nORDER BY CARCLASS`},
+  {label:'[TMS] 경로+납품처 피벗(샘플)',sql:`SELECT ROUTE, PTNRKY,\n  MAX(CASE WHEN CARCLASS='Z010' THEN COST END) AS Z010_1톤,\n  MAX(CASE WHEN CARCLASS='Z025' THEN COST END) AS Z025_2p5톤,\n  MAX(CASE WHEN CARCLASS='Z050' THEN COST END) AS Z050_5톤,\n  MAX(CASE WHEN CARCLASS='Z080' THEN COST END) AS Z080_8톤,\n  MAX(CASE WHEN CARCLASS='Z110' THEN COST END) AS Z110_11톤,\n  MAX(CASE WHEN CARCLASS='Z180' THEN COST END) AS Z180_18톤,\n  MAX(CASE WHEN CARCLASS='Z250' THEN COST END) AS Z250_25톤\nFROM KNRAWMS.TMS_ROUTE_COST\nGROUP BY ROUTE, PTNRKY\nORDER BY ROUTE, PTNRKY\nFETCH FIRST 50 ROWS ONLY`},
 ];
 
 /* SQL DML 예제 추가 */
@@ -20262,7 +20262,7 @@ function mmgrDefaultConfig() {
     { type:'item',    id:'nav-dispatchStrategy', label:'차량유형관리', icon:'⚙️', page:'dispatchStrategy', cnt:false },
     { type:'item',    id:'nav-vehicle',   label:'차량관리',        icon:'🚛', page:'vehicle',       cnt:true },
     { type:'item',    id:'nav-VHCMA',     label:'차량마스터',      icon:'🚛', page:'VHCMA',         cnt:true },
-    { type:'item',    id:'nav-ROUTE_COST',label:'운송경로비용',    icon:'💰', page:'ROUTE_COST',    cnt:true },
+    { type:'item',    id:'nav-TMS_ROUTE_COST',label:'운송경로비용',    icon:'💰', page:'TMS_ROUTE_COST',    cnt:true },
     { type:'section', id:'sec-interface', label:'인터페이스 관리' },
     { type:'item',    id:'nav-shipSchedule', label:'출고예정정보', icon:'📋', page:'shipSchedule', cnt:false },
     { type:'item',    id:'nav-IFWMS113',  label:'ERP 출고오더',    icon:'🔄', page:'IFWMS113',      cnt:true },
@@ -21657,16 +21657,16 @@ document.addEventListener('keydown', e => {
 ══════════════════════════════════════════════════════════════ */
 const DCON = {
   /* 목적식 */
-  objectives: [],      // DS_DISPATCH_OBJECTIVE rows
+  objectives: [],      // TMS_DS_DISPATCH_OBJECTIVE rows
   selObjCode: null,    // 선택된(클릭) 목적식 코드
   activeObjCode: null, // DB에 ACTIVE_YN='Y'인 목적식 코드 (배차에 실제 적용되는 것)
 
   /* 프로파일 */
-  profiles: [],        // DS_DISPATCH_PROFILE rows
+  profiles: [],        // TMS_DS_DISPATCH_PROFILE rows
   selProfileId: null,
 
   /* 제약조건 세트(그룹) */
-  sets: [],            // DS_DISPATCH_CONST_SET rows
+  sets: [],            // TMS_DS_DISPATCH_CONST_SET rows
   selSetId: null,      // 현재 선택된 세트 ID
   allConsts: [],       // 전체 제약조건 목록 (세트 아이템 구성용)
   setItemIds: new Set(), // 현재 세트에 포함된 CONST_ID Set
@@ -22107,7 +22107,7 @@ async function renderDispatchConstraint() {
   DCON._spRows       = [];
   DCON._setFullRows  = [];   // 이전 세트 데이터 초기화
   DCON._spActiveTab  = 'GLOBAL';
-  DCON._vehicles     = null;   // DS_VEHICLE 캐시 초기화 → dconSelectSet에서 재로드
+  DCON._vehicles     = null;   // TMS_DS_VEHICLE 캐시 초기화 → dconSelectSet에서 재로드
   DCON._entryTonPartners  = null;
   DCON._forkliftPartners  = null;
   DCON._dynamicPartners   = null;
@@ -22480,9 +22480,9 @@ function dconSwitchTab(key) {
 }
 
 /* ══ VEHICLE 탭 전용: 차량 제원 체크박스 그리드 ══════════════
-   DS_VEHICLE의 각 행을 세로로 나열하고,
+   TMS_DS_VEHICLE의 각 행을 세로로 나열하고,
    컬럼별 체크박스로 "이 항목을 제약조건으로 적용"할지 선택
-   저장 시 → DS_DISPATCH_CONST (CONST_TYPE=VEHICLE) 행으로 변환
+   저장 시 → TMS_DS_DISPATCH_CONST (CONST_TYPE=VEHICLE) 행으로 변환
 ═════════════════════════════════════════════════════════════ */
 
 /* 차량 제원 컬럼 정의
@@ -22494,10 +22494,10 @@ const DCON_VEH_COLS = [
   { key:'HEIGHT_M',       label:'높이',        unit:'m',    op:'<=', hint:'차량 적재함 높이 (m)',              group:'dim'    },
   { key:'PALLET_HEIGHT_M',label:'파렛트높이',  unit:'m',    op:'<=', hint:'파렛트 단면 높이 (m)',              group:'dim'    },
   { key:'LOAD_CBM',       label:'적재CBM',     unit:'m³',   op:'<=', hint:'가로×세로×높이 CBM (m³)',           group:'dim'    },
-  { key:'INCH12_LT300',   label:'12인치<300',  unit:'매',   op:'<=', hint:'12인치 평량<300 최대 적재 (DS_INCH12)', group:'inch12' },
-  { key:'INCH12_GE300',   label:'12인치≥300',  unit:'매',   op:'<=', hint:'12인치 평량≥300 최대 적재 (DS_INCH12)', group:'inch12' },
-  { key:'INCH3_LT300',    label:'3인치<300',   unit:'매',   op:'<=', hint:'3인치 평량<300 최대 적재 (DS_INCH3)',   group:'inch3'  },
-  { key:'INCH3_GE300',    label:'3인치≥300',   unit:'매',   op:'<=', hint:'3인치 평량≥300 최대 적재 (DS_INCH3)',   group:'inch3'  },
+  { key:'INCH12_LT300',   label:'12인치<300',  unit:'매',   op:'<=', hint:'12인치 평량<300 최대 적재 (TMS_DS_INCH12)', group:'inch12' },
+  { key:'INCH12_GE300',   label:'12인치≥300',  unit:'매',   op:'<=', hint:'12인치 평량≥300 최대 적재 (TMS_DS_INCH12)', group:'inch12' },
+  { key:'INCH3_LT300',    label:'3인치<300',   unit:'매',   op:'<=', hint:'3인치 평량<300 최대 적재 (TMS_DS_INCH3)',   group:'inch3'  },
+  { key:'INCH3_GE300',    label:'3인치≥300',   unit:'매',   op:'<=', hint:'3인치 평량≥300 최대 적재 (TMS_DS_INCH3)',   group:'inch3'  },
 ];
 
 /* DB에 저장된 VEHICLE 제약조건을 {cartype → {key → {CONST_ID, value, op, yn, note}}} 맵으로 변환 */
@@ -22525,8 +22525,8 @@ function _dconRenderVehicleGrid() {
   /* 헤더 1행: 그룹 */
   const grp1 = `<th rowspan="2" style="width:70px;text-align:left;padding-left:10px">차종</th>`
     + `<th colspan="6" style="border-left:2px solid var(--border);background:#e8f4fd;color:#1a56db">📐 차량 기본 제원</th>`
-    + `<th colspan="2" style="border-left:2px solid var(--border);background:#fef9e7;color:#b7791f">📦 12인치 적재수량<br><span style="font-size:9px;font-weight:400;color:#b7791f">(DS_INCH12 기본값 연동)</span></th>`
-    + `<th colspan="2" style="border-left:2px solid var(--border);background:#f0fff4;color:#276749">📦 3인치 적재수량<br><span style="font-size:9px;font-weight:400;color:#276749">(DS_INCH3 기본값 연동)</span></th>`;
+    + `<th colspan="2" style="border-left:2px solid var(--border);background:#fef9e7;color:#b7791f">📦 12인치 적재수량<br><span style="font-size:9px;font-weight:400;color:#b7791f">(TMS_DS_INCH12 기본값 연동)</span></th>`
+    + `<th colspan="2" style="border-left:2px solid var(--border);background:#f0fff4;color:#276749">📦 3인치 적재수량<br><span style="font-size:9px;font-weight:400;color:#276749">(TMS_DS_INCH3 기본값 연동)</span></th>`;
 
   /* 헤더 2행: 개별 컬럼 */
   const grp2 = DCON_VEH_COLS.map((col, ci) => {
@@ -23072,7 +23072,7 @@ const DCON_PARAM_META = {
   ROLL_INCH_MIX_ALLOW:  { label:'인치/평량 혼합 허용',      unit:'Y/N',  hint:'Y=혼합 오더 허용' },
   ROLL_2D_PACK_ENGINE:  { label:'2D 바닥 패킹 연산',        unit:'Y/N',  hint:'Y=혼합 규격 시 2D 패킹 연산 적용' },
   ROLL_SAME_INCH_FORCE: { label:'동일 인치 강제',            unit:'Y/N',  hint:'Y=동일 인치만 혼적, N=혼재허용' },
-  ROLL_REF_12INCH:      { label:'12인치 기준수(통합)',         unit:'롤',   hint:'차종별 12인치 1단 적재 기준 수량 (평량 무관 통합값 — DS_INCH12 기본값 연동)' },
+  ROLL_REF_12INCH:      { label:'12인치 기준수(통합)',         unit:'롤',   hint:'차종별 12인치 1단 적재 기준 수량 (평량 무관 통합값 — TMS_DS_INCH12 기본값 연동)' },
   ROLL_REF_12INCH_LT300:{ label:'12인치/평량300미만 기준수',  unit:'롤',   hint:'차종별 1단 적재 기준 수량 (12인치, 평량 300 미만)' },
   ROLL_REF_12INCH_GE300:{ label:'12인치/평량300이상 기준수',  unit:'롤',   hint:'차종별 1단 적재 기준 수량 (12인치, 평량 300 이상)' },
   ROLL_REF_3INCH_LT300: { label:'3인치/평량300미만 기준수',   unit:'롤',   hint:'차종별 1단 적재 기준 수량 (3인치, 평량 300 미만)' },
@@ -23221,10 +23221,10 @@ async function dconSelectSet(setId) {
       DCON._spActiveTab = DCON._spActiveTab || 'GLOBAL';
     }
 
-    /* DS_VEHICLE 캐시 */
+    /* TMS_DS_VEHICLE 캐시 */
     if (vd.ok) DCON._vehicles = vd.vehicles || [];
 
-    /* CARTYPE 상태 초기화: DS_DISPATCH_CONST의 CARTYPE 타입 행(IN_SET 포함) */
+    /* CARTYPE 상태 초기화: TMS_DS_DISPATCH_CONST의 CARTYPE 타입 행(IN_SET 포함) */
     const cartypeInSet = rd.rows.filter(row => row.IN_SET && row.CONST_TYPE === 'CARTYPE');
     /* {carclass_cd → {field → {const_id, param_value, active_yn}}} 맵 */
     DCON._cartypeState = {};
@@ -23257,7 +23257,7 @@ function _dconSpRenderTabs() {
   const el = document.getElementById('dcon-sp-tabs');
   if (!el) return;
   const rows = DCON._spRows || [];
-  /* CARTYPE은 항상 탭에 표시 (DS_VEHICLE 기반이므로 별도 카운트) */
+  /* CARTYPE은 항상 탭에 표시 (TMS_DS_VEHICLE 기반이므로 별도 카운트) */
   const tabOrder = [
     'GLOBAL','VEHICLE','CARTYPE','CARGO','PARTNER',
     'ENTRY_TON','FORKLIFT','DYNAMIC','PTNR_MULTI','DYNAMIC_ZONE',
@@ -23843,16 +23843,16 @@ function _dconSpRenderVehicle(rows, ft) {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   CARTYPE 탭: 차량유형관리(DS_VEHICLE) 기반 항목별 적용 매트릭스
+   CARTYPE 탭: 차량유형관리(TMS_DS_VEHICLE) 기반 항목별 적용 매트릭스
 ══════════════════════════════════════════════════════════════ */
-/* DS_VEHICLE 필드 → 표시 메타 */
+/* TMS_DS_VEHICLE 필드 → 표시 메타 */
 const DCON_CT_FIELDS = [
   { key:'LENGTH_M',        label:'길이',        unit:'m',   cls:'ct-dim',  hint:'적재함 길이(m)' },
   { key:'WIDTH_M',         label:'너비',        unit:'m',   cls:'ct-dim',  hint:'적재함 너비(m)' },
   { key:'HEIGHT_M',        label:'높이',        unit:'m',   cls:'ct-dim',  hint:'적재함 높이(m)' },
   { key:'PALLET_HEIGHT_M', label:'파렛높이',    unit:'m',   cls:'ct-pal',  hint:'파렛트 높이(m)' },
   { key:'LOAD_TON',        label:'적재톤',      unit:'t',   cls:'ct-load', hint:'최대 적재 중량(ton)' },
-  { key:'LOAD_CBM',        label:'적재CBM',     unit:'m³',  cls:'ct-load', hint:'최대 적재 CBM(m³) — DS_VEHICLE에서 자동계산' },
+  { key:'LOAD_CBM',        label:'적재CBM',     unit:'m³',  cls:'ct-load', hint:'최대 적재 CBM(m³) — TMS_DS_VEHICLE에서 자동계산' },
   { key:'PALLET_CNT',      label:'파렛수',      unit:'개',  cls:'ct-pal',  hint:'최대 파렛트 수' },
   { key:'ALLOW_CARTYPE',   label:'배차허용',    unit:'Y/N', cls:'ct-misc', hint:'이 차종 배차 허용(Y/N)' },
   { key:'LONG_AXIS_YN',    label:'장축여부',    unit:'Y/N', cls:'ct-misc', hint:'장축 차량 여부(Y/N)' },
@@ -23883,7 +23883,7 @@ function _dconSpRenderCartype(ft) {
     if (!vlist.length) vlist = vehicles;
   }
 
-  /* ── DS_VEHICLE 기본값 헬퍼 ── */
+  /* ── TMS_DS_VEHICLE 기본값 헬퍼 ── */
   function _refVal(v, fkey) {
     if (fkey === 'LOAD_CBM') {
       const l = parseFloat(v.LENGTH_M||0);
@@ -25434,7 +25434,7 @@ async function _dconSpSave() {
       newItems.push({ const_id: match.CONST_ID, active_yn: yn, param_value: val && val !== origVal ? val : null });
     } else {
       /* 마스터 미존재(신규 파라미터 키: ALLOW_MATERIAL_MIX 등) → const_id 없이 키 정보 전송.
-         백엔드(setItemsSave)에서 DS_DISPATCH_CONST 마스터를 find-or-create 후 저장한다. */
+         백엔드(setItemsSave)에서 TMS_DS_DISPATCH_CONST 마스터를 find-or-create 후 저장한다. */
       newItems.push({
         const_id: null,
         const_key: key,
@@ -25780,7 +25780,7 @@ async function dconLinkSetToProfile(setId) {
 
 /* ══════════════════════════════════════════════════════════════
    제약조건 항목 관리 (CI: Constraint Item) 패널
-   ─ DS_DISPATCH_CONST 기반 전체 목록 테이블 + CRUD
+   ─ TMS_DS_DISPATCH_CONST 기반 전체 목록 테이블 + CRUD
 ══════════════════════════════════════════════════════════════ */
 
 /* ─ 패널 전환 (세트편집 ↔ 제약조건항목관리) ─ */
@@ -25816,7 +25816,7 @@ function dconSwitchPanel(mode) {
 }
 
 /* ─ 전역 상태 ─ */
-DCON._ciItems    = [];   // DS_DISPATCH_CONST 전체 행
+DCON._ciItems    = [];   // TMS_DS_DISPATCH_CONST 전체 행
 DCON._ciFiltered = [];   // 필터링된 행
 DCON._ciSetItems = {};   // { setId → Set<constId> } 세트별 CONST_ID 집합 (작업3)
 DCON._ciSelId    = null; // 현재 선택된 CONST_ID
@@ -26093,7 +26093,7 @@ function _dconCiAddForm(constId) {
 function _dconCiEditItem(constId) { _dconCiSelectRow(constId); }
 function _dconCiFormClose()       { _dconCiDetailClose(); }
 
-/* ─ 항목 저장 (INSERT or UPDATE DS_DISPATCH_CONST) ─ */
+/* ─ 항목 저장 (INSERT or UPDATE TMS_DS_DISPATCH_CONST) ─ */
 async function _dconCiFormSave() {
   const constKey = (document.getElementById('dcon-ci-f-key')?.value || '').trim().toUpperCase();
   if (!constKey) { showToast('CONST_KEY를 입력하세요', 'warn'); return; }

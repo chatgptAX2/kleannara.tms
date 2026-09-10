@@ -58,10 +58,10 @@ public class Vhcma {
     private String vehicleClass;
 
     @Column(name = "CARTYPE", length = 50)
-    private String cartype;          // DS_VEHICLE 차종명
+    private String cartype;          // TMS_DS_VEHICLE 차종명
 
     @Column(name = "CARCLASS_CD", length = 20)
-    private String carclassCd;       // DS_VEHICLE 차종코드
+    private String carclassCd;       // TMS_DS_VEHICLE 차종코드
 
     @Column(name = "DRIVER_NAME", length = 50)
     private String driverName;

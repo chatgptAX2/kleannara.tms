@@ -365,7 +365,7 @@ public class DeliveryService {
     //               → [{value:CMCDVL, label:CDESC1}, ...]
     // ──────────────────────────────────────────────────────────────────────────
     public Map<String, Object> searchRouteCost(String wareky, String ptnrky, String carclass) {
-        // 1. ROUTE_COST 행 조회
+        // 1. TMS_ROUTE_COST 행 조회
         List<Object[]> rawRows = routeCostRepo.searchList(
             nullIfBlank(wareky), nullIfBlank(ptnrky), nullIfBlank(carclass)
         );
@@ -400,7 +400,7 @@ public class DeliveryService {
     // ──────────────────────────────────────────────────────────────────────────
     // 운송비 피벗 (Flask api_route_cost_pivot)
     // 반환: { carclasses, rows, total }
-    //   carclasses: ROUTE_COST의 실제 CARTYPE 목록 (CMCDV 기준)
+    //   carclasses: TMS_ROUTE_COST의 실제 CARTYPE 목록 (CMCDV 기준)
     // ──────────────────────────────────────────────────────────────────────────
     public Map<String, Object> pivotRouteCost(String wareky, String ptnrky, String carclass) {
         List<Object[]> rawRows = routeCostRepo.searchList(nullIfBlank(wareky), nullIfBlank(ptnrky), nullIfBlank(carclass));

@@ -26,7 +26,7 @@ import java.util.*;
  *
  * ■ DataSource 라우팅
  *   - em    (wmsPU, Oracle KNRAWMS): CMCDM, CMCDV, WAHMA, VHCMA
- *   - tmsEm (tmsPU, MariaDB TMS):   DS_VEHICLE
+ *   - tmsEm (tmsPU, MariaDB TMS):   TMS_DS_VEHICLE
  *
  *   ※ VhcmaRepository → WmsJpaConfig (wmsPU, Oracle KNRAWMS)
  *      DsVehicleRepository → TmsJpaConfig (tmsPU, MariaDB)
@@ -44,12 +44,12 @@ public class VehicleService {
     @PersistenceContext(unitName = "wmsPU")
     private EntityManager em;
 
-    /** MariaDB TMS — DS_VEHICLE (차종 직접 쿼리) */
+    /** MariaDB TMS — TMS_DS_VEHICLE (차종 직접 쿼리) */
     @PersistenceContext(unitName = "tmsPU")
     private EntityManager tmsEm;
 
     // ──────────────────────────────────────────────────────────────────────────
-    // DS_VEHICLE 목록 (Flask api_ds_vehicle)
+    // TMS_DS_VEHICLE 목록 (Flask api_ds_vehicle)
     // DsVehicleRepository → TmsJpaConfig → MariaDB 자동 라우팅
     // ──────────────────────────────────────────────────────────────────────────
     public List<DsVehicleResponse> getDsVehicleList() {
@@ -213,7 +213,7 @@ public class VehicleService {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // Carclass / DS_VEHICLE 저장 (Flask api_carclass_save)
+    // Carclass / TMS_DS_VEHICLE 저장 (Flask api_carclass_save)
     // CMCDV 업데이트 → Oracle em(wmsPU) / DsVehicle CUD → MariaDB Repository 자동
     // ──────────────────────────────────────────────────────────────────────────
     @Transactional(transactionManager = "wmsTransactionManager")

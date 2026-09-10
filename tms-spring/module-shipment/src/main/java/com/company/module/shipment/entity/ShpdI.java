@@ -4,12 +4,12 @@ import jakarta.persistence.*;
 import lombok.*;
 
 /**
- * 출고 아이템 (SHPDI)
+ * 출고 아이템 (TMS_SHPDI)
  * - 출고전표 라인 정보 (품목, 수량, 배차번호, 로트 등)
  * - SAP 연계 테이블: ddl-auto=none, 조회 전용
  */
 @Entity
-@Table(name = "SHPDI")
+@Table(name = "TMS_SHPDI")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @IdClass(ShpdIId.class)

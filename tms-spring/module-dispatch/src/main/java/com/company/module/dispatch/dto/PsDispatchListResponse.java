@@ -25,7 +25,7 @@ public class PsDispatchListResponse {
     private String note;
     private String credat;
     private Double loadTon;
-    private Double loadKg;      // LOAD_TON × 1000 (null = DS_VEHICLE 미등록)
+    private Double loadKg;      // LOAD_TON × 1000 (null = TMS_DS_VEHICLE 미등록)
     private Integer rollCount;  // 원지 롤 수 합산
 
     /** 배차 아이템 상세 */

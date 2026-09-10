@@ -14,11 +14,11 @@ import java.util.stream.Collectors;
  * 자동배차 알고리즘 Service
  *
  * ■ DataSource 라우팅
- *   - wmsJdbc (Oracle KNRAWMS): SKUMA, SHPDH, SHPDI, BZPTN, BZPTN_DETAIL, CMCDV
- *   - tmsJdbc (Oracle KNRAWMS): DS_VEHICLE, DS_INCH12, DS_INCH3,
- *                                    DS_DISPATCH_PROFILE, DS_DISPATCH_CONST, ROUTE_COST
+ *   - wmsJdbc (Oracle KNRAWMS): SKUMA, TMS_SHPDH, TMS_SHPDI, BZPTN, BZPTN_DETAIL, CMCDV
+ *   - tmsJdbc (Oracle KNRAWMS): TMS_DS_VEHICLE, TMS_DS_INCH12, TMS_DS_INCH3,
+ *                                    TMS_DS_DISPATCH_PROFILE, TMS_DS_DISPATCH_CONST, TMS_ROUTE_COST
  *
- *   ※ Cross-DB 조인(KNRAWMS.CMCDV ↔ DS_VEHICLE 등) 불가 → 2-step 분리
+ *   ※ Cross-DB 조인(KNRAWMS.CMCDV ↔ TMS_DS_VEHICLE 등) 불가 → 2-step 분리
  */
 @Slf4j
 @Service
@@ -39,7 +39,7 @@ public class AutoDispatchService {
     /**
      * 납품처 최대톤수(MAX_TON) 미설정 시 자동배차에 적용할 기본 진입톤수 라벨.
      * PS제약조건관리 및 PS배차(최적화) 자동배차 공통 적용 (요구사항: 미설정=18톤).
-     * ※ CMCDV.CDESC1(=DS_VEHICLE.CARTYPE) 라벨과 일치해야 loadKg 매칭됨.
+     * ※ CMCDV.CDESC1(=TMS_DS_VEHICLE.CARTYPE) 라벨과 일치해야 loadKg 매칭됨.
      */
     private static final String DEFAULT_MAX_TON_LABEL = "18톤";
 
@@ -85,7 +85,7 @@ public class AutoDispatchService {
         String objective = str(prof.getOrDefault("OBJECTIVE", "MIN_VEHICLES"));
         long pid         = toLong(prof.get("PROFILE_ID"), 0L);
 
-        // ── 제약조건 세트(DS_DISPATCH_CONST_SET_ITEM) 로드 ─────────────
+        // ── 제약조건 세트(TMS_DS_DISPATCH_CONST_SET_ITEM) 로드 ─────────────
         // 프로파일에 SET_ID가 연결되어 있으면 세트 아이템을 로드하여 제약조건 값 오버라이드/비활성 필터링에 사용
         Integer setId = toInt(prof.get("SET_ID"));
         String appliedSetNm = "";
@@ -95,8 +95,8 @@ public class AutoDispatchService {
             try {
                 List<Map<String, Object>> setItems = tmsJdbc.queryForList(
                     "SELECT i.ITEM_ID, i.CONST_ID, i.ACTIVE_YN, i.PARAM_VALUE, s.SET_NM" +
-                    " FROM KNRAWMS.DS_DISPATCH_CONST_SET_ITEM i" +
-                    " JOIN KNRAWMS.DS_DISPATCH_CONST_SET s ON s.SET_ID = i.SET_ID" +
+                    " FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM i" +
+                    " JOIN KNRAWMS.TMS_DS_DISPATCH_CONST_SET s ON s.SET_ID = i.SET_ID" +
                     " WHERE i.SET_ID = ?",
                     setId
                 );
@@ -112,9 +112,9 @@ public class AutoDispatchService {
             }
         }
 
-        // 제약 조건 로드 (DS_DISPATCH_CONST)
+        // 제약 조건 로드 (TMS_DS_DISPATCH_CONST)
         List<Map<String, Object>> constRows = tmsJdbc.queryForList(
-            "SELECT * FROM KNRAWMS.DS_DISPATCH_CONST WHERE PROFILE_ID=? AND ACTIVE_YN='Y' ORDER BY SORT_SEQ",
+            "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_CONST WHERE PROFILE_ID=? AND ACTIVE_YN='Y' ORDER BY SORT_SEQ",
             pid
         );
         // 전역 제약 맵
@@ -170,7 +170,7 @@ public class AutoDispatchService {
         // SKUMA 로드
         Map<String, SkuInfo> skumaMap = loadSkumaMap();
 
-        // ROUTE_COST 로드 (MIN_COST)
+        // TMS_ROUTE_COST 로드 (MIN_COST)
         String todayStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         String costDate = "TODAY".equals(cval(C,"COST_REF_DATE","TODAY")) ? todayStr
                            : cval(C,"COST_REF_DATE","TODAY");
@@ -1157,7 +1157,7 @@ public class AutoDispatchService {
         return selectCarMinVehicles(needKg, validCars, vehInfo, cp, false);
     }
 
-    /** MIN_COST: ROUTE_COST 기반 최저비용 */
+    /** MIN_COST: TMS_ROUTE_COST 기반 최저비용 */
     private String selectCarMinCost(double needKg,
                                      List<Map<String, Object>> validCars,
                                      Map<String, VehInfo> vehInfo,
@@ -1189,25 +1189,25 @@ public class AutoDispatchService {
     //  DB 조회 헬퍼
     // ════════════════════════════════════════════════════════════════
 
-    /** DS_DISPATCH_PROFILE 로드 — Oracle: FETCH FIRST N ROWS ONLY */
+    /** TMS_DS_DISPATCH_PROFILE 로드 — Oracle: FETCH FIRST N ROWS ONLY */
     private Map<String, Object> loadProfile(Integer profileId) {
         List<Map<String, Object>> rows;
         if (profileId != null) {
-            rows = tmsJdbc.queryForList("SELECT * FROM KNRAWMS.DS_DISPATCH_PROFILE WHERE PROFILE_ID=?", profileId);
+            rows = tmsJdbc.queryForList("SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE WHERE PROFILE_ID=?", profileId);
         } else {
             rows = tmsJdbc.queryForList(
-                "SELECT * FROM KNRAWMS.DS_DISPATCH_PROFILE WHERE ACTIVE_YN='Y' ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY");
+                "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE WHERE ACTIVE_YN='Y' ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY");
         }
         return rows.isEmpty() ? null : rows.get(0);
     }
 
-    /** 출고 아이템 조회 — Oracle KNRAWMS: SHPDH, SHPDI, BZPTN */
+    /** 출고 아이템 조회 — Oracle KNRAWMS: TMS_SHPDH, TMS_SHPDI, BZPTN */
     private List<Map<String, Object>> fetchItemsByDate(String yyyymmdd, String ptnrkyFilter) {
         StringBuilder sql = new StringBuilder(
             "SELECT h.SHPOKY, h.DPTNKY, b.NAME01 AS DPTNM, h.RQSHPD, " +
             "       i.SHPOIT, i.SKUKEY, i.QTSHPO, i.DESC01 AS SKUNM, " +
             "       i.GRSWGT, i.WGTUNT, i.UOMKEY, i.LENGTH, i.WIDTHW AS WIDTH_MM, i.HEIGHT " +
-            "FROM KNRAWMS.SHPDH h JOIN KNRAWMS.SHPDI i ON h.SHPOKY=i.SHPOKY " +
+            "FROM KNRAWMS.TMS_SHPDH h JOIN KNRAWMS.TMS_SHPDI i ON h.SHPOKY=i.SHPOKY " +
             "LEFT JOIN KNRAWMS.BZPTN b ON h.DPTNKY=b.PTNRKY AND b.PTNRTY='CT' " +
             "WHERE h.RQSHPD=?"
         );
@@ -1218,13 +1218,13 @@ public class AutoDispatchService {
     }
 
     /**
-     * 차량 순서 로드 — DS_VEHICLE: Oracle KNRAWMS / CMCDV: Oracle KNRAWMS (2-step, Cross-Schema)
-     * Step 1: DS_VEHICLE, Step 2: KNRAWMS.CMCDV (2-step)
+     * 차량 순서 로드 — TMS_DS_VEHICLE: Oracle KNRAWMS / CMCDV: Oracle KNRAWMS (2-step, Cross-Schema)
+     * Step 1: TMS_DS_VEHICLE, Step 2: KNRAWMS.CMCDV (2-step)
      */
     private List<Map<String, Object>> loadCarOrder() {
-        // Step 1: Oracle KNRAWMS DS_VEHICLE
+        // Step 1: Oracle KNRAWMS TMS_DS_VEHICLE
         List<Map<String, Object>> all = tmsJdbc.queryForList(
-            "SELECT v.CARTYPE, v.LOAD_TON, v.SORT_SEQ, v.CARCLASS_CD FROM KNRAWMS.DS_VEHICLE v ORDER BY v.SORT_SEQ DESC"
+            "SELECT v.CARTYPE, v.LOAD_TON, v.SORT_SEQ, v.CARCLASS_CD FROM KNRAWMS.TMS_DS_VEHICLE v ORDER BY v.SORT_SEQ DESC"
         );
         // Step 2: Oracle KNRAWMS.CMCDV — USE_YN 필터
         List<Map<String, Object>> ccRows = wmsJdbc.queryForList(
@@ -1241,11 +1241,11 @@ public class AutoDispatchService {
         return result;
     }
 
-    /** 차량 상세 정보 로드 — DS_VEHICLE: Oracle KNRAWMS / CMCDV USE_YN 필터: Oracle KNRAWMS → 2-step */
+    /** 차량 상세 정보 로드 — TMS_DS_VEHICLE: Oracle KNRAWMS / CMCDV USE_YN 필터: Oracle KNRAWMS → 2-step */
     private Map<String, VehInfo> loadVehInfo() {
         List<Map<String, Object>> rows = tmsJdbc.queryForList(
             "SELECT v.CARTYPE, v.LENGTH_M, v.WIDTH_M, v.HEIGHT_M, v.LOAD_TON, " +
-            "       v.PALLET_HEIGHT_M, v.CARCLASS_CD FROM KNRAWMS.DS_VEHICLE v"
+            "       v.PALLET_HEIGHT_M, v.CARCLASS_CD FROM KNRAWMS.TMS_DS_VEHICLE v"
         );
         // CMCDV USE_YN 필터 (Oracle)
         List<Map<String, Object>> ccRows = wmsJdbc.queryForList(
@@ -1271,11 +1271,11 @@ public class AutoDispatchService {
         return result;
     }
 
-    /** DS_INCH12 / DS_INCH3 로드 — Oracle KNRAWMS */
+    /** TMS_DS_INCH12 / TMS_DS_INCH3 로드 — Oracle KNRAWMS */
     private InchMaps loadInchMaps() {
         InchMaps m = new InchMaps();
-        List<Map<String, Object>> i12 = tmsJdbc.queryForList("SELECT CARTYPE,GRM_COND,MAX_COUNT FROM KNRAWMS.DS_INCH12");
-        List<Map<String, Object>> i3  = tmsJdbc.queryForList("SELECT CARTYPE,GRM_COND,MAX_COUNT FROM KNRAWMS.DS_INCH3");
+        List<Map<String, Object>> i12 = tmsJdbc.queryForList("SELECT CARTYPE,GRM_COND,MAX_COUNT FROM KNRAWMS.TMS_DS_INCH12");
+        List<Map<String, Object>> i3  = tmsJdbc.queryForList("SELECT CARTYPE,GRM_COND,MAX_COUNT FROM KNRAWMS.TMS_DS_INCH3");
         for (Map<String, Object> r : i12)
             m.inch12.computeIfAbsent(str(r.get("CARTYPE")), k -> new HashMap<>())
                     .put(str(r.get("GRM_COND")), (int) dbl(r.get("MAX_COUNT")));
@@ -1303,14 +1303,14 @@ public class AutoDispatchService {
     }
 
     /**
-     * 운송비 로드 — ROUTE_COST: Oracle KNRAWMS / CMCDV: Oracle KNRAWMS → 2-step
+     * 운송비 로드 — TMS_ROUTE_COST: Oracle KNRAWMS / CMCDV: Oracle KNRAWMS → 2-step
      * Cross-DB 조인 불가 → CARCLASS 코드명 별도 조회 후 매핑
      */
     private Map<String, Map<String, Double>> loadRouteCostMap(String costDate) {
-        // Step 1: Oracle KNRAWMS ROUTE_COST
+        // Step 1: Oracle KNRAWMS TMS_ROUTE_COST
         List<Map<String, Object>> rows = tmsJdbc.queryForList(
             "SELECT rc.PTNRKY, rc.CARCLASS, rc.COST " +
-            "FROM KNRAWMS.ROUTE_COST rc " +
+            "FROM KNRAWMS.TMS_ROUTE_COST rc " +
             "WHERE rc.DATE_START<=? AND rc.DATE_END>=?", costDate, costDate
         );
         // Step 2: Oracle KNRAWMS.CMCDV — CARCLASS 코드 → 차종명 매핑
@@ -1596,7 +1596,7 @@ public class AutoDispatchService {
         } catch (Exception e) { return null; }
     }
 
-    /** 원지 폭(mm) 해석 — SHPDI.WIDTH_MM → SKUMA.wMm → SKUKEY 파싱 → fallback 1000mm.
+    /** 원지 폭(mm) 해석 — TMS_SHPDI.WIDTH_MM → SKUMA.wMm → SKUKEY 파싱 → fallback 1000mm.
      *  원지를 세워 적재할 때 1단 높이 = 이 폭(축길이) 이 된다. */
     private double rollWidthMm(Map<String, Object> it, Map<String, SkuInfo> skumaMap, String sk) {
         double widthMm = dbl(it.get("WIDTH_MM"));
@@ -1961,7 +1961,7 @@ public class AutoDispatchService {
         double  rollPalletDeductM = 0.15;  // 파레트 차감값(m)
         // ── 원지 다단 적재높이 상한(m) (ROLL §2-2) ──
         //  0 = 미설정(차량 가용높이만 사용). >0 = 차량 가용높이와 min() 적용.
-        //  실제 적용 시 차량유형관리(DS_VEHICLE) 톤수별 높이값과 연동(min)됨.
+        //  실제 적용 시 차량유형관리(TMS_DS_VEHICLE) 톤수별 높이값과 연동(min)됨.
         double  rollMaxHeightM   = 0.0;    // 원지 다단 적재 최대높이(m), 0=차량높이만
         // ── 판지 최대높이 차량연동 여부 ──
         //  Y = MAX_BOARD_HEIGHT_M/BOARD_HEIGHT_MAX_M 을 차량 톤수별 가용높이와 min() 연동
@@ -2054,7 +2054,7 @@ public class AutoDispatchService {
         // 원통 축 = 수직(Z) — 실제 상차와 동일하게 세워 적재
         //   바닥 footprint = 직경 D × 직경 D (원), 세운 높이 = 너비(축길이) W_roll
         // 직경 D, 너비(축 길이) W_roll
-        //   W_roll: SHPDI.WIDTH_MM(=WIDTHW) → fallback: SKUMA.wMm → fallback: SKUKEY 파싱
+        //   W_roll: TMS_SHPDI.WIDTH_MM(=WIDTHW) → fallback: SKUMA.wMm → fallback: SKUKEY 파싱
         //   직경 D:  gsm/밀도/중량 역산 calcRollDiameter
         //
         // 레이어 그룹: {직경_반올림50mm → RollLayer}
@@ -2068,7 +2068,7 @@ public class AutoDispatchService {
             int qty = Math.max(1, (int) dbl(it.get("QTSHPO")));
             totalRolls += qty;
 
-            // 너비(mm): SHPDI.WIDTH_MM 우선, 없으면 SKUMA.wMm, 없으면 SKUKEY 파싱
+            // 너비(mm): TMS_SHPDI.WIDTH_MM 우선, 없으면 SKUMA.wMm, 없으면 SKUKEY 파싱
             double widthMm = dbl(it.get("WIDTH_MM"));
             if (widthMm <= 0) {
                 SkuInfo sm = skumaMap.getOrDefault(sk, new SkuInfo());
@@ -2091,7 +2091,7 @@ public class AutoDispatchService {
             if (footMm <= 0) footMm = diamMm;
 
             // ── DS_INCH 기준 1단 적재 가능 개수 조회 (차량 톤수·인치·평량별) ──
-            //  차량유형관리 DS_INCH12/DS_INCH3.MAX_COUNT.
+            //  차량유형관리 TMS_DS_INCH12/TMS_DS_INCH3.MAX_COUNT.
             //  ※ 같은 인치라도 평량(GRM_COND: GE300/LT300)에 따라 개수 다름.
             String inch = getInch(sk);
             String grm  = getGrm(sk);
@@ -2233,7 +2233,7 @@ public class AutoDispatchService {
         int    totalRolls = 0;
         int    sampleCount = 0;
         // ── DS_INCH 기준 1단 적재 가능 개수(차량 톤수·인치·평량별) ──
-        //  차량유형관리(DS_INCH12/DS_INCH3)의 MAX_COUNT = "1단으로 적재 시 적재 가능한 총 개수".
+        //  차량유형관리(TMS_DS_INCH12/TMS_DS_INCH3)의 MAX_COUNT = "1단으로 적재 시 적재 가능한 총 개수".
         //  0 = 매핑 없음(기하학적 planRollCols fallback).
         int    tier1Count = 0;  // 대표 인치/평량의 DS_INCH MAX_COUNT (1단 총 개수)
         String inchLabel  = ""; // "12인치" / "3인치"
@@ -2315,7 +2315,7 @@ public class AutoDispatchService {
                 int[] bd = parseBoardDims(sk);
                 if (bd != null) { wMm = bd[0]; lMm = bd[1]; }
             }
-            // 출고예정정보 WIDTH_MM, LENGTH 필드로 보완 (SHPDI 컬럼)
+            // 출고예정정보 WIDTH_MM, LENGTH 필드로 보완 (TMS_SHPDI 컬럼)
             if (wMm <= 0) { double v = dbl(it.get("WIDTH_MM")); if (v > 0) wMm = v; }
             if (lMm <= 0) { double v = dbl(it.get("LENGTH"));   if (v > 0) lMm = v; }
             if (wMm <= 0) wMm = 1000.0;

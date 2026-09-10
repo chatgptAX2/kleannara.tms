@@ -23,7 +23,7 @@ public class DispatchConfigApiController {
     private final DispatchConfigApiService svc;
     private final AutoDispatchService      autoDispatch;
 
-    // ── 목적식 (DS_DISPATCH_OBJECTIVE) ──────────────────────────
+    // ── 목적식 (TMS_DS_DISPATCH_OBJECTIVE) ──────────────────────────
 
     @GetMapping("/dispatch-objective/list")
     public ResponseEntity<Map<String, Object>> objList() {
@@ -50,7 +50,7 @@ public class DispatchConfigApiController {
         return ResponseEntity.ok(svc.objActive());
     }
 
-    // ── 제약조건 세트 (DS_DISPATCH_CONST_SET) ────────────────────
+    // ── 제약조건 세트 (TMS_DS_DISPATCH_CONST_SET) ────────────────────
 
     @GetMapping("/dispatch-const-set/list")
     public ResponseEntity<Map<String, Object>> setList() {
@@ -143,7 +143,7 @@ public class DispatchConfigApiController {
         return ResponseEntity.ok(svc.setItemsSave(body));
     }
 
-    // ── 제약조건 프로파일 (DS_DISPATCH_PROFILE) ──────────────────
+    // ── 제약조건 프로파일 (TMS_DS_DISPATCH_PROFILE) ──────────────────
 
     @GetMapping("/dispatch-constraint/profiles")
     public ResponseEntity<Map<String, Object>> profiles() {
@@ -199,14 +199,14 @@ public class DispatchConfigApiController {
     /**
      * 제약 조건 프로파일 기반 자동배차 (목적식 선택)
      * body: { profile_id, items: [...] } 또는 { date, ptnrky }
-     * 목적식: MIN_VEHICLES (FFD) / MAX_FILL (BFD) / MIN_COST (ROUTE_COST)
+     * 목적식: MIN_VEHICLES (FFD) / MAX_FILL (BFD) / MIN_COST (TMS_ROUTE_COST)
      */
     @PostMapping("/dispatch-constraint/auto")
     public ResponseEntity<Map<String, Object>> constraintAuto(@RequestBody Map<String, Object> body) {
         return ResponseEntity.ok(autoDispatch.runAuto(body));
     }
 
-    // ── 제약조건 항목 관리 (DS_DISPATCH_CONST) ───────────────────
+    // ── 제약조건 항목 관리 (TMS_DS_DISPATCH_CONST) ───────────────────
 
     /**
      * 전체 제약조건 목록 조회.
@@ -219,7 +219,7 @@ public class DispatchConfigApiController {
     }
 
     /**
-     * 제약조건 항목 저장 (INSERT or UPDATE DS_DISPATCH_CONST).
+     * 제약조건 항목 저장 (INSERT or UPDATE TMS_DS_DISPATCH_CONST).
      * body.const_id 없으면 INSERT, 있으면 UPDATE.
      */
     @PostMapping("/const-item/save")
@@ -229,7 +229,7 @@ public class DispatchConfigApiController {
 
     /**
      * 제약조건 항목 삭제.
-     * DS_DISPATCH_CONST_SET_ITEM 연관 행 CASCADE 삭제 후 DS_DISPATCH_CONST 삭제.
+     * TMS_DS_DISPATCH_CONST_SET_ITEM 연관 행 CASCADE 삭제 후 TMS_DS_DISPATCH_CONST 삭제.
      */
     @PostMapping("/const-item/delete")
     public ResponseEntity<Map<String, Object>> constItemDelete(@RequestBody Map<String, Object> body) {

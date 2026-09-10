@@ -15,16 +15,16 @@ import java.util.*;
  * SAP RFC 연동 및 PS배차 확장 서비스
  *
  * ■ DataSource 라우팅
- *   wmsJdbc (Oracle KNRAWMS): SHPDH, SHPDI, BZPTN (납품예정 조회)
- *   tmsJdbc (MariaDB TMS):    PS_DISPATCH_H/D, VHCMA, DOC_FILE, PS_DISPATCH_SPLIT
+ *   wmsJdbc (Oracle KNRAWMS): TMS_SHPDH, TMS_SHPDI, BZPTN (납품예정 조회)
+ *   tmsJdbc (MariaDB TMS):    TMS_PS_DISPATCH_H/D, VHCMA, TMS_DOC_FILE, PS_DISPATCH_SPLIT
  */
 @Slf4j
 @Service
 public class SapService {
 
-    /** Oracle WMS — KNRAWMS.SHPDH / SHPDI / BZPTN 조회 */
+    /** Oracle WMS — KNRAWMS.TMS_SHPDH / TMS_SHPDI / BZPTN 조회 */
     private final JdbcTemplate        wmsJdbc;
-    /** MariaDB TMS — PS_DISPATCH_H/D, VHCMA 등 직접 조작 */
+    /** MariaDB TMS — TMS_PS_DISPATCH_H/D, VHCMA 등 직접 조작 */
     private final JdbcTemplate        tmsJdbc;
     private final SapRfcService        sapRfc;
     private final AutoDispatchService  autoDispatch;
@@ -126,7 +126,7 @@ public class SapService {
             final String sql =
                 "SELECT h.SHPOKY, h.DPTNKY, COALESCE(b.NAME01,h.DPTNKY) AS DPTNM, " +
                 "       h.RQSHPD, COUNT(i.SHPOIT) AS ITEM_CNT, SUM(i.QTSHPO) AS TOTAL_QTY " +
-                "FROM KNRAWMS.SHPDH h JOIN KNRAWMS.SHPDI i ON h.SHPOKY=i.SHPOKY " +
+                "FROM KNRAWMS.TMS_SHPDH h JOIN KNRAWMS.TMS_SHPDI i ON h.SHPOKY=i.SHPOKY " +
                 "LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT'" +
                 where +
                 " GROUP BY h.SHPOKY, h.DPTNKY, b.NAME01, h.RQSHPD ORDER BY h.RQSHPD, h.DPTNKY";
@@ -148,12 +148,12 @@ public class SapService {
         Long dispHId = toLong(body.get("disp_h_id"));
         if (dispHId == null) return Map.of("ok", false, "error", "disp_h_id 필수");
         try {
-            // PS_DISPATCH_H / PS_DISPATCH_D → MariaDB tmsJdbc
+            // TMS_PS_DISPATCH_H / TMS_PS_DISPATCH_D → MariaDB tmsJdbc
             List<Map<String, Object>> heads = tmsJdbc.queryForList(
-                "SELECT * FROM KNRAWMS.PS_DISPATCH_H WHERE DISP_H_ID=?", dispHId
+                "SELECT * FROM KNRAWMS.TMS_PS_DISPATCH_H WHERE DISP_H_ID=?", dispHId
             );
             List<Map<String, Object>> details = tmsJdbc.queryForList(
-                "SELECT * FROM KNRAWMS.PS_DISPATCH_D WHERE DISP_H_ID=? ORDER BY ITEM_SEQ", dispHId
+                "SELECT * FROM KNRAWMS.TMS_PS_DISPATCH_D WHERE DISP_H_ID=? ORDER BY ITEM_SEQ", dispHId
             );
             return Map.of("ok", true, "header", heads.isEmpty() ? null : heads.get(0), "details", details);
         } catch (Exception e) { return errMap(e); }
@@ -164,9 +164,9 @@ public class SapService {
         Long dispHId = toLong(body.get("disp_h_id"));
         if (dispHId == null) return Map.of("ok", false, "error", "disp_h_id 필수");
         try {
-            // PS_DISPATCH_D / PS_DISPATCH_H → MariaDB tmsJdbc
-            tmsJdbc.update("DELETE FROM KNRAWMS.PS_DISPATCH_D WHERE DISP_H_ID=?", dispHId);
-            tmsJdbc.update("DELETE FROM KNRAWMS.PS_DISPATCH_H WHERE DISP_H_ID=?", dispHId);
+            // TMS_PS_DISPATCH_D / TMS_PS_DISPATCH_H → MariaDB tmsJdbc
+            tmsJdbc.update("DELETE FROM KNRAWMS.TMS_PS_DISPATCH_D WHERE DISP_H_ID=?", dispHId);
+            tmsJdbc.update("DELETE FROM KNRAWMS.TMS_PS_DISPATCH_H WHERE DISP_H_ID=?", dispHId);
             return Map.of("ok", true);
         } catch (Exception e) { return errMap(e); }
     }
@@ -230,8 +230,8 @@ public class SapService {
             }
             if (sets.isEmpty()) return Map.of("ok", false, "error", "변경 필드 없음");
             sets.add("LMODAT=?"); args.add(today); args.add(dispDId);
-            // PS_DISPATCH_D → MariaDB tmsJdbc
-            tmsJdbc.update("UPDATE KNRAWMS.PS_DISPATCH_D SET " + String.join(",", sets) + " WHERE DISP_D_ID=?", args.toArray());
+            // TMS_PS_DISPATCH_D → MariaDB tmsJdbc
+            tmsJdbc.update("UPDATE KNRAWMS.TMS_PS_DISPATCH_D SET " + String.join(",", sets) + " WHERE DISP_D_ID=?", args.toArray());
             return Map.of("ok", true);
         } catch (Exception e) { return errMap(e); }
     }
@@ -247,10 +247,10 @@ public class SapService {
             String cartype = str(body.get("cartype"));
             if (dptnky.isBlank()) return Map.of("ok", false, "error", "dptnky 필수");
 
-            // PS_DISPATCH_H → MariaDB tmsJdbc
+            // TMS_PS_DISPATCH_H → MariaDB tmsJdbc
             String dispatchNo = "PS" + dispDate + now;
             tmsJdbc.update(
-                "INSERT INTO KNRAWMS.PS_DISPATCH_H (DISPATCH_NO,DPTNKY,DPTNM,DISP_DATE,STATUS,CARTYPE,NOTE,CREDAT,CRETIM,LMODAT) " +
+                "INSERT INTO KNRAWMS.TMS_PS_DISPATCH_H (DISPATCH_NO,DPTNKY,DPTNM,DISP_DATE,STATUS,CARTYPE,NOTE,CREDAT,CRETIM,LMODAT) " +
                 "VALUES (?,?,?,?,?,?,?,?,?,?)",
                 dispatchNo, dptnky, dptnm, dispDate, "DRAFT", cartype,
                 str(body.get("note")), today, now, today
@@ -262,9 +262,9 @@ public class SapService {
             if (items != null) {
                 int seq = 1;
                 for (Map<String, Object> it : items) {
-                    // PS_DISPATCH_D → MariaDB tmsJdbc
+                    // TMS_PS_DISPATCH_D → MariaDB tmsJdbc
                     tmsJdbc.update(
-                        "INSERT INTO KNRAWMS.PS_DISPATCH_D (DISP_H_ID,SHPOKY,SHPOIT,SKUKEY,QTSHPO,KG_WEIGHT,ITEM_SEQ,CREDAT) VALUES (?,?,?,?,?,?,?,?)",
+                        "INSERT INTO KNRAWMS.TMS_PS_DISPATCH_D (DISP_H_ID,SHPOKY,SHPOIT,SKUKEY,QTSHPO,KG_WEIGHT,ITEM_SEQ,CREDAT) VALUES (?,?,?,?,?,?,?,?)",
                         newId, it.get("shpoky"), it.get("shpoit"), it.get("skukey"),
                         it.get("qtshpo"), it.get("kg_weight"), seq++, today
                     );

@@ -52,7 +52,7 @@ public class WmsViewService {
      */
     private static final Set<String> ORACLE_WMS_TABLES = new HashSet<>(Arrays.asList(
         "CMCDM", "CMCDV", "WAHMA", "SKUMA", "BZPTN", "MEASI",
-        "SHPDH", "SHPDI", "IFWMS113", "RECDI", "BZPTN_DETAIL",
+        "TMS_SHPDH", "TMS_SHPDI", "IFWMS113", "RECDI", "BZPTN_DETAIL",
         // VHCMA(차량마스터)는 Oracle KNRAWMS 실제 테이블(@Table schema=KNRAWMS, 시퀀스 KNRAWMS.VHCMA_SEQ).
         //   차량저장/차량관리(VehicleService)는 wmsPU(Oracle KNRAWMS)로 INSERT/SELECT 하는데,
         //   기존에는 VHCMA가 여기 없어 WmsViewService(차량마스터 화면)만 tmsDataSource(MariaDB)로 라우팅됨
@@ -65,30 +65,30 @@ public class WmsViewService {
      * Oracle KNRAWMS TMS 자체 테이블 — tmsJdbcTemplate / tmsDataSource 사용
      */
     private static final Set<String> ORACLE_TMS_TABLES = new HashSet<>(Arrays.asList(
-        "ROUTE_COST", "DS_VEHICLE",
-        "PS_DISPATCH_H", "PS_DISPATCH_D", "PS_DISPATCH_SPLIT",
-        "DS_INCH12", "DS_INCH3",
-        "DS_DISPATCH_OBJECTIVE", "DS_DISPATCH_CONST_SET", "DS_DISPATCH_CONST_SET_ITEM",
-        "DS_DISPATCH_PROFILE", "DS_DISPATCH_CONSTRAINT", "DS_DISPATCH_CONST",
-        "DOC_FOLDER", "DOC_FILE"
+        "TMS_ROUTE_COST", "TMS_DS_VEHICLE",
+        "TMS_PS_DISPATCH_H", "TMS_PS_DISPATCH_D", "PS_DISPATCH_SPLIT",
+        "TMS_DS_INCH12", "TMS_DS_INCH3",
+        "TMS_DS_DISPATCH_OBJECTIVE", "TMS_DS_DISPATCH_CONST_SET", "TMS_DS_DISPATCH_CONST_SET_ITEM",
+        "TMS_DS_DISPATCH_PROFILE", "TMS_DS_DISPATCH_CONSTRAINT", "TMS_DS_DISPATCH_CONST",
+        "TMS_DOC_FOLDER", "TMS_DOC_FILE"
     ));
 
     private static final Set<String> ALLOWED_TABLES = new LinkedHashSet<>(Arrays.asList(
         // Oracle WMS (KNRAWMS 스키마)
         "CMCDM", "CMCDV", "WAHMA", "SKUMA", "BZPTN", "MEASI",
-        "SHPDH", "SHPDI", "IFWMS113", "BZPTN_DETAIL", "RECDI",
+        "TMS_SHPDH", "TMS_SHPDI", "IFWMS113", "BZPTN_DETAIL", "RECDI",
         // Oracle KNRAWMS TMS 자체 테이블
-        "VHCMA", "ROUTE_COST", "DS_VEHICLE",
-        "PS_DISPATCH_H", "PS_DISPATCH_D", "PS_DISPATCH_SPLIT",
-        "DS_INCH12", "DS_INCH3",
-        "DS_DISPATCH_OBJECTIVE", "DS_DISPATCH_CONST_SET", "DS_DISPATCH_CONST_SET_ITEM",
-        "DS_DISPATCH_PROFILE", "DS_DISPATCH_CONSTRAINT", "DS_DISPATCH_CONST",
-        "DOC_FOLDER", "DOC_FILE"
+        "VHCMA", "TMS_ROUTE_COST", "TMS_DS_VEHICLE",
+        "TMS_PS_DISPATCH_H", "TMS_PS_DISPATCH_D", "PS_DISPATCH_SPLIT",
+        "TMS_DS_INCH12", "TMS_DS_INCH3",
+        "TMS_DS_DISPATCH_OBJECTIVE", "TMS_DS_DISPATCH_CONST_SET", "TMS_DS_DISPATCH_CONST_SET_ITEM",
+        "TMS_DS_DISPATCH_PROFILE", "TMS_DS_DISPATCH_CONSTRAINT", "TMS_DS_DISPATCH_CONST",
+        "TMS_DOC_FOLDER", "TMS_DOC_FILE"
     ));
 
     // 읽기 전용 테이블 (INSERT/UPDATE/DELETE 불가)
     private static final Set<String> READONLY_TABLES = new HashSet<>(Arrays.asList(
-        "SHPDH", "SHPDI", "IFWMS113"
+        "TMS_SHPDH", "TMS_SHPDI", "IFWMS113"
     ));
 
     // SELECT 전용 SQL 패턴 체크

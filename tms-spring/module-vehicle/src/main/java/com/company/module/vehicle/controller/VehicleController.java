@@ -16,7 +16,7 @@ import java.util.Map;
  * 차량유형 / 차량마스터 Controller
  * URL prefix: /vehicle-api (+ /api 의 VHCMA 전용 엔드포인트)
  *
- * NOTE: 차종(DS_VEHICLE/CMCDV) 조회·저장 엔드포인트
+ * NOTE: 차종(TMS_DS_VEHICLE/CMCDV) 조회·저장 엔드포인트
  *   GET  /api/carclass, /api/carclass-by-product, /api/ds-vehicle
  *   POST /api/carclass/save
  * 는 {@link com.company.module.wms.controller.StrategyController} 에도 동일하게

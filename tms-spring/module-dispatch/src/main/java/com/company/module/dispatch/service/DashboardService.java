@@ -11,7 +11,7 @@ import java.util.*;
 
 /**
  * TMS 대시보드 Service
- * Oracle 19C – PS_DISPATCH_H 기반 운송현황 / 효율성 집계
+ * Oracle 19C – TMS_PS_DISPATCH_H 기반 운송현황 / 효율성 집계
  */
 @Slf4j
 @Service
@@ -39,7 +39,7 @@ public class DashboardService {
                    SUM(CASE WHEN STATUS = 'DRAFT'     THEN 1 ELSE 0 END) AS PENDING_CNT,
                    SUM(CASE WHEN STATUS = 'CONFIRMED' THEN 1 ELSE 0 END) AS CONFIRMED_CNT,
                    COUNT(*) AS TOTAL_CNT
-            FROM KNRAWMS.PS_DISPATCH_H
+            FROM KNRAWMS.TMS_PS_DISPATCH_H
             WHERE RQSHPD >= ? AND RQSHPD <= ?
               AND NVL(STATUS, 'DRAFT') <> 'CANCELLED'
             GROUP BY RQSHPD
@@ -54,7 +54,7 @@ public class DashboardService {
                      ELSE MATERIAL_TYPE END AS MAT_TYPE,
                 COUNT(*) AS CAR_CNT,
                 ROUND(SUM(TOTAL_KG) / 1000, 2) AS TOTAL_TON
-            FROM KNRAWMS.PS_DISPATCH_H
+            FROM KNRAWMS.TMS_PS_DISPATCH_H
             WHERE RQSHPD >= ? AND RQSHPD <= ?
               AND NVL(STATUS, 'DRAFT') <> 'CANCELLED'
             GROUP BY
@@ -90,7 +90,7 @@ public class DashboardService {
                     ELSE '80~100%'
                 END AS RATE_BAND,
                 COUNT(*) AS CAR_CNT
-            FROM KNRAWMS.PS_DISPATCH_H
+            FROM KNRAWMS.TMS_PS_DISPATCH_H
             WHERE RQSHPD >= ? AND RQSHPD <= ?
               AND NVL(STATUS, 'DRAFT') <> 'CANCELLED'
             GROUP BY
@@ -118,7 +118,7 @@ public class DashboardService {
                 NVL(SUBSTR(h.DPTNKY, 1, 2), '기타') AS REGION,
                 COUNT(*) AS CAR_CNT,
                 ROUND(SUM(h.TOTAL_KG) / 1000, 2) AS TOTAL_TON
-            FROM KNRAWMS.PS_DISPATCH_H h
+            FROM KNRAWMS.TMS_PS_DISPATCH_H h
             WHERE h.RQSHPD >= ? AND h.RQSHPD <= ?
               AND NVL(h.STATUS, 'DRAFT') <> 'CANCELLED'
             GROUP BY NVL(SUBSTR(h.DPTNKY, 1, 2), '기타')
@@ -135,7 +135,7 @@ public class DashboardService {
                 ROUND(AVG(CASE WHEN LOAD_KG > 0 THEN TOTAL_KG / LOAD_KG * 100 ELSE NULL END), 1) AS AVG_RATE,
                 ROUND(MAX(CASE WHEN LOAD_KG > 0 THEN TOTAL_KG / LOAD_KG * 100 ELSE NULL END), 1) AS MAX_RATE,
                 ROUND(MIN(CASE WHEN LOAD_KG > 0 THEN TOTAL_KG / LOAD_KG * 100 ELSE NULL END), 1) AS MIN_RATE
-            FROM KNRAWMS.PS_DISPATCH_H
+            FROM KNRAWMS.TMS_PS_DISPATCH_H
             WHERE RQSHPD >= ? AND RQSHPD <= ?
               AND NVL(STATUS, 'DRAFT') <> 'CANCELLED'
             GROUP BY ROLLUP(MATERIAL_TYPE)
@@ -149,7 +149,7 @@ public class DashboardService {
                 CARTYPE,
                 COUNT(*) AS CAR_CNT,
                 ROUND(AVG(CASE WHEN LOAD_KG > 0 THEN TOTAL_KG / LOAD_KG * 100 ELSE NULL END), 1) AS AVG_RATE
-            FROM KNRAWMS.PS_DISPATCH_H
+            FROM KNRAWMS.TMS_PS_DISPATCH_H
             WHERE RQSHPD >= ? AND RQSHPD <= ?
               AND NVL(STATUS, 'DRAFT') <> 'CANCELLED'
               AND CARTYPE IS NOT NULL
@@ -188,14 +188,14 @@ public class DashboardService {
                 SUM(CASE WHEN STATUS = 'CANCELLED' THEN 1 ELSE 0 END) AS CANCELLED,
                 COUNT(*) AS TOTAL,
                 ROUND(SUM(TOTAL_KG)/1000, 2) AS TOTAL_TON
-            FROM KNRAWMS.PS_DISPATCH_H
+            FROM KNRAWMS.TMS_PS_DISPATCH_H
             WHERE RQSHPD = ?
               AND NVL(STATUS, 'DRAFT') <> 'CANCELLED'
             """;
         Map<String, Object> todayRow = safeQueryForMap(todaySql, today);
 
         // 전일 건수 (증감 비교)
-        String yestSql = "SELECT COUNT(*) AS TOTAL FROM KNRAWMS.PS_DISPATCH_H "
+        String yestSql = "SELECT COUNT(*) AS TOTAL FROM KNRAWMS.TMS_PS_DISPATCH_H "
                        + "WHERE RQSHPD = ? AND NVL(STATUS, 'DRAFT') <> 'CANCELLED'";
         Map<String, Object> yestRow = safeQueryForMap(yestSql, yesterday);
 
@@ -204,7 +204,7 @@ public class DashboardService {
             SELECT COUNT(*) AS TOTAL_CAR,
                    ROUND(SUM(TOTAL_KG)/1000, 2) AS TOTAL_TON,
                    ROUND(AVG(CASE WHEN LOAD_KG > 0 THEN TOTAL_KG/LOAD_KG*100 ELSE NULL END), 1) AS AVG_LOAD_RATE
-            FROM KNRAWMS.PS_DISPATCH_H
+            FROM KNRAWMS.TMS_PS_DISPATCH_H
             WHERE RQSHPD >= ? AND RQSHPD <= ?
               AND NVL(STATUS, 'DRAFT') <> 'CANCELLED'
             """;

@@ -4,7 +4,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 /**
- * DS_VEHICLE 차량제원 응답 DTO
+ * TMS_DS_VEHICLE 차량제원 응답 DTO
  * Flask: api_ds_vehicle() 결과 대응
  */
 @Getter

@@ -4,12 +4,12 @@ import jakarta.persistence.*;
 import lombok.*;
 
 /**
- * 출고 헤더 (SHPDH)
+ * 출고 헤더 (TMS_SHPDH)
  * - 출고전표 헤더 정보 (납품처, 창고, 출고상태, 출하유형 등)
  * - SAP 연계 테이블: ddl-auto=none, INSERT/UPDATE 금지 (조회 전용)
  */
 @Entity
-@Table(name = "SHPDH")
+@Table(name = "TMS_SHPDH")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ShpdH {

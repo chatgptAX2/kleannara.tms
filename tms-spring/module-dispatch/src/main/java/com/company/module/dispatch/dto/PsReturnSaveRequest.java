@@ -17,8 +17,8 @@ import java.util.List;
  * ※ 기존 PsDispatchSaveRequest(판매/이송 배차)는 건드리지 않는 신규 DTO.
  *   반품 대상은 KNRAWMS.IFWMS103 → 문서 키가 EBELN(납품문서번호)/EBELP(아이템).
  *   저장 시:
- *     - PS_DISPATCH_H INSERT (DISPATCH_TYPE='GR')
- *     - PS_DISPATCH_D INSERT (SHPOKY=EBELN, SHPOIT=EBELP 로 매핑하여 저장 — 호환)
+ *     - TMS_PS_DISPATCH_H INSERT (DISPATCH_TYPE='GR')
+ *     - TMS_PS_DISPATCH_D INSERT (SHPOKY=EBELN, SHPOIT=EBELP 로 매핑하여 저장 — 호환)
  *     - UPDATE IFWMS103 SET STKNUM=가선적번호(DISPATCH_NO)
  *
  * 프론트가 검색 row 를 그대로 전송하므로 대문자/snake_case 키를 폭넓게 수용한다.

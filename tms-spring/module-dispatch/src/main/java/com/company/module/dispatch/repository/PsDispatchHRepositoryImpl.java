@@ -22,8 +22,8 @@ public class PsDispatchHRepositoryImpl implements PsDispatchHRepositoryCustom {
 
     private static final String BASE_SQL =
         "SELECT h.*, COALESCE(v.LOAD_TON, 0) AS LOAD_TON " +
-        "FROM KNRAWMS.PS_DISPATCH_H h " +
-        "LEFT JOIN KNRAWMS.DS_VEHICLE v ON v.CARTYPE = h.CARTYPE";
+        "FROM KNRAWMS.TMS_PS_DISPATCH_H h " +
+        "LEFT JOIN KNRAWMS.TMS_DS_VEHICLE v ON v.CARTYPE = h.CARTYPE";
 
     private static final String ORDER_BY = " ORDER BY h.RQSHPD DESC, h.DISPATCH_NO";
 

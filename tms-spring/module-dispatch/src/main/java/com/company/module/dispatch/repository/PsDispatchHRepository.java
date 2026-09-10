@@ -15,7 +15,7 @@ public interface PsDispatchHRepository extends JpaRepository<PsDispatchH, String
     /** 배차번호 PREFIX 기반 당일 최대번호 조회 (채번용) */
     @Query(value = """
         SELECT MAX(DISPATCH_NO)
-        FROM KNRAWMS.PS_DISPATCH_H
+        FROM KNRAWMS.TMS_PS_DISPATCH_H
         WHERE DISPATCH_NO LIKE :prefix || '%'
         """, nativeQuery = true)
     Optional<String> findMaxDispatchNoByPrefix(@Param("prefix") String prefix);

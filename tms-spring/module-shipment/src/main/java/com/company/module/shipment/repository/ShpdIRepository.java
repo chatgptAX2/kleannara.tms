@@ -8,7 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import java.util.List;
 
 /**
- * 출고 아이템 Repository (SHPDI)
+ * 출고 아이템 Repository (TMS_SHPDI)
  */
 public interface ShpdIRepository extends JpaRepository<ShpdI, ShpdIId> {
 
@@ -16,7 +16,7 @@ public interface ShpdIRepository extends JpaRepository<ShpdI, ShpdIId> {
      * LOTA02(플랜트) 필터 옵션 조회 — 공백 제거
      */
     @Query(value = """
-        SELECT DISTINCT LOTA02 FROM KNRAWMS.SHPDI
+        SELECT DISTINCT LOTA02 FROM KNRAWMS.TMS_SHPDI
         WHERE LOTA02 IS NOT NULL AND LOTA02 <> ' '
         ORDER BY LOTA02
         """, nativeQuery = true)

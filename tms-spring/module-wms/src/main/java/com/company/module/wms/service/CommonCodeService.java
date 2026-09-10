@@ -155,14 +155,14 @@ public class CommonCodeService {
         try {
             List<Map<String, Object>> header = jdbc.queryForList(
                 "SELECT h.*, b.NAME01 AS DPTNM_FULL " +
-                "FROM KNRAWMS.SHPDH h LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT' " +
+                "FROM KNRAWMS.TMS_SHPDH h LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY=h.DPTNKY AND b.PTNRTY='CT' " +
                 "WHERE h.SHPOKY = ?", shpoky
             );
             if (header.isEmpty()) return Map.of("ok", false, "error", "문서 없음");
 
             List<Map<String, Object>> items = jdbc.queryForList(
                 "SELECT i.*, s.SKUNM AS SKUNM_FULL " +
-                "FROM KNRAWMS.SHPDI i LEFT JOIN KNRAWMS.SKUMA s ON s.SKUKEY = i.SKUKEY " +
+                "FROM KNRAWMS.TMS_SHPDI i LEFT JOIN KNRAWMS.SKUMA s ON s.SKUKEY = i.SKUKEY " +
                 "WHERE i.SHPOKY = ? ORDER BY i.SHPOIT", shpoky
             );
             return Map.of("ok", true, "header", header.get(0), "items", items);

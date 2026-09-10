@@ -154,9 +154,9 @@ public class SapRfcService {
         System.currentTimeMillis() % 10_000_000L
     );
 
-    /** Oracle WMS — KNRAWMS 테이블 (SHPDI/SHPDH 등, 선적 생성/삭제에 미사용) */
+    /** Oracle WMS — KNRAWMS 테이블 (TMS_SHPDI/TMS_SHPDH 등, 선적 생성/삭제에 미사용) */
     private final JdbcTemplate       wmsJdbc;
-    /** MariaDB TMS — PS_DISPATCH_H/D, VHCMA (배차 조회/확정) */
+    /** MariaDB TMS — TMS_PS_DISPATCH_H/D, VHCMA (배차 조회/확정) */
     private final JdbcTemplate       tmsJdbc;
     private final SapJcoProperties   jcoProps;
 
@@ -179,10 +179,10 @@ public class SapRfcService {
      *
      * body : { stknums: [STDLNR(=DISPATCH_NO), ...] }  ← 가선적번호 목록(1건 이상)
      *   가선적번호(STDLNR) 단위로:
-     *     1) SHPDI 에서 SAP납품문서(SVBELN) 목록 조회 → T_VBELN
+     *     1) TMS_SHPDI 에서 SAP납품문서(SVBELN) 목록 조회 → T_VBELN
      *     2) RFC Z_TMS_SHIPMENT_CRDL(I_GUBUN='C') 호출
      *     3) RFC 성공 시 WMS_IFC301 공통처리 API 호출
-     *     4) PS_DISPATCH_H.STKNUM = E_TKNUM (SAP선적번호) 기록
+     *     4) TMS_PS_DISPATCH_H.STKNUM = E_TKNUM (SAP선적번호) 기록
      *
      * 반환 : { ok, results:[{stdlnr, ok, tknum, mock, message, svbeln_cnt, wms_result, db_update_err, env}], env }
      */
@@ -210,7 +210,7 @@ public class SapRfcService {
                 //   STATIT 은 변경하지 않으므로, STATIT='NEW' 를 강제하면 배차저장된 선적이
                 //   조회/처리에서 누락된다. 배차 판단 기준은 STDLNR 채번 여부로 통일.
                 List<Map<String, Object>> svbelnRows = wmsJdbc.queryForList(
-                    "SELECT DISTINCT SI.SVBELN FROM KNRAWMS.SHPDI SI " +
+                    "SELECT DISTINCT SI.SVBELN FROM KNRAWMS.TMS_SHPDI SI " +
                     "WHERE SI.STDLNR=? " +
                     "AND SI.SVBELN <> ' ' ORDER BY SI.SVBELN",
                     stdlnr
@@ -243,16 +243,16 @@ public class SapRfcService {
                 row.put("mock", isMock);
                 row.put("svbeln_cnt", vbelnList.size());
 
-                // 3) RFC 성공 시 WMS_IFC301 호출 + SAP 선적번호(SHPDI.STKNUM) 기록
-                // ※ SAP 선적번호는 SHPDI.STKNUM 에 저장한다. (운영 PS_DISPATCH_H 에는
-                //   STKNUM 컬럼이 없어 조회/저장 모두 SHPDI.STKNUM 을 사용)
+                // 3) RFC 성공 시 WMS_IFC301 호출 + SAP 선적번호(TMS_SHPDI.STKNUM) 기록
+                // ※ SAP 선적번호는 TMS_SHPDI.STKNUM 에 저장한다. (운영 TMS_PS_DISPATCH_H 에는
+                //   STKNUM 컬럼이 없어 조회/저장 모두 TMS_SHPDI.STKNUM 을 사용)
                 if (rfcOk) {
                     if (!tknum.isEmpty()) {
                         Map<String, Object> wms = callWmsIfc301(stdlnr, tknum, "C", env);
                         row.put("wms_result", wms);
                         try {
                             wmsJdbc.update(
-                                "UPDATE KNRAWMS.SHPDI SET STKNUM=?, LMODAT=?, LMOUSR='WEB' " +
+                                "UPDATE KNRAWMS.TMS_SHPDI SET STKNUM=?, LMODAT=?, LMOUSR='WEB' " +
                                 "WHERE STDLNR=?",
                                 tknum, today, stdlnr
                             );
@@ -260,7 +260,7 @@ public class SapRfcService {
                             row.put("db_update_err", dbEx.getMessage());
                             stdoutLog("[shipment-create][DB-ERR] stdlnr=" + stdlnr
                                     + " tknum=" + tknum + " error=" + dbEx.getMessage());
-                            log.error("[shipment-create] SHPDI STKNUM 업데이트 실패: {} / stdlnr={} tknum={}",
+                            log.error("[shipment-create] TMS_SHPDI STKNUM 업데이트 실패: {} / stdlnr={} tknum={}",
                                 dbEx.getMessage(), stdlnr, tknum);
                         }
                     } else {
@@ -291,11 +291,11 @@ public class SapRfcService {
      *
      * body : { items: [{ stdlnr, tknum }, ...] }
      *   - stdlnr : 가선적번호 (DISPATCH_NO)
-     *   - tknum  : SAP 선적번호 (= 선적목록의 "SAP 선적번호" 컬럼값, PS_DISPATCH_H.STKNUM)
+     *   - tknum  : SAP 선적번호 (= 선적목록의 "SAP 선적번호" 컬럼값, TMS_PS_DISPATCH_H.STKNUM)
      *   가선적번호 단위로:
      *     1) RFC Z_TMS_SHIPMENT_CRDL(I_GUBUN='D', I_TKNUM=선적번호) 호출
      *     2) RFC 성공 시 WMS_IFC301 공통처리 API 호출
-     *     3) PS_DISPATCH_H.STKNUM = NULL 초기화
+     *     3) TMS_PS_DISPATCH_H.STKNUM = NULL 초기화
      *
      * 반환 : { ok, results:[{stdlnr, tknum, ok, mock, message, wms_result, db_update_err, env}], env }
      */
@@ -339,15 +339,15 @@ public class SapRfcService {
                 row.put("mock", isMock);
                 row.put("message", msg);
 
-                // 2) RFC 성공 시 WMS_IFC301 호출 + SAP 선적번호(SHPDI.STKNUM) 초기화
-                // ※ SAP 선적번호는 SHPDI.STKNUM 에 저장/초기화한다. (운영 PS_DISPATCH_H 에
-                //   STKNUM 컬럼이 없어 조회/저장 모두 SHPDI.STKNUM 을 사용)
+                // 2) RFC 성공 시 WMS_IFC301 호출 + SAP 선적번호(TMS_SHPDI.STKNUM) 초기화
+                // ※ SAP 선적번호는 TMS_SHPDI.STKNUM 에 저장/초기화한다. (운영 TMS_PS_DISPATCH_H 에
+                //   STKNUM 컬럼이 없어 조회/저장 모두 TMS_SHPDI.STKNUM 을 사용)
                 if (rfcOk) {
                     Map<String, Object> wms = callWmsIfc301(stdlnr, tknum, "D", env);
                     row.put("wms_result", wms);
                     try {
                         wmsJdbc.update(
-                            "UPDATE KNRAWMS.SHPDI SET STKNUM=' ', LMODAT=?, LMOUSR='WEB' " +
+                            "UPDATE KNRAWMS.TMS_SHPDI SET STKNUM=' ', LMODAT=?, LMOUSR='WEB' " +
                             "WHERE STDLNR=?",
                             today, stdlnr
                         );
@@ -355,7 +355,7 @@ public class SapRfcService {
                         row.put("db_update_err", dbEx.getMessage());
                         stdoutLog("[shipment-delete][DB-ERR] stdlnr=" + stdlnr
                                 + " tknum=" + tknum + " error=" + dbEx.getMessage());
-                        log.error("[shipment-delete] SHPDI STKNUM 초기화 실패: {} / stdlnr={} tknum={}",
+                        log.error("[shipment-delete] TMS_SHPDI STKNUM 초기화 실패: {} / stdlnr={} tknum={}",
                             dbEx.getMessage(), stdlnr, tknum);
                     }
                 }
@@ -394,9 +394,9 @@ public class SapRfcService {
      * Flask api_ps_sap_delete 이식 (실운영 스키마 DISPATCH_NO / STKNUM 기준).
      *
      * body : { stknums: [STDLNR, ...] }
-     *   ① SHPDI.STDLNR = ' '            (가선적번호 초기화 — NOT NULL 제약이므로 공백)
-     *   ② SHPDH.VEHINO = ' ', CARTON=' ' (배차 차량유형 초기화 — NOT NULL 제약이므로 공백)
-     *   ③ PS_DISPATCH_H.STATUS = 'CANCELLED'
+     *   ① TMS_SHPDI.STDLNR = ' '            (가선적번호 초기화 — NOT NULL 제약이므로 공백)
+     *   ② TMS_SHPDH.VEHINO = ' ', CARTON=' ' (배차 차량유형 초기화 — NOT NULL 제약이므로 공백)
+     *   ③ TMS_PS_DISPATCH_H.STATUS = 'CANCELLED'
      * 반환 : { ok, affected, stknums, restore_vehicles:[...] }  (배차탭 복원용)
      */
     @Transactional
@@ -414,16 +414,16 @@ public class SapRfcService {
             Object[] args = stknums.toArray();
             String today = LocalDate.now().format(YMDFORMAT);
 
-            // ① 삭제 전 PS_DISPATCH_H + D 에서 복원용 데이터 조회 (PS_DISPATCH_* → tmsJdbc)
+            // ① 삭제 전 TMS_PS_DISPATCH_H + D 에서 복원용 데이터 조회 (PS_DISPATCH_* → tmsJdbc)
             List<Map<String, Object>> dispRows = tmsJdbc.queryForList(
                 "SELECT h.DISPATCH_NO, h.CARTYPE, h.RQSHPD, h.DPTNKY, h.DPTNM, " +
                 "       h.TOTAL_KG, h.TOTAL_CNT " +
-                "FROM KNRAWMS.PS_DISPATCH_H h WHERE h.DISPATCH_NO IN (" + inPh + ")", args
+                "FROM KNRAWMS.TMS_PS_DISPATCH_H h WHERE h.DISPATCH_NO IN (" + inPh + ")", args
             );
             List<Map<String, Object>> dispDetail = tmsJdbc.queryForList(
                 "SELECT d.DISPATCH_NO, d.SHPOKY, d.SHPOIT, d.SKUKEY, d.DESC01, " +
                 "       d.QTSHPO, d.UOMKEY, d.DPTNKY, d.DPTNM, d.GRSWGT, d.KG_WEIGHT " +
-                "FROM KNRAWMS.PS_DISPATCH_D d WHERE d.DISPATCH_NO IN (" + inPh + ") " +
+                "FROM KNRAWMS.TMS_PS_DISPATCH_D d WHERE d.DISPATCH_NO IN (" + inPh + ") " +
                 "ORDER BY d.DISPATCH_NO, d.SEQ", args
             );
 
@@ -447,42 +447,42 @@ public class SapRfcService {
                 restoreVehicles.add(v);
             }
 
-            // ② 삭제 대상 SHPOKY 수집 (SHPDH.VEHINO 초기화용, Oracle KNRAWMS → wmsJdbc)
+            // ② 삭제 대상 SHPOKY 수집 (TMS_SHPDH.VEHINO 초기화용, Oracle KNRAWMS → wmsJdbc)
             //   [A] 전역 60초 타임아웃을 우회해 개별 180초로 실행(ORA-01013 방지).
             //   [B] LMODAT 은 아래 ③④ 에서 SQL 함수(TO_CHAR(SYSDATE)) 로 세팅 → 바인드 인자 축소.
             List<String> shpokyList = wmsQueryStrListLongTimeout(
-                "SELECT DISTINCT SHPOKY FROM KNRAWMS.SHPDI WHERE STDLNR IN (" + inPh + ")",
+                "SELECT DISTINCT SHPOKY FROM KNRAWMS.TMS_SHPDI WHERE STDLNR IN (" + inPh + ")",
                 args
             ).stream().filter(s -> !s.isEmpty()).collect(Collectors.toList());
 
-            // ③ SHPDI.STDLNR → ' ' (기본값 공백 복원)
+            // ③ TMS_SHPDI.STDLNR → ' ' (기본값 공백 복원)
             //   [A] 개별 180초 타임아웃.  [B] LMODAT=TO_CHAR(SYSDATE,'YYYYMMDD') 로 통일
             //        (정상 언배차 로직 PsDispatchService 와 동일 패턴 — DB 시각 기준, 결과 동일).
             int affected = wmsUpdateLongTimeout(
-                "UPDATE KNRAWMS.SHPDI SET STDLNR=' ', LMODAT=TO_CHAR(SYSDATE,'YYYYMMDD'), LMOUSR='WEB' " +
+                "UPDATE KNRAWMS.TMS_SHPDI SET STDLNR=' ', LMODAT=TO_CHAR(SYSDATE,'YYYYMMDD'), LMOUSR='WEB' " +
                 "WHERE STDLNR IN (" + inPh + ")",
                 args
             );
 
-            // ④ SHPDH.VEHINO / CARTON → ' ' (배차 차량유형 초기화)
-            // ※ SHPDH 의 VEHINO/CARTON/CARNO/DRIVER/DRIVERCEL 컬럼은 Oracle 에서 NOT NULL 제약이라
+            // ④ TMS_SHPDH.VEHINO / CARTON → ' ' (배차 차량유형 초기화)
+            // ※ TMS_SHPDH 의 VEHINO/CARTON/CARNO/DRIVER/DRIVERCEL 컬럼은 Oracle 에서 NOT NULL 제약이라
             //   NULL 을 세팅하면 ORA-01407 이 발생한다. 배차저장(PsDispatchService) 과 동일하게
-            //   NULL 대신 공백 1칸(' ')으로 복원한다. (SHPDI.STDLNR=' ' 복원과 동일 패턴)
+            //   NULL 대신 공백 1칸(' ')으로 복원한다. (TMS_SHPDI.STDLNR=' ' 복원과 동일 패턴)
             //   [A] 개별 180초 타임아웃.  [B] LMODAT SQL 함수화.
             if (!shpokyList.isEmpty()) {
                 String inPh2 = String.join(",", Collections.nCopies(shpokyList.size(), "?"));
                 wmsUpdateLongTimeout(
-                    "UPDATE KNRAWMS.SHPDH SET VEHINO=' ', CARTON=' ', LMODAT=TO_CHAR(SYSDATE,'YYYYMMDD'), LMOUSR='WEB' " +
+                    "UPDATE KNRAWMS.TMS_SHPDH SET VEHINO=' ', CARTON=' ', LMODAT=TO_CHAR(SYSDATE,'YYYYMMDD'), LMOUSR='WEB' " +
                     "WHERE SHPOKY IN (" + inPh2 + ")",
                     shpokyList.toArray()
                 );
             }
 
-            // ⑤ PS_DISPATCH_H.STATUS → 'CANCELLED' (PS_DISPATCH_H → tmsJdbc)
-            //  ※ 버그수정: PS_DISPATCH_H 에는 UPDDAT 컬럼이 없음(bad SQL grammar).
+            // ⑤ TMS_PS_DISPATCH_H.STATUS → 'CANCELLED' (TMS_PS_DISPATCH_H → tmsJdbc)
+            //  ※ 버그수정: TMS_PS_DISPATCH_H 에는 UPDDAT 컬럼이 없음(bad SQL grammar).
             //    최종수정일 컬럼은 LMODAT (INSERT 시에도 DISPATCH_NO,…,CREDAT,CRETIM,LMODAT 사용).
             tmsJdbc.update(
-                "UPDATE KNRAWMS.PS_DISPATCH_H SET STATUS='CANCELLED', LMODAT=? " +
+                "UPDATE KNRAWMS.TMS_PS_DISPATCH_H SET STATUS='CANCELLED', LMODAT=? " +
                 "WHERE DISPATCH_NO IN (" + inPh + ")",
                 concat(new Object[]{today}, args)
             );
@@ -512,7 +512,7 @@ public class SapRfcService {
 
     // ── 긴 타임아웃 전용 WMS 실행 헬퍼 (ORA-01013 대응) ──────────────────────
     //  wmsJdbcTemplate 전역 queryTimeout(60초)은 SAP선적탭 조회 보호용이다.
-    //  배차삭제(sapDelete)의 SHPDI/SHPDH 갱신은 대상 구간이 넓을 때 60초를 초과해
+    //  배차삭제(sapDelete)의 TMS_SHPDI/TMS_SHPDH 갱신은 대상 구간이 넓을 때 60초를 초과해
     //  ORA-01013(작업 취소)이 발생하므로, 이 작업에 한해 PreparedStatement 에
     //  개별 queryTimeout 을 크게(기본 180초) 지정해 실행한다. (기능·결과는 동일)
     private static final int WMS_DELETE_TIMEOUT_SEC = 180;
@@ -731,7 +731,7 @@ public class SapRfcService {
      * 배차확정(SAP전송) 탭 — 가선적번호(STDLNR) 목록.
      *
      * ■ 조회 기준 (Flask api_ps_sap_list 이식)
-     *   SHPDI(SI).STDLNR 채번(공백 아님)  → 가선적번호가 채번된 모든 배차 (STATIT 무관)
+     *   TMS_SHPDI(SI).STDLNR 채번(공백 아님)  → 가선적번호가 채번된 모든 배차 (STATIT 무관)
      *   ※ STATUS(DRAFT/CONFIRMED/SAP_CREATED) 로 필터하지 않는다.
      *     배차삭제·SAP 선적생성 대상에는 DRAFT 배차도 포함되어야 하기 때문.
      *     (SAP 선적 생성 여부는 PH.STKNUM(SAP_STKNUM) 값 유무로 화면에서 구분)
@@ -741,7 +741,7 @@ public class SapRfcService {
      *   RQSHPD_FROM, RQSHPD_TO, CARNO, VEHINO, DRIVER, DRIVERCEL, TDLNR, LMODAT,
      *   DPTNKY, DPTNKYNM, CARTYPE(명칭), CARCLASS_CD(코드)
      *
-     * ■ DataSource: SHPDI/SHPDH/SKUMA/BZPTN/CMCDV/PS_DISPATCH_H → Oracle KNRAWMS (wmsJdbc)
+     * ■ DataSource: TMS_SHPDI/TMS_SHPDH/SKUMA/BZPTN/CMCDV/TMS_PS_DISPATCH_H → Oracle KNRAWMS (wmsJdbc)
      */
     public Map<String, Object> sapList(Map<String, Object> body) {
         try {
@@ -764,13 +764,13 @@ public class SapRfcService {
 
             // ── 동적 WHERE ──
             // 배차확정(SAP선적) 대상 기준: 가선적번호(STDLNR) 채번 여부 (STATIT 무관).
-            //   ※ 배차저장(saveDispatch)은 STATIT 조건 없이 SHPDI.STDLNR 만 갱신한다.
+            //   ※ 배차저장(saveDispatch)은 STATIT 조건 없이 TMS_SHPDI.STDLNR 만 갱신한다.
             //     따라서 여기서 STATIT='NEW' 를 강제하면 STATIT 이 'NEW' 가 아닌 문서로
             //     저장된 배차는 SAP선적탭에 조회되지 않는 누락이 발생 → STATIT 조건 제거.
             List<String> where = new ArrayList<>();
             where.add("SI.STDLNR IS NOT NULL");
             // ※ 성능(ORA-01013 타임아웃) 대책: STDLNR 컴럼에 TRIM()/SUBSTR() 등 함수를
-            //   적용하면 인덱스를 타지 못해 대용량 SHPDI 풀스캔 + 4중 조인/GROUP BY 로
+            //   적용하면 인덱스를 타지 못해 대용량 TMS_SHPDI 풀스캔 + 4중 조인/GROUP BY 로
             //   30초 쿼리 타임아웃(ORA-01013)이 발생한다.
             //   → STDLNR 은 좌우 공백 없는 'yymmdd+seq(3)+T'(10자) 채번값이므로
             //     함수 없이 컴럼 원본으로 범위/부등호 비교하여 인덱스 사용을 유도한다.
@@ -803,11 +803,11 @@ public class SapRfcService {
             String sql =
                 "SELECT " +
                 "  SI.STDLNR AS STDLNR, " +
-                // SAP 선적번호: RFC 선적생성 후 SHPDI.STKNUM 에 저장된 E_TKNUM.
-                // ※ 운영 DB 의 PS_DISPATCH_H 에는 STKNUM 컬럼이 없어 PH.STKNUM 참조 시
-                //   ORA-00904(bad SQL grammar) 가 발생한다. 확실히 존재하는 SHPDI.STKNUM 을
-                //   SAP 선적번호 저장소로 사용한다. (선적생성/삭제도 동일하게 SHPDI.STKNUM 갱신)
-                //   SHPDI 는 STDLNR 당 여러 행 → MAX 집계 (GROUP BY SI.STDLNR 유지)
+                // SAP 선적번호: RFC 선적생성 후 TMS_SHPDI.STKNUM 에 저장된 E_TKNUM.
+                // ※ 운영 DB 의 TMS_PS_DISPATCH_H 에는 STKNUM 컬럼이 없어 PH.STKNUM 참조 시
+                //   ORA-00904(bad SQL grammar) 가 발생한다. 확실히 존재하는 TMS_SHPDI.STKNUM 을
+                //   SAP 선적번호 저장소로 사용한다. (선적생성/삭제도 동일하게 TMS_SHPDI.STKNUM 갱신)
+                //   TMS_SHPDI 는 STDLNR 당 여러 행 → MAX 집계 (GROUP BY SI.STDLNR 유지)
                 "  NULLIF(TRIM(COALESCE(MAX(SI.STKNUM), '')), '') AS SAP_STKNUM, " +
                 "  COUNT(DISTINCT SI.SVBELN) AS SVBELN_CNT, " +
                 "  COUNT(DISTINCT SI.SHPOKY) AS SHPOKY_CNT, " +
@@ -836,11 +836,11 @@ public class SapRfcService {
                 "  CASE WHEN COUNT(DISTINCT SH.DPTNKY) > 1 " +
                 "       THEN '(' || COUNT(DISTINCT SH.DPTNKY) || '개 납품처)' " +
                 "       ELSE MAX(COALESCE(CT.NAME01, SH.DPTNKY)) END AS DPTNKYNM " +
-                "FROM KNRAWMS.SHPDI SI " +
-                "JOIN KNRAWMS.SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
+                "FROM KNRAWMS.TMS_SHPDI SI " +
+                "JOIN KNRAWMS.TMS_SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
                 "LEFT JOIN KNRAWMS.SKUMA M  ON M.SKUKEY  = SI.SKUKEY " +
                 "LEFT JOIN KNRAWMS.BZPTN CT ON CT.PTNRKY = SH.DPTNKY AND CT.PTNRTY = 'CT' " +
-                "LEFT JOIN KNRAWMS.PS_DISPATCH_H PH ON PH.DISPATCH_NO = SI.STDLNR " +
+                "LEFT JOIN KNRAWMS.TMS_PS_DISPATCH_H PH ON PH.DISPATCH_NO = SI.STDLNR " +
                 "WHERE " + whereSql + " " +
                 "GROUP BY SI.STDLNR " +
                 "ORDER BY MIN(SH.RQSHPD) DESC, SI.STDLNR";
@@ -859,16 +859,16 @@ public class SapRfcService {
                 try {
                     // ※ 진단 쿼리도 TRIM() 제거(인덱스 사용) — STDLNR <> ' ' 로 공백 제외
                     Integer totCnt = wmsJdbc.queryForObject(
-                        "SELECT COUNT(DISTINCT SI.STDLNR) FROM KNRAWMS.SHPDI SI " +
+                        "SELECT COUNT(DISTINCT SI.STDLNR) FROM KNRAWMS.TMS_SHPDI SI " +
                         "WHERE SI.STDLNR IS NOT NULL AND SI.STDLNR <> ' '", Integer.class);
                     log.warn("[SAP-list] 결과 0건 진단 — 전체 STDLNR 채번 선적 수(필터무시)={}건", totCnt);
 
                     Integer joinCnt = wmsJdbc.queryForObject(
-                        "SELECT COUNT(DISTINCT SI.STDLNR) FROM KNRAWMS.SHPDI SI " +
-                        "JOIN KNRAWMS.SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
+                        "SELECT COUNT(DISTINCT SI.STDLNR) FROM KNRAWMS.TMS_SHPDI SI " +
+                        "JOIN KNRAWMS.TMS_SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
                         "WHERE SI.STDLNR IS NOT NULL AND SI.STDLNR <> ' '", Integer.class);
-                    log.warn("[SAP-list] 결과 0건 진단 — SHPDH JOIN 후 STDLNR 선적 수(날짜무시)={}건 "
-                             + "(전체와 다르면 SHPDH 매칭 누락, 같은데 결과가 0이면 날짜필터가 원인)", joinCnt);
+                    log.warn("[SAP-list] 결과 0건 진단 — TMS_SHPDH JOIN 후 STDLNR 선적 수(날짜무시)={}건 "
+                             + "(전체와 다르면 TMS_SHPDH 매칭 누락, 같은데 결과가 0이면 날짜필터가 원인)", joinCnt);
                 } catch (Exception de) {
                     log.warn("[SAP-list] 0건 진단 쿼리 실패: {}", de.getMessage());
                 }
@@ -909,7 +909,7 @@ public class SapRfcService {
 
     /**
      * 배차저장 선적번호가 SAP선적탭에 조회되지 않는 원인 진단용.
-     * 특정 가선적번호(STDLNR)로 SHPDI/SHPDH 실제 저장 상태를 그대로 반환한다.
+     * 특정 가선적번호(STDLNR)로 TMS_SHPDI/TMS_SHPDH 실제 저장 상태를 그대로 반환한다.
      * 브라우저에서 GET /api/ps-sap/diag?stdlnr=260810007T 로 즉시 확인 가능.
      */
     public Map<String, Object> sapDiag(String stdlnr) {
@@ -917,30 +917,30 @@ public class SapRfcService {
         String key = stdlnr == null ? "" : stdlnr.trim();
         out.put("input_stdlnr", key);
         try {
-            // 1) SHPDI 에 해당 STDLNR 이 실제로 존재하는가 (배차저장 커밋 여부 직접 확인)
+            // 1) TMS_SHPDI 에 해당 STDLNR 이 실제로 존재하는가 (배차저장 커밋 여부 직접 확인)
             List<Map<String, Object>> siRows = wmsJdbc.queryForList(
                 "SELECT SHPOKY, SHPOIT, STDLNR, STKNUM, STATIT, SVBELN, SKUKEY " +
-                "FROM KNRAWMS.SHPDI WHERE TRIM(STDLNR) = ?", key);
+                "FROM KNRAWMS.TMS_SHPDI WHERE TRIM(STDLNR) = ?", key);
             out.put("shpdi_count", siRows.size());
             out.put("shpdi_rows", siRows.size() > 50 ? siRows.subList(0, 50) : siRows);
 
-            // 2) 각 SHPOKY 에 대응하는 SHPDH(헤더)가 존재하는가 + RQSHPD 값 확인
-            //    (SAP선적탭은 SHPDI JOIN SHPDH INNER 조인 → 헤더 없으면 탈락)
+            // 2) 각 SHPOKY 에 대응하는 TMS_SHPDH(헤더)가 존재하는가 + RQSHPD 값 확인
+            //    (SAP선적탭은 TMS_SHPDI JOIN TMS_SHPDH INNER 조인 → 헤더 없으면 탈락)
             if (!siRows.isEmpty()) {
                 Set<String> shpokys = new LinkedHashSet<>();
                 for (Map<String, Object> r : siRows) shpokys.add(str(r.get("SHPOKY")));
                 String ph = shpokys.stream().map(x -> "?").collect(Collectors.joining(","));
                 List<Map<String, Object>> shRows = wmsJdbc.queryForList(
-                    "SELECT SHPOKY, RQSHPD, DPTNKY, VEHINO, CARTON FROM KNRAWMS.SHPDH " +
+                    "SELECT SHPOKY, RQSHPD, DPTNKY, VEHINO, CARTON FROM KNRAWMS.TMS_SHPDH " +
                     "WHERE SHPOKY IN (" + ph + ")", shpokys.toArray());
                 out.put("shpdh_count", shRows.size());
                 out.put("shpdh_rows", shRows);
                 out.put("shpoky_in_shpdi", shpokys.size());
 
-                // 3) SHPDI JOIN SHPDH 후 이 STDLNR 이 살아남는가 (SAP 쿼리의 조인 재현)
+                // 3) TMS_SHPDI JOIN TMS_SHPDH 후 이 STDLNR 이 살아남는가 (SAP 쿼리의 조인 재현)
                 Integer joinCnt = wmsJdbc.queryForObject(
-                    "SELECT COUNT(*) FROM KNRAWMS.SHPDI SI " +
-                    "JOIN KNRAWMS.SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
+                    "SELECT COUNT(*) FROM KNRAWMS.TMS_SHPDI SI " +
+                    "JOIN KNRAWMS.TMS_SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
                     "WHERE TRIM(SI.STDLNR) = ?", Integer.class, key);
                 out.put("shpdi_join_shpdh_count", joinCnt);
             }
@@ -957,7 +957,7 @@ public class SapRfcService {
     }
 
     public Map<String, Object> sapItems(Map<String, Object> body) {
-        // ── 우선순위1: stknum(=SHPDI.STDLNR) 기반 적재뷰용 아이템 + 차량제원 ──
+        // ── 우선순위1: stknum(=TMS_SHPDI.STDLNR) 기반 적재뷰용 아이템 + 차량제원 ──
         //   프론트 _sapShowLoadImage 계약: {stknum, cartype} → {ok, items[], veh}
         //   (적재 시각화 2D/3D 렌더러가 대문자 SKU 아이템 스키마를 기대)
         String stknum = str(body.get("stknum"));
@@ -995,8 +995,8 @@ public class SapRfcService {
                     "             WHERE CV.CMCDKY='TMS_THICKNESS' " +
                     "               AND CV.CMCDVL=SUBSTR(SI.SKUKEY,3,6) " +
                     "               AND ROWNUM=1), 0) AS THICKNESS " +
-                    "FROM KNRAWMS.SHPDI SI " +
-                    "JOIN KNRAWMS.SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
+                    "FROM KNRAWMS.TMS_SHPDI SI " +
+                    "JOIN KNRAWMS.TMS_SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
                     "LEFT JOIN KNRAWMS.SKUMA M  ON M.SKUKEY  = SI.SKUKEY " +
                     "LEFT JOIN KNRAWMS.BZPTN CT ON CT.PTNRKY = SH.DPTNKY " +
                     // ※ STATIT='NEW' 제거: 배차저장은 STDLNR 만 갱신하므로 STATIT='NEW' 를
@@ -1005,14 +1005,14 @@ public class SapRfcService {
                     "ORDER BY SI.SVBELN, SI.SHPOKY, CAST(SI.SHPOIT AS INTEGER)";
                 List<Map<String, Object>> items = wmsJdbc.queryForList(sql, stknum);
 
-                // 차량 제원(veh): cartype 기준 DS_VEHICLE(MariaDB) 1건
+                // 차량 제원(veh): cartype 기준 TMS_DS_VEHICLE(MariaDB) 1건
                 Map<String, Object> veh = null;
                 String cartype = str(body.get("cartype"));
                 if (!cartype.isEmpty()) {
                     try {
                         List<Map<String, Object>> vs = tmsJdbc.queryForList(
                             "SELECT CARTYPE, LENGTH_M, WIDTH_M, HEIGHT_M, LOAD_TON, PALLET_HEIGHT_M " +
-                            "FROM KNRAWMS.DS_VEHICLE WHERE CARTYPE=? FETCH FIRST 1 ROWS ONLY", cartype);
+                            "FROM KNRAWMS.TMS_DS_VEHICLE WHERE CARTYPE=? FETCH FIRST 1 ROWS ONLY", cartype);
                         if (!vs.isEmpty()) veh = vs.get(0);
                     } catch (Exception ignore) { /* veh 없으면 프론트 기본치수 */ }
                 }
@@ -1024,13 +1024,13 @@ public class SapRfcService {
             } catch (Exception e) { return errMap(e); }
         }
 
-        // ── 우선순위2(하위호환): disp_h_id 기반 PS_DISPATCH_D 원시행 ──
+        // ── 우선순위2(하위호환): disp_h_id 기반 TMS_PS_DISPATCH_D 원시행 ──
         Long dispHId = toLong(body.get("disp_h_id"));
         if (dispHId == null) return err("stknum 또는 disp_h_id 필수");
         try {
             List<Map<String, Object>> rows = tmsJdbc.queryForList(
-                "SELECT d.*, h.CARTYPE, h.DISP_DATE FROM KNRAWMS.PS_DISPATCH_D d " +
-                "JOIN KNRAWMS.PS_DISPATCH_H h ON h.DISP_H_ID=d.DISP_H_ID " +
+                "SELECT d.*, h.CARTYPE, h.DISP_DATE FROM KNRAWMS.TMS_PS_DISPATCH_D d " +
+                "JOIN KNRAWMS.TMS_PS_DISPATCH_H h ON h.DISP_H_ID=d.DISP_H_ID " +
                 "WHERE d.DISP_H_ID=? ORDER BY d.ITEM_SEQ", dispHId
             );
             return Map.of("ok", true, "rows", rows);
@@ -1040,12 +1040,12 @@ public class SapRfcService {
     /**
      * 선택한 가선적번호(STDLNR)에 매핑된 납품문서 상세 목록.
      * Flask: api_ps_sap_docs 이식.
-     *   입력 : { stknum }  (= SHPDI.STDLNR 값)
+     *   입력 : { stknum }  (= TMS_SHPDI.STDLNR 값)
      *   기준 : SI.STDLNR = ?   (STATIT/STATUS 무관 → 배차저장·DRAFT 포함)
      *   반환 : 프론트 _sapDocColDefs 기대 컬럼
      *          (SVBELN/SHPOKY/SHPOIT/RQSHPD/DPTNKYNM/SKUKEY/DESC01/QTSHPO/UOMKEY/LINE_KG 등)
      *
-     * ■ DataSource: SHPDI/SHPDH/SKUMA/BZPTN → Oracle KNRAWMS (wmsJdbc)
+     * ■ DataSource: TMS_SHPDI/TMS_SHPDH/SKUMA/BZPTN → Oracle KNRAWMS (wmsJdbc)
      */
     public Map<String, Object> sapDocs(Map<String, Object> body) {
         String stknum = str(body.get("stknum"));   // UI에서 STKNUM 키로 전달 (= STDLNR 값)
@@ -1061,8 +1061,8 @@ public class SapRfcService {
                 "  SH.RQSHPD, SH.DPTNKY, " +
                 "  COALESCE(CT.NAME01, SH.DPTNKY) AS DPTNKYNM, " +
                 "  SH.SHPMTY, SH.CARTON, SH.CARNO, SH.VEHINO, SH.DRIVER, SH.DRIVERCEL " +
-                "FROM KNRAWMS.SHPDI SI " +
-                "JOIN KNRAWMS.SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
+                "FROM KNRAWMS.TMS_SHPDI SI " +
+                "JOIN KNRAWMS.TMS_SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
                 "LEFT JOIN KNRAWMS.SKUMA M  ON M.SKUKEY  = SI.SKUKEY " +
                 "LEFT JOIN KNRAWMS.BZPTN CT ON CT.PTNRKY = SH.DPTNKY " +
                 // ※ STATIT='NEW' 제거: 배차저장은 STDLNR 만 갱신하므로 STATIT='NEW' 를
@@ -1093,9 +1093,9 @@ public class SapRfcService {
         Long dispHId = toLong(body.get("disp_h_id"));
         if (dispHId == null) return err("disp_h_id 필수");
         try {
-            // PS_DISPATCH_H → MariaDB tmsJdbc
+            // TMS_PS_DISPATCH_H → MariaDB tmsJdbc
             tmsJdbc.update(
-                "UPDATE KNRAWMS.PS_DISPATCH_H SET VHCLNO=?, DRIVER_NM=?, DRIVER_TEL=?, LMODAT=? WHERE DISP_H_ID=?",
+                "UPDATE KNRAWMS.TMS_PS_DISPATCH_H SET VHCLNO=?, DRIVER_NM=?, DRIVER_TEL=?, LMODAT=? WHERE DISP_H_ID=?",
                 str(body.get("vhclno")), str(body.get("driver_nm")), str(body.get("driver_tel")),
                 LocalDate.now().format(YMDFORMAT), dispHId
             );
@@ -1310,7 +1310,7 @@ public class SapRfcService {
         String env = detectEnv();
         Map<String, Object> wmsResult = callWmsIfc301Split(svbeln, rfcParams, env);
 
-        // ── 4) TMS DB(PS_DISPATCH_D) 임의 분할 납품문서번호 → SAP SVBELN_O 갱신 ──
+        // ── 4) TMS DB(TMS_PS_DISPATCH_D) 임의 분할 납품문서번호 → SAP SVBELN_O 갱신 ──
         //   이미 저장된 분할행(ORG_SHPOKY=원본 SVBELN, SHPOIT=SPOSNR)이 있으면
         //   SHPOKY 를 SAP 채번번호로 갱신한다. (저장 전이면 update 0건 → 무해)
         int updated = updateTmsSplitDocNo(svbeln, rfcParams);
@@ -1328,7 +1328,7 @@ public class SapRfcService {
     /**
      * TMS 임의 분할 납품문서번호를 SAP 채번번호(SVBELN_O)로 갱신.
      *
-     * <p>PS_DISPATCH_D 에 이미 저장된 분할행이 존재하는 경우,
+     * <p>TMS_PS_DISPATCH_D 에 이미 저장된 분할행이 존재하는 경우,
      * (ORG_SHPOKY = 원본 SVBELN, SHPOIT = SPOSNR) 로 매칭하여 SHPOKY 를 SVBELN_O 로 갱신한다.
      * 배차저장(saveDispatch) 이전이면 매칭행이 없어 0건 갱신되며 정상 흐름이다.</p>
      *
@@ -1344,7 +1344,7 @@ public class SapRfcService {
             try {
                 // 원본 문서(ORG_SHPOKY) + 품목순번(SHPOIT) 로 분할행 식별
                 int n = tmsJdbc.update(
-                    "UPDATE KNRAWMS.PS_DISPATCH_D " +
+                    "UPDATE KNRAWMS.TMS_PS_DISPATCH_D " +
                     "   SET SHPOKY=?, SVBELN=? " +
                     " WHERE ORG_SHPOKY=? AND SHPOIT=? AND IS_SPLIT=1 " +
                     "   AND (SHPOKY IS NULL OR SHPOKY <> ?)",
@@ -1840,7 +1840,7 @@ public class SapRfcService {
         if (m.contains("선적문서가 생성된 납품문서"))
             return "이미 선적문서(VTTP)가 존재하는 납품문서. 중복 생성 불가";
         if (m.contains("납품문서가 없"))
-            return "T_VBELN 이 비어 전송됨. WMS SHPDI.SVBELN 조회결과 확인 필요";
+            return "T_VBELN 이 비어 전송됨. WMS TMS_SHPDI.SVBELN 조회결과 확인 필요";
         return "";
     }
 
