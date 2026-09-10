@@ -203,6 +203,11 @@ public class PsDispatchService {
         //   나타나지 않는 문제가 있었다(출고예정정보는 해당 조건이 없어 정상 조회).
         //   → TRIM 후 비교하여 공백 차이로 인한 누락을 방지한다.
         StringBuilder where = new StringBuilder(" WHERE TRIM(h.WAREKY) = ? AND TRIM(i.SKUG05) = ?");
+        // ── 고정 제외조건: 취소/삭제된 납품문서는 배차 대상에서 항상 비노출 ──────
+        //   · SHPDI.STATIT = 'FCO' : 납품문서(아이템) 취소
+        //   · SHPDH.STATDO = 'OCN' : 오더취소
+        where.append(" AND TRIM(COALESCE(i.STATIT,'')) <> 'FCO'")
+             .append(" AND TRIM(COALESCE(h.STATDO,'')) <> 'OCN'");
         List<Object> params = new ArrayList<>();
         params.add(vWareky);
         params.add(vSkug05);
