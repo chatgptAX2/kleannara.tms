@@ -82,6 +82,9 @@ public class ShipmentRowResponse {
     @JsonProperty("STDLNR")
     private String stdlnr;          // 가선적번호(배차번호)
 
+    @JsonProperty("STKNUM")
+    private String stknum;          // SAP 선적번호(선적생성 완료 시 SHPDI.STKNUM)
+
     @JsonProperty("SVBELN")
     private String svbeln;          // SAP 납품문서번호
 

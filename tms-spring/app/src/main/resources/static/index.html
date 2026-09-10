@@ -19122,7 +19122,7 @@ function _ssColDefs() {
   return [
     /* ── 기본정보 ── */
     { key:'RQSHPD',     label:'출하요청일',   fmt:fmtDate,                             w:90  },
-    { key:'STKNUM',     label:'선적번호',     fmt:()=>'',                              w:90  },
+    { key:'STKNUM',     label:'선적번호',     fmt:(v,r)=>{const s=String(r.STKNUM||v||'').trim();return s||'-';}, w:90  },
     { key:'SVBELN',     label:'납품문서번호', fmt:v=>v||'-',                           w:115 },
     { key:'SHPOKY',     label:'출고문서키',   fmt:v=>v||'-',                           w:110 },
     { key:'LOTA02',     label:'플랜트',       fmt:(v,r)=>`${v||'-'} <span style="font-size:10px;color:var(--text3);">${(r&&r.LOTA02NM)||''}</span>`, w:90 },
