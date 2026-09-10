@@ -433,6 +433,39 @@ public class PsDispatchService {
                 String key = str(cr[0]) + "|" + str(cr[1]);
                 map.put(key, new String[]{ str(cr[2]), str(cr[3]) });   // [STDLNR, STKNUM]
             }
+
+            // ── [임시 진단] 배차완료 판정이 0건인 원인 규명용 로그 ──────────────
+            //   STDLNR 조건 없이 동일 SHPOKY 들의 STDLNR/STKNUM 실제 값을 조회하여,
+            //   (a) IN 매칭 자체가 안 되는지  (b) DB STDLNR 이 실제로 비어있는지 판별.
+            try {
+                String diagSql =
+                    "SELECT TRIM(SHPOKY), TRIM(SHPOIT), TRIM(COALESCE(STDLNR,''))," +
+                    "       TRIM(COALESCE(STKNUM,''))" +
+                    " FROM KNRAWMS.SHPDI" +
+                    " WHERE TRIM(SHPOKY) IN (" + ph + ")";
+                var dq = em.createNativeQuery(diagSql);
+                for (int i = 0; i < chunk.size(); i++) dq.setParameter(i + 1, chunk.get(i));
+                @SuppressWarnings("unchecked")
+                List<Object[]> diagRows = dq.getResultList();
+                int withStdlnr = 0;
+                StringBuilder sb = new StringBuilder();
+                for (Object[] dr : diagRows) {
+                    String std = str(dr[2]);
+                    if (!std.isEmpty()) withStdlnr++;
+                    if (sb.length() < 1500) {
+                        sb.append("[").append(str(dr[0])).append("/").append(str(dr[1]))
+                          .append(" STDLNR=").append(std)
+                          .append(" STKNUM=").append(str(dr[3])).append("] ");
+                    }
+                }
+                log.info("[PsDispatch][DIAG] IN param 건수={}, SHPDI 매칭행={}, STDLNR보유행={}, 배차완료map={}",
+                        chunk.size(), diagRows.size(), withStdlnr, map.size());
+                log.info("[PsDispatch][DIAG] IN params(앞10)={}",
+                        chunk.subList(0, Math.min(10, chunk.size())));
+                log.info("[PsDispatch][DIAG] SHPDI 실제값(앞부분)={}", sb.toString());
+            } catch (Exception ex) {
+                log.warn("[PsDispatch][DIAG] 진단쿼리 실패: {}", ex.getMessage());
+            }
         }
         return map;
     }
