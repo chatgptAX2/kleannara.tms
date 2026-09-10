@@ -18515,16 +18515,9 @@ async function renderShipSchedule() {
     } catch(e) { console.warn('filter-opts 로드 실패', e); }
   }
 
-  /* TMS_THICKNESS 코드맵 로드 (최초 1회) — 판지 높이 계산용
-     CMCDVL(6자리 지종/평량 코드) → CDESC1(두께 µm 수치) */
-  if (!shipScheduleState.thicknessMap) {
-    try {
-      const tv = await fetch('/api/codes/TMS_THICKNESS').then(r => r.json());
-      const m  = {};
-      tv.forEach(o => { m[String(o.value).trim()] = Number(o.label); });
-      shipScheduleState.thicknessMap = m;
-    } catch(e) { console.warn('TMS_THICKNESS 로드 실패', e); shipScheduleState.thicknessMap = {}; }
-  }
+  /* TMS_THICKNESS 코드맵 로드 (최초 1회) — 판지 높이 계산용.
+     실제 조회(loadShipSchedule)도 렌더 직전 ensureThicknessMap 으로 재보장한다. */
+  await ensureThicknessMap();
 
   /* filterOpts null-safe fallback: fetch 실패나 로딩 전에도 안전하게 처리 */
   const opts = shipScheduleState.filterOpts || { wareky:[], statit:[], skug05:[], lota02:[] };
@@ -18969,6 +18962,26 @@ function resetShipScheduleSearch() {
   }
 }
 
+/* TMS_THICKNESS 코드맵 로드 보장 (판지 높이 계산용) — 재사용 헬퍼.
+   · CMCDVL(6자리 지종/평량 코드) → CDESC1(두께 µm) 매핑
+   · 최초 1회만 실제 fetch, 이후는 캐시(shipScheduleState.thicknessMap) 즉시 반환(지연 0).
+   · 조회 결과 렌더 전에 반드시 await 하여 첫 조회부터 정확한 높이(cm) 표시를 보장한다.
+     (기존: renderShipSchedule 진입 시 로드했으나, 실제 조회 loadShipSchedule 과 별개라
+      두께맵 로드 완료 전 렌더되면 높이가 잘못 계산되던 경합을 제거) */
+async function ensureThicknessMap() {
+  if (shipScheduleState.thicknessMap) return shipScheduleState.thicknessMap;  // 캐시 → 즉시(지연 0)
+  try {
+    const tv = await fetch('/api/codes/TMS_THICKNESS').then(r => r.json());
+    const m  = {};
+    (tv || []).forEach(o => { m[String(o.value).trim()] = Number(o.label); });
+    shipScheduleState.thicknessMap = m;
+  } catch(e) {
+    console.warn('TMS_THICKNESS 로드 실패', e);
+    shipScheduleState.thicknessMap = {};   // 실패해도 그리드는 그림(높이만 '-')
+  }
+  return shipScheduleState.thicknessMap;
+}
+
 async function loadShipSchedule(pg) {
   if (shipScheduleState.loading) return;
   const el = id => document.getElementById(id);
@@ -19051,6 +19064,9 @@ async function loadShipSchedule(pg) {
     const data = (json && json.data != null) ? json.data : json;
     shipScheduleState.total  = data.total;
     shipScheduleState.params = body;
+    /* [A] 판지 높이(cm) 계산에 쓰이는 두께맵 로드를 렌더 직전에 보장.
+       최초 1회만 fetch·이후 캐시(지연 0) → 첫 조회부터 정확한 높이 표시. */
+    await ensureThicknessMap();
     renderShipScheduleResult(data, area);
   } catch(e) {
     area.innerHTML = `<div style="padding:20px;color:#e74c3c;font-size:12px;">네트워크 오류: ${e.message}</div>`;
