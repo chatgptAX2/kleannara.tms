@@ -2823,6 +2823,9 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
   display:flex;align-items:center;justify-content:center;padding:32px;
   color:var(--text3);font-size:12px;
 }
+/* 차량선택 팝업 결과영역(#svp-result) — 높이 고정, 내부 로딩/빈상태 세로중앙 배치
+   (필터 조회 시 결과 건수에 따라 높이가 바뀌어 팝업이 떨리던 문제 방지) */
+#svp-result > .psd-empty-state{height:100%;padding:0}
 /* psd-sap-select-prompt: 선적번호 미선택 안내 */
 .psd-sap-select-prompt{
   display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -14073,7 +14076,7 @@ async function _sapOpenVehiclePick(stdlnr, carton, vehino) {
           </select>
           <button class="psd-btn" onclick="_sapVehPickSearch()">🔍 조회</button>
         </div>
-        <div id="svp-result" style="max-height:320px;overflow:auto">
+        <div id="svp-result" style="height:320px;overflow-y:scroll;overflow-x:auto">
           <div class="psd-empty-state">⏳ 조회 중...</div>
         </div>
       </div>
@@ -14085,14 +14088,19 @@ async function _sapOpenVehiclePick(stdlnr, carton, vehino) {
 }
 
 /* 차량톤수(공통코드 TMS_CARCLASS10) → 팝업 드롭다운 옵션 채우기
-   선택값은 VHCMA.VEHICLE_CLASS 조회에 사용된다. */
+   선택값은 VHCMA.VEHICLE_CLASS 조회에 사용된다.
+   ※ [요청] 사용여부 USARG1='Y' 인 코드(사용 체크된 ROW)만 옵션으로 제공.
+     /api/codes 응답의 arg1 필드가 USARG1 값. (공통 엔드포인트 부작용 방지를 위해
+      백엔드 대신 팝업 전용으로 프론트에서 필터링) */
 async function _sapVehPickLoadClassOptions() {
   const sel = document.getElementById('svp-kw-vehicleclass');
   if (!sel) return;
   try {
     const list = await fetch('/api/codes/TMS_CARCLASS10').then(r => r.json());
-    const opts = (Array.isArray(list) ? list : []).map(c =>
-      `<option value="${c.value}">${c.label || c.value} (${c.value})</option>`).join('');
+    const opts = (Array.isArray(list) ? list : [])
+      .filter(c => String(c.arg1 || '').trim().toUpperCase() === 'Y')  // USARG1='Y' 만
+      .map(c => `<option value="${c.value}">${c.label || c.value} (${c.value})</option>`)
+      .join('');
     sel.innerHTML = '<option value="">차량톤수 (전체)</option>' + opts;
   } catch (e) {
     console.warn('차량톤수 코드 로드 실패', e);
