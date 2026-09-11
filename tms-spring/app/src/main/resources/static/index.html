@@ -14061,16 +14061,17 @@ async function _sapOpenVehiclePick(stdlnr, carton, vehino) {
       <div class="psd-modal-body" style="padding:12px">
         <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
           <input type="text" id="svp-kw-vehicleno" placeholder="차량번호 검색"
-            style="flex:1;min-width:120px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-size:12px"
+            style="flex:1;min-width:110px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-size:12px"
             oninput="_sapVehPickSearch()">
           <input type="text" id="svp-kw-drivername" placeholder="기사명 검색"
-            style="flex:1;min-width:120px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-size:12px"
+            style="flex:1;min-width:110px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-size:12px"
             oninput="_sapVehPickSearch()">
+          <select id="svp-kw-vehicleclass" title="차량톤수(TMS_CARCLASS10)로 VEHICLE_CLASS 조회"
+            style="flex:1;min-width:120px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-size:12px"
+            onchange="_sapVehPickSearch()">
+            <option value="">차량톤수 (전체)</option>
+          </select>
           <button class="psd-btn" onclick="_sapVehPickSearch()">🔍 조회</button>
-        </div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">
-          차량유형(CARCLASS_CD): <b style="color:var(--primary)">${_sapVehPickState.cartype || '(전체)'}</b>
-          — VEHICLE_CLASS 매칭 차량 필터링
         </div>
         <div id="svp-result" style="max-height:320px;overflow:auto">
           <div class="psd-empty-state">⏳ 조회 중...</div>
@@ -14078,13 +14079,31 @@ async function _sapOpenVehiclePick(stdlnr, carton, vehino) {
       </div>
     </div>`;
   document.body.appendChild(modal);
+  // 차량톤수(TMS_CARCLASS10) 드롭다운 옵션 로드 후 조회
+  await _sapVehPickLoadClassOptions();
   await _sapVehPickSearch();
 }
 
+/* 차량톤수(공통코드 TMS_CARCLASS10) → 팝업 드롭다운 옵션 채우기
+   선택값은 VHCMA.VEHICLE_CLASS 조회에 사용된다. */
+async function _sapVehPickLoadClassOptions() {
+  const sel = document.getElementById('svp-kw-vehicleclass');
+  if (!sel) return;
+  try {
+    const list = await fetch('/api/codes/TMS_CARCLASS10').then(r => r.json());
+    const opts = (Array.isArray(list) ? list : []).map(c =>
+      `<option value="${c.value}">${c.label || c.value} (${c.value})</option>`).join('');
+    sel.innerHTML = '<option value="">차량톤수 (전체)</option>' + opts;
+  } catch (e) {
+    console.warn('차량톤수 코드 로드 실패', e);
+  }
+}
+
 async function _sapVehPickSearch() {
-  const vehicleNo  = document.getElementById('svp-kw-vehicleno')?.value.trim()  || '';
-  const driverName = document.getElementById('svp-kw-drivername')?.value.trim() || '';
-  const result     = document.getElementById('svp-result');
+  const vehicleNo   = document.getElementById('svp-kw-vehicleno')?.value.trim()  || '';
+  const driverName  = document.getElementById('svp-kw-drivername')?.value.trim() || '';
+  const vehClass    = document.getElementById('svp-kw-vehicleclass')?.value || '';
+  const result      = document.getElementById('svp-result');
   if (!result) return;
   result.innerHTML = '<div class="psd-empty-state">⏳ 조회 중...</div>';
 
@@ -14092,9 +14111,10 @@ async function _sapVehPickSearch() {
     const res = await fetch('/api/ps-sap/vehicle-search', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
-        vehino:      _sapVehPickState.cartype,  // CARTON = CARCLASS_CD(Z010 등)
-        vehicle_no:  vehicleNo,
-        driver_name: driverName,
+        // [변경] CARCLASS_CD 자동 필터 제거. 차량번호/기사명/차량톤수(VEHICLE_CLASS)로 조회
+        vehicle_no:    vehicleNo,
+        driver_name:   driverName,
+        vehicle_class: vehClass,
       })
     });
     const data = await res.json();
