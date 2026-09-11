@@ -2226,6 +2226,9 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psop-rz-tbl thead th .col-rz.rz-active{background:var(--primary) !important;opacity:.85}
 /* 리사이즈 대상 td 도 말줄임(내용이 폭보다 길어도 컬럼폭 유지) */
 .psop-rz-tbl tbody td{overflow:hidden;text-overflow:ellipsis}
+/* 납품문서 목록 체크박스 셀 — 드래그로 여러 행 체크/해제 (커서 힌트) */
+.psop-chk-cell{cursor:cell}
+.psop-chk-cell input[type=checkbox]{cursor:pointer}
 /* 납품문서 하단패널 드롭 활성 */
 #psop-veh-doc-area.psd-doc-drop-active{
   outline:2px dashed #10b981;
@@ -12992,6 +12995,12 @@ const psopState = {
      저장 직후 재조회 시 서버 배차완료 판정이 아직 반영되지 않아도
      UX 일관성을 위해 배차완료(STDLNR)로 유지하기 위한 세션 캐시. */
   savedKeys:  new Map(),
+  /* ── 납품문서 목록 '드래그 선택' 상태 ──
+     마우스로 여러 행을 훑어 체크박스를 일괄 활성/비활성한다.
+     active : 드래그 진행 중 여부
+     mode   : true=선택(체크 ON), false=해제(체크 OFF) — 시작행의 반전값으로 고정
+     touched: 이번 드래그에서 이미 처리한 key 집합(중복 토글 방지) */
+  _dragSel: { active:false, pending:false, startKey:null, mode:false, touched:null },
 };
 
 /* 날짜 포맷 */
@@ -15592,7 +15601,7 @@ function psopRenderDocTable(filterText) {
 
     /* 컬럼별 TD 셀 맵 — 전체 font-size:11px / font-weight:400 통일 */
     const cellMap = {
-      chk:     `<td class="drag-handle-cell" onclick="event.stopPropagation()" title="드래그하여 차량에 배차"><input type="checkbox" class="psd-doc-chk" data-key="${key}" ${sel?'checked':''} onchange="psopChkDoc('${key}',this.checked)"></td>`,
+      chk:     `<td class="drag-handle-cell psop-chk-cell" onclick="event.stopPropagation()" onmousedown="psopDragSelStart('${key}',event)" onmouseenter="psopDragSelEnter('${key}',event)" ondragstart="if(psopState._dragSel.pending||psopState._dragSel.active){event.preventDefault();return false;}" title="드래그하여 여러 행 체크/해제"><input type="checkbox" class="psd-doc-chk" data-key="${key}" ${sel?'checked':''} onclick="event.stopPropagation()" onchange="psopChkDoc('${key}',this.checked)"></td>`,
       shpoky:  `<td style="color:var(--primary);font-weight:600">${r.SVBELN||r.SHPOKY}${splitBadge}</td>`,
       shpoit:  `<td style="text-align:center">${r.SHPOIT}</td>`,
       rqshpd:  `<td style="text-align:center;white-space:nowrap;color:var(--primary);font-weight:500">${psopFmtDate(r.RQSHPD)}</td>`,
@@ -15784,6 +15793,74 @@ function psopToggleDocSel(key, ev) {
   /* 전체선택 체크박스 상태 동기화 */
   _psopSyncAllChk();
 }
+
+/* ── 드래그 선택 (마우스로 여러 행 훑어 일괄 체크/해제) ──────────────
+   요청: 납품문서 목록 ROW 를 마우스로 드래그하면 체크가 활성/비활성 되게 한다.
+   (선택 해제 시 한 행씩 클릭하는 번거로움 해소)
+
+   동작 분리 (기존 기능 보존):
+   · 체크박스 단순 클릭      → 네이티브 onchange(psopChkDoc): 동일 납품처 그룹 일괄 (유지)
+   · 체크박스 누른 채 드래그  → 지나가는 각 행을 '개별' 토글 (신규)
+
+   구현: mousedown 시엔 '대기(pending)' 상태만 잡고 preventDefault 하지 않는다.
+        (→ 클릭만 하면 네이티브 체크박스 onchange 가 정상 발생 = 그룹 일괄 유지)
+        마우스가 실제로 다른 행으로 이동(mouseenter)하는 순간 드래그 모드로 승격하고,
+        시작행 포함 지나가는 행들을 시작행 반전값 모드로 개별 토글한다. */
+function _psopApplyDragSel(key) {
+  const t = psopState._dragSel;
+  if (!t.active) return;
+  if (t.touched && t.touched.has(key)) return;   // 같은 드래그 내 중복 처리 방지
+  if (t.touched) t.touched.add(key);
+  if (t.mode) psopState.selectedDocs.add(key);
+  else        psopState.selectedDocs.delete(key);
+  /* 해당 행 DOM 즉시 동기화 (그룹 확장 없이 단일 행만) */
+  const row = document.getElementById(`psop-row-${key.replace(/\|/g,'_')}`);
+  if (row) row.classList.toggle('selected-row', t.mode);
+  const chk = row?.querySelector('.psd-doc-chk');
+  if (chk) chk.checked = t.mode;
+  psopUpdateSelCnt();
+  psopUpdateToolbar();
+  _psopSyncAllChk();
+}
+/* 드래그 시작 후보: 체크박스 셀에서 mousedown (아직 preventDefault 안 함) */
+function psopDragSelStart(key, ev) {
+  if (ev.button !== 0) return;                   // 좌클릭만
+  const t = psopState._dragSel;
+  t.active   = false;                            // 아직 드래그 확정 아님
+  t.pending  = true;                             // '대기' — 이동하면 드래그로 승격
+  t.startKey = key;
+  t.mode     = !psopState.selectedDocs.has(key); // 시작행 반전값으로 모드 예약
+  t.touched  = null;
+}
+/* 드래그 진행: 다른 행 체크박스 셀 진입 시 */
+function psopDragSelEnter(key, ev) {
+  const t = psopState._dragSel;
+  /* 대기 상태에서 시작행과 다른 행에 진입 → 드래그 모드로 승격 */
+  if (t.pending && !t.active && key !== t.startKey) {
+    t.active  = true;
+    t.pending = false;
+    t.touched = new Set();
+    document.body.style.userSelect = 'none';
+    _psopApplyDragSel(t.startKey); // 시작행도 함께 토글
+  }
+  if (t.active) _psopApplyDragSel(key);
+}
+/* 드래그 종료: document 전역 mouseup */
+function psopDragSelEnd() {
+  const t = psopState._dragSel;
+  t.pending = false;
+  if (!t.active) return;
+  t.active  = false;
+  t.touched = null;
+  document.body.style.userSelect = '';
+}
+/* 전역 mouseup 바인딩(중복 방지 플래그) */
+if (!window._psopDragSelBound) {
+  window._psopDragSelBound = true;
+  document.addEventListener('mouseup', psopDragSelEnd);
+  document.addEventListener('dragend', psopDragSelEnd);
+}
+
 /* ── 전체선택 체크박스 상태 동기화 헬퍼 ──────────────
    현재 필터 기준의 표시 rows 중 몇 개가 선택됐는지로
    psop-chk-all 의 checked / indeterminate 를 결정.
