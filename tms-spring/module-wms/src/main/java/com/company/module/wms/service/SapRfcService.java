@@ -769,31 +769,30 @@ public class SapRfcService {
             //     저장된 배차는 SAP선적탭에 조회되지 않는 누락이 발생 → STATIT 조건 제거.
             List<String> where = new ArrayList<>();
             where.add("SI.STDLNR IS NOT NULL");
-            // ※ 성능(ORA-01013 타임아웃) 대책: STDLNR 컴럼에 TRIM()/SUBSTR() 등 함수를
-            //   적용하면 인덱스를 타지 못해 대용량 TMS_SHPDI 풀스캔 + 4중 조인/GROUP BY 로
-            //   30초 쿼리 타임아웃(ORA-01013)이 발생한다.
-            //   → STDLNR 은 좌우 공백 없는 'yymmdd+seq(3)+T'(10자) 채번값이므로
-            //     함수 없이 컴럼 원본으로 범위/부등호 비교하여 인덱스 사용을 유도한다.
             where.add("SI.STDLNR <> ' '");
             List<Object> args = new ArrayList<>();
-            // ── 날짜 필터 (성능 개선판) ──
-            //   가선적번호(STDLNR)는 'yymmdd + seq(3) + T' 형식으로 채번일(=납품일)을
-            //   앞 6자리에 포함한다. 함수(SUBSTR/TRIM) 없이 STDLNR 문자열 범위 비교로
-            //   같은 효과를 낸다:  STDLNR >= 'yymmdd000000' (하한),  STDLNR <= 'yymmdd999Z' (상한)
-            //   기존 SH.RQSHPD 조건과 OR 로 묶던 방식은 옵티마이저가 풀스캔을 택하는
-            //   원인이므로 제거하고, 채번일(STDLNR 앞6자리) 단일 조건으로 단순화한다.
-            //   (STDLNR 채번일 = 납품일이므로 결과 동일, 성능만 향상)
-            if (!rqFrom.isEmpty() && rqFrom.length() >= 6) {
-                String yy6 = rqFrom.substring(rqFrom.length() - 6);
-                where.add("SI.STDLNR >= ?");
-                args.add(yy6 + "000000");   // 하한: 해당일 최소 채번
+            // ── 날짜 필터 (요청: 납품요청일 RQSHPD 기준으로 조회) ──
+            //   기존에는 성능(ORA-01013) 회피를 위해 STDLNR(가선적번호) 앞6자리(채번일)로
+            //   범위 비교했으나, 요청에 따라 실제 납품요청일(TMS_SHPDH.RQSHPD) 기준으로 변경.
+            //     rqshpd_from → TMS_SHPDH.RQSHPD >= ?
+            //     rqshpd_to   → TMS_SHPDH.RQSHPD <= ?
+            //   (RQSHPD 는 'YYYYMMDD' 8자리 문자열, 하이픈 제거된 값으로 비교)
+            if (!rqFrom.isEmpty()) {
+                where.add("SH.RQSHPD >= ?");
+                args.add(rqFrom);
             }
-            if (!rqTo.isEmpty() && rqTo.length() >= 6) {
-                String yy6 = rqTo.substring(rqTo.length() - 6);
-                where.add("SI.STDLNR <= ?");
-                args.add(yy6 + "999Z");     // 상한: 'T'보다 큰 'Z' 로 안전 포함
+            if (!rqTo.isEmpty()) {
+                where.add("SH.RQSHPD <= ?");
+                args.add(rqTo);
             }
-            if (!stknum.isEmpty()) { where.add("SI.STDLNR LIKE ?"); args.add("%" + stknum + "%"); }
+            // ── SAP선적번호/가선적번호 검색 ──
+            //   요청: stknum 파라미터로 SAP선적번호(STKNUM) 또는 가선적번호(STDLNR) 정확 일치 검색.
+            //     (SI.STKNUM = ? OR SI.STDLNR = ?)
+            if (!stknum.isEmpty()) {
+                where.add("(SI.STKNUM = ? OR SI.STDLNR = ?)");
+                args.add(stknum);
+                args.add(stknum);
+            }
             if (!dptnky.isEmpty()) {
                 where.add("(SH.DPTNKY LIKE ? OR CT.NAME01 LIKE ?)");
                 args.add("%" + dptnky + "%"); args.add("%" + dptnky + "%");
