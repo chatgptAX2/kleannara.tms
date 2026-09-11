@@ -1075,17 +1075,43 @@ public class SapRfcService {
 
     public Map<String, Object> vehicleSearch(Map<String, Object> body) {
         try {
-            // VHCMA → MariaDB tmsJdbc
-            String cartype = str(body.get("cartype"));
-            // ※ ORA-00904 수정: KNRAWMS.VHCMA 에는 VHCLNO 컬럼이 없어 정렬 시 오류 발생.
-            //   실제 존재 컬럼인 VEHICLE_ID(VARCHAR2(10)) 로 정렬한다.
-            String sql = "SELECT * FROM KNRAWMS.VHCMA WHERE " +
-                (cartype.isEmpty() ? "1=1" : "CARTYPE=?") +
-                " AND (USE_YN IS NULL OR USE_YN='Y') ORDER BY VEHICLE_ID FETCH FIRST 100 ROWS ONLY";
-            List<Map<String, Object>> rows = cartype.isEmpty()
-                ? tmsJdbc.queryForList(sql)
-                : tmsJdbc.queryForList(sql, cartype);
-            return Map.of("ok", true, "vehicles", rows);
+            // KNRAWMS.VHCMA (차량마스터) → wmsJdbc
+            // ── 검색 조건 ──
+            //   vehicle_no    : 차량번호 부분검색 (VEHICLE_NO LIKE)
+            //   driver_name   : 기사명 부분검색 (DRIVER_NAME LIKE)
+            //   vehicle_class : 차량톤수(공통코드 TMS_CARCLASS10 유형코드) → VEHICLE_CLASS 정확일치
+            //   ※ [변경] 기존 CARTYPE(=CARCLASS_CD) 자동 필터링 제거.
+            //     운영 데이터상 VHCMA.CARTYPE 과 CARCLASS_CD 매칭이 맞지 않아
+            //     "조회된 차량이 없습니다" 가 발생했음 → 사용자가 직접 톤수코드로
+            //     VEHICLE_CLASS 를 조회하는 방식으로 변경.
+            String vehicleNo    = str(body.get("vehicle_no"));
+            String driverName   = str(body.get("driver_name"));
+            String vehicleClass = str(body.get("vehicle_class"));
+
+            StringBuilder sql = new StringBuilder(
+                "SELECT * FROM KNRAWMS.VHCMA WHERE (USE_YN IS NULL OR USE_YN='Y')");
+            List<Object> args = new ArrayList<>();
+            if (!vehicleNo.isEmpty()) {
+                sql.append(" AND VEHICLE_NO LIKE ?");
+                args.add("%" + vehicleNo + "%");
+            }
+            if (!driverName.isEmpty()) {
+                sql.append(" AND DRIVER_NAME LIKE ?");
+                args.add("%" + driverName + "%");
+            }
+            if (!vehicleClass.isEmpty()) {
+                sql.append(" AND VEHICLE_CLASS = ?");
+                args.add(vehicleClass);
+            }
+            sql.append(" ORDER BY VEHICLE_ID FETCH FIRST 100 ROWS ONLY");
+
+            List<Map<String, Object>> rows = wmsJdbc.queryForList(sql.toString(), args.toArray());
+            // 프론트는 data.rows 를 사용 → rows 키로 반환(호환 위해 vehicles 도 함께 제공)
+            Map<String, Object> resp = new HashMap<>();
+            resp.put("ok", true);
+            resp.put("rows", rows);
+            resp.put("vehicles", rows);
+            return resp;
         } catch (Exception e) { return errMap(e); }
     }
 
