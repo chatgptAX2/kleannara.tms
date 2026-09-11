@@ -1077,9 +1077,11 @@ public class SapRfcService {
         try {
             // VHCMA → MariaDB tmsJdbc
             String cartype = str(body.get("cartype"));
+            // ※ ORA-00904 수정: KNRAWMS.VHCMA 에는 VHCLNO 컬럼이 없어 정렬 시 오류 발생.
+            //   실제 존재 컬럼인 VEHICLE_ID(VARCHAR2(10)) 로 정렬한다.
             String sql = "SELECT * FROM KNRAWMS.VHCMA WHERE " +
                 (cartype.isEmpty() ? "1=1" : "CARTYPE=?") +
-                " AND (USE_YN IS NULL OR USE_YN='Y') ORDER BY VHCLNO FETCH FIRST 100 ROWS ONLY";
+                " AND (USE_YN IS NULL OR USE_YN='Y') ORDER BY VEHICLE_ID FETCH FIRST 100 ROWS ONLY";
             List<Map<String, Object>> rows = cartype.isEmpty()
                 ? tmsJdbc.queryForList(sql)
                 : tmsJdbc.queryForList(sql, cartype);
