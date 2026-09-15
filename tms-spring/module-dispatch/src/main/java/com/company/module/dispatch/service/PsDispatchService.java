@@ -422,11 +422,17 @@ public class PsDispatchService {
             // 배차완료 판정 기준: 가선적번호(STDLNR) 부여 여부 (STATIT 무관).
             //   메인 SELECT 의 SHPOKY 는 raw(오라클 CHAR 패딩 가능)이고 IN 파라미터는 strip 값
             //   → 양쪽 모두 TRIM 하여 비교(SHPOKY, SVBELN 공통).
+            // [버그수정] 기존에는 WHERE 에 STDLNR IS NOT NULL AND TRIM(STDLNR) <> '' 을 두었으나,
+            //   진단 결과 동일 IN 조건의 진단쿼리는 대상행(STDLNR=260909004T)을 정상 조회하는데
+            //   이 조건이 붙은 배차완료 SELECT 만 0건을 반환하는 현상이 확인됐다.
+            //   (Oracle 바인드/조건 결합 특성으로 STDLNR 값이 있어도 걸러지는 케이스)
+            //   → WHERE 에서 STDLNR 조건을 제거하고, 조회 후 Java 에서 STDLNR 이 실제로
+            //     채번된(공백 아님) 행만 map 에 담아 진단쿼리와 동일 결과를 보장한다.
             String sql =
-                "SELECT SHPOKY, SVBELN, SHPOIT, TRIM(COALESCE(STDLNR,'')), TRIM(COALESCE(STKNUM,''))" +
+                "SELECT TRIM(SHPOKY), TRIM(COALESCE(SVBELN,'')), TRIM(SHPOIT)," +
+                "       TRIM(COALESCE(STDLNR,'')), TRIM(COALESCE(STKNUM,''))" +
                 " FROM KNRAWMS.TMS_SHPDI" +
-                " WHERE STDLNR IS NOT NULL AND TRIM(STDLNR) <> ''" +
-                "   AND (TRIM(SHPOKY) IN (" + ph + ") OR TRIM(COALESCE(SVBELN,'')) IN (" + ph + "))";
+                " WHERE TRIM(SHPOKY) IN (" + ph + ") OR TRIM(COALESCE(SVBELN,'')) IN (" + ph + ")";
 
             var q = em.createNativeQuery(sql);
             // IN 파라미터를 두 번(SHPOKY용, SVBELN용) 바인딩
@@ -438,48 +444,15 @@ public class PsDispatchService {
                 String shpoky = str(cr[0]);
                 String svbeln = str(cr[1]);
                 String shpoit = str(cr[2]);
-                String[] val  = new String[]{ str(cr[3]), str(cr[4]) };   // [STDLNR, STKNUM]
+                String stdlnr = str(cr[3]);
+                String stknum = str(cr[4]);
+                // 배차완료 판정 기준: 가선적번호(STDLNR)가 실제 채번된(공백 아님) 행만.
+                if (stdlnr.isEmpty()) continue;
+                String[] val = new String[]{ stdlnr, stknum };   // [STDLNR, STKNUM]
                 if (!shpoky.isEmpty()) map.put(shpoky + "|" + shpoit, val);
                 if (!svbeln.isEmpty()) map.put(svbeln + "|" + shpoit, val);
             }
 
-            // ── [임시 진단] STDLNR 조건 없이 대상 키의 실제 STDLNR/STKNUM 값을 조회 ──────
-            //   배차저장 완료건이 여전히 미배차로 조회되는 원인을 서버 로그로 확정한다.
-            //   (a) 매칭행=0 → 메인SELECT SHPOKY/SVBELN 이 TMS_SHPDI 와 다른 값(키 불일치)
-            //   (b) 매칭행>0, STDLNR보유행=0 → DB STDLNR 실제 비어있음(saveDispatch 미반영/배차삭제됨)
-            //   (c) STDLNR보유행>0 인데 map 에 없음 → 위 배차완료 SELECT 의 조건/포맷 문제
-            try {
-                String diagSql =
-                    "SELECT TRIM(SHPOKY), TRIM(COALESCE(SVBELN,'')), TRIM(SHPOIT)," +
-                    "       TRIM(COALESCE(STDLNR,'')), TRIM(COALESCE(STKNUM,''))" +
-                    " FROM KNRAWMS.TMS_SHPDI" +
-                    " WHERE TRIM(SHPOKY) IN (" + ph + ") OR TRIM(COALESCE(SVBELN,'')) IN (" + ph + ")";
-                var dq = em.createNativeQuery(diagSql);
-                for (int i = 0; i < chunk.size(); i++) dq.setParameter(i + 1, chunk.get(i));
-                for (int i = 0; i < chunk.size(); i++) dq.setParameter(chunk.size() + i + 1, chunk.get(i));
-                @SuppressWarnings("unchecked")
-                List<Object[]> diagRows = dq.getResultList();
-                int withStdlnr = 0;
-                StringBuilder sb = new StringBuilder();
-                for (Object[] dr : diagRows) {
-                    String std = str(dr[3]);
-                    if (!std.isEmpty()) withStdlnr++;
-                    if (sb.length() < 2000) {
-                        sb.append("[SHPOKY=").append(str(dr[0]))
-                          .append(" SVBELN=").append(str(dr[1]))
-                          .append(" SHPOIT=").append(str(dr[2]))
-                          .append(" STDLNR=").append(std)
-                          .append(" STKNUM=").append(str(dr[4])).append("] ");
-                    }
-                }
-                log.info("[PsDispatch][DIAG] IN param 건수={}, TMS_SHPDI 매칭행={}, STDLNR보유행={}, 배차완료map={}",
-                        chunk.size(), diagRows.size(), withStdlnr, map.size());
-                log.info("[PsDispatch][DIAG] IN params(앞20)={}",
-                        chunk.subList(0, Math.min(20, chunk.size())));
-                log.info("[PsDispatch][DIAG] TMS_SHPDI 실제값(앞부분)={}", sb.toString());
-            } catch (Exception ex) {
-                log.warn("[PsDispatch][DIAG] 진단쿼리 실패: {}", ex.getMessage());
-            }
         }
         return map;
     }
