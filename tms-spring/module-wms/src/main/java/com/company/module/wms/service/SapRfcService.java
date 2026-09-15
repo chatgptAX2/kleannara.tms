@@ -780,12 +780,15 @@ public class SapRfcService {
             //     rqshpd_from → TMS_SHPDH.RQSHPD >= ?
             //     rqshpd_to   → TMS_SHPDH.RQSHPD <= ?
             //   (RQSHPD 는 'YYYYMMDD' 8자리 문자열, 하이픈 제거된 값으로 비교)
+            //   [버그수정] DB 의 RQSHPD(CHAR 계열)에 좌우 공백 패딩이 있으면 TRIM 없는
+            //   문자열 비교(SH.RQSHPD >= ?)에서 파라미터(strip된 8자리)와 어긋나 0건이 됨.
+            //   → 양쪽 정규화를 위해 TRIM(SH.RQSHPD) 로 비교한다.
             if (!rqFrom.isEmpty()) {
-                where.add("SH.RQSHPD >= ?");
+                where.add("TRIM(SH.RQSHPD) >= ?");
                 args.add(rqFrom);
             }
             if (!rqTo.isEmpty()) {
-                where.add("SH.RQSHPD <= ?");
+                where.add("TRIM(SH.RQSHPD) <= ?");
                 args.add(rqTo);
             }
             // ── SAP선적번호/가선적번호 검색 ──
@@ -875,6 +878,27 @@ public class SapRfcService {
                         "WHERE SI.STDLNR IS NOT NULL AND SI.STDLNR <> ' '", Integer.class);
                     log.warn("[SAP-list] 결과 0건 진단 — TMS_SHPDH JOIN 후 STDLNR 선적 수(날짜무시)={}건 "
                              + "(전체와 다르면 TMS_SHPDH 매칭 누락, 같은데 결과가 0이면 날짜필터가 원인)", joinCnt);
+
+                    // (c) 날짜필터만 적용 시 건수 — TRIM(RQSHPD) 비교가 실제로 매칭하는지 확인
+                    if (!rqFrom.isEmpty() || !rqTo.isEmpty()) {
+                        StringBuilder dsql = new StringBuilder(
+                            "SELECT COUNT(DISTINCT SI.STDLNR) FROM KNRAWMS.TMS_SHPDI SI " +
+                            "JOIN KNRAWMS.TMS_SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
+                            "WHERE TRIM(COALESCE(SI.STDLNR,'')) <> ''");
+                        List<Object> dargs = new ArrayList<>();
+                        if (!rqFrom.isEmpty()) { dsql.append(" AND TRIM(SH.RQSHPD) >= ?"); dargs.add(rqFrom); }
+                        if (!rqTo.isEmpty())   { dsql.append(" AND TRIM(SH.RQSHPD) <= ?"); dargs.add(rqTo); }
+                        Integer dateCnt = wmsJdbc.queryForObject(dsql.toString(), Integer.class, dargs.toArray());
+                        log.warn("[SAP-list] 결과 0건 진단 — 날짜필터(TRIM RQSHPD {}~{}) 적용 시 STDLNR 선적 수={}건",
+                                 rqFrom, rqTo, dateCnt);
+                        // RQSHPD 실제 저장값 샘플(길이/패딩 확인)
+                        List<Map<String,Object>> sample = wmsJdbc.queryForList(
+                            "SELECT DISTINCT SH.RQSHPD, LENGTH(SH.RQSHPD) LEN FROM KNRAWMS.TMS_SHPDI SI " +
+                            "JOIN KNRAWMS.TMS_SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
+                            "WHERE TRIM(COALESCE(SI.STDLNR,'')) <> '' AND ROWNUM <= 5");
+                        for (Map<String,Object> s : sample)
+                            log.warn("[SAP-list] 결과 0건 진단 — RQSHPD 실제값=[{}] LENGTH={}", s.get("RQSHPD"), s.get("LEN"));
+                    }
                 } catch (Exception de) {
                     log.warn("[SAP-list] 0건 진단 쿼리 실패: {}", de.getMessage());
                 }
