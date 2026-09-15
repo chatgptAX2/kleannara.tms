@@ -767,9 +767,12 @@ public class SapRfcService {
             //   ※ 배차저장(saveDispatch)은 STATIT 조건 없이 TMS_SHPDI.STDLNR 만 갱신한다.
             //     따라서 여기서 STATIT='NEW' 를 강제하면 STATIT 이 'NEW' 가 아닌 문서로
             //     저장된 배차는 SAP선적탭에 조회되지 않는 누락이 발생 → STATIT 조건 제거.
+            // [버그수정] 기존 WHERE 의 'SI.STDLNR IS NOT NULL AND SI.STDLNR <> '' '' 는
+            //   STDLNR 에 값이 있어도(예: 260910002T) 행이 걸러지는 현상이 확인됐다
+            //   (배차탭 loadDispatchedKeys 와 동일한 Oracle 바인드/조건 결합 이슈).
+            //   → WHERE 에서 STDLNR 조건을 제거하고, GROUP BY 집계 후 HAVING 으로
+            //     STDLNR 이 실제 채번된(공백 아님) 그룹만 남긴다. (아래 HAVING 절 참고)
             List<String> where = new ArrayList<>();
-            where.add("SI.STDLNR IS NOT NULL");
-            where.add("SI.STDLNR <> ' '");
             List<Object> args = new ArrayList<>();
             // ── 날짜 필터 (요청: 납품요청일 RQSHPD 기준으로 조회) ──
             //   기존에는 성능(ORA-01013) 회피를 위해 STDLNR(가선적번호) 앞6자리(채번일)로
@@ -797,7 +800,9 @@ public class SapRfcService {
                 where.add("(SH.DPTNKY LIKE ? OR CT.NAME01 LIKE ?)");
                 args.add("%" + dptnky + "%"); args.add("%" + dptnky + "%");
             }
-            String whereSql = String.join(" AND ", where);
+            // WHERE 가 비어있을 수 있으므로(모든 필터 미지정) 안전하게 조립.
+            //   STDLNR 채번 그룹만 남기는 조건은 HAVING 으로 처리(아래).
+            String whereSql = where.isEmpty() ? "1=1" : String.join(" AND ", where);
 
             String sql =
                 "SELECT " +
@@ -842,6 +847,8 @@ public class SapRfcService {
                 "LEFT JOIN KNRAWMS.TMS_PS_DISPATCH_H PH ON PH.DISPATCH_NO = SI.STDLNR " +
                 "WHERE " + whereSql + " " +
                 "GROUP BY SI.STDLNR " +
+                // STDLNR 이 실제 채번된(공백/NULL 아님) 그룹만 (WHERE 대신 HAVING 으로 판정)
+                "HAVING TRIM(COALESCE(SI.STDLNR,'')) <> '' " +
                 "ORDER BY MIN(SH.RQSHPD) DESC, SI.STDLNR";
 
             log.info("[SAP-list] 조회 파라미터 rqFrom={} rqTo={} stknum={} dptnky={}",
@@ -850,35 +857,6 @@ public class SapRfcService {
 
             List<Map<String, Object>> rows = wmsJdbc.queryForList(sql, args.toArray());
             log.info("[SAP-list] 조회 결과: {}건", rows.size());
-
-            // ── [임시 진단] 특정 납품문서(SVBELN)가 SAP선적탭에 미조회되는 원인 추적 ──────
-            //   배차탭에는 배차저장으로 보이나 SAP선적탭엔 안 나오는 케이스 규명.
-            //   대상 SVBELN 의 TMS_SHPDI 실제값(STDLNR/RQSHPD/SHPOKY/STATIT) + SHPDH 조인 여부를
-            //   단계별로 조회하여 어느 필터/조인에서 탈락하는지 확정한다.
-            try {
-                String[] diagSv = {"0824043174", "0824043175", "0824043176"};
-                for (String sv : diagSv) {
-                    List<Map<String, Object>> di = wmsJdbc.queryForList(
-                        "SELECT TRIM(SI.SHPOKY) SHPOKY, TRIM(SI.SVBELN) SVBELN, TRIM(SI.SHPOIT) SHPOIT," +
-                        " TRIM(COALESCE(SI.STDLNR,'')) STDLNR, TRIM(COALESCE(SI.STKNUM,'')) STKNUM," +
-                        " TRIM(COALESCE(SI.STATIT,'')) STATIT," +
-                        " (SELECT TRIM(SH2.RQSHPD) FROM KNRAWMS.TMS_SHPDH SH2 WHERE SH2.SHPOKY=SI.SHPOKY AND ROWNUM=1) RQSHPD," +
-                        " (SELECT COUNT(*) FROM KNRAWMS.TMS_SHPDH SH2 WHERE SH2.SHPOKY=SI.SHPOKY) SHPDH_CNT" +
-                        " FROM KNRAWMS.TMS_SHPDI SI WHERE TRIM(SI.SVBELN)=?", sv);
-                    if (di.isEmpty()) {
-                        log.warn("[SAP-list][DIAG] SVBELN={} → TMS_SHPDI 에 없음", sv);
-                    } else {
-                        for (Map<String, Object> d : di) {
-                            log.warn("[SAP-list][DIAG] SVBELN={} SHPOKY={} SHPOIT={} STDLNR=[{}] STKNUM=[{}] STATIT=[{}] RQSHPD=[{}] SHPDH매칭={}건",
-                                sv, d.get("SHPOKY"), d.get("SHPOIT"), d.get("STDLNR"), d.get("STKNUM"),
-                                d.get("STATIT"), d.get("RQSHPD"), d.get("SHPDH_CNT"));
-                        }
-                    }
-                }
-                log.warn("[SAP-list][DIAG] 적용된 날짜필터 rqFrom=[{}] rqTo=[{}]", rqFrom, rqTo);
-            } catch (Exception dex) {
-                log.warn("[SAP-list][DIAG] 진단쿼리 실패: {}", dex.getMessage());
-            }
 
             // ── 진단: 결과 0건이면 원인 절분을 위해 필터별 건수를 개별 확인 ──
             //   (a) STDLNR 채번 문서 자체가 있는가 (날짜/납품처 필터 완전 무시)
