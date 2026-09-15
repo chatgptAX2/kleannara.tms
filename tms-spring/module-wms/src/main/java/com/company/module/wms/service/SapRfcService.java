@@ -851,6 +851,35 @@ public class SapRfcService {
             List<Map<String, Object>> rows = wmsJdbc.queryForList(sql, args.toArray());
             log.info("[SAP-list] 조회 결과: {}건", rows.size());
 
+            // ── [임시 진단] 특정 납품문서(SVBELN)가 SAP선적탭에 미조회되는 원인 추적 ──────
+            //   배차탭에는 배차저장으로 보이나 SAP선적탭엔 안 나오는 케이스 규명.
+            //   대상 SVBELN 의 TMS_SHPDI 실제값(STDLNR/RQSHPD/SHPOKY/STATIT) + SHPDH 조인 여부를
+            //   단계별로 조회하여 어느 필터/조인에서 탈락하는지 확정한다.
+            try {
+                String[] diagSv = {"0824043174", "0824043175", "0824043176"};
+                for (String sv : diagSv) {
+                    List<Map<String, Object>> di = wmsJdbc.queryForList(
+                        "SELECT TRIM(SI.SHPOKY) SHPOKY, TRIM(SI.SVBELN) SVBELN, TRIM(SI.SHPOIT) SHPOIT," +
+                        " TRIM(COALESCE(SI.STDLNR,'')) STDLNR, TRIM(COALESCE(SI.STKNUM,'')) STKNUM," +
+                        " TRIM(COALESCE(SI.STATIT,'')) STATIT," +
+                        " (SELECT TRIM(SH2.RQSHPD) FROM KNRAWMS.TMS_SHPDH SH2 WHERE SH2.SHPOKY=SI.SHPOKY AND ROWNUM=1) RQSHPD," +
+                        " (SELECT COUNT(*) FROM KNRAWMS.TMS_SHPDH SH2 WHERE SH2.SHPOKY=SI.SHPOKY) SHPDH_CNT" +
+                        " FROM KNRAWMS.TMS_SHPDI SI WHERE TRIM(SI.SVBELN)=?", sv);
+                    if (di.isEmpty()) {
+                        log.warn("[SAP-list][DIAG] SVBELN={} → TMS_SHPDI 에 없음", sv);
+                    } else {
+                        for (Map<String, Object> d : di) {
+                            log.warn("[SAP-list][DIAG] SVBELN={} SHPOKY={} SHPOIT={} STDLNR=[{}] STKNUM=[{}] STATIT=[{}] RQSHPD=[{}] SHPDH매칭={}건",
+                                sv, d.get("SHPOKY"), d.get("SHPOIT"), d.get("STDLNR"), d.get("STKNUM"),
+                                d.get("STATIT"), d.get("RQSHPD"), d.get("SHPDH_CNT"));
+                        }
+                    }
+                }
+                log.warn("[SAP-list][DIAG] 적용된 날짜필터 rqFrom=[{}] rqTo=[{}]", rqFrom, rqTo);
+            } catch (Exception dex) {
+                log.warn("[SAP-list][DIAG] 진단쿼리 실패: {}", dex.getMessage());
+            }
+
             // ── 진단: 결과 0건이면 원인 절분을 위해 필터별 건수를 개별 확인 ──
             //   (a) STDLNR 채번 문서 자체가 있는가 (날짜/납품처 필터 완전 무시)
             //   (b) 날짜 범위만 적용 시 건수  → 날짜 필터가 원인인지 판별
