@@ -780,15 +780,17 @@ public class SapRfcService {
             //     rqshpd_from → TMS_SHPDH.RQSHPD >= ?
             //     rqshpd_to   → TMS_SHPDH.RQSHPD <= ?
             //   (RQSHPD 는 'YYYYMMDD' 8자리 문자열, 하이픈 제거된 값으로 비교)
-            //   [버그수정] DB 의 RQSHPD(CHAR 계열)에 좌우 공백 패딩이 있으면 TRIM 없는
-            //   문자열 비교(SH.RQSHPD >= ?)에서 파라미터(strip된 8자리)와 어긋나 0건이 됨.
-            //   → 양쪽 정규화를 위해 TRIM(SH.RQSHPD) 로 비교한다.
+            //   [버그수정2] TRIM(RQSHPD) 비교로도 from=to 동일일자 조회 시 0건이 발생.
+            //   원인: DB 의 RQSHPD 에 날짜(YYYYMMDD) 뒤 시간/추가문자가 붙어 있으면
+            //   (예: '20260910120000'), '<= 20260910' 비교에서 탈락한다.
+            //   → 날짜부 앞 8자리(YYYYMMDD)만 잘라 비교하여 시간/공백/포맷과 무관하게
+            //     정확한 일자 범위 비교가 되도록 SUBSTR(TRIM(SH.RQSHPD),1,8) 사용.
             if (!rqFrom.isEmpty()) {
-                where.add("TRIM(SH.RQSHPD) >= ?");
+                where.add("SUBSTR(TRIM(SH.RQSHPD),1,8) >= ?");
                 args.add(rqFrom);
             }
             if (!rqTo.isEmpty()) {
-                where.add("TRIM(SH.RQSHPD) <= ?");
+                where.add("SUBSTR(TRIM(SH.RQSHPD),1,8) <= ?");
                 args.add(rqTo);
             }
             // ── SAP선적번호/가선적번호 검색 ──
@@ -886,8 +888,8 @@ public class SapRfcService {
                             "JOIN KNRAWMS.TMS_SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
                             "WHERE TRIM(COALESCE(SI.STDLNR,'')) <> ''");
                         List<Object> dargs = new ArrayList<>();
-                        if (!rqFrom.isEmpty()) { dsql.append(" AND TRIM(SH.RQSHPD) >= ?"); dargs.add(rqFrom); }
-                        if (!rqTo.isEmpty())   { dsql.append(" AND TRIM(SH.RQSHPD) <= ?"); dargs.add(rqTo); }
+                        if (!rqFrom.isEmpty()) { dsql.append(" AND SUBSTR(TRIM(SH.RQSHPD),1,8) >= ?"); dargs.add(rqFrom); }
+                        if (!rqTo.isEmpty())   { dsql.append(" AND SUBSTR(TRIM(SH.RQSHPD),1,8) <= ?"); dargs.add(rqTo); }
                         Integer dateCnt = wmsJdbc.queryForObject(dsql.toString(), Integer.class, dargs.toArray());
                         log.warn("[SAP-list] 결과 0건 진단 — 날짜필터(TRIM RQSHPD {}~{}) 적용 시 STDLNR 선적 수={}건",
                                  rqFrom, rqTo, dateCnt);
