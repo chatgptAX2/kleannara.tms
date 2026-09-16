@@ -1403,7 +1403,7 @@ public class SapRfcService {
 
         for (Map<String, Object> s : splits) {
             // 원본 납품문서 식별: SHPOKY(원본 납품문서번호) + SHPOIT/SPOSNR(원본 품목순번)
-            String orgShpoky = firstNonEmpty(str(s.get("SHPOKY")), str(s.get("SVBELN")), svbeln);
+            String orgShpoky = firstNonEmpty(str(s.get("SHPOKY")), firstNonEmpty(str(s.get("SVBELN")), svbeln));
             String orgShpoit = firstNonEmpty(str(s.get("SHPOIT")), str(s.get("SPOSNR")));
             long   splitQty  = toLongOr0(s.get("split_qty") != null ? s.get("split_qty") : s.get("SPLIT_QTY"));
             if (splitQty <= 0) continue;
