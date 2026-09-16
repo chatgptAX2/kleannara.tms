@@ -1360,7 +1360,14 @@ public class SapRfcService {
      * 반환 형식은 shipmentSplit 과 동일(splits[] 에 SHPOKY/SVBELN/ORG_* 채움)하여
      * 프론트가 동일하게 로컬 갱신할 수 있도록 한다.</p>
      */
-    @org.springframework.transaction.annotation.Transactional(transactionManager = "wmsTransactionManager")
+    /**
+     * ※ 트랜잭션 주의: wmsTransactionManager 는 JpaTransactionManager 라서, 이 메서드에
+     *   @Transactional 을 걸면 JPA 커넥션에만 트랜잭션이 잡히고 wmsJdbc(JdbcTemplate)는
+     *   DataSource 에서 별도 커넥션을 받아 실행되어 실제 INSERT/UPDATE 가 커밋되지 않는
+     *   (성공 응답이지만 DB 무반영) 문제가 발생했다.
+     *   → @Transactional 을 제거하고 JdbcTemplate 의 auto-commit(문장 단위 즉시 커밋)에
+     *     의존한다. (각 update 는 실행 즉시 커밋됨)
+     */
     public Map<String, Object> shipmentSplitOffline(String svbeln, List<Map<String, Object>> splits) {
         if (svbeln == null || svbeln.isBlank()) return err("납품문서(SVBELN) 필수");
         if (splits == null || splits.isEmpty())  return err("splits 필수");
@@ -1374,7 +1381,25 @@ public class SapRfcService {
         String newShpoky = svbeln + "-S1";
 
         List<Map<String, Object>> outParams = new ArrayList<>();
-        int newItemSeq = 0;                       // 신규 문서 내 SHPOIT 채번(10,20,...)
+        int newItemSeq   = 0;                     // 신규 문서 내 SHPOIT 채번(10,20,...)
+        int insCntTotal  = 0;                     // 실제 INSERT 반영 건수 합
+        int updCntTotal  = 0;                     // 실제 UPDATE 반영 건수 합
+
+        // 신규 분할문서번호 중복 방지: 기존에 같은 -S1 문서가 있으면 -S2,-S3 로 회피
+        try {
+            int guard = 1;
+            while (true) {
+                Integer exist = wmsJdbc.queryForObject(
+                    "SELECT COUNT(*) FROM KNRAWMS.TMS_SHPDI WHERE TRIM(SHPOKY)=TRIM(?)",
+                    Integer.class, newShpoky);
+                if (exist == null || exist == 0) break;
+                guard++;
+                newShpoky = svbeln + "-S" + guard;
+                if (guard > 50) break;            // 안전장치
+            }
+        } catch (Exception e) {
+            stdoutLog("[납품분할][미연동] 신규문서번호 중복확인 실패(무시): " + e.getMessage());
+        }
 
         for (Map<String, Object> s : splits) {
             // 원본 납품문서 식별: SHPOKY(원본 납품문서번호) + SHPOIT/SPOSNR(원본 품목순번)
@@ -1404,6 +1429,9 @@ public class SapRfcService {
             }
             Map<String, Object> org = orgRows.get(0);
             long orgQty = toLongOr0(org.get("QTSHPO"));
+            // 원본 실제 SHPOKY/SHPOIT (패딩 포함 원본값) — 이후 UPDATE/INSERT 의 정확 매칭에 사용
+            String realShpoky = str(org.get("SHPOKY"));
+            String realShpoit = str(org.get("SHPOIT"));
             if (splitQty >= orgQty) {
                 stdoutLog("[납품분할][미연동] 분할수량(" + splitQty + ") >= 원수량(" + orgQty + ") → skip");
                 continue;
@@ -1414,8 +1442,7 @@ public class SapRfcService {
             String newShpoit = String.format("%06d", newItemSeq);
 
             // ── 2) 신규 분할 행 INSERT (원본 행 복제 + 신규 키/수량/마커) ──
-            //   SELECT INSERT: 원본(o)을 그대로 복제하되 SHPOKY/SHPOIT/QTSHPO/SVBELN/DESC02 만 신규값.
-            wmsJdbc.update(
+            String insSql =
                 "INSERT INTO KNRAWMS.TMS_SHPDI " +
                 " (SHPOKY, SHPOIT, SKUKEY, DESC01, DESC02, SKUG05, MEASKY, UOMKEY, " +
                 "  QTSHPO, QTUALO, QTALOC, QTJCMP, QTSHPD, STATIT, STDLNR, SVBELN, " +
@@ -1427,20 +1454,28 @@ public class SapRfcService {
                 "       TO_CHAR(SYSDATE,'YYYYMMDD'), TO_CHAR(SYSDATE,'HH24MISS'), 'WEB', " +
                 "       TO_CHAR(SYSDATE,'YYYYMMDD'), TO_CHAR(SYSDATE,'HH24MISS'), 'WEB' " +
                 "  FROM KNRAWMS.TMS_SHPDI " +
-                " WHERE TRIM(SHPOKY)=TRIM(?) AND TRIM(SHPOIT)=TRIM(?)",
-                newShpoky, newShpoit, splitQty, newShpoky, orgShpoky, orgShpoit);
+                " WHERE SHPOKY=? AND SHPOIT=?";
+            stdoutLog("[납품분할][미연동][SQL-INSERT] " + insSql
+                    + " || params=[" + newShpoky + ", " + newShpoit + ", " + splitQty + ", "
+                    + newShpoky + ", " + realShpoky + ", " + realShpoit + "]");
+            int insCnt = wmsJdbc.update(insSql,
+                newShpoky, newShpoit, splitQty, newShpoky, realShpoky, realShpoit);
+            insCntTotal += insCnt;
 
             // ── 3) 원본 행 수량 차감 UPDATE (원수량 - 분할수량) ──
-            wmsJdbc.update(
+            String updSql =
                 "UPDATE KNRAWMS.TMS_SHPDI " +
                 "   SET QTSHPO = QTSHPO - ?, " +
                 "       LMODAT = TO_CHAR(SYSDATE,'YYYYMMDD'), LMOUSR = 'WEB' " +
-                " WHERE TRIM(SHPOKY)=TRIM(?) AND TRIM(SHPOIT)=TRIM(?)",
-                splitQty, orgShpoky, orgShpoit);
+                " WHERE SHPOKY=? AND SHPOIT=?";
+            stdoutLog("[납품분할][미연동][SQL-UPDATE] " + updSql
+                    + " || params=[" + splitQty + ", " + realShpoky + ", " + realShpoit + "]");
+            int updCnt = wmsJdbc.update(updSql, splitQty, realShpoky, realShpoit);
+            updCntTotal += updCnt;
 
-            stdoutLog("[납품분할][미연동] 원본(" + orgShpoky + "/" + orgShpoit + ", " + orgQty
+            stdoutLog("[납품분할][미연동][결과] 원본(" + realShpoky + "/" + realShpoit + ", " + orgQty
                     + ") → 신규(" + newShpoky + "/" + newShpoit + ", " + splitQty
-                    + "), 원본잔량=" + (orgQty - splitQty));
+                    + ") | INSERT=" + insCnt + "건, UPDATE=" + updCnt + "건, 원본잔량=" + (orgQty - splitQty));
 
             Map<String, Object> p = new LinkedHashMap<>();
             p.put("SVBELN",      newShpoky);       // 신규 분할문서번호
@@ -1450,8 +1485,8 @@ public class SapRfcService {
             p.put("SKUKEY",      str(org.get("SKUKEY")));
             p.put("SPLIT_QTY",   splitQty);
             p.put("QTSHPO",      splitQty);
-            p.put("ORG_SHPOKY",  orgShpoky);       // 원본 납품문서번호
-            p.put("ORG_SHPOIT",  orgShpoit);
+            p.put("ORG_SHPOKY",  realShpoky);      // 원본 납품문서번호
+            p.put("ORG_SHPOIT",  realShpoit);
             p.put("SVBELN_O",    newShpoky);       // 프론트/updateTmsSplitDocNo 호환
             p.put("MSGTY",       "S");
             p.put("IS_SPLIT",    1);
@@ -1459,8 +1494,13 @@ public class SapRfcService {
             outParams.add(p);
         }
 
+        stdoutLog("[납품분할][미연동][합계] INSERT=" + insCntTotal + "건, UPDATE=" + updCntTotal + "건");
+
         if (outParams.isEmpty())
             return err("미연동 분할 대상이 없습니다(원본 미존재/수량 초과).");
+        // 실제 반영 0건이면 성공 오인 방지 — 명확히 실패 반환
+        if (insCntTotal == 0)
+            return err("미연동 분할 INSERT 0건 — TMS_SHPDI 원본행 매칭 실패(SHPOKY/SHPOIT 확인).");
 
         // TMS_PS_DISPATCH_D 에 이미 저장된 분할행이 있으면 신규번호로 갱신(저장 전이면 0건).
         int updated = updateTmsSplitDocNo(svbeln, outParams);
@@ -1469,6 +1509,8 @@ public class SapRfcService {
         r.put("ok", true);
         r.put("offline", true);
         r.put("rfc_msg", "미연동(테스트) 분할 — TMS_SHPDI 직접 분할 완료");
+        r.put("shpdi_inserted", insCntTotal);   // 실제 INSERT 건수(검증용)
+        r.put("shpdi_updated",  updCntTotal);   // 실제 원본 UPDATE 건수(검증용)
         r.put("tms_updated", updated);
         r.put("splits", outParams);
         return r;
