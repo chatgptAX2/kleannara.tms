@@ -2,6 +2,7 @@ package com.company.module.dispatch.dto;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSetter;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
@@ -36,6 +37,18 @@ public class PsDispatchSaveRequest {
     @NotEmpty(message = "vehicles 목록은 필수입니다")
     @Valid
     private List<VehicleBlock> vehicles;
+
+    /**
+     * 미연동(테스트) 모드 여부.
+     *   true  → SAP/WMS RFC 미연동. TMS_SHPDI.TMS_LINK_YN='N' 으로 기록(미연동 배차 구분).
+     *   false/미지정 → 연동 배차. TMS_LINK_YN='Y'.
+     * 기존 기능(연동 배차)에는 영향 없음(기본 false).
+     */
+    @JsonProperty("offline")
+    @JsonAlias({"OFFLINE", "no_rfc", "noRfc"})
+    private Boolean offline;
+
+    public boolean isOffline() { return Boolean.TRUE.equals(offline); }
 
     // ── 공용 숫자 변환 유틸 ─────────────────────────────────────────
     /** Boolean/Number/문자열 등 어떤 JSON 값이 와도 Double 로 안전 변환(변환 불가 시 null) */

@@ -1346,6 +1346,67 @@ public class SapRfcService {
     }
 
     /**
+     * 미연동(테스트) 납품분할 — SAP/WMS RFC 를 호출하지 않고 TMS 자체로 분할 결과를 만든다.
+     *
+     * <p>목적: SAP·WMS 연동 없이 자동배차/수기배차 및 납품분할 테스트를 자유롭게 수행.</p>
+     *
+     * <p>연동(shipmentSplit)과의 차이:
+     * <ul>
+     *   <li>SAP RFC(Z_TMS_DELIVERY_SPLIT) / WMS_IFC301 호출 없음</li>
+     *   <li>SAP 채번(SVBELN_O) 대신 TMS 임시 분할문서번호를 자체 생성:
+     *       원본SVBELN + "-S" + 2자리순번 (예: 0823932282-S1)</li>
+     *   <li>분할행 응답에 IS_SPLIT=1, TMS_LINK_YN='N'(미연동) 부여</li>
+     * </ul>
+     * 반환 형식은 shipmentSplit 과 동일(splits[] 에 SHPOKY/SVBELN/ORG_* 채움)하여
+     * 프론트가 동일하게 로컬 갱신할 수 있도록 한다.</p>
+     */
+    public Map<String, Object> shipmentSplitOffline(String svbeln, List<Map<String, Object>> splits) {
+        if (svbeln == null || svbeln.isBlank()) return err("납품문서(SVBELN) 필수");
+        if (splits == null || splits.isEmpty())  return err("splits 필수");
+
+        stdoutLog("[납품분할][미연동] SVBELN=" + svbeln + " 아이템수=" + splits.size()
+                + " (SAP/WMS RFC 미호출 — TMS 자체 분할)");
+
+        List<Map<String, Object>> outParams = new ArrayList<>();
+        int seq = 1;
+        for (Map<String, Object> s : splits) {
+            String orgVbeln = firstNonEmpty(str(s.get("SVBELN")), svbeln);
+            String posnr    = str(s.get("SPOSNR"));
+            String skukey   = firstNonEmpty(str(s.get("SKUKEY")), str(s.get("skukey")));
+            long   splitQty = toLongOr0(s.get("split_qty") != null ? s.get("split_qty") : s.get("SPLIT_QTY"));
+            // TMS 임시 분할문서번호 채번 (미연동)
+            String tmsSplitNo = orgVbeln + "-S" + seq++;
+
+            Map<String, Object> p = new LinkedHashMap<>();
+            p.put("SVBELN",      tmsSplitNo);      // 신규(임시) 분할문서번호
+            p.put("SHPOKY",      tmsSplitNo);
+            p.put("SHPOIT",      posnr);
+            p.put("SPOSNR",      posnr);
+            p.put("SKUKEY",      skukey);
+            p.put("SPLIT_QTY",   splitQty);
+            p.put("QTSHPO",      splitQty);
+            p.put("ORG_SHPOKY",  orgVbeln);        // 원본 납품문서번호
+            p.put("ORG_SHPOIT",  posnr);
+            p.put("SVBELN_O",    tmsSplitNo);      // 프론트/updateTmsSplitDocNo 호환
+            p.put("MSGTY",       "S");             // 성공 표시(연동 흐름과 동일 필드)
+            p.put("IS_SPLIT",    1);
+            p.put("TMS_LINK_YN", "N");             // 미연동 구분
+            outParams.add(p);
+        }
+
+        // TMS DB(TMS_PS_DISPATCH_D)에 이미 저장된 분할행이 있으면 임시번호로 갱신(저장 전이면 0건).
+        int updated = updateTmsSplitDocNo(svbeln, outParams);
+
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("ok", true);
+        r.put("offline", true);
+        r.put("rfc_msg", "미연동(테스트) 분할 — SAP/WMS RFC 미호출");
+        r.put("tms_updated", updated);
+        r.put("splits", outParams);
+        return r;
+    }
+
+    /**
      * TMS 임의 분할 납품문서번호를 SAP 채번번호(SVBELN_O)로 갱신.
      *
      * <p>TMS_PS_DISPATCH_D 에 이미 저장된 분할행이 존재하는 경우,

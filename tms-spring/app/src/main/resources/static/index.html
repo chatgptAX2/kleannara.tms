@@ -15127,6 +15127,9 @@ async function renderPsDispatchOpt() {
           <button class="psd-btn danger" id="psop-btn-del" onclick="psopDeleteDispatch()" disabled>🗑️ 배차삭제</button>
           <button class="psd-btn" id="psop-btn-load" onclick="psopOpenLoadModal()" title="저장된 DRAFT 배차를 불러와 수정">📂 배차불러오기</button>
           <button class="psd-btn purple" onclick="psopSaveDispatch()" id="psop-btn-save">💾 배차저장</button>
+          <!-- 미연동(테스트) 버튼: SAP/WMS RFC 호출 없이 자동배차/납품분할 테스트 -->
+          <button class="psd-btn" id="psop-btn-auto-offline" onclick="psopAutoDispatch(true)" title="SAP/WMS 미연동으로 자동배차 테스트" disabled style="border:1px dashed #f59e0b;color:#b45309;background:rgba(245,158,11,.08)">🔌 미연동 자동배차</button>
+          <button class="psd-btn" id="psop-btn-split-offline" onclick="psopOpenSplit(true)" title="SAP/WMS 미연동으로 납품분할 테스트" disabled style="border:1px dashed #f59e0b;color:#b45309;background:rgba(245,158,11,.08)">🔌 미연동 납품분할</button>
         </div>
       </div>
     </div>
@@ -15620,6 +15623,10 @@ function psopRenderDocTable(filterText) {
     const splitBadge = isSplitDoc
       ? `<span style="font-size:9px;font-weight:700;color:#f59e0b;background:rgba(245,158,11,.15);border:1px solid #f59e0b;border-radius:3px;padding:1px 4px;vertical-align:middle;margin-left:3px">분할</span>`
       : '';
+    // 연동구분 배지: TMS_LINK_YN='N' → 미연동(테스트) 배차임을 표시
+    const linkBadge = (String(r.TMS_LINK_YN||'').toUpperCase() === 'N')
+      ? `<span title="SAP/WMS 미연동(테스트) 배차" style="font-size:9px;font-weight:700;color:#b45309;background:rgba(245,158,11,.12);border:1px dashed #f59e0b;border-radius:3px;padding:1px 4px;vertical-align:middle;margin-left:3px">🔌미연동</span>`
+      : '';
     const shpmtyNm = r.SHPMTY_NM || r.SHPMTY || '';
     const skuTypeBadge = r.SKU_TYPE === 'roll'
       ? `<span style="display:inline-block;padding:1px 5px;border-radius:6px;font-size:10px;font-weight:700;background:#2563eb;color:#fff">원지</span>`
@@ -15630,7 +15637,7 @@ function psopRenderDocTable(filterText) {
     /* 컬럼별 TD 셀 맵 — 전체 font-size:11px / font-weight:400 통일 */
     const cellMap = {
       chk:     `<td class="drag-handle-cell psop-chk-cell" onclick="event.stopPropagation()" onmousedown="psopDragSelStart('${key}',event)" onmouseenter="psopDragSelEnter('${key}',event)" ondragstart="if(psopState._dragSel.pending||psopState._dragSel.active){event.preventDefault();return false;}" title="드래그하여 여러 행 체크/해제"><input type="checkbox" class="psd-doc-chk" data-key="${key}" ${sel?'checked':''} onclick="event.stopPropagation()" onchange="psopChkDoc('${key}',this.checked)"></td>`,
-      shpoky:  `<td style="color:var(--primary);font-weight:600">${r.SVBELN||r.SHPOKY}${splitBadge}</td>`,
+      shpoky:  `<td style="color:var(--primary);font-weight:600">${r.SVBELN||r.SHPOKY}${splitBadge}${linkBadge}</td>`,
       shpoit:  `<td style="text-align:center">${r.SHPOIT}</td>`,
       rqshpd:  `<td style="text-align:center;white-space:nowrap;color:var(--primary);font-weight:500">${psopFmtDate(r.RQSHPD)}</td>`,
       dptnky:  `<td title="${r.DPTNKY||''}">${r.DPTNKY||''}</td>`,
@@ -15980,6 +15987,9 @@ function psopUpdateToolbar() {
   if (btn('psop-btn-confirm')) btn('psop-btn-confirm').disabled = true; // 인메모리 단계에서 사용 안함
   if (btn('psop-btn-del'))     btn('psop-btn-del').disabled     = selVehCnt === 0;
   if (btn('psop-btn-save'))    btn('psop-btn-save').disabled    = !hasVeh; // 저장 대상 없으면 비활성
+  // 미연동(테스트) 버튼 — 연동 버튼과 동일 활성 조건
+  if (btn('psop-btn-auto-offline'))  btn('psop-btn-auto-offline').disabled  = psopState.searchRows.filter(r=>!r.DISPATCHED).length === 0;
+  if (btn('psop-btn-split-offline')) btn('psop-btn-split-offline').disabled = selCnt === 0;
 
   // 선택된 차량 수 표시
   const selInfo = document.getElementById('psop-veh-sel-info');
@@ -17633,7 +17643,10 @@ function psopMergeRestoredVehicles(vehicles, searchRows) {
 /* ═══════════════════════════════════════════════════
    자동배차
 ═══════════════════════════════════════════════════ */
-async function psopAutoDispatch() {
+async function psopAutoDispatch(offline) {
+  // offline=true → 미연동(SAP/WMS RFC 미호출) 자동배차 테스트 모드.
+  //   이후 배차저장(psopSaveDispatch)/분할이 offline 로 처리되도록 플래그 저장.
+  psopState._offlineMode = !!offline;
   // ① 선택된 문서가 있으면 선택분만, 없으면 전체 미배차 대상
   const selKeys = psopState.selectedDocs;
   let targets;
@@ -18127,12 +18140,15 @@ function psopExecuteManual(items) {
 
 /* ── 우측 납품문서 더블클릭 → 분할 열기 ─────────── */
 function psopOpenSplitForRow(shpoky, shpoit) {
+  psopState._splitOffline = false;   // 더블클릭 분할은 기본 연동 모드
   const item = psopState.searchRows.find(r => r.SHPOKY===shpoky && r.SHPOIT===shpoit);
   if (item) psopOpenSplitModal([item]);
 }
 
-/* ── 납품분할 버튼 ────────────────────────────────── */
-function psopOpenSplit() {
+/* ── 납품분할 버튼 ──────────────────────────────────
+   offline=true 이면 미연동(SAP/WMS RFC 미호출) 분할 모드. */
+function psopOpenSplit(offline) {
+  psopState._splitOffline = !!offline;   // 모달 저장(psopExecuteSplit)에서 참조
   const selKeys = [...psopState.selectedDocs];
   if (!selKeys.length) { showToast('납품문서를 선택하세요.'); return; }
   const items = selKeys.map(k => {
@@ -18381,10 +18397,11 @@ async function psopExecuteSplit() {
       org_qty:   r.org_qty,
       split_qty: r.split_qty,
     }));
+    const _offline = !!psopState._splitOffline;   // 미연동 분할 모드
     try {
       const res = await fetch('/api/ps-dispatch/split', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ SVBELN: svbeln, splits })
+        body: JSON.stringify({ SVBELN: svbeln, splits, offline: _offline })
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -18393,7 +18410,8 @@ async function psopExecuteSplit() {
       //   백엔드 shipmentSplit 응답: { ok, rfc_msg, wms:{ok,status_code,body}, splits }
       //   실제 SHPDI 분할 저장은 WMS_IFC301(사내망 API)이 수행 → data.wms.ok 가 최종 확정 신호.
       //   WMS 미연동(개발/사외망) 또는 실패면 서버 원본이 그대로라 재조회 시 원복됨.
-      const wmsOk = data.wms ? !!data.wms.ok : false;
+      //   ※ 미연동(offline) 모드는 RFC/WMS 를 의도적으로 건너뛰므로 data.ok 를 확정신호로 사용.
+      const wmsOk = _offline ? !!data.ok : (data.wms ? !!data.wms.ok : false);
       if (!wmsOk) {
         wmsUnconfirmed++;
         const reason = (data.wms && (data.wms.body || data.wms.error || data.wms.diagnosis))
@@ -18534,9 +18552,10 @@ async function psopSaveDispatch() {
       total_kg:    v.total_kg,
       items:       (v.items || []).map(it => ({ SHPOKY: it.SHPOKY, SHPOIT: it.SHPOIT })),
     }));
+    const _offline = !!psopState._offlineMode;   // 미연동 자동배차에서 설정된 모드
     const res = await fetch('/api/ps-dispatch/save', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ vehicles: psopState.vehicles.map(v => ({
+      body: JSON.stringify({ offline: _offline, vehicles: psopState.vehicles.map(v => ({
         cartype:     v.cartype,
         carclass_cd: v.carclass_cd || '',
         rqshpd:      v.rqshpd,
@@ -18585,9 +18604,10 @@ async function psopSaveDispatch() {
       });
     });
 
-    showToast(`✅ 배차저장 ${payload.saved ?? dispNos.length}건 완료 (${dispNos.join(', ')})`);
+    showToast(`${_offline ? '🔌 미연동 ' : '✅ '}배차저장 ${payload.saved ?? dispNos.length}건 완료 (${dispNos.join(', ')})`);
     // 배차저장으로 SAP선적 내역이 바뀌었으므로, 다음 SAP 탭 진입 시 1회 자동 조회되도록 리셋
     _sapState.initialized = false;
+    psopState._offlineMode = false;   // 저장 후 미연동 모드 해제(다음 저장은 연동 기본)
     // 저장 후 인메모리 비우기
     psopState.vehicles = [];
     psopState.selectedVehicles.clear();

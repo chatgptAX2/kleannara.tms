@@ -110,4 +110,7 @@ public class PsDispatchDocResponse {
 
     @JsonProperty("IS_SPLIT")
     private Boolean isSplit;        // 분할문서 여부 (SHPOKY '-S' 패턴)
+
+    @JsonProperty("TMS_LINK_YN")
+    private String linkYn;          // 연동구분 'N'=미연동(테스트) 배차, 'Y'=연동, ''=기존
 }
