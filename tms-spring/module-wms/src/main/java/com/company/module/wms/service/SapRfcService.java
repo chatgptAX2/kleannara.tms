@@ -1355,7 +1355,7 @@ public class SapRfcService {
      *   <li>SAP RFC(Z_TMS_DELIVERY_SPLIT) / WMS_IFC301 호출 없음</li>
      *   <li>SAP 채번(SVBELN_O) 대신 TMS 임시 분할문서번호를 자체 생성:
      *       원본SVBELN + "-S" + 2자리순번 (예: 0823932282-S1)</li>
-     *   <li>분할행 응답에 IS_SPLIT=1, TMS_LINK_YN='N'(미연동) 부여</li>
+     *   <li>분할행 응답에 IS_SPLIT=1, DESC02='OFFLINE'(미연동) 부여</li>
      * </ul>
      * 반환 형식은 shipmentSplit 과 동일(splits[] 에 SHPOKY/SVBELN/ORG_* 채움)하여
      * 프론트가 동일하게 로컬 갱신할 수 있도록 한다.</p>
@@ -1390,7 +1390,7 @@ public class SapRfcService {
             p.put("SVBELN_O",    tmsSplitNo);      // 프론트/updateTmsSplitDocNo 호환
             p.put("MSGTY",       "S");             // 성공 표시(연동 흐름과 동일 필드)
             p.put("IS_SPLIT",    1);
-            p.put("TMS_LINK_YN", "N");             // 미연동 구분
+            p.put("DESC02", "OFFLINE");            // 미연동 구분(DESC02 마커)
             outParams.add(p);
         }
 

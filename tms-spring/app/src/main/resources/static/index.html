@@ -15623,8 +15623,8 @@ function psopRenderDocTable(filterText) {
     const splitBadge = isSplitDoc
       ? `<span style="font-size:9px;font-weight:700;color:#f59e0b;background:rgba(245,158,11,.15);border:1px solid #f59e0b;border-radius:3px;padding:1px 4px;vertical-align:middle;margin-left:3px">분할</span>`
       : '';
-    // 연동구분 배지: TMS_LINK_YN='N' → 미연동(테스트) 배차임을 표시
-    const linkBadge = (String(r.TMS_LINK_YN||'').toUpperCase() === 'N')
+    // 연동구분 배지: DESC02='OFFLINE'(응답키 TMS_LINK_YN) → 미연동(테스트) 배차 표시
+    const linkBadge = (String(r.TMS_LINK_YN||'').toUpperCase() === 'OFFLINE')
       ? `<span title="SAP/WMS 미연동(테스트) 배차" style="font-size:9px;font-weight:700;color:#b45309;background:rgba(245,158,11,.12);border:1px dashed #f59e0b;border-radius:3px;padding:1px 4px;vertical-align:middle;margin-left:3px">🔌미연동</span>`
       : '';
     const shpmtyNm = r.SHPMTY_NM || r.SHPMTY || '';
