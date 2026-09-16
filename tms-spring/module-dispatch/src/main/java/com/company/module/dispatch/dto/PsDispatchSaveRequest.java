@@ -40,8 +40,8 @@ public class PsDispatchSaveRequest {
 
     /**
      * 미연동(테스트) 모드 여부.
-     *   true  → SAP/WMS RFC 미연동. TMS_SHPDI.TMS_LINK_YN='N' 으로 기록(미연동 배차 구분).
-     *   false/미지정 → 연동 배차. TMS_LINK_YN='Y'.
+     *   true  → SAP/WMS RFC 미연동. TMS_SHPDI.DESC02='OFFLINE' 으로 기록(미연동 배차 구분).
+     *   false/미지정 → 연동 배차. DESC02='ONLINE'.
      * 기존 기능(연동 배차)에는 영향 없음(기본 false).
      */
     @JsonProperty("offline")

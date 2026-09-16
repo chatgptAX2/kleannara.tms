@@ -167,8 +167,8 @@ public class PsDispatchService {
         "        FROM KNRAWMS.RECDI rd" +
         "        WHERE rd.SKUKEY = i.SKUKEY) AS UNIT_WEIGHT," +
         "       TRIM(COALESCE(i.SPOSNR,'')) AS SPOSNR," +
-        // 연동구분: 'N'=미연동(테스트) 배차, 'Y'=연동, 공백/NULL=기존
-        "       TRIM(COALESCE(i.TMS_LINK_YN,'')) AS TMS_LINK_YN" +
+        // 연동구분: DESC02='OFFLINE'=미연동(테스트), 'ONLINE'=연동, 그 외/공백=기존
+        "       TRIM(COALESCE(i.DESC02,'')) AS TMS_LINK_YN" +
         " FROM KNRAWMS.TMS_SHPDI i" +
         " JOIN KNRAWMS.TMS_SHPDH h ON i.SHPOKY = h.SHPOKY" +
         " LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY = h.DPTNKY AND b.PTNRTY = 'CT'" +
@@ -371,7 +371,7 @@ public class PsDispatchService {
                 .stknum(stknumVal)                   // SAP 선적번호 (선적생성 완료 시)
                 .lota03(str(r[15]))
                 .isSplit(str(r[0]).contains("-S"))   // 분할문서 여부
-                .linkYn(str(r[18]))                  // 연동구분 'N'=미연동(테스트), 'Y'=연동
+                .linkYn(str(r[18]))                  // 연동구분(DESC02): 'OFFLINE'=미연동, 'ONLINE'=연동
                 .build());
         }
         return result;
@@ -469,9 +469,11 @@ public class PsDispatchService {
     public List<String> saveDispatch(PsDispatchSaveRequest req) {
         String today = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE); // yyyyMMdd
         List<String> saved = new ArrayList<>();
-        // 미연동(테스트) 배차 여부 → TMS_SHPDI.TMS_LINK_YN 기록값 결정
-        //   미연동='N'(SAP/WMS RFC 미호출 테스트), 연동='Y'
-        final String linkYn = req.isOffline() ? "N" : "Y";
+        // 미연동(테스트) 배차 여부 → TMS_SHPDI.DESC02 에 연동구분 마커 기록.
+        //   ※ 공용 컬럼 신규생성 부담 회피를 위해 기존 DESC02 컬럼을 사용.
+        //   미연동='OFFLINE'(SAP/WMS RFC 미호출 테스트), 연동='ONLINE'.
+        //   조회 판정은 DESC02='OFFLINE' 여부로 한다.
+        final String linkMark = req.isOffline() ? "OFFLINE" : "ONLINE";
 
         for (PsDispatchSaveRequest.VehicleBlock veh : req.getVehicles()) {
             String dt          = veh.getRqshpd() == null ? today : veh.getRqshpd().replace("-", "");
@@ -567,17 +569,17 @@ public class PsDispatchService {
             List<String[]> notMatched = new ArrayList<>();
             for (String[] key : shpdiKeys) {
                 // 1차: 정확 매칭(SHPOKY + SHPOIT)
-                //   미연동/연동 구분(TMS_LINK_YN)도 함께 기록.
+                //   미연동/연동 구분(DESC02: OFFLINE/ONLINE)도 함께 기록.
                 int n = tmsEm.createNativeQuery("""
                     UPDATE KNRAWMS.TMS_SHPDI
                     SET STDLNR  = ?,
-                        TMS_LINK_YN = ?,
+                        DESC02 = ?,
                         LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
                         LMOUSR  = 'WEB'
                     WHERE SHPOKY = ? AND SHPOIT = ?
                     """)
                   .setParameter(1, dispatchNo)
-                  .setParameter(2, linkYn)
+                  .setParameter(2, linkMark)
                   .setParameter(3, key[0])
                   .setParameter(4, key[1])
                   .executeUpdate();
@@ -589,7 +591,7 @@ public class PsDispatchService {
                     n = tmsEm.createNativeQuery("""
                         UPDATE KNRAWMS.TMS_SHPDI
                         SET STDLNR  = ?,
-                            TMS_LINK_YN = ?,
+                            DESC02 = ?,
                             LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
                             LMOUSR  = 'WEB'
                         WHERE TRIM(SHPOKY) = TRIM(?)
@@ -599,7 +601,7 @@ public class PsDispatchService {
                                    AND TO_NUMBER(TRIM(SHPOIT)) = TO_NUMBER(TRIM(?))))
                         """)
                       .setParameter(1, dispatchNo)
-                      .setParameter(2, linkYn)
+                      .setParameter(2, linkMark)
                       .setParameter(3, key[0])
                       .setParameter(4, key[1])
                       .setParameter(5, key[1])
@@ -616,7 +618,7 @@ public class PsDispatchService {
                     n = tmsEm.createNativeQuery("""
                         UPDATE KNRAWMS.TMS_SHPDI
                         SET STDLNR  = ?,
-                            TMS_LINK_YN = ?,
+                            DESC02 = ?,
                             LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
                             LMOUSR  = 'WEB'
                         WHERE TRIM(SVBELN) = TRIM(?)
@@ -626,7 +628,7 @@ public class PsDispatchService {
                                    AND TO_NUMBER(TRIM(SHPOIT)) = TO_NUMBER(TRIM(?))))
                         """)
                       .setParameter(1, dispatchNo)
-                      .setParameter(2, linkYn)
+                      .setParameter(2, linkMark)
                       .setParameter(3, key[2])
                       .setParameter(4, key[1])
                       .setParameter(5, key[1])

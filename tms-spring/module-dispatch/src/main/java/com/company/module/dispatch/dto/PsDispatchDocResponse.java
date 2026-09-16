@@ -111,6 +111,8 @@ public class PsDispatchDocResponse {
     @JsonProperty("IS_SPLIT")
     private Boolean isSplit;        // 분할문서 여부 (SHPOKY '-S' 패턴)
 
+    // 연동구분 (TMS_SHPDI.DESC02): 'OFFLINE'=미연동(테스트), 'ONLINE'=연동, 그 외/공백=기존
+    //   프론트 호환 위해 JSON 키는 TMS_LINK_YN 유지.
     @JsonProperty("TMS_LINK_YN")
-    private String linkYn;          // 연동구분 'N'=미연동(테스트) 배차, 'Y'=연동, ''=기존
+    private String linkYn;
 }
