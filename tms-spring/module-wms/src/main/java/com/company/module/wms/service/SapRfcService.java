@@ -1375,31 +1375,13 @@ public class SapRfcService {
         stdoutLog("[납품분할][미연동] SVBELN=" + svbeln + " 아이템수=" + splits.size()
                 + " (SAP/WMS RFC 미호출 — TMS 가 TMS_SHPDI 직접 분할)");
 
-        // 신규 분할 납품문서번호(미연동 임시): 원본 + '-S' + 순번
-        //   같은 원본 SVBELN 의 여러 분할 품목은 하나의 신규 문서에 묶고,
-        //   그 안에서 SHPOIT 를 000010,000020 ... 으로 채번한다.
-        String newShpoky = svbeln + "-S1";
+        // ※ SHPOKY(출하문서번호, VARCHAR(10)) 는 원본 값을 그대로 유지한다.
+        //   (별도 '-S1' 등 신규 문서번호를 만들지 않는다 — VARCHAR(10) 초과/포맷 문제 방지)
+        //   신규 분할 행은 같은 SHPOKY 안에서 SHPOIT 를 (기존 최대 SHPOIT + 10) 으로 채번하여 INSERT 한다.
 
         List<Map<String, Object>> outParams = new ArrayList<>();
-        int newItemSeq   = 0;                     // 신규 문서 내 SHPOIT 채번(10,20,...)
         int insCntTotal  = 0;                     // 실제 INSERT 반영 건수 합
         int updCntTotal  = 0;                     // 실제 UPDATE 반영 건수 합
-
-        // 신규 분할문서번호 중복 방지: 기존에 같은 -S1 문서가 있으면 -S2,-S3 로 회피
-        try {
-            int guard = 1;
-            while (true) {
-                Integer exist = wmsJdbc.queryForObject(
-                    "SELECT COUNT(*) FROM KNRAWMS.TMS_SHPDI WHERE TRIM(SHPOKY)=TRIM(?)",
-                    Integer.class, newShpoky);
-                if (exist == null || exist == 0) break;
-                guard++;
-                newShpoky = svbeln + "-S" + guard;
-                if (guard > 50) break;            // 안전장치
-            }
-        } catch (Exception e) {
-            stdoutLog("[납품분할][미연동] 신규문서번호 중복확인 실패(무시): " + e.getMessage());
-        }
 
         for (Map<String, Object> s : splits) {
             // 원본 납품문서 식별: SHPOKY(원본 납품문서번호) + SHPOIT/SPOSNR(원본 품목순번)
@@ -1437,29 +1419,43 @@ public class SapRfcService {
                 continue;
             }
 
-            // 신규 문서 내 SHPOIT 채번 (000010, 000020 ...)
-            newItemSeq += 10;
-            String newShpoit = String.format("%06d", newItemSeq);
+            // 신규 SHPOIT 채번: 같은 SHPOKY(원본 출하문서) 내 기존 SHPOIT 최대값 + 10
+            //   원본 SHPOIT 자릿수(패딩)를 그대로 유지한다. (예: 000010 → 000020)
+            long maxItem;
+            try {
+                Long mx = wmsJdbc.queryForObject(
+                    "SELECT NVL(MAX(TO_NUMBER(TRIM(SHPOIT))),0) FROM KNRAWMS.TMS_SHPDI " +
+                    " WHERE TRIM(SHPOKY)=TRIM(?) AND REGEXP_LIKE(TRIM(SHPOIT),'^[0-9]+$')",
+                    Long.class, realShpoky);
+                maxItem = (mx == null ? 0L : mx);
+            } catch (Exception e) {
+                maxItem = toLongOr0(realShpoit);
+                stdoutLog("[납품분할][미연동] SHPOIT MAX 조회 실패(원본기준 대체): " + e.getMessage());
+            }
+            long newItemNo   = maxItem + 10;
+            int  itemWidth   = realShpoit.trim().length() > 0 ? realShpoit.trim().length() : 6;
+            String newShpoit = String.format("%0" + itemWidth + "d", newItemNo);
 
-            // ── 2) 신규 분할 행 INSERT (원본 행 복제 + 신규 키/수량/마커) ──
+            // ── 2) 신규 분할 행 INSERT (원본 행 복제 + SHPOKY 유지 / SHPOIT +10 / 분할수량 / 마커) ──
+            //   SHPOKY, SVBELN 은 원본 값을 그대로 유지한다.
             String insSql =
                 "INSERT INTO KNRAWMS.TMS_SHPDI " +
                 " (SHPOKY, SHPOIT, SKUKEY, DESC01, DESC02, SKUG05, MEASKY, UOMKEY, " +
                 "  QTSHPO, QTUALO, QTALOC, QTJCMP, QTSHPD, STATIT, STDLNR, SVBELN, " +
                 "  LOTA01, LOTA02, LOTA03, TLOTA01, TLOTA02, ALSTKY, " +
                 "  CREDAT, CRETIM, CREUSR, LMODAT, LMOTIM, LMOUSR) " +
-                "SELECT ?, ?, SKUKEY, DESC01, 'OFFLINE', SKUG05, MEASKY, UOMKEY, " +
-                "       ?, 0, 0, 0, 0, STATIT, ' ', ?, " +
+                "SELECT SHPOKY, ?, SKUKEY, DESC01, 'OFFLINE', SKUG05, MEASKY, UOMKEY, " +
+                "       ?, 0, 0, 0, 0, STATIT, ' ', SVBELN, " +
                 "       LOTA01, LOTA02, LOTA03, TLOTA01, TLOTA02, ALSTKY, " +
                 "       TO_CHAR(SYSDATE,'YYYYMMDD'), TO_CHAR(SYSDATE,'HH24MISS'), 'WEB', " +
                 "       TO_CHAR(SYSDATE,'YYYYMMDD'), TO_CHAR(SYSDATE,'HH24MISS'), 'WEB' " +
                 "  FROM KNRAWMS.TMS_SHPDI " +
                 " WHERE SHPOKY=? AND SHPOIT=?";
             stdoutLog("[납품분할][미연동][SQL-INSERT] " + insSql
-                    + " || params=[" + newShpoky + ", " + newShpoit + ", " + splitQty + ", "
-                    + newShpoky + ", " + realShpoky + ", " + realShpoit + "]");
+                    + " || params=[" + newShpoit + ", " + splitQty + ", "
+                    + realShpoky + ", " + realShpoit + "]");
             int insCnt = wmsJdbc.update(insSql,
-                newShpoky, newShpoit, splitQty, newShpoky, realShpoky, realShpoit);
+                newShpoit, splitQty, realShpoky, realShpoit);
             insCntTotal += insCnt;
 
             // ── 3) 원본 행 수량 차감 UPDATE (원수량 - 분할수량) ──
@@ -1474,20 +1470,20 @@ public class SapRfcService {
             updCntTotal += updCnt;
 
             stdoutLog("[납품분할][미연동][결과] 원본(" + realShpoky + "/" + realShpoit + ", " + orgQty
-                    + ") → 신규(" + newShpoky + "/" + newShpoit + ", " + splitQty
+                    + ") → 신규(" + realShpoky + "/" + newShpoit + ", " + splitQty
                     + ") | INSERT=" + insCnt + "건, UPDATE=" + updCnt + "건, 원본잔량=" + (orgQty - splitQty));
 
             Map<String, Object> p = new LinkedHashMap<>();
-            p.put("SVBELN",      newShpoky);       // 신규 분할문서번호
-            p.put("SHPOKY",      newShpoky);
-            p.put("SHPOIT",      newShpoit);       // 신규 채번 순번(000010,...)
+            p.put("SVBELN",      realShpoky);      // 출하문서번호(원본 유지)
+            p.put("SHPOKY",      realShpoky);      // SHPOKY 유지
+            p.put("SHPOIT",      newShpoit);       // 신규 채번 순번(원본 최대 SHPOIT + 10)
             p.put("SPOSNR",      orgShpoit);
             p.put("SKUKEY",      str(org.get("SKUKEY")));
             p.put("SPLIT_QTY",   splitQty);
             p.put("QTSHPO",      splitQty);
             p.put("ORG_SHPOKY",  realShpoky);      // 원본 납품문서번호
             p.put("ORG_SHPOIT",  realShpoit);
-            p.put("SVBELN_O",    newShpoky);       // 프론트/updateTmsSplitDocNo 호환
+            p.put("SVBELN_O",    realShpoky);      // 프론트/updateTmsSplitDocNo 호환(문서번호 불변)
             p.put("MSGTY",       "S");
             p.put("IS_SPLIT",    1);
             p.put("DESC02",      "OFFLINE");       // 미연동 구분
