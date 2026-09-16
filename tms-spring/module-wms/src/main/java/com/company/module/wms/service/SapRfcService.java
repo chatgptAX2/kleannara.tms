@@ -852,8 +852,11 @@ public class SapRfcService {
                 "LEFT JOIN KNRAWMS.TMS_PS_DISPATCH_H PH ON PH.DISPATCH_NO = SI.STDLNR " +
                 "WHERE " + whereSql + " " +
                 "GROUP BY SI.STDLNR " +
-                // STDLNR 이 실제 채번된(공백/NULL 아님) 그룹만 (WHERE 대신 HAVING 으로 판정)
-                "HAVING TRIM(COALESCE(SI.STDLNR,'')) <> '' " +
+                // STDLNR 이 실제 채번된(공백/NULL 아님) 그룹만.
+                //   [버그수정] TRIM(COALESCE(SI.STDLNR,'')) <> '' 은 오라클에서 '' = NULL 이므로
+                //   '<> NULL' → 항상 UNKNOWN → 모든 그룹 탈락(0건)이 되는 함정이 있었다.
+                //   → 검증된 표현 'SI.STDLNR IS NOT NULL AND SI.STDLNR <> '' ''(공백1칸) 사용.
+                "HAVING SI.STDLNR IS NOT NULL AND SI.STDLNR <> ' ' " +
                 "ORDER BY MIN(SH.RQSHPD) DESC, SI.STDLNR";
 
             log.info("[SAP-list] 조회 파라미터 rqFrom={} rqTo={} stknum={} dptnky={}",
@@ -862,65 +865,6 @@ public class SapRfcService {
 
             List<Map<String, Object>> rows = wmsJdbc.queryForList(sql, args.toArray());
             log.info("[SAP-list] 조회 결과: {}건", rows.size());
-
-            // ── 진단: 결과 0건이면 원인 절분을 위해 필터별 건수를 개별 확인 ──
-            //   (a) STDLNR 채번 문서 자체가 있는가 (날짜/납품처 필터 완전 무시)
-            //   (b) 날짜 범위만 적용 시 건수  → 날짜 필터가 원인인지 판별
-            //   [로그 잘림 우회] 진단 결과를 응답 JSON(diag)에도 담아 브라우저에서 직접 확인.
-            Map<String, Object> diag = new LinkedHashMap<>();
-            if (rows.isEmpty()) {
-                try {
-                    // ※ 진단 쿼리도 TRIM() 제거(인덱스 사용) — STDLNR <> ' ' 로 공백 제외
-                    Integer totCnt = wmsJdbc.queryForObject(
-                        "SELECT COUNT(DISTINCT SI.STDLNR) FROM KNRAWMS.TMS_SHPDI SI " +
-                        "WHERE SI.STDLNR IS NOT NULL AND SI.STDLNR <> ' '", Integer.class);
-                    log.warn("[SAP-list] 결과 0건 진단 — 전체 STDLNR 채번 선적 수(필터무시)={}건", totCnt);
-                    diag.put("totCnt", totCnt);
-
-                    Integer joinCnt = wmsJdbc.queryForObject(
-                        "SELECT COUNT(DISTINCT SI.STDLNR) FROM KNRAWMS.TMS_SHPDI SI " +
-                        "JOIN KNRAWMS.TMS_SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
-                        "WHERE SI.STDLNR IS NOT NULL AND SI.STDLNR <> ' '", Integer.class);
-                    log.warn("[SAP-list] 결과 0건 진단 — TMS_SHPDH JOIN 후 STDLNR 선적 수(날짜무시)={}건 "
-                             + "(전체와 다르면 TMS_SHPDH 매칭 누락, 같은데 결과가 0이면 날짜필터가 원인)", joinCnt);
-                    diag.put("joinCnt", joinCnt);
-                    diag.put("rqFrom", rqFrom);
-                    diag.put("rqTo", rqTo);
-
-                    // (c) 날짜필터만 적용 시 건수 — TRIM(RQSHPD) 비교가 실제로 매칭하는지 확인
-                    if (!rqFrom.isEmpty() || !rqTo.isEmpty()) {
-                        StringBuilder dsql = new StringBuilder(
-                            "SELECT COUNT(DISTINCT SI.STDLNR) FROM KNRAWMS.TMS_SHPDI SI " +
-                            "JOIN KNRAWMS.TMS_SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
-                            "WHERE TRIM(COALESCE(SI.STDLNR,'')) <> ''");
-                        List<Object> dargs = new ArrayList<>();
-                        if (!rqFrom.isEmpty()) { dsql.append(" AND SUBSTR(TRIM(SH.RQSHPD),1,8) >= ?"); dargs.add(rqFrom); }
-                        if (!rqTo.isEmpty())   { dsql.append(" AND SUBSTR(TRIM(SH.RQSHPD),1,8) <= ?"); dargs.add(rqTo); }
-                        Integer dateCnt = wmsJdbc.queryForObject(dsql.toString(), Integer.class, dargs.toArray());
-                        log.warn("[SAP-list] 결과 0건 진단 — 날짜필터(TRIM RQSHPD {}~{}) 적용 시 STDLNR 선적 수={}건",
-                                 rqFrom, rqTo, dateCnt);
-                        diag.put("dateCnt", dateCnt);
-                    }
-                    // RQSHPD 실제 저장값 샘플(길이/패딩/문자코드 확인 — DUMP 로 바이트까지)
-                    //   STDLNR 채번된 문서의 SH.RQSHPD 를 SHPOKY/SVBELN 과 함께 그대로 출력.
-                    //   [로그 잘림 우회] 응답 diag.samples 에도 담아 브라우저에서 확인.
-                    List<Map<String,Object>> sample = wmsJdbc.queryForList(
-                        "SELECT SI.SHPOKY, SI.SVBELN, SH.RQSHPD, LENGTH(SH.RQSHPD) LEN," +
-                        "       DUMP(SH.RQSHPD) RQ_DUMP, TRIM(SH.RQSHPD) RQ_TRIM," +
-                        "       SUBSTR(TRIM(SH.RQSHPD),1,8) RQ_SUB8, SI.STDLNR " +
-                        "FROM KNRAWMS.TMS_SHPDI SI " +
-                        "JOIN KNRAWMS.TMS_SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
-                        "WHERE TRIM(COALESCE(SI.STDLNR,'')) <> '' AND ROWNUM <= 10");
-                    for (Map<String,Object> s : sample)
-                        log.warn("[SAP-list] 결과 0건 진단 — SHPOKY={} SVBELN={} STDLNR={} RQSHPD=[{}] LEN={} SUB8=[{}] DUMP={}",
-                            s.get("SHPOKY"), s.get("SVBELN"), s.get("STDLNR"),
-                            s.get("RQSHPD"), s.get("LEN"), s.get("RQ_SUB8"), s.get("RQ_DUMP"));
-                    diag.put("samples", sample);
-                } catch (Exception de) {
-                    log.warn("[SAP-list] 0건 진단 쿼리 실패: {}", de.getMessage());
-                    diag.put("error", de.getMessage());
-                }
-            }
 
             // ── 차량유형 코드/명칭 정규화 (Flask 로직 이식) ──
             for (Map<String, Object> d : rows) {
@@ -951,12 +895,7 @@ public class SapRfcService {
                 d.put("CARCLASS_CD", carclassCd);
             }
 
-            Map<String, Object> resp = new LinkedHashMap<>();
-            resp.put("ok", true);
-            resp.put("rows", rows);
-            resp.put("total", rows.size());
-            if (!diag.isEmpty()) resp.put("diag", diag);   // 0건일 때만 진단 정보 포함
-            return resp;
+            return Map.of("ok", true, "rows", rows, "total", rows.size());
         } catch (Exception e) { return errMap(e); }
     }
 
