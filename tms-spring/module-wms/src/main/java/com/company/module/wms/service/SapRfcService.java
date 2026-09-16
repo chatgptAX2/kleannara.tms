@@ -891,13 +891,20 @@ public class SapRfcService {
                         Integer dateCnt = wmsJdbc.queryForObject(dsql.toString(), Integer.class, dargs.toArray());
                         log.warn("[SAP-list] 결과 0건 진단 — 날짜필터(TRIM RQSHPD {}~{}) 적용 시 STDLNR 선적 수={}건",
                                  rqFrom, rqTo, dateCnt);
-                        // RQSHPD 실제 저장값 샘플(길이/패딩 확인)
+                        // RQSHPD 실제 저장값 샘플(길이/패딩/문자코드 확인 — DUMP 로 바이트까지)
+                        //   STDLNR 채번된 문서의 SH.RQSHPD 를 SHPOKY/SVBELN 과 함께 그대로 출력.
+                        //   DUMP() 로 실제 바이트를 보면 공백/시간/특수문자 유무를 100% 판별 가능.
                         List<Map<String,Object>> sample = wmsJdbc.queryForList(
-                            "SELECT DISTINCT SH.RQSHPD, LENGTH(SH.RQSHPD) LEN FROM KNRAWMS.TMS_SHPDI SI " +
+                            "SELECT SI.SHPOKY, SI.SVBELN, SH.RQSHPD, LENGTH(SH.RQSHPD) LEN," +
+                            "       DUMP(SH.RQSHPD) RQ_DUMP, TRIM(SH.RQSHPD) RQ_TRIM," +
+                            "       SI.STDLNR " +
+                            "FROM KNRAWMS.TMS_SHPDI SI " +
                             "JOIN KNRAWMS.TMS_SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
-                            "WHERE TRIM(COALESCE(SI.STDLNR,'')) <> '' AND ROWNUM <= 5");
+                            "WHERE TRIM(COALESCE(SI.STDLNR,'')) <> '' AND ROWNUM <= 10");
                         for (Map<String,Object> s : sample)
-                            log.warn("[SAP-list] 결과 0건 진단 — RQSHPD 실제값=[{}] LENGTH={}", s.get("RQSHPD"), s.get("LEN"));
+                            log.warn("[SAP-list] 결과 0건 진단 — SHPOKY={} SVBELN={} STDLNR={} RQSHPD=[{}] LEN={} TRIM=[{}] DUMP={}",
+                                s.get("SHPOKY"), s.get("SVBELN"), s.get("STDLNR"),
+                                s.get("RQSHPD"), s.get("LEN"), s.get("RQ_TRIM"), s.get("RQ_DUMP"));
                     }
                 } catch (Exception de) {
                     log.warn("[SAP-list] 0건 진단 쿼리 실패: {}", de.getMessage());
