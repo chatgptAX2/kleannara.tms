@@ -1360,47 +1360,115 @@ public class SapRfcService {
      * 반환 형식은 shipmentSplit 과 동일(splits[] 에 SHPOKY/SVBELN/ORG_* 채움)하여
      * 프론트가 동일하게 로컬 갱신할 수 있도록 한다.</p>
      */
+    @org.springframework.transaction.annotation.Transactional(transactionManager = "wmsTransactionManager")
     public Map<String, Object> shipmentSplitOffline(String svbeln, List<Map<String, Object>> splits) {
         if (svbeln == null || svbeln.isBlank()) return err("납품문서(SVBELN) 필수");
         if (splits == null || splits.isEmpty())  return err("splits 필수");
 
         stdoutLog("[납품분할][미연동] SVBELN=" + svbeln + " 아이템수=" + splits.size()
-                + " (SAP/WMS RFC 미호출 — TMS 자체 분할)");
+                + " (SAP/WMS RFC 미호출 — TMS 가 TMS_SHPDI 직접 분할)");
+
+        // 신규 분할 납품문서번호(미연동 임시): 원본 + '-S' + 순번
+        //   같은 원본 SVBELN 의 여러 분할 품목은 하나의 신규 문서에 묶고,
+        //   그 안에서 SHPOIT 를 000010,000020 ... 으로 채번한다.
+        String newShpoky = svbeln + "-S1";
 
         List<Map<String, Object>> outParams = new ArrayList<>();
-        int seq = 1;
+        int newItemSeq = 0;                       // 신규 문서 내 SHPOIT 채번(10,20,...)
+
         for (Map<String, Object> s : splits) {
-            String orgVbeln = firstNonEmpty(str(s.get("SVBELN")), svbeln);
-            String posnr    = str(s.get("SPOSNR"));
-            String skukey   = firstNonEmpty(str(s.get("SKUKEY")), str(s.get("skukey")));
-            long   splitQty = toLongOr0(s.get("split_qty") != null ? s.get("split_qty") : s.get("SPLIT_QTY"));
-            // TMS 임시 분할문서번호 채번 (미연동)
-            String tmsSplitNo = orgVbeln + "-S" + seq++;
+            // 원본 납품문서 식별: SHPOKY(원본 납품문서번호) + SHPOIT/SPOSNR(원본 품목순번)
+            String orgShpoky = firstNonEmpty(str(s.get("SHPOKY")), str(s.get("SVBELN")), svbeln);
+            String orgShpoit = firstNonEmpty(str(s.get("SHPOIT")), str(s.get("SPOSNR")));
+            long   splitQty  = toLongOr0(s.get("split_qty") != null ? s.get("split_qty") : s.get("SPLIT_QTY"));
+            if (splitQty <= 0) continue;
+
+            // ── 1) 원본 TMS_SHPDI 행 SELECT (SHPOKY + SHPOIT, TRIM 매칭) ──
+            List<Map<String, Object>> orgRows = wmsJdbc.queryForList(
+                "SELECT * FROM KNRAWMS.TMS_SHPDI " +
+                " WHERE TRIM(SHPOKY) = TRIM(?) AND TRIM(SHPOIT) = TRIM(?)",
+                orgShpoky, orgShpoit);
+            if (orgRows.isEmpty()) {
+                // SHPOIT 포맷차(0010 vs 10) 대비 숫자 매칭 재시도
+                orgRows = wmsJdbc.queryForList(
+                    "SELECT * FROM KNRAWMS.TMS_SHPDI " +
+                    " WHERE TRIM(SHPOKY) = TRIM(?) " +
+                    "   AND REGEXP_LIKE(TRIM(SHPOIT),'^[0-9]+$') AND REGEXP_LIKE(TRIM(?),'^[0-9]+$') " +
+                    "   AND TO_NUMBER(TRIM(SHPOIT)) = TO_NUMBER(TRIM(?))",
+                    orgShpoky, orgShpoit, orgShpoit);
+            }
+            if (orgRows.isEmpty()) {
+                stdoutLog("[납품분할][미연동] 원본 TMS_SHPDI 없음 → skip (SHPOKY=" + orgShpoky
+                        + ", SHPOIT=" + orgShpoit + ")");
+                continue;
+            }
+            Map<String, Object> org = orgRows.get(0);
+            long orgQty = toLongOr0(org.get("QTSHPO"));
+            if (splitQty >= orgQty) {
+                stdoutLog("[납품분할][미연동] 분할수량(" + splitQty + ") >= 원수량(" + orgQty + ") → skip");
+                continue;
+            }
+
+            // 신규 문서 내 SHPOIT 채번 (000010, 000020 ...)
+            newItemSeq += 10;
+            String newShpoit = String.format("%06d", newItemSeq);
+
+            // ── 2) 신규 분할 행 INSERT (원본 행 복제 + 신규 키/수량/마커) ──
+            //   SELECT INSERT: 원본(o)을 그대로 복제하되 SHPOKY/SHPOIT/QTSHPO/SVBELN/DESC02 만 신규값.
+            wmsJdbc.update(
+                "INSERT INTO KNRAWMS.TMS_SHPDI " +
+                " (SHPOKY, SHPOIT, SKUKEY, DESC01, DESC02, SKUG05, MEASKY, UOMKEY, " +
+                "  QTSHPO, QTUALO, QTALOC, QTJCMP, QTSHPD, STATIT, STDLNR, SVBELN, " +
+                "  LOTA01, LOTA02, LOTA03, TLOTA01, TLOTA02, ALSTKY, " +
+                "  CREDAT, CRETIM, CREUSR, LMODAT, LMOTIM, LMOUSR) " +
+                "SELECT ?, ?, SKUKEY, DESC01, 'OFFLINE', SKUG05, MEASKY, UOMKEY, " +
+                "       ?, 0, 0, 0, 0, STATIT, ' ', ?, " +
+                "       LOTA01, LOTA02, LOTA03, TLOTA01, TLOTA02, ALSTKY, " +
+                "       TO_CHAR(SYSDATE,'YYYYMMDD'), TO_CHAR(SYSDATE,'HH24MISS'), 'WEB', " +
+                "       TO_CHAR(SYSDATE,'YYYYMMDD'), TO_CHAR(SYSDATE,'HH24MISS'), 'WEB' " +
+                "  FROM KNRAWMS.TMS_SHPDI " +
+                " WHERE TRIM(SHPOKY)=TRIM(?) AND TRIM(SHPOIT)=TRIM(?)",
+                newShpoky, newShpoit, splitQty, newShpoky, orgShpoky, orgShpoit);
+
+            // ── 3) 원본 행 수량 차감 UPDATE (원수량 - 분할수량) ──
+            wmsJdbc.update(
+                "UPDATE KNRAWMS.TMS_SHPDI " +
+                "   SET QTSHPO = QTSHPO - ?, " +
+                "       LMODAT = TO_CHAR(SYSDATE,'YYYYMMDD'), LMOUSR = 'WEB' " +
+                " WHERE TRIM(SHPOKY)=TRIM(?) AND TRIM(SHPOIT)=TRIM(?)",
+                splitQty, orgShpoky, orgShpoit);
+
+            stdoutLog("[납품분할][미연동] 원본(" + orgShpoky + "/" + orgShpoit + ", " + orgQty
+                    + ") → 신규(" + newShpoky + "/" + newShpoit + ", " + splitQty
+                    + "), 원본잔량=" + (orgQty - splitQty));
 
             Map<String, Object> p = new LinkedHashMap<>();
-            p.put("SVBELN",      tmsSplitNo);      // 신규(임시) 분할문서번호
-            p.put("SHPOKY",      tmsSplitNo);
-            p.put("SHPOIT",      posnr);
-            p.put("SPOSNR",      posnr);
-            p.put("SKUKEY",      skukey);
+            p.put("SVBELN",      newShpoky);       // 신규 분할문서번호
+            p.put("SHPOKY",      newShpoky);
+            p.put("SHPOIT",      newShpoit);       // 신규 채번 순번(000010,...)
+            p.put("SPOSNR",      orgShpoit);
+            p.put("SKUKEY",      str(org.get("SKUKEY")));
             p.put("SPLIT_QTY",   splitQty);
             p.put("QTSHPO",      splitQty);
-            p.put("ORG_SHPOKY",  orgVbeln);        // 원본 납품문서번호
-            p.put("ORG_SHPOIT",  posnr);
-            p.put("SVBELN_O",    tmsSplitNo);      // 프론트/updateTmsSplitDocNo 호환
-            p.put("MSGTY",       "S");             // 성공 표시(연동 흐름과 동일 필드)
+            p.put("ORG_SHPOKY",  orgShpoky);       // 원본 납품문서번호
+            p.put("ORG_SHPOIT",  orgShpoit);
+            p.put("SVBELN_O",    newShpoky);       // 프론트/updateTmsSplitDocNo 호환
+            p.put("MSGTY",       "S");
             p.put("IS_SPLIT",    1);
-            p.put("DESC02", "OFFLINE");            // 미연동 구분(DESC02 마커)
+            p.put("DESC02",      "OFFLINE");       // 미연동 구분
             outParams.add(p);
         }
 
-        // TMS DB(TMS_PS_DISPATCH_D)에 이미 저장된 분할행이 있으면 임시번호로 갱신(저장 전이면 0건).
+        if (outParams.isEmpty())
+            return err("미연동 분할 대상이 없습니다(원본 미존재/수량 초과).");
+
+        // TMS_PS_DISPATCH_D 에 이미 저장된 분할행이 있으면 신규번호로 갱신(저장 전이면 0건).
         int updated = updateTmsSplitDocNo(svbeln, outParams);
 
         Map<String, Object> r = new LinkedHashMap<>();
         r.put("ok", true);
         r.put("offline", true);
-        r.put("rfc_msg", "미연동(테스트) 분할 — SAP/WMS RFC 미호출");
+        r.put("rfc_msg", "미연동(테스트) 분할 — TMS_SHPDI 직접 분할 완료");
         r.put("tms_updated", updated);
         r.put("splits", outParams);
         return r;
