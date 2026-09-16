@@ -207,10 +207,28 @@ public class SapService {
             if (svbeln.isBlank())
                 return Map.of("ok", false, "error", "납품문서(SVBELN) 필수");
 
+            // ── 미연동(테스트) 모드: SAP/WMS RFC 없이 TMS 자체 분할처리 ──
+            //   목적: SAP·WMS 연동 없이 자동배차/수기배차 테스트를 자유롭게 수행.
+            boolean offline = toBoolFlag(body.get("offline"))
+                           || toBoolFlag(body.get("no_rfc"))
+                           || toBoolFlag(body.get("noRfc"));
+            if (offline) {
+                return sapRfc.shipmentSplitOffline(svbeln, splits);
+            }
+
             // ── SAP RFC(납품문서 단위) + RFC 성공 시 WMS API 호출을 SapRfcService 로 위임 ──
             //    RFC 개발 완료 전까지 실제 RFC 호출은 SapRfcService 내부 if(false) 로 비활성화.
             return sapRfc.shipmentSplit(svbeln, splits);
         } catch (Exception e) { return errMap(e); }
+    }
+
+    /** offline/no_rfc 플래그를 boolean 으로 정규화 */
+    private boolean toBoolFlag(Object v) {
+        if (v == null) return false;
+        if (v instanceof Boolean b) return b;
+        if (v instanceof Number n)  return n.intValue() != 0;
+        String s = v.toString().trim();
+        return s.equalsIgnoreCase("true") || s.equalsIgnoreCase("Y") || s.equals("1");
     }
 
     @Transactional

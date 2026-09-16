@@ -166,7 +166,9 @@ public class PsDispatchService {
         "       (SELECT COALESCE(MAX(rd.QTYRCV), 0)" +
         "        FROM KNRAWMS.RECDI rd" +
         "        WHERE rd.SKUKEY = i.SKUKEY) AS UNIT_WEIGHT," +
-        "       TRIM(COALESCE(i.SPOSNR,'')) AS SPOSNR" +
+        "       TRIM(COALESCE(i.SPOSNR,'')) AS SPOSNR," +
+        // 연동구분: 'N'=미연동(테스트) 배차, 'Y'=연동, 공백/NULL=기존
+        "       TRIM(COALESCE(i.TMS_LINK_YN,'')) AS TMS_LINK_YN" +
         " FROM KNRAWMS.TMS_SHPDI i" +
         " JOIN KNRAWMS.TMS_SHPDH h ON i.SHPOKY = h.SHPOKY" +
         " LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY = h.DPTNKY AND b.PTNRTY = 'CT'" +
@@ -369,6 +371,7 @@ public class PsDispatchService {
                 .stknum(stknumVal)                   // SAP 선적번호 (선적생성 완료 시)
                 .lota03(str(r[15]))
                 .isSplit(str(r[0]).contains("-S"))   // 분할문서 여부
+                .linkYn(str(r[18]))                  // 연동구분 'N'=미연동(테스트), 'Y'=연동
                 .build());
         }
         return result;
@@ -466,6 +469,9 @@ public class PsDispatchService {
     public List<String> saveDispatch(PsDispatchSaveRequest req) {
         String today = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE); // yyyyMMdd
         List<String> saved = new ArrayList<>();
+        // 미연동(테스트) 배차 여부 → TMS_SHPDI.TMS_LINK_YN 기록값 결정
+        //   미연동='N'(SAP/WMS RFC 미호출 테스트), 연동='Y'
+        final String linkYn = req.isOffline() ? "N" : "Y";
 
         for (PsDispatchSaveRequest.VehicleBlock veh : req.getVehicles()) {
             String dt          = veh.getRqshpd() == null ? today : veh.getRqshpd().replace("-", "");
@@ -561,16 +567,19 @@ public class PsDispatchService {
             List<String[]> notMatched = new ArrayList<>();
             for (String[] key : shpdiKeys) {
                 // 1차: 정확 매칭(SHPOKY + SHPOIT)
+                //   미연동/연동 구분(TMS_LINK_YN)도 함께 기록.
                 int n = tmsEm.createNativeQuery("""
                     UPDATE KNRAWMS.TMS_SHPDI
                     SET STDLNR  = ?,
+                        TMS_LINK_YN = ?,
                         LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
                         LMOUSR  = 'WEB'
                     WHERE SHPOKY = ? AND SHPOIT = ?
                     """)
                   .setParameter(1, dispatchNo)
-                  .setParameter(2, key[0])
-                  .setParameter(3, key[1])
+                  .setParameter(2, linkYn)
+                  .setParameter(3, key[0])
+                  .setParameter(4, key[1])
                   .executeUpdate();
 
                 // 2차 폴백: 앞뒤 공백/좌측 0패딩 차이로 정확매칭 실패 시
@@ -580,6 +589,7 @@ public class PsDispatchService {
                     n = tmsEm.createNativeQuery("""
                         UPDATE KNRAWMS.TMS_SHPDI
                         SET STDLNR  = ?,
+                            TMS_LINK_YN = ?,
                             LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
                             LMOUSR  = 'WEB'
                         WHERE TRIM(SHPOKY) = TRIM(?)
@@ -589,10 +599,11 @@ public class PsDispatchService {
                                    AND TO_NUMBER(TRIM(SHPOIT)) = TO_NUMBER(TRIM(?))))
                         """)
                       .setParameter(1, dispatchNo)
-                      .setParameter(2, key[0])
-                      .setParameter(3, key[1])
+                      .setParameter(2, linkYn)
+                      .setParameter(3, key[0])
                       .setParameter(4, key[1])
                       .setParameter(5, key[1])
+                      .setParameter(6, key[1])
                       .executeUpdate();
                 }
 
@@ -605,6 +616,7 @@ public class PsDispatchService {
                     n = tmsEm.createNativeQuery("""
                         UPDATE KNRAWMS.TMS_SHPDI
                         SET STDLNR  = ?,
+                            TMS_LINK_YN = ?,
                             LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
                             LMOUSR  = 'WEB'
                         WHERE TRIM(SVBELN) = TRIM(?)
@@ -614,10 +626,11 @@ public class PsDispatchService {
                                    AND TO_NUMBER(TRIM(SHPOIT)) = TO_NUMBER(TRIM(?))))
                         """)
                       .setParameter(1, dispatchNo)
-                      .setParameter(2, key[2])
-                      .setParameter(3, key[1])
+                      .setParameter(2, linkYn)
+                      .setParameter(3, key[2])
                       .setParameter(4, key[1])
                       .setParameter(5, key[1])
+                      .setParameter(6, key[1])
                       .executeUpdate();
                     if (n > 0) {
                         log.info("[PsDispatch] saveDispatch STDLNR 3차 폴백(SVBELN) 매칭 성공 "
