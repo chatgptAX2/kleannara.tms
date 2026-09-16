@@ -1441,11 +1441,11 @@ public class SapRfcService {
             String insSql =
                 "INSERT INTO KNRAWMS.TMS_SHPDI " +
                 " (SHPOKY, SHPOIT, SKUKEY, DESC01, DESC02, SKUG05, MEASKY, UOMKEY, " +
-                "  QTSHPO, QTUALO, QTALOC, QTJCMP, QTSHPD, STATIT, STDLNR, SVBELN, " +
+                "  QTSHPO, QTALOC, QTJCMP, QTSHPD, STATIT, STDLNR, SVBELN, " +
                 "  LOTA01, LOTA02, LOTA03, TLOTA01, TLOTA02, ALSTKY, " +
                 "  CREDAT, CRETIM, CREUSR, LMODAT, LMOTIM, LMOUSR) " +
                 "SELECT SHPOKY, ?, SKUKEY, DESC01, 'OFFLINE', SKUG05, MEASKY, UOMKEY, " +
-                "       ?, 0, 0, 0, 0, STATIT, ' ', SVBELN, " +
+                "       ?, 0, 0, 0, STATIT, ' ', SVBELN, " +
                 "       LOTA01, LOTA02, LOTA03, TLOTA01, TLOTA02, ALSTKY, " +
                 "       TO_CHAR(SYSDATE,'YYYYMMDD'), TO_CHAR(SYSDATE,'HH24MISS'), 'WEB', " +
                 "       TO_CHAR(SYSDATE,'YYYYMMDD'), TO_CHAR(SYSDATE,'HH24MISS'), 'WEB' " +
