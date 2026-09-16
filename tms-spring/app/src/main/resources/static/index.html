@@ -18388,10 +18388,12 @@ async function psopExecuteSplit() {
   let wmsUnconfirmed = 0;   // WMS 저장이 확정되지 않은(미연동/실패) 건수
   const failMsgs = [];
   for (const [svbeln, rows] of bySvbeln.entries()) {
-    // 요청 payload 의 splits 는 지정된 형식({SVBELN,SPOSNR,skukey,desc01,org_qty,split_qty})만 포함
+    // 요청 payload 의 splits — 미연동 분할 시 TMS_SHPDI 원본행 조회를 위해 SHPOKY/SHPOIT 도 포함
     const splits = rows.map(r => ({
       SVBELN:    r.SVBELN,
       SPOSNR:    r.SPOSNR,
+      SHPOKY:    r._shpoky || r.SVBELN,   // 원본 납품문서번호(TMS_SHPDI SELECT 기준)
+      SHPOIT:    r._shpoit || r.SPOSNR,   // 원본 품목순번
       skukey:    r.skukey,
       desc01:    r.desc01,
       org_qty:   r.org_qty,
