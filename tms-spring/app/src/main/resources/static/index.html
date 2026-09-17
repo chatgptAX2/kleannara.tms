@@ -8541,7 +8541,16 @@ const shipScheduleState = {
   currentRows: [],
   colOrder: [],   // 컬럼 표시 순서 (key 배열) — 빈 배열이면 _ssColDefs() 기본 순서 사용
   thicknessMap: null, // TMS_THICKNESS 코드맵 { '6자리코드': 두께수치 } — 판지 높이 계산용
+  selectedKeys: new Set(),  // 체크된 납품문서 행 키(SHPOKY|SHPOIT) — 합계/엑셀용
 };
+
+/* 출고예정정보 행 고유키: SHPOKY|SHPOIT (없으면 SVBELN 폴백) */
+function _ssRowKey(r) {
+  const a = String(r.SHPOKY || '').trim();
+  const b = String(r.SHPOIT || '').trim();
+  if (a || b) return a + '|' + b;
+  return String(r.SVBELN || '').trim() + '|' + String(r.SKUKEY || '').trim();
+}
 
 /* ═══════════════════════════════════════════════════════════
    차량유형관리 화면
@@ -19500,6 +19509,8 @@ function renderShipScheduleResult(data, area) {
 
   /* 현재 행 캐시 저장 (클라이언트 정렬용) */
   shipScheduleState.currentRows = rows;
+  /* 새 조회 결과 로드 시 이전 체크 선택 초기화 (페이지/검색 변경 반영) */
+  shipScheduleState.selectedKeys = new Set();
 
   const cols = _ssColDefs();
 
@@ -19518,8 +19529,14 @@ function _ssBuildTable(area, cols, rows, total, page, totalPages, size) {
      → 컬럼을 새로 추가해도 기존 사용자(localStorage colOrder)에게 즉시 노출됨 */
   const orderedCols = _ssApplyColOrder(cols, s.colOrder);
 
-  /* thead */
-  const theadHtml = `<tr>${orderedCols.map(c => {
+  /* thead — 맨 앞에 체크박스(전체선택) 컬럼 고정(정렬/드래그 대상 제외) */
+  const allChecked = rows.length > 0 && rows.every(r => s.selectedKeys.has(_ssRowKey(r)));
+  const chkTh = `<th style="position:relative;width:34px;min-width:34px;max-width:34px;text-align:center;">
+      <div class="th-cell" style="justify-content:center;">
+        <input type="checkbox" id="ss-chk-all" ${allChecked?'checked':''} onclick="ssToggleAllChk(this.checked)" title="전체선택">
+      </div>
+    </th>`;
+  const theadHtml = `<tr>${chkTh}${orderedCols.map(c => {
     const w = _ssColW[c.key] || c.w;
     const isAsc  = s.sortKey === c.key && s.sortDir === 'asc';
     const isDesc = s.sortKey === c.key && s.sortDir === 'desc';
@@ -19561,6 +19578,19 @@ function _ssBuildTable(area, cols, rows, total, page, totalPages, size) {
       </table>
     </div>
     ${paginHtml}
+    <!-- 하단 기능 버튼바: 엑셀 다운로드 / 선택 합계 -->
+    <div id="ss-footbar" style="flex-shrink:0;display:flex;align-items:center;gap:8px;padding:8px 4px 2px;border-top:1px solid var(--border);margin-top:6px;flex-wrap:wrap;">
+      <button onclick="ssExcelDownload()" title="현재 조회목록을 엑셀(CSV)로 저장"
+        style="display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 14px;font-size:12px;font-weight:600;background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:6px;cursor:pointer;">
+        <span>📥</span> 엑셀 다운로드
+      </button>
+      <button onclick="ssSumSelected()" title="체크된 납품문서의 합계 계산"
+        style="display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 14px;font-size:12px;font-weight:600;background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc;border-radius:6px;cursor:pointer;">
+        <span>Σ</span> 합계
+      </button>
+      <span id="ss-sel-cnt" style="font-size:11px;color:var(--text3);">선택 <b id="ss-sel-cnt-n" style="color:var(--primary)">0</b>건</span>
+      <span id="ss-sum-result" style="font-size:12px;color:var(--text2);margin-left:6px;"></span>
+    </div>
   `;
   /* area 자신도 flex column으로 전환 */
   area.style.display = 'flex';
@@ -19571,7 +19601,13 @@ function _ssBuildTable(area, cols, rows, total, page, totalPages, size) {
 }
 
 function _ssBuildTbody(cols, rows) {
+  const sel = shipScheduleState.selectedKeys;
   return rows.map((r, i) => {
+    const key = _ssRowKey(r);
+    const checked = sel.has(key) ? 'checked' : '';
+    /* 체크박스 셀(맨 앞 고정) — 셀 클릭이 셀선택/복사와 겹치지 않도록 stopPropagation */
+    const chkTd = `<td style="width:34px;min-width:34px;max-width:34px;text-align:center;box-sizing:border-box;cursor:pointer;" onclick="event.stopPropagation()">
+      <input type="checkbox" class="ss-row-chk" data-key="${key}" ${checked} onclick="ssToggleRowChk('${key}',this.checked)"></td>`;
     const cells = cols.map(c => {
       const w   = _ssColW[c.key] || c.w;
       const raw = r[c.key];
@@ -19580,8 +19616,97 @@ function _ssBuildTbody(cols, rows) {
       const titleVal  = String(raw ?? '').replace(/"/g, '&quot;');
       return `<td style="${alignStyle}width:${w}px;min-width:${w}px;max-width:${w}px;box-sizing:border-box;" title="${titleVal}">${rendered}</td>`;
     }).join('');
-    return `<tr>${cells}</tr>`;
+    return `<tr>${chkTd}${cells}</tr>`;
   }).join('');
+}
+
+/* ── 출고예정정보 체크박스 선택 / 엑셀 / 합계 ──────────────────────── */
+/* 행 체크 토글 */
+function ssToggleRowChk(key, checked) {
+  const s = shipScheduleState;
+  if (checked) s.selectedKeys.add(key);
+  else         s.selectedKeys.delete(key);
+  /* 전체선택 체크박스 상태 동기화 */
+  const rows = s.currentRows || [];
+  const allEl = document.getElementById('ss-chk-all');
+  if (allEl) allEl.checked = rows.length > 0 && rows.every(r => s.selectedKeys.has(_ssRowKey(r)));
+  _ssUpdateSelCnt();
+}
+/* 전체선택 토글 (현재 화면 rows 대상) */
+function ssToggleAllChk(checked) {
+  const s = shipScheduleState;
+  (s.currentRows || []).forEach(r => {
+    const key = _ssRowKey(r);
+    if (checked) s.selectedKeys.add(key);
+    else         s.selectedKeys.delete(key);
+  });
+  /* 행 체크박스 DOM 동기화 */
+  document.querySelectorAll('.ss-row-chk').forEach(chk => { chk.checked = checked; });
+  _ssUpdateSelCnt();
+}
+/* 선택 건수 표시 갱신 */
+function _ssUpdateSelCnt() {
+  const n = shipScheduleState.selectedKeys.size;
+  const el = document.getElementById('ss-sel-cnt-n');
+  if (el) el.textContent = n;
+  /* 선택이 바뀌면 이전 합계 결과 문구 초기화 */
+  const sr = document.getElementById('ss-sum-result');
+  if (sr) sr.textContent = '';
+}
+
+/* CSV 셀 이스케이프 */
+function _ssCsvCell(v) {
+  const s = (v === null || v === undefined) ? '' : String(v);
+  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+/* 엑셀(CSV) 다운로드 — 현재 조회된 목록 전체(정의 컬럼 순서, 렌더 텍스트 기준) */
+function ssExcelDownload() {
+  const s    = shipScheduleState;
+  const rows = s.currentRows || [];
+  if (!rows.length) { showToast('⚠️ 다운로드할 조회 결과가 없습니다'); return; }
+  const cols = _ssApplyColOrder(_ssColDefs(), s.colOrder);
+  /* HTML 태그 제거 유틸 (fmt 결과에 badge/span 등이 섞여 있으므로 텍스트만 추출) */
+  const strip = html => {
+    const d = document.createElement('div'); d.innerHTML = String(html ?? '');
+    return (d.textContent || d.innerText || '').replace(/\s+/g, ' ').trim();
+  };
+  const header = cols.map(c => _ssCsvCell(c.label)).join(',');
+  const lines  = rows.map(r => cols.map(c => {
+    const rendered = c.fmt(r[c.key], r);
+    return _ssCsvCell(strip(rendered));
+  }).join(','));
+  const csv = '\uFEFF' + [header, ...lines].join('\r\n');   // BOM(엑셀 한글깨짐 방지)
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const ts = new Date().toISOString().slice(0,10).replace(/-/g,'');
+  a.href = url; a.download = `출고예정정보_${ts}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`📥 엑셀 다운로드 (${rows.length.toLocaleString()}건)`);
+}
+
+/* 선택 합계 — 체크된 납품문서의 납품수량(QTSHPO)/중량(TOT)/PLT 합계 */
+function ssSumSelected() {
+  const s    = shipScheduleState;
+  const rows = (s.currentRows || []).filter(r => s.selectedKeys.has(_ssRowKey(r)));
+  const sr   = document.getElementById('ss-sum-result');
+  if (!rows.length) {
+    if (sr) sr.textContent = '';
+    showToast('⚠️ 합계를 구할 납품문서를 선택하세요');
+    return;
+  }
+  const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
+  let qty = 0, kg = 0, plt = 0;
+  rows.forEach(r => { qty += num(r.QTSHPO); kg += num(r.TOT); plt += num(r.PLT); });
+  const fmt = n => (Math.round(n * 1000) / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 });
+  const html = `선택 <b style="color:var(--primary)">${rows.length}</b>건 · `
+    + `납품수량 <b style="color:var(--primary)">${fmt(qty)}</b> · `
+    + `중량 <b style="color:#d97706">${fmt(kg)}</b> KG · `
+    + `PLT <b style="color:var(--primary)">${fmt(plt)}</b>`;
+  if (sr) sr.innerHTML = html;
+  showToast(`Σ 합계 — 납품수량 ${fmt(qty)} · 중량 ${fmt(kg)}KG · PLT ${fmt(plt)}`);
 }
 
 /* 컬럼 순서 변경 후 thead만 재빌드 (tbody는 이미 colOrder 순 정렬됨) */
@@ -19590,7 +19715,14 @@ function _ssRebuildThead() {
   const all  = _ssColDefs();
   const ordered = _ssApplyColOrder(all, s.colOrder);
 
-  const trHtml = ordered.map(c => {
+  const rows = s.currentRows || [];
+  const allChecked = rows.length > 0 && rows.every(r => s.selectedKeys.has(_ssRowKey(r)));
+  const chkTh = `<th style="position:relative;width:34px;min-width:34px;max-width:34px;text-align:center;">
+      <div class="th-cell" style="justify-content:center;">
+        <input type="checkbox" id="ss-chk-all" ${allChecked?'checked':''} onclick="ssToggleAllChk(this.checked)" title="전체선택">
+      </div>
+    </th>`;
+  const trHtml = chkTh + ordered.map(c => {
     const w = _ssColW[c.key] || c.w;
     const isAsc  = s.sortKey === c.key && s.sortDir === 'asc';
     const isDesc = s.sortKey === c.key && s.sortDir === 'desc';
@@ -19653,6 +19785,8 @@ function ssSort(key) {
     : allCols;
   const tbody = document.getElementById('ss-tbody');
   if (tbody) tbody.innerHTML = _ssBuildTbody(orderedCols, sorted);
+  /* 정렬된 순서를 currentRows 에 반영(엑셀 다운로드 순서/전체선택 일관성) */
+  s.currentRows = sorted;
 
   /* th 정렬 아이콘 클래스 갱신 */
   document.querySelectorAll('.ss-table thead th').forEach(th => {
