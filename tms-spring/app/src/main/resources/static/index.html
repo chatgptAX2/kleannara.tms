@@ -2105,18 +2105,20 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 #psop-panel-sap select{
   font-family:'Inter','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 }
-/* 툴바 텍스트/라벨 통일 (라벨·입력·통계 모두 12px) */
-/* [요청] 배차확정(SAP선적) 탭 툴바 배경색을 #f5f6f7 로 변경 (기존 하늘색 그라데이션 대체) */
+/* [요청] 배차확정(SAP선적) 탭 툴바 배경색 #f5f6f7 + 크기 축소(배차탭 툴바 기준 통일) */
 #psop-panel-sap .psd-toolbar{
-  font-size:12px;
+  font-size:11px;
   background:#f5f6f7;
   border-bottom:2px solid #e2e5e9;
   box-shadow:none;
+  padding:6px 14px;              /* 배차탭 검색바(psd-searchbar)와 동일 패딩 */
+  gap:6px;
 }
-#psop-panel-sap .psd-toolbar span,
-#psop-panel-sap .psd-toolbar input{font-size:12px !important}
-/* 툴바 버튼 통일 */
-#psop-panel-sap .psd-btn{font-size:12px !important;font-weight:600 !important}
+/* 툴바 라벨/입력 — 배차탭 기준(라벨 10px, 입력 11.5px)에 맞춰 축소 */
+#psop-panel-sap .psd-toolbar span{font-size:11px !important}
+#psop-panel-sap .psd-toolbar input{font-size:11.5px !important;height:28px;padding:3px 7px !important}
+/* 툴바 버튼 — 공통 .psd-btn 기본(11.5px/height 28px)로 통일 */
+#psop-panel-sap .psd-toolbar .psd-btn{font-size:11.5px !important;font-weight:600 !important;height:28px;padding:0 10px}
 /* 툴바 우측 통계(선적/총중량/선택) — 라벨 normal, 숫자만 bold 통일 */
 #psop-panel-sap .psd-toolbar span > b{font-weight:700}
 /* 패널 헤더 제목/뱃지/부가정보 크기 통일 */
