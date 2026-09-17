@@ -259,11 +259,19 @@ public class SapRfcService {
                         Map<String, Object> wms = callWmsIfc301(stdlnr, tknum, "C", env);
                         row.put("wms_result", wms);
                         try {
-                            wmsJdbc.update(
+                            // SAP 선적번호(tknum=E_TKNUM)를 TMS_SHPDI.STKNUM 에 기록.
+                            //   [버그수정] WHERE STDLNR=? 는 DB STDLNR 의 공백 패딩과 strip된
+                            //   파라미터가 불일치하면 0건 갱신됨 → TRIM(STDLNR)=? 로 비교.
+                            int updated = wmsJdbc.update(
                                 "UPDATE KNRAWMS.TMS_SHPDI SET STKNUM=?, LMODAT=?, LMOUSR='WEB' " +
-                                "WHERE STDLNR=?",
+                                "WHERE TRIM(STDLNR)=?",
                                 tknum, today, stdlnr
                             );
+                            row.put("stknum_updated", updated);
+                            stdoutLog("[shipment-create][DB] stdlnr=" + stdlnr
+                                    + " tknum=" + tknum + " STKNUM 갱신=" + updated + "건");
+                            log.info("[shipment-create] TMS_SHPDI.STKNUM 갱신 stdlnr={} tknum={} → {}건",
+                                stdlnr, tknum, updated);
                         } catch (Exception dbEx) {
                             row.put("db_update_err", dbEx.getMessage());
                             stdoutLog("[shipment-create][DB-ERR] stdlnr=" + stdlnr
@@ -354,11 +362,15 @@ public class SapRfcService {
                     Map<String, Object> wms = callWmsIfc301(stdlnr, tknum, "D", env);
                     row.put("wms_result", wms);
                     try {
-                        wmsJdbc.update(
+                        // [버그수정] STKNUM 초기화도 WHERE TRIM(STDLNR)=? 로 비교
+                        //   (STDLNR 공백 패딩 시 0건 갱신 방지 — shipment-create 와 동일)
+                        int cleared = wmsJdbc.update(
                             "UPDATE KNRAWMS.TMS_SHPDI SET STKNUM=' ', LMODAT=?, LMOUSR='WEB' " +
-                            "WHERE STDLNR=?",
+                            "WHERE TRIM(STDLNR)=?",
                             today, stdlnr
                         );
+                        row.put("stknum_cleared", cleared);
+                        stdoutLog("[shipment-delete][DB] stdlnr=" + stdlnr + " STKNUM 초기화=" + cleared + "건");
                     } catch (Exception dbEx) {
                         row.put("db_update_err", dbEx.getMessage());
                         stdoutLog("[shipment-delete][DB-ERR] stdlnr=" + stdlnr
