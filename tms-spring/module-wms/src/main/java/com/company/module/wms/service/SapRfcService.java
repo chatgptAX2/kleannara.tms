@@ -121,11 +121,11 @@ public class SapRfcService {
 
     /**
      * WMS 공통처리 API(WMS_IFC301 / TMS_IFC3012) 응답대기(read/response) 타임아웃.
-     *   연결(connect)은 HttpClient.connectTimeout=5초, 응답대기는 이 값(10초)을 적용한다.
-     *   [요청] 응답지연 발생시간 체크기준을 10초로 적용. (기존값도 10초였음 — 명시적 상수화)
+     *   연결(connect)은 HttpClient.connectTimeout=5초, 응답대기는 이 값(20초)을 적용한다.
+     *   [요청] 응답지연 발생시간 체크기준을 20초로 변경. (10초 → 20초)
      *   초과 시 HttpTimeout → '연결은 됐으나 WMS 서버 응답이 지연/무응답(read timeout)' 진단 반환.
      */
-    private static final Duration WMS_API_READ_TIMEOUT = Duration.ofSeconds(10);
+    private static final Duration WMS_API_READ_TIMEOUT = Duration.ofSeconds(20);
 
     /** 자체서명 인증서 허용(verify=False 상당) HTTP 클라이언트 생성 */
     private static HttpClient buildInsecureHttpClient() {
