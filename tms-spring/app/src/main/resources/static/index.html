@@ -2795,7 +2795,8 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 /* ══ 배차확정(SAP선적) 탭 — psd- CSS 재사용 ══ */
 /* SAP 탭 패널 본문: 가로·세로 스크롤 모두 허용 (테이블이 컨테이너보다 넓을 수 있음) */
 /* 헤더(패널 타이틀) 아래 목록 영역을 고정하고, 내용이 넘치면 스크롤바로 처리 */
-#psop-panel-sap .psd-panel-body{overflow:auto;min-height:0}
+/* 데이터 조회 영역은 기존 흰색 유지 — psd-main 바탕색(#d1d8e6)이 패널 안쪽 빈 공간까지 비치지 않도록 명시 */
+#psop-panel-sap .psd-panel-body{overflow:auto;min-height:0;background:#fff}
 
 /* ── '선적번호 목록' / '납품문서 상세' 통일: 가로·세로·간격 맞춤 ── */
 /* 두 패널 헤더 높이/여백 통일 */
