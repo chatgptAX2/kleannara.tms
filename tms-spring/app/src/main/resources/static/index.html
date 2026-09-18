@@ -13243,6 +13243,46 @@ function _sapFmtDate(d) {
   return `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}`;
 }
 
+/* ── SAP탭 선적번호 목록 엑셀(CSV) 다운로드 (조회목록 전체) ── */
+function sapLeftExcelDownload() {
+  const rows = (_sapState && _sapState.rows) || [];
+  if (!rows.length) { showToast('⚠️ 다운로드할 선적번호 목록이 없습니다'); return; }
+  const header = ['가선적번호','SAP선적번호','출하예정일(From)','출하예정일(To)','납품처코드','납품처명',
+                  '차량유형','차량번호','기사명','연락처','납품수량','단위','총중량(kg)','문서수'];
+  const body = rows.map(r => [
+    r.STDLNR||'', r.SAP_STKNUM||'',
+    (typeof _sapFmtDate==='function'?_sapFmtDate(r.RQSHPD_FROM):(r.RQSHPD_FROM||'')),
+    (typeof _sapFmtDate==='function'?_sapFmtDate(r.RQSHPD_TO):(r.RQSHPD_TO||'')),
+    r.DPTNKY||'', r.DPTNKYNM||'', r.CARTYPE||r.CARCLASS_CD||'',
+    r.CARNO||'', r.DRIVER||'', r.DRIVERCEL||'',
+    (r.QTSHPO_SUM!=null?r.QTSHPO_SUM:''), r.UOMKEY||'',
+    (r.TOTAL_KG!=null?r.TOTAL_KG:''), (r.SVBELN_CNT!=null?r.SVBELN_CNT:'')
+  ]);
+  const ts = new Date().toISOString().slice(0,10).replace(/-/g,'');
+  _downloadCsv(`배차확정_선적번호목록_${ts}.csv`, header, body);
+  showToast(`📥 엑셀 다운로드 (${rows.length.toLocaleString()}건)`);
+}
+
+/* ── SAP탭 선적번호 목록 합계 (체크된 선적 기준, 없으면 전체) ── */
+function sapLeftSumChecked() {
+  const rows = (_sapState && _sapState.rows) || [];
+  if (!rows.length) { showToast('⚠️ 합계를 구할 선적이 없습니다'); return; }
+  const checked = _sapState.checkedSet;
+  const target = (checked && checked.size)
+    ? rows.filter(r => checked.has(r.STDLNR))
+    : rows;
+  const num = v => { const n = Number(v); return isNaN(n)?0:n; };
+  let qty=0, kg=0, docs=0;
+  target.forEach(r => { qty+=num(r.QTSHPO_SUM); kg+=num(r.TOTAL_KG); docs+=num(r.SVBELN_CNT); });
+  const fmt = n => (Math.round(n*1000)/1000).toLocaleString(undefined,{maximumFractionDigits:3});
+  const scope = (checked && checked.size) ? `선택 ${target.length}건` : `전체 ${target.length}건`;
+  const html = `${scope} · 납품수량 <b style="color:var(--primary)">${fmt(qty)}</b> · `
+    + `총중량 <b style="color:#d97706">${fmt(kg)}</b> kg · 문서수 <b style="color:var(--primary)">${fmt(docs)}</b>`;
+  const el = document.getElementById('sap-left-sum-result');
+  if (el) el.innerHTML = html;
+  showToast(`Σ ${scope} — 납품수량 ${fmt(qty)} · 총중량 ${fmt(kg)}kg · 문서수 ${fmt(docs)}`);
+}
+
 async function _sapRenderLeft() {
   const wrap = document.getElementById('sap-left-wrap');
   const rows = _sapState.rows;
@@ -15203,6 +15243,13 @@ async function renderPsDispatchOpt() {
             <span class="stat-item" title="배차저장 완료(가선적번호 부여) 건수">배차저장: <span class="stat-val" style="color:#1d4ed8" id="psop-stat-saved">0</span></span>
             <span class="stat-item">선택: <span class="stat-val" id="psop-stat-sel">0</span></span>
             <span id="psop-stat-summary" style="display:none;margin-left:8px;padding:2px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;font-size:11px;color:var(--text2);"></span>
+            <!-- 하단부 우측: 엑셀 다운로드 / 합계 -->
+            <span style="margin-left:auto;display:inline-flex;gap:6px;">
+              <button onclick="psopDocExcelDownload()" title="납품문서 목록을 엑셀(CSV)로 저장"
+                style="display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 12px;font-size:11px;font-weight:600;background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:6px;cursor:pointer;">📥 엑셀 다운로드</button>
+              <button onclick="psopShowDocSummary()" title="선택(체크)된 납품문서 합계"
+                style="display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 12px;font-size:11px;font-weight:600;background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc;border-radius:6px;cursor:pointer;">Σ 합계</button>
+            </span>
           </div>
         </div>
       </div>
@@ -15398,6 +15445,14 @@ async function renderPsDispatchOpt() {
           </div>
           <div class="psd-panel-body" id="sap-left-wrap">
             <div class="psd-empty-state">조회 버튼을 눌러 데이터를 불러오세요</div>
+          </div>
+          <!-- 선적번호 목록 하단부: 엑셀 다운로드 / 합계 -->
+          <div style="flex-shrink:0;display:flex;align-items:center;gap:6px;padding:6px 4px 2px;border-top:1px solid var(--border);margin-top:4px;flex-wrap:wrap;">
+            <button onclick="sapLeftExcelDownload()" title="선적번호 목록을 엑셀(CSV)로 저장"
+              style="display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 12px;font-size:11px;font-weight:600;background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:6px;cursor:pointer;">📥 엑셀 다운로드</button>
+            <button onclick="sapLeftSumChecked()" title="체크된 선적의 합계"
+              style="display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 12px;font-size:11px;font-weight:600;background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc;border-radius:6px;cursor:pointer;">Σ 합계</button>
+            <span id="sap-left-sum-result" style="font-size:11px;color:var(--text2);margin-left:4px;"></span>
           </div>
         </div>
         <!-- 오른쪽: 납품문서 상세 -->
@@ -15713,6 +15768,53 @@ function psopRenderDocTable(filterText) {
 
 /* ── 필터 ─────────────────────────────────────────── */
 function psopFilterDocs() { psopRenderDocTable(); }
+
+/* ── CSV 공통 유틸 (배차탭/ SAP탭 엑셀 다운로드 공용) ── */
+function _csvCell(v){ const s=(v==null)?'':String(v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
+function _stripHtml(html){ const d=document.createElement('div'); d.innerHTML=String(html??''); return (d.textContent||d.innerText||'').replace(/\s+/g,' ').trim(); }
+function _downloadCsv(filename, headerArr, rowArrs){
+  const csv='\uFEFF'+[headerArr.map(_csvCell).join(','), ...rowArrs.map(r=>r.map(_csvCell).join(','))].join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+/* ── 배차탭 납품문서 목록 엑셀(CSV) 다운로드 (현재 필터 적용된 조회목록 전체) ── */
+function psopDocExcelDownload() {
+  const rows = psopState.searchRows || [];
+  if (!rows.length) { showToast('⚠️ 다운로드할 납품문서가 없습니다'); return; }
+  /* 화면 컬럼 순서/라벨 사용 (_psopDocColDefs + colOrder), chk 컬럼 제외 */
+  const defs  = (typeof _psopDocColDefs !== 'undefined') ? _psopDocColDefs : [];
+  const order = (typeof _psopGetColOrder === 'function') ? _psopGetColOrder() : defs.map(c=>c.id);
+  const cols  = order.map(id => defs.find(c=>c.id===id)).filter(c=>c && c.id!=='chk');
+  const header= cols.map(c => c.label);
+  const body  = rows.map(r => cols.map(c => {
+    switch(c.id){
+      case 'shpoky':   return r.SVBELN || r.SHPOKY || '';
+      case 'shpoit':   return r.SHPOIT || '';
+      case 'rqshpd':   return (typeof psopFmtDate==='function') ? psopFmtDate(r.RQSHPD) : (r.RQSHPD||'');
+      case 'dptnky':   return r.DPTNKY || '';
+      case 'dptnm':    return r.DPTNM || '';
+      case 'skukey':   return r.SKUKEY || '';
+      case 'desc01':   return r.DESC01 || '';
+      case 'qtshpo':   return r.QTSHPO ?? '';
+      case 'uomkey':   return r.UOMKEY || '';
+      case 'kgwt':     return (r.KG_WEIGHT!=null)? r.KG_WEIGHT : '';
+      case 'skutyp':   return r.SKU_TYPE==='roll'?'원지':r.SKU_TYPE==='board'?'판지':'기타';
+      case 'inch':     return r.INCH || '';
+      case 'shpmty':   return r.SHPMTY_NM || r.SHPMTY || '';
+      case 'disp':     return r.IS_SAVED?'배차저장':r.DISPATCHED?'배차':'미배차';
+      case 'saved':    return r.IS_SAVED?'배차저장':'';
+      case 'stdlnr':   return (r.STDLNR && r.IS_SAVED)? r.STDLNR : '';
+      case 'sapstknum':return r.STKNUM || '';
+      default:         return r[(c.id||'').toUpperCase()] ?? '';
+    }
+  }));
+  const ts = new Date().toISOString().slice(0,10).replace(/-/g,'');
+  _downloadCsv(`배차_납품문서목록_${ts}.csv`, header, body);
+  showToast(`📥 엑셀 다운로드 (${rows.length.toLocaleString()}건)`);
+}
 
 /* ── 납품수량 합계 ────────────────────────────────── */
 function psopShowDocSummary() {
