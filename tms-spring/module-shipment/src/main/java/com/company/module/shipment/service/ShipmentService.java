@@ -49,9 +49,9 @@ public class ShipmentService {
     /** 출고현황 COUNT SQL BASE (WHERE 는 동적 구성) */
     private static final String SCHEDULE_COUNT_BASE_SQL =
         "SELECT COUNT(*)" +
-        // [요청] /api/shipment/schedule 조회는 SHPDI/SHPDH(원본 테이블) 사용 (TMS_ 미부여)
-        " FROM KNRAWMS.SHPDI SI" +
-        " INNER JOIN KNRAWMS.SHPDH SH ON SH.SHPOKY = SI.SHPOKY" +
+        // [요청] /api/shipment/schedule 조회는 TMS_SHPDI/TMS_SHPDH 사용
+        " FROM KNRAWMS.TMS_SHPDI SI" +
+        " INNER JOIN KNRAWMS.TMS_SHPDH SH ON SH.SHPOKY = SI.SHPOKY" +
         " LEFT  JOIN KNRAWMS.SKUMA M  ON SI.SKUKEY = M.SKUKEY AND SH.OWNRKY = M.OWNRKY";
 
     /** 출고현황 본문 SQL ORDER BY */
@@ -122,9 +122,9 @@ public class ShipmentService {
         "         ELSE 0 END                AS PLT_PER_UNIT," +
         // 52:STKNUM — SAP 선적번호(선적생성 시 TMS_SHPDI.STKNUM 에 기록). 미생성 시 공백 → 화면 '-'
         "    TRIM(COALESCE(SI.STKNUM,''))   AS STKNUM" +
-        // [요청] /api/shipment/schedule 조회는 SHPDI/SHPDH(원본 테이블) 사용 (TMS_ 미부여)
-        " FROM KNRAWMS.SHPDI SI" +
-        " INNER JOIN KNRAWMS.SHPDH SH ON SH.SHPOKY = SI.SHPOKY" +
+        // [요청] /api/shipment/schedule 조회는 TMS_SHPDI/TMS_SHPDH 사용
+        " FROM KNRAWMS.TMS_SHPDI SI" +
+        " INNER JOIN KNRAWMS.TMS_SHPDH SH ON SH.SHPOKY = SI.SHPOKY" +
         " LEFT  JOIN KNRAWMS.BZPTN CT ON CT.OWNRKY=SH.OWNRKY AND CT.PTNRTY='CT' AND CT.PTNRKY=SH.DPTNKY" +
         " LEFT  JOIN KNRAWMS.BZPTN VD ON VD.OWNRKY=SH.OWNRKY AND VD.PTNRTY='VD' AND VD.PTNRKY=SH.PTRCVR" +
         " LEFT  JOIN KNRAWMS.CMCDV ST ON ST.CMCDKY='STATDO' AND ST.CMCDVL=SH.STATDO" +
