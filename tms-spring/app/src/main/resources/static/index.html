@@ -15970,6 +15970,8 @@ function psopChkDoc(key, checked) {
   psopUpdateToolbar();
   /* 전체선택 체크박스 상태 동기화 (개별 체크 변경 시) */
   _psopSyncAllChk();
+  /* 배차완료 문서 선택 시 해당 가선적번호를 선적목록에 조회 */
+  psopSyncDispatchedSelection();
 }
 function psopToggleDocSel(key, ev) {
   if (ev.target.tagName==='INPUT') return;
@@ -15986,6 +15988,8 @@ function psopToggleDocSel(key, ev) {
   psopUpdateToolbar();
   /* 전체선택 체크박스 상태 동기화 */
   _psopSyncAllChk();
+  /* 배차완료 문서 선택 시 해당 가선적번호를 선적목록에 조회 */
+  psopSyncDispatchedSelection();
 }
 
 /* ── 드래그 선택 (마우스로 여러 행 훑어 일괄 체크/해제) ──────────────
@@ -16047,12 +16051,79 @@ function psopDragSelEnd() {
   t.active  = false;
   t.touched = null;
   document.body.style.userSelect = '';
+  /* 드래그 선택 종료 시에도 배차완료 문서 선택분을 선적목록에 반영 */
+  psopSyncDispatchedSelection();
 }
 /* 전역 mouseup 바인딩(중복 방지 플래그) */
 if (!window._psopDragSelBound) {
   window._psopDragSelBound = true;
   document.addEventListener('mouseup', psopDragSelEnd);
   document.addEventListener('dragend', psopDragSelEnd);
+}
+
+/* ── 납품문서 선택 → 배차완료 건의 가선적번호를 선적목록에 조회 ──────────────
+   요청: 납품문서 목록에서 '배차된' 납품문서를 체크하면 그 문서가 속한
+        가선적번호(배차)를 선적목록에 조회하고, 그 배차의 납품문서들을 표시한다.
+        (미배차 문서만 선택된 경우는 조회하지 않음 = 선적목록 변화 없음)
+
+   구현: 현재 selectedDocs 중 배차완료(STDLNR 보유) 문서의 STDLNR 집합을 계산하여
+        · 새로 선택된 STDLNR → psopReloadSavedVehicles 로 선적목록에 추가(저장완료 상태)
+        · 선택이 모두 해제된 STDLNR → 선적목록에서 제거
+        단, 사용자가 직접 편집(불러오기/미저장 편집중, _origDispatchNo 보유)한 배차는 건드리지 않는다. */
+function _psopSelectedDispatchedStdlnrs() {
+  const set = new Set();
+  psopState.selectedDocs.forEach(key => {
+    const [shpoky, shpoit] = key.split('|');
+    const row = psopState.searchRows.find(
+      r => (r.SHPOKY ?? '') + '' === shpoky && (r.SHPOIT ?? '') + '' === shpoit
+    );
+    // 배차완료 판정: STDLNR(가선적번호) 이 실제로 채번된 행만
+    if (row && row.STDLNR && String(row.STDLNR).trim()) {
+      set.add(String(row.STDLNR).trim());
+    }
+  });
+  return set;
+}
+
+let _psopDocSelSyncTimer = null;
+function psopSyncDispatchedSelection() {
+  // 드래그/연속 클릭 중 과도한 호출 방지 (디바운스)
+  if (_psopDocSelSyncTimer) clearTimeout(_psopDocSelSyncTimer);
+  _psopDocSelSyncTimer = setTimeout(_psopSyncDispatchedSelectionNow, 180);
+}
+
+async function _psopSyncDispatchedSelectionNow() {
+  const wantSet = _psopSelectedDispatchedStdlnrs();  // 지금 선택된 배차완료 STDLNR 집합
+
+  // 관리 대상: 이 기능(문서선택)으로 선적목록에 올라온 배차만 (_autoBySel=true).
+  //   사용자가 배차저장/불러오기로 올린 배차는 보존한다.
+
+  // 1) 선택 해제되어 더 이상 필요없는 auto 배차 제거
+  let changed = false;
+  psopState.vehicles = psopState.vehicles.filter(v => {
+    if (v._autoBySel && v.STDLNR && !wantSet.has(String(v.STDLNR).trim())) {
+      changed = true;
+      return false;
+    }
+    return true;
+  });
+
+  // 2) 새로 선택된 배차완료 STDLNR 중, 아직 선적목록에 없는 것만 로드
+  //    (이미 화면에 있는 STDLNR — 저장/불러오기/이전 auto — 은 재로드하지 않음)
+  const existingNos = new Set(
+    psopState.vehicles.map(v => (v.STDLNR || v._origDispatchNo || '') + '').filter(Boolean)
+  );
+  const toLoad = [...wantSet].filter(no => !existingNos.has(no));
+
+  if (toLoad.length) {
+    await psopReloadSavedVehicles(toLoad, /*markAutoBySel=*/true);
+    changed = true;
+  } else if (changed) {
+    // 제거만 발생한 경우 즉시 렌더 갱신
+    psopLoadVehicles();
+    psopRenderDocTable();
+    psopUpdateToolbar();
+  }
 }
 
 /* ── 전체선택 체크박스 상태 동기화 헬퍼 ──────────────
@@ -16114,6 +16185,8 @@ function psopToggleAll(checked) {
   });
   psopRenderDocTable();
   psopUpdateToolbar();
+  /* 배차완료 문서 선택 시 해당 가선적번호를 선적목록에 조회 */
+  psopSyncDispatchedSelection();
 }
 function psopSelectAllDocs() {
   document.getElementById('psop-chk-all').checked = true;
@@ -16124,6 +16197,8 @@ function psopClearDocSel() {
   psopState.selectedDocs.clear();
   psopRenderDocTable();
   psopUpdateToolbar();
+  /* 선택 전체 해제 → 자동 로드된 배차도 선적목록에서 제거 */
+  psopSyncDispatchedSelection();
 }
 function psopUpdateSelCnt() {
   const n = psopState.selectedDocs.size;
@@ -16137,7 +16212,8 @@ function psopUpdateSelCnt() {
 function psopUpdateToolbar() {
   const selCnt    = psopState.selectedDocs.size;
   const selVehCnt = psopState.selectedVehicles.size;
-  const hasVeh    = psopState.vehicles.length > 0;
+  // 저장 대상(신규/편집중) 차량 유무 — 납품문서 선택으로 조회된(_autoBySel) 배차는 제외
+  const hasSaveTarget = psopState.vehicles.some(v => !v._autoBySel);
 
   const btn = id => document.getElementById(id);
   if (btn('psop-btn-auto'))    btn('psop-btn-auto').disabled    = psopState.searchRows.filter(r=>!r.DISPATCHED).length === 0;
@@ -16145,7 +16221,7 @@ function psopUpdateToolbar() {
   if (btn('psop-btn-split'))   btn('psop-btn-split').disabled   = selCnt === 0;
   if (btn('psop-btn-confirm')) btn('psop-btn-confirm').disabled = true; // 인메모리 단계에서 사용 안함
   if (btn('psop-btn-del'))     btn('psop-btn-del').disabled     = selVehCnt === 0;
-  if (btn('psop-btn-save'))    btn('psop-btn-save').disabled    = !hasVeh; // 저장 대상 없으면 비활성
+  if (btn('psop-btn-save'))    btn('psop-btn-save').disabled    = !hasSaveTarget; // 저장 대상 없으면 비활성
   // 미연동(테스트) 버튼 — 연동 버튼과 동일 활성 조건
   if (btn('psop-btn-auto-offline'))  btn('psop-btn-auto-offline').disabled  = psopState.searchRows.filter(r=>!r.DISPATCHED).length === 0;
   if (btn('psop-btn-split-offline')) btn('psop-btn-split-offline').disabled = selCnt === 0;
@@ -17806,7 +17882,7 @@ function psopMergeRestoredVehicles(vehicles, searchRows) {
    - 이미 DB 에 저장된 건이므로 localStorage pending 에는 넣지 않는다.
    - 사용처: ① 배차저장 직후 재조회 ② 배차탭 초기 진입 시 저장된 DRAFT 자동 로드
 ═══════════════════════════════════════════════════ */
-function psopMergeSavedVehicles(vehicles, searchRows) {
+function psopMergeSavedVehicles(vehicles, searchRows, markAutoBySel) {
   // 1. searchRows 병합 (배차완료 표시용)
   (searchRows || []).forEach(sr => {
     const shpoky = sr.SHPOKY ?? sr.shpoky;
@@ -17856,6 +17932,7 @@ function psopMergeSavedVehicles(vehicles, searchRows) {
     psopState.vehicles.push({
       _pendingId:       pid,
       _origDispatchNo:  null,             // 편집중 아님
+      _autoBySel:       !!markAutoBySel,  // 납품문서 선택으로 자동 로드된 배차 표식
       STDLNR:           dispatchNo,       // 저장 완료 상태(파란 가선적번호 표시)
       cartype:          v.cartype      ?? v.CARTYPE   ?? '',
       carclass_cd:      v.carclass_cd  ?? '',
@@ -17874,8 +17951,10 @@ function psopMergeSavedVehicles(vehicles, searchRows) {
   psopUpdateToolbar();
 }
 
-/* 저장된 배차번호 목록을 load-for-edit 로 재조회하여 선적목록에 저장완료 상태로 채운다. */
-async function psopReloadSavedVehicles(dispNos) {
+/* 저장된 배차번호 목록을 load-for-edit 로 재조회하여 선적목록에 저장완료 상태로 채운다.
+   markAutoBySel=true 이면 '납품문서 선택으로 자동 로드된 배차'로 표식(_autoBySel)하여
+   선택 해제 시 자동 제거 대상이 되게 한다. */
+async function psopReloadSavedVehicles(dispNos, markAutoBySel) {
   const nos = (dispNos || []).filter(Boolean);
   if (!nos.length) return;
   try {
@@ -17893,7 +17972,7 @@ async function psopReloadSavedVehicles(dispNos) {
     vehicles.forEach(v => {
       if (!(v.STDLNR ?? v.stdlnr)) v.STDLNR = v.DISPATCH_NO ?? v.dispatchNo ?? null;
     });
-    psopMergeSavedVehicles(vehicles, searchRows);
+    psopMergeSavedVehicles(vehicles, searchRows, markAutoBySel);
   } catch(e) {
     console.error('[psopReloadSavedVehicles] 재조회 실패:', e);
   }
@@ -18799,12 +18878,15 @@ async function psopDeleteDispatch() {
 }
 
 async function psopSaveDispatch() {
-  if (!psopState.vehicles.length) { showToast('저장할 배차가 없습니다.'); return; }
+  // 저장 대상: 신규/편집중 배차만. 납품문서 선택으로 조회된(_autoBySel) 배차는
+  //   이미 DB 저장 완료건이므로 저장(중복 INSERT) 대상에서 제외한다.
+  const saveTargets = psopState.vehicles.filter(v => !v._autoBySel);
+  if (!saveTargets.length) { showToast('저장할 배차가 없습니다.'); return; }
   const btn = document.getElementById('psop-btn-save');
   if (btn) btn.disabled = true;
   try {
     // 저장 전에 vehicle-items 스냅샷 (저장 성공 후 searchRows 업데이트에 사용)
-    const vehs = psopState.vehicles.map(v => ({
+    const vehs = saveTargets.map(v => ({
       cartype:     v.cartype,
       carclass_cd: v.carclass_cd || '',
       rqshpd:      v.rqshpd,
@@ -18816,7 +18898,7 @@ async function psopSaveDispatch() {
     const _offline = !!psopState._offlineMode;   // 미연동 자동배차에서 설정된 모드
     const res = await fetch('/api/ps-dispatch/save', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ offline: _offline, vehicles: psopState.vehicles.map(v => ({
+      body: JSON.stringify({ offline: _offline, vehicles: saveTargets.map(v => ({
         cartype:     v.cartype,
         carclass_cd: v.carclass_cd || '',
         rqshpd:      v.rqshpd,
@@ -18883,7 +18965,8 @@ async function psopSaveDispatch() {
     console.error('[psopSaveDispatch] 저장 실패:', e);
     showToast(`❌ 저장 실패: ${e.message}`);
   } finally {
-    if (btn) btn.disabled = psopState.vehicles.length === 0;
+    // 저장 가능한(신규/편집중) 배차가 없으면 버튼 비활성화 (_autoBySel 조회전용 제외)
+    if (btn) btn.disabled = psopState.vehicles.filter(v => !v._autoBySel).length === 0;
   }
 }
 
