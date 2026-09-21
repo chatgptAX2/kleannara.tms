@@ -15503,9 +15503,39 @@ async function renderPsDispatchOpt() {
 
   // 기존 배차 목록 로드 (+ 복원된 pending vehicles 포함 렌더)
   await psopLoadVehicles();
+  // ★ DB 에 저장된 DRAFT 배차를 선적목록에 '저장 완료' 상태로 자동 로드
+  //   (배차저장 후 새로고침/재접속해도 선적목록이 유지되도록)
+  await psopLoadSavedDraftVehicles();
   // thead 초기 생성 (조회 전에도 컬럼 헤더가 보이도록)
   psopRenderDocTable();
   // 자동 조회 제거 — 조회 버튼 클릭 시에만 실행
+}
+
+/* 배차탭 진입 시 DB 저장된 DRAFT 배차를 조회하여 선적목록에 저장완료 상태로 채운다. */
+async function psopLoadSavedDraftVehicles() {
+  try {
+    // 기본 조회 기간: 오늘 기준 최근 7일 ~ 향후 7일 (검색바 날짜와 무관하게 저장분 노출)
+    const fmt = d => `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+    const now = new Date();
+    const from = new Date(now); from.setDate(now.getDate() - 7);
+    const to   = new Date(now); to.setDate(now.getDate() + 7);
+    const params = new URLSearchParams({ date_from: fmt(from), date_to: fmt(to), status: 'DRAFT' });
+    const res  = await fetch(`/api/ps-dispatch/list?${params}`);
+    const data = await res.json();
+    if (data.success === false || data.ok === false) return;
+    const rows = Array.isArray(data.data) ? data.data : (data.rows || []);
+    if (!rows.length) return;
+    // 이미 로드된(인메모리 pending 포함) 배차번호 제외
+    const existingNos = new Set(
+      psopState.vehicles.map(v => v.STDLNR || v._origDispatchNo).filter(Boolean)
+    );
+    const dispNos = rows
+      .map(r => r.dispatchNo ?? r.DISPATCH_NO)
+      .filter(no => no && !existingNos.has(no));
+    if (dispNos.length) await psopReloadSavedVehicles(dispNos);
+  } catch(e) {
+    console.error('[psopLoadSavedDraftVehicles] 자동 로드 실패:', e);
+  }
 }
 
 /* ── 조회 ─────────────────────────────────────────── */
@@ -17770,6 +17800,106 @@ function psopMergeRestoredVehicles(vehicles, searchRows) {
 }
 
 /* ═══════════════════════════════════════════════════
+   저장 완료된 배차를 '저장 완료 상태(STDLNR 유지)'로 선적목록에 병합
+   - psopMergeRestoredVehicles 와 달리 STDLNR 을 유지하여 '(편집중)' 이 아닌
+     배차저장 완료(파란 가선적번호)로 표시한다.
+   - 이미 DB 에 저장된 건이므로 localStorage pending 에는 넣지 않는다.
+   - 사용처: ① 배차저장 직후 재조회 ② 배차탭 초기 진입 시 저장된 DRAFT 자동 로드
+═══════════════════════════════════════════════════ */
+function psopMergeSavedVehicles(vehicles, searchRows) {
+  // 1. searchRows 병합 (배차완료 표시용)
+  (searchRows || []).forEach(sr => {
+    const shpoky = sr.SHPOKY ?? sr.shpoky;
+    const shpoit = sr.SHPOIT ?? sr.shpoit;
+    const exists = psopState.searchRows.find(
+      r => (r.SHPOKY ?? r.shpoky) === shpoky && (r.SHPOIT ?? r.shpoit) === shpoit
+    );
+    if (!exists) {
+      psopState.searchRows.push(sr);
+    } else {
+      exists.DISPATCHED = true;
+      exists.IS_SAVED   = true;
+      if (sr.STDLNR ?? sr.stdlnr) exists.STDLNR = sr.STDLNR ?? sr.stdlnr;
+    }
+  });
+
+  // 2. vehicles 추가 (STDLNR 유지 = 저장 완료 상태)
+  (vehicles || []).forEach(v => {
+    const dispatchNo = v.STDLNR ?? v.stdlnr ?? v.DISPATCH_NO ?? v.dispatchNo;
+    // 이미 같은 배차번호가 목록에 있으면 스킵 (중복 방지)
+    const alreadyExists = psopState.vehicles.some(
+      ev => ev.STDLNR === dispatchNo || ev._origDispatchNo === dispatchNo
+    );
+    if (alreadyExists) return;
+
+    psopState._pendingSeq = (psopState._pendingSeq || 0) + 1;
+    const pid = `_saved_${psopState._pendingSeq}`;
+
+    const items = v.items || [];
+    // items → searchRows 를 배차완료로 갱신 + savedKeys 등록
+    items.forEach(it => {
+      const shpoky = it.SHPOKY ?? it.shpoky;
+      const shpoit = it.SHPOIT ?? it.shpoit;
+      if (shpoky != null && shpoit != null && dispatchNo) {
+        psopState.savedKeys.set(`${shpoky}|${shpoit}`, dispatchNo);
+      }
+      const row = psopState.searchRows.find(
+        r => (r.SHPOKY ?? r.shpoky) === shpoky && (r.SHPOIT ?? r.shpoit) === shpoit
+      );
+      if (row) {
+        row.DISPATCHED = true;
+        row.IS_SAVED   = true;
+        row.STDLNR     = dispatchNo;
+      }
+    });
+
+    psopState.vehicles.push({
+      _pendingId:       pid,
+      _origDispatchNo:  null,             // 편집중 아님
+      STDLNR:           dispatchNo,       // 저장 완료 상태(파란 가선적번호 표시)
+      cartype:          v.cartype      ?? v.CARTYPE   ?? '',
+      carclass_cd:      v.carclass_cd  ?? '',
+      rqshpd:           v.rqshpd       ?? v.RQSHPD    ?? '',
+      dptnky:           v.dptnky       ?? v.DPTNKY    ?? '',
+      dptnm:            v.dptnm        ?? v.DPTNM     ?? '',
+      total_kg:         v.total_kg     ?? v.totalKg   ?? 0,
+      total_cnt:        v.total_cnt    ?? v.totalCnt  ?? 0,
+      load_kg:          v.load_kg      ?? v.loadKg    ?? null,
+      items:            items,
+    });
+  });
+
+  psopLoadVehicles();
+  psopRenderDocTable();
+  psopUpdateToolbar();
+}
+
+/* 저장된 배차번호 목록을 load-for-edit 로 재조회하여 선적목록에 저장완료 상태로 채운다. */
+async function psopReloadSavedVehicles(dispNos) {
+  const nos = (dispNos || []).filter(Boolean);
+  if (!nos.length) return;
+  try {
+    const res = await fetch('/api/ps-dispatch/load-for-edit', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ dispatch_nos: nos })
+    });
+    const data = await res.json();
+    if (data.ok === false || data.success === false) throw new Error(data.error || data.message || 'load-for-edit 실패');
+    const payload    = (data.data && typeof data.data === 'object') ? data.data : data;
+    const vehicles   = payload.vehicles    || data.vehicles    || [];
+    const searchRows = payload.search_rows || data.search_rows || [];
+    // load-for-edit 는 STDLNR 을 비워 반환하므로(DISPATCH_NO 만 있음),
+    //   각 vehicle 의 DISPATCH_NO(=가선적번호)를 STDLNR 로 주입 (순서 비의존)
+    vehicles.forEach(v => {
+      if (!(v.STDLNR ?? v.stdlnr)) v.STDLNR = v.DISPATCH_NO ?? v.dispatchNo ?? null;
+    });
+    psopMergeSavedVehicles(vehicles, searchRows);
+  } catch(e) {
+    console.error('[psopReloadSavedVehicles] 재조회 실패:', e);
+  }
+}
+
+/* ═══════════════════════════════════════════════════
    자동배차
 ═══════════════════════════════════════════════════ */
 async function psopAutoDispatch(offline) {
@@ -18739,12 +18869,15 @@ async function psopSaveDispatch() {
     // 배차저장으로 SAP선적 내역이 바뀌었으므로, 다음 SAP 탭 진입 시 1회 자동 조회되도록 리셋
     _sapState.initialized = false;
     psopState._offlineMode = false;   // 저장 후 미연동 모드 해제(다음 저장은 연동 기본)
-    // 저장 후 인메모리 비우기
+    // 저장 후 인메모리 비우기 (미저장 pending 제거)
     psopState.vehicles = [];
     psopState.selectedVehicles.clear();
     // localStorage pending 상태 정리 (저장 완료된 배차 제거)
     _psopSavePendingState();
     psopLoadVehicles();
+    // ★ 방금 저장한 배차를 DB 에서 재조회하여 선적목록에 '저장 완료' 상태로 표시
+    //   (기존에는 인메모리만 비워 선적목록이 빈 채로 남았음)
+    await psopReloadSavedVehicles(dispNos);
     await psopSearch();
   } catch(e) {
     console.error('[psopSaveDispatch] 저장 실패:', e);
