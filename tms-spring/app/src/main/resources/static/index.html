@@ -15503,39 +15503,13 @@ async function renderPsDispatchOpt() {
 
   // 기존 배차 목록 로드 (+ 복원된 pending vehicles 포함 렌더)
   await psopLoadVehicles();
-  // ★ DB 에 저장된 DRAFT 배차를 선적목록에 '저장 완료' 상태로 자동 로드
-  //   (배차저장 후 새로고침/재접속해도 선적목록이 유지되도록)
-  await psopLoadSavedDraftVehicles();
+  // ※ 진입 시 저장된 DRAFT 전체 자동 로드는 제거함.
+  //   선적목록은 '납품문서 목록에서 배차된 문서를 선택'할 때만 해당 가선적번호를
+  //   조회하도록 개선(요청). 미선택 상태에서는 선적목록을 비워둔다.
+  //   (배차저장 직후에는 psopSaveDispatch 에서 방금 저장분을 재조회해 표시)
   // thead 초기 생성 (조회 전에도 컬럼 헤더가 보이도록)
   psopRenderDocTable();
   // 자동 조회 제거 — 조회 버튼 클릭 시에만 실행
-}
-
-/* 배차탭 진입 시 DB 저장된 DRAFT 배차를 조회하여 선적목록에 저장완료 상태로 채운다. */
-async function psopLoadSavedDraftVehicles() {
-  try {
-    // 기본 조회 기간: 오늘 기준 최근 7일 ~ 향후 7일 (검색바 날짜와 무관하게 저장분 노출)
-    const fmt = d => `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
-    const now = new Date();
-    const from = new Date(now); from.setDate(now.getDate() - 7);
-    const to   = new Date(now); to.setDate(now.getDate() + 7);
-    const params = new URLSearchParams({ date_from: fmt(from), date_to: fmt(to), status: 'DRAFT' });
-    const res  = await fetch(`/api/ps-dispatch/list?${params}`);
-    const data = await res.json();
-    if (data.success === false || data.ok === false) return;
-    const rows = Array.isArray(data.data) ? data.data : (data.rows || []);
-    if (!rows.length) return;
-    // 이미 로드된(인메모리 pending 포함) 배차번호 제외
-    const existingNos = new Set(
-      psopState.vehicles.map(v => v.STDLNR || v._origDispatchNo).filter(Boolean)
-    );
-    const dispNos = rows
-      .map(r => r.dispatchNo ?? r.DISPATCH_NO)
-      .filter(no => no && !existingNos.has(no));
-    if (dispNos.length) await psopReloadSavedVehicles(dispNos);
-  } catch(e) {
-    console.error('[psopLoadSavedDraftVehicles] 자동 로드 실패:', e);
-  }
 }
 
 /* ── 조회 ─────────────────────────────────────────── */
@@ -15601,9 +15575,24 @@ async function psopSearch() {
         }
       });
     }
+    // ★ 재조회 시 선택 정합성 보정:
+    //   새 검색결과(searchRows)에 더 이상 존재하지 않는 selectedDocs 는 제거하여
+    //   '유령 선택'이 남지 않도록 한다.
+    const _validKeys = new Set(
+      psopState.searchRows.map(r => `${r.SHPOKY}|${r.SHPOIT}`)
+    );
+    [...psopState.selectedDocs].forEach(k => {
+      if (!_validKeys.has(k)) psopState.selectedDocs.delete(k);
+    });
+
     // ★ 인메모리 보정 완료 후 배차상태 필터는 psopRenderDocTable()에서 클라이언트 처리
     psopRenderDocTable();
     psopUpdateToolbar();
+
+    // ★ 재조회 결과에 맞춰 선적목록(_autoBySel 배차)도 현재 선택 기준으로 재동기화
+    //   → 검색조건 변경 시 납품문서 목록·선적목록·하단 납품문서가 함께 갱신된다.
+    //   (디바운스 우회: 조회 직후 즉시 반영)
+    await _psopSyncDispatchedSelectionNow();
   } catch(e) {
     const _cc2 = _psopGetColOrder().length;
     tbody.innerHTML = `<tr><td colspan="${_cc2}" style="color:var(--danger);text-align:center;padding:20px">❌ 조회 실패: ${e.message}</td></tr>`;
@@ -16093,33 +16082,46 @@ function psopSyncDispatchedSelection() {
 }
 
 async function _psopSyncDispatchedSelectionNow() {
-  const wantSet = _psopSelectedDispatchedStdlnrs();  // 지금 선택된 배차완료 STDLNR 집합
+  // 목표 상태(desired): '지금 선택된 배차완료 문서'의 STDLNR 집합
+  const wantSet = _psopSelectedDispatchedStdlnrs();
 
   // 관리 대상: 이 기능(문서선택)으로 선적목록에 올라온 배차만 (_autoBySel=true).
-  //   사용자가 배차저장/불러오기로 올린 배차는 보존한다.
+  //   사용자가 배차저장/불러오기로 올린 배차(비-_autoBySel)는 절대 건드리지 않는다.
 
-  // 1) 선택 해제되어 더 이상 필요없는 auto 배차 제거
-  let changed = false;
+  // 1) 선택 집합(wantSet)에 없는 _autoBySel 배차를 모두 제거
+  //    → 선택 해제/그룹 변경 시 선적목록이 즉시 정확히 반영된다.
+  let removed = false;
   psopState.vehicles = psopState.vehicles.filter(v => {
-    if (v._autoBySel && v.STDLNR && !wantSet.has(String(v.STDLNR).trim())) {
-      changed = true;
+    if (v._autoBySel && !wantSet.has(String(v.STDLNR || '').trim())) {
+      removed = true;
       return false;
     }
     return true;
   });
 
-  // 2) 새로 선택된 배차완료 STDLNR 중, 아직 선적목록에 없는 것만 로드
-  //    (이미 화면에 있는 STDLNR — 저장/불러오기/이전 auto — 은 재로드하지 않음)
+  // 2) 선택된 STDLNR 중, 현재 선적목록에 전혀 없는 것만 신규 로드
+  //    (저장/불러오기/이전 auto 로 이미 화면에 있는 STDLNR 은 재로드하지 않음)
   const existingNos = new Set(
     psopState.vehicles.map(v => (v.STDLNR || v._origDispatchNo || '') + '').filter(Boolean)
   );
   const toLoad = [...wantSet].filter(no => !existingNos.has(no));
 
   if (toLoad.length) {
+    // 로드한 배차의 items 로 searchRows 가 갱신되어 '미선택 문서'까지 배차완료로
+    //   보일 수 있으므로, 로드 후 반드시 selectedDocs 기준으로 재정리한다(3단계).
     await psopReloadSavedVehicles(toLoad, /*markAutoBySel=*/true);
-    changed = true;
-  } else if (changed) {
-    // 제거만 발생한 경우 즉시 렌더 갱신
+  }
+
+  // 3) 최종 정합성 보정: _autoBySel 배차는 오직 현재 선택된 STDLNR 만 남긴다.
+  //    (로드 과정에서 딸려온 미선택 배차 방지)
+  const wantSet2 = _psopSelectedDispatchedStdlnrs();
+  const before = psopState.vehicles.length;
+  psopState.vehicles = psopState.vehicles.filter(v =>
+    !v._autoBySel || wantSet2.has(String(v.STDLNR || '').trim())
+  );
+  const cleaned = psopState.vehicles.length !== before;
+
+  if (removed || toLoad.length || cleaned) {
     psopLoadVehicles();
     psopRenderDocTable();
     psopUpdateToolbar();
@@ -17884,6 +17886,9 @@ function psopMergeRestoredVehicles(vehicles, searchRows) {
 ═══════════════════════════════════════════════════ */
 function psopMergeSavedVehicles(vehicles, searchRows, markAutoBySel) {
   // 1. searchRows 병합 (배차완료 표시용)
+  //    ※ markAutoBySel(납품문서 선택으로 조회) 경로에서는 현재 검색결과에 없던
+  //      문서를 새로 추가하지 않는다 — 그렇지 않으면 '미선택/미조회 문서'가
+  //      납품문서 목록에 딸려 나타나는 문제가 발생한다.
   (searchRows || []).forEach(sr => {
     const shpoky = sr.SHPOKY ?? sr.shpoky;
     const shpoit = sr.SHPOIT ?? sr.shpoit;
@@ -17891,7 +17896,7 @@ function psopMergeSavedVehicles(vehicles, searchRows, markAutoBySel) {
       r => (r.SHPOKY ?? r.shpoky) === shpoky && (r.SHPOIT ?? r.shpoit) === shpoit
     );
     if (!exists) {
-      psopState.searchRows.push(sr);
+      if (!markAutoBySel) psopState.searchRows.push(sr);
     } else {
       exists.DISPATCHED = true;
       exists.IS_SAVED   = true;
