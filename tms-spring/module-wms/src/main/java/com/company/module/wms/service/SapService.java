@@ -159,17 +159,9 @@ public class SapService {
         } catch (Exception e) { return errMap(e); }
     }
 
-    @Transactional
-    public Map<String, Object> psDelete(Map<String, Object> body) {
-        Long dispHId = toLong(body.get("disp_h_id"));
-        if (dispHId == null) return Map.of("ok", false, "error", "disp_h_id 필수");
-        try {
-            // TMS_PS_DISPATCH_D / TMS_PS_DISPATCH_H → MariaDB tmsJdbc
-            tmsJdbc.update("DELETE FROM KNRAWMS.TMS_PS_DISPATCH_D WHERE DISP_H_ID=?", dispHId);
-            tmsJdbc.update("DELETE FROM KNRAWMS.TMS_PS_DISPATCH_H WHERE DISP_H_ID=?", dispHId);
-            return Map.of("ok", true);
-        } catch (Exception e) { return errMap(e); }
-    }
+    // NOTE: psDelete 구버전 임시 구현(disp_h_id 단건 기반)은 제거함.
+    //   /api/ps-dispatch/delete 는 PsDispatchController.delete(dispatch_nos, 현 운영 스키마)로
+    //   단일화되어 'Ambiguous handler methods' 오류를 해소한다. (컨트롤러 매핑도 제거됨)
 
     @Transactional
     /**
