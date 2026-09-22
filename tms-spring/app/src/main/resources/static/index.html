@@ -15575,24 +15575,21 @@ async function psopSearch() {
         }
       });
     }
-    // ★ 재조회 시 선택 정합성 보정:
-    //   새 검색결과(searchRows)에 더 이상 존재하지 않는 selectedDocs 는 제거하여
-    //   '유령 선택'이 남지 않도록 한다.
-    const _validKeys = new Set(
-      psopState.searchRows.map(r => `${r.SHPOKY}|${r.SHPOIT}`)
-    );
-    [...psopState.selectedDocs].forEach(k => {
-      if (!_validKeys.has(k)) psopState.selectedDocs.delete(k);
-    });
+    // ★ 재조회는 '새 조회' 이므로 이전 납품문서 선택 상태와 그로 인해 자동 로드된
+    //   선적목록(_autoBySel 배차)을 초기화한다.
+    //   [버그수정] 선택/전체선택 후 재조회 시, 유지된 selectedDocs 로 _autoBySel 재동기화가
+    //   재조회 렌더와 충돌하여 우측 선적목록/납품문서가 비어 보이는 문제가 있었다.
+    //   → 재조회 시점에 선택을 해제하고, 문서선택으로 올라온 배차만 제거한다.
+    //     (사용자가 배차저장/불러오기로 올린 배차는 _autoBySel 이 아니므로 보존)
+    if (_psopDocSelSyncTimer) { clearTimeout(_psopDocSelSyncTimer); _psopDocSelSyncTimer = null; }
+    psopState.selectedDocs.clear();
+    psopState.vehicles = psopState.vehicles.filter(v => !v._autoBySel);
 
     // ★ 인메모리 보정 완료 후 배차상태 필터는 psopRenderDocTable()에서 클라이언트 처리
+    //   선적목록/납품문서/하단 상세를 새 검색결과 기준으로 함께 갱신
+    psopLoadVehicles();
     psopRenderDocTable();
     psopUpdateToolbar();
-
-    // ★ 재조회 결과에 맞춰 선적목록(_autoBySel 배차)도 현재 선택 기준으로 재동기화
-    //   → 검색조건 변경 시 납품문서 목록·선적목록·하단 납품문서가 함께 갱신된다.
-    //   (디바운스 우회: 조회 직후 즉시 반영)
-    await _psopSyncDispatchedSelectionNow();
   } catch(e) {
     const _cc2 = _psopGetColOrder().length;
     tbody.innerHTML = `<tr><td colspan="${_cc2}" style="color:var(--danger);text-align:center;padding:20px">❌ 조회 실패: ${e.message}</td></tr>`;
