@@ -16828,11 +16828,21 @@ async function psopShowLoadImage(pendingId) {
   const v = (psopState.vehicles || []).find(x => x._pendingId === pendingId);
   if (!v) { alert('배차 데이터를 찾을 수 없습니다.'); return; }
 
-  /* ★ 적재뷰 미표시 버그 fix:
-     기존 _psop 전용 모달 DOM(psop-load-modal-overlay/psop-load-tabs/…)이 실제로
-     존재하지 않아 null 참조 에러로 아무것도 표시되지 않았음.
-     → 동일 아이템 구조(v.items)를 갖는 PS배차 적재뷰 모달(psd-load-*)을 재사용.
-       (정면/측면 2D + 신규 3D 시뮬레이션 탭 그대로 이용) */
+  /* ★ [버그수정] 가선적번호(STDLNR)가 있는 배차는 SAP선적탭과 '동일한' 서버 데이터
+     기반 적재뷰를 사용한다.
+     원인: 기존에는 인메모리 v.items(배차 계획/ load-for-edit 의 간소화된 아이템)를
+       psd-load 모달에 그대로 넘겨 렌더했는데, 3D 적재 배치 계산에 필요한 정확한
+       품목·치수·레이아웃 정보가 부족/불일치하여 SAP탭(_sapShowLoadImage, 서버
+       /api/ps-sap/items 조회)과 결과가 달랐다.
+     → STDLNR 이 채번된 배차(저장완료/자동로드)는 _sapShowLoadImage(STDLNR, ...) 로 위임하여
+       동일 선적에 대해 동일한 정확한 3D 적재뷰가 나오도록 통일한다. */
+  const stdlnr = (v.STDLNR && String(v.STDLNR).trim()) ? String(v.STDLNR).trim() : null;
+  if (stdlnr) {
+    return _sapShowLoadImage(stdlnr, v.cartype || '', v.carclass_cd || '');
+  }
+
+  /* STDLNR 미채번(미저장 신규 배차)은 서버 조회 대상이 없으므로,
+     인메모리 v.items 기반 PS배차 적재뷰(psd-load-*) 재사용으로 미리보기 제공. */
   const vehInfo = await _psopGetVehInfo();
   const veh = vehInfo[v.cartype] || null;
 
