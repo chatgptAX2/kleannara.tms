@@ -260,12 +260,11 @@ public class SapRfcService {
                         row.put("wms_result", wms);
                         try {
                             // SAP 선적번호(tknum=E_TKNUM)를 TMS_SHPDI.STKNUM 에 기록.
-                            //   [성능] 컬럼 TRIM(STDLNR) 은 인덱스를 못 타므로 제거하고,
-                            //   CHAR 공백 패딩 매칭을 위해 파라미터를 RPAD(?,20) 로 컬럼폭에 맞춰
-                            //   패딩하여 raw 컬럼(STDLNR)과 등가 비교한다. (인덱스 사용 가능)
+                            //   [자료형] STDLNR 은 VARCHAR2(30) — 공백 패딩되지 않으므로
+                            //   컬럼을 raw 그대로 두고 파라미터(strip)와 등가 비교한다. (인덱스 사용)
                             int updated = wmsJdbc.update(
                                 "UPDATE KNRAWMS.TMS_SHPDI SET STKNUM=?, LMODAT=?, LMOUSR='WEB' " +
-                                "WHERE STDLNR=RPAD(?,20)",
+                                "WHERE STDLNR=?",
                                 tknum, today, stdlnr
                             );
                             row.put("stknum_updated", updated);
@@ -363,11 +362,10 @@ public class SapRfcService {
                     Map<String, Object> wms = callWmsIfc301(stdlnr, tknum, "D", env);
                     row.put("wms_result", wms);
                     try {
-                        // [성능] STKNUM 초기화도 컬럼 TRIM 제거 + RPAD(?,20) 패딩 매칭
-                        //   (STDLNR CHAR 공백 패딩 대응 — shipment-create 와 동일, 인덱스 사용)
+                        // [자료형] STDLNR VARCHAR2(30) — 패딩 없음. raw 컬럼 등가 비교(인덱스 사용).
                         int cleared = wmsJdbc.update(
                             "UPDATE KNRAWMS.TMS_SHPDI SET STKNUM=' ', LMODAT=?, LMOUSR='WEB' " +
-                            "WHERE STDLNR=RPAD(?,20)",
+                            "WHERE STDLNR=?",
                             today, stdlnr
                         );
                         row.put("stknum_cleared", cleared);
@@ -801,19 +799,16 @@ public class SapRfcService {
             //     rqshpd_from → TMS_SHPDH.RQSHPD >= ?
             //     rqshpd_to   → TMS_SHPDH.RQSHPD <= ?
             //   (RQSHPD 는 'YYYYMMDD' 8자리 문자열, 하이픈 제거된 값으로 비교)
-            //   [버그수정2] RQSHPD 비교로 from=to 동일일자 조회 시 0건이 발생.
-            //   원인: DB 의 RQSHPD 에 날짜(YYYYMMDD) 뒤 시간/추가문자가 붙어 있으면
-            //   (예: '20260910120000'), '<= 20260910' 비교에서 탈락한다.
-            //   → 날짜부 앞 8자리(YYYYMMDD)만 잘라 비교하여 시간/포맷과 무관하게
-            //     정확한 일자 범위 비교가 되도록 SUBSTR(SH.RQSHPD,1,8) 사용.
-            //   ※ 이 컬럼(RQSHPD)은 값에 시간이 섞인 데이터가 존재하여 SUBSTR 이
-            //     기능상 불가피하다(제거 시 동일일자 조회 회귀). 불필요한 TRIM 만 제거.
+            //   [자료형] TMS_SHPDH.RQSHPD 는 VARCHAR2(10) — 최대 10자리라 '시간 14자리'는
+            //     물리적으로 저장 불가. 다른 모든 쿼리(PsDispatch/Dashboard/Shipment)가
+            //     함수 없이 'RQSHPD >= ? / <= ?' 로 정상 동작하므로 여기도 동일하게 통일한다.
+            //     컬럼에 함수를 씌우지 않아 인덱스 사용이 가능하다.
             if (!rqFrom.isEmpty()) {
-                where.add("SUBSTR(SH.RQSHPD,1,8) >= ?");
+                where.add("SH.RQSHPD >= ?");
                 args.add(rqFrom);
             }
             if (!rqTo.isEmpty()) {
-                where.add("SUBSTR(SH.RQSHPD,1,8) <= ?");
+                where.add("SH.RQSHPD <= ?");
                 args.add(rqTo);
             }
             // ── SAP선적번호/가선적번호 검색 ──
@@ -935,7 +930,7 @@ public class SapRfcService {
             // 1) TMS_SHPDI 에 해당 STDLNR 이 실제로 존재하는가 (배차저장 커밋 여부 직접 확인)
             List<Map<String, Object>> siRows = wmsJdbc.queryForList(
                 "SELECT SHPOKY, SHPOIT, STDLNR, STKNUM, STATIT, SVBELN, SKUKEY " +
-                "FROM KNRAWMS.TMS_SHPDI WHERE STDLNR = RPAD(?,20)", key);
+                "FROM KNRAWMS.TMS_SHPDI WHERE STDLNR = ?", key);
             out.put("shpdi_count", siRows.size());
             out.put("shpdi_rows", siRows.size() > 50 ? siRows.subList(0, 50) : siRows);
 
@@ -956,7 +951,7 @@ public class SapRfcService {
                 Integer joinCnt = wmsJdbc.queryForObject(
                     "SELECT COUNT(*) FROM KNRAWMS.TMS_SHPDI SI " +
                     "JOIN KNRAWMS.TMS_SHPDH SH ON SI.SHPOKY = SH.SHPOKY " +
-                    "WHERE SI.STDLNR = RPAD(?,20)", Integer.class, key);
+                    "WHERE SI.STDLNR = ?", Integer.class, key);
                 out.put("shpdi_join_shpdh_count", joinCnt);
             }
             out.put("ok", true);
@@ -1414,19 +1409,19 @@ public class SapRfcService {
             if (splitQty <= 0) continue;
 
             // ── 1) 원본 TMS_SHPDI 행 SELECT (SHPOKY + SHPOIT 정확 매칭) ──
-            //   [성능] 컬럼 TRIM 제거 + CHAR 패딩 매칭용 RPAD(파라미터, 컬럼폭) 사용
-            //          (SHPOKY 20자리, SHPOIT 6자리) → 인덱스 사용 가능.
+            //   [자료형] SHPOKY VARCHAR2(10), SHPOIT VARCHAR2(6) — 공백 패딩 없음.
+            //          컬럼은 raw 그대로, 파라미터(strip)와 등가 비교 → 인덱스 사용 가능.
             String orgShpokyT = orgShpoky == null ? null : orgShpoky.strip();
             String orgShpoitT = orgShpoit == null ? null : orgShpoit.strip();
             List<Map<String, Object>> orgRows = wmsJdbc.queryForList(
                 "SELECT * FROM KNRAWMS.TMS_SHPDI " +
-                " WHERE SHPOKY = RPAD(?,20) AND SHPOIT = RPAD(?,6)",
+                " WHERE SHPOKY = ? AND SHPOIT = ?",
                 orgShpokyT, orgShpoitT);
             if (orgRows.isEmpty()) {
                 // SHPOIT 포맷차(0010 vs 10) 대비 숫자 매칭 재시도 (숫자변환은 함수 불가피)
                 orgRows = wmsJdbc.queryForList(
                     "SELECT * FROM KNRAWMS.TMS_SHPDI " +
-                    " WHERE SHPOKY = RPAD(?,20) " +
+                    " WHERE SHPOKY = ? " +
                     "   AND REGEXP_LIKE(SHPOIT,'^[0-9]+$') AND REGEXP_LIKE(?,'^[0-9]+$') " +
                     "   AND TO_NUMBER(SHPOIT) = TO_NUMBER(?)",
                     orgShpokyT, orgShpoitT, orgShpoitT);
@@ -1452,7 +1447,7 @@ public class SapRfcService {
             try {
                 Long mx = wmsJdbc.queryForObject(
                     "SELECT NVL(MAX(TO_NUMBER(SHPOIT)),0) FROM KNRAWMS.TMS_SHPDI " +
-                    " WHERE SHPOKY=RPAD(?,20) AND REGEXP_LIKE(SHPOIT,'^[0-9]+$')",
+                    " WHERE SHPOKY=? AND REGEXP_LIKE(SHPOIT,'^[0-9]+$')",
                     Long.class, realShpoky == null ? null : realShpoky.strip());
                 maxItem = (mx == null ? 0L : mx);
             } catch (Exception e) {
