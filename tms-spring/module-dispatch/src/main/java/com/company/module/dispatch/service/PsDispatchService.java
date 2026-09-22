@@ -168,7 +168,12 @@ public class PsDispatchService {
         "        WHERE rd.SKUKEY = i.SKUKEY) AS UNIT_WEIGHT," +
         "       TRIM(COALESCE(i.SPOSNR,'')) AS SPOSNR," +
         // 연동구분: DESC02='OFFLINE'=미연동(테스트), 'ONLINE'=연동, 그 외/공백=기존
-        "       TRIM(COALESCE(i.DESC02,'')) AS TMS_LINK_YN" +
+        "       TRIM(COALESCE(i.DESC02,'')) AS TMS_LINK_YN," +
+        // ── 배차완료 정보(STDLNR/STKNUM)를 메인 SELECT 에 직접 포함 ──
+        //   STDLNR(가선적번호)/STKNUM(SAP선적번호)은 동일 TMS_SHPDI(i) 행의 컬럼이므로
+        //   별도 배차완료 조회(loadDispatchedKeys, IN 절 반복 바인딩) 없이 한 번에 읽는다.
+        "       TRIM(COALESCE(i.STDLNR,'')) AS STDLNR," +
+        "       TRIM(COALESCE(i.STKNUM,'')) AS STKNUM" +
         " FROM KNRAWMS.TMS_SHPDI i" +
         " JOIN KNRAWMS.TMS_SHPDH h ON i.SHPOKY = h.SHPOKY" +
         " LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY = h.DPTNKY AND b.PTNRTY = 'CT'" +
@@ -267,11 +272,11 @@ public class PsDispatchService {
         List<Object[]> rows = query.getResultList();
         log.info("[PsDispatch] DB \uc870\ud68c \uacb0\uacfc: {}건 (dispStat={})", rows.size(), dispStat);
 
-        // ── 배차완료 키+값(STDLNR/STKNUM) 조회: 검색결과의 SHPOKY 로만 스코프 ──
-        //   (TMS_SHPDI 전체 풀스캔 방지 — 결과 문서번호로만 IN 조회)
-        Map<String, String[]> dispatchedMap = loadDispatchedKeys(rows);  // key → [STDLNR, STKNUM]
-        log.info("[PsDispatch] 배차완료 판정 map 크기={} (검색결과 {}건, SHPOKY+SVBELN 키 기준)",
-                 dispatchedMap.size(), rows.size());
+        // ── 배차완료 정보(STDLNR/STKNUM)는 메인 SELECT(i.STDLNR/i.STKNUM)에서 직접 획득 ──
+        //   [성능개선] 기존에는 loadDispatchedKeys() 로 TMS_SHPDI 를 별도 IN 조회(결과 개수의
+        //   2배에 달하는 파라미터 반복 바인딩)했으나, STDLNR/STKNUM 은 동일 TMS_SHPDI 행의
+        //   컬럼이므로 메인 쿼리에 포함시켜 추가 조회를 제거한다. (r[19]=STDLNR, r[20]=STKNUM)
+        //   배차완료 판정(isDisp)도 STDLNR 채번 여부로 행 단위 직접 판단한다.
         List<PsDispatchDocResponse> result = new ArrayList<>();
 
         for (Object[] r : rows) {
@@ -282,13 +287,10 @@ public class PsDispatchService {
             double grswgt  = toDouble(r[14]);
             double unitW   = toDouble(r[16]);
 
-            String key    = str(r[0]) + "|" + str(r[1]);            // SHPOKY|SHPOIT
-            String svKey  = str(r[4]) + "|" + str(r[1]);            // SVBELN|SHPOIT (폴백)
-            String[] dispVal = dispatchedMap.get(key);
-            if (dispVal == null && !str(r[4]).isEmpty()) dispVal = dispatchedMap.get(svKey);
-            boolean isDisp = dispVal != null;
-            String  stdlnrVal = isDisp ? dispVal[0] : "";
-            String  stknumVal = isDisp ? dispVal[1] : "";
+            // 배차완료 정보: 같은 행의 STDLNR(가선적번호)/STKNUM(SAP선적번호)
+            String  stdlnrVal = str(r[19]);
+            String  stknumVal = str(r[20]);
+            boolean isDisp = !stdlnrVal.isEmpty();   // STDLNR 채번 = 배차완료(배차저장)
             if ("dispatched".equals(dispStat) && !isDisp) continue;
             if ("undispatched".equals(dispStat) && isDisp) continue;
 
@@ -375,89 +377,6 @@ public class PsDispatchService {
                 .build());
         }
         return result;
-    }
-
-    /**
-     * 배차완료 키(SHPOKY|SHPOIT) 집합 조회.
-     *
-     * <p>기존에는 {@code KNRAWMS.TMS_SHPDI} 전체(WAREKY/일자/문서번호 필터 없음)를 매번 스캔하여
-     * 배차완료 키 전체를 가져왔다. 이 때문에 실제 검색결과가 소량(예: 2건)이어도
-     * 대용량 테이블 풀스캔으로 17초 이상 소요되는 성능 병목이 있었다.</p>
-     *
-     * <p>배차여부(isDisp)는 <b>검색결과 행에 대해서만</b> 필요하므로,
-     * 검색결과의 SHPOKY(납품문서번호) 목록으로만 스코프하여 인덱스 IN 조회로 대체한다.
-     * 검색결과가 없으면 조회 자체를 생략한다.</p>
-     *
-     * @param rows 메인 검색 결과 (r[0]=SHPOKY, r[1]=SHPOIT)
-     * @return "SHPOKY|SHPOIT" 형식의 배차완료 키 집합
-     */
-    private Map<String, String[]> loadDispatchedKeys(List<Object[]> rows) {
-        if (rows == null || rows.isEmpty()) return java.util.Collections.emptyMap();
-
-        // 검색결과에 등장한 SHPOKY(납품문서번호) + SVBELN(SAP 납품문서번호) 를 모두 수집.
-        //   [개선] SAP 선적생성/납품분할로 프론트가 보유한 SHPOKY 와 TMS_SHPDI 실제 SHPOKY 가
-        //   어긋날 수 있어(분할 반영 타이밍/키 포맷 차이), SHPOKY 만으로 배차완료를 조회하면
-        //   STDLNR 이 부여됐어도 매칭 실패 → '미배차' 로 표시되는 문제가 있었다.
-        //   → SHPOKY 뿐 아니라 SVBELN 으로도 배차완료(STDLNR) 를 조회하여 누락을 방지한다.
-        //     (r[0]=SHPOKY, r[4]=SVBELN)
-        LinkedHashSet<String> keySet = new LinkedHashSet<>();
-        for (Object[] r : rows) {
-            String shpoky = str(r[0]);
-            String svbeln = str(r[4]);
-            if (!shpoky.isEmpty()) keySet.add(shpoky);
-            if (!svbeln.isEmpty()) keySet.add(svbeln);
-        }
-        if (keySet.isEmpty()) return java.util.Collections.emptyMap();
-
-        List<String> keys = new ArrayList<>(keySet);
-
-        // ── Oracle IN 절 1,000개 제한(ORA-01795) 회피: 1,000개 단위로 청크 분할 조회 ──
-        //   [개선] 배차완료 판정(STDLNR 유무)뿐 아니라 STDLNR(가선적번호)·STKNUM(SAP선적번호)
-        //          실제 값도 함께 조회해, 재조회 시에도 '배차/배차저장/가선적번호/SAP선적번호'
-        //          표시가 유지되도록 한다.
-        //   결과 map 에는 'SHPOKY|SHPOIT' 와 'SVBELN|SHPOIT' 두 종류의 키를 모두 등록해,
-        //   메인 SELECT 행이 SHPOKY 든 SVBELN 든 어느 쪽으로든 매칭되게 한다.
-        final int CHUNK = 1000;
-        Map<String, String[]> map = new HashMap<>();   // "KEY|SHPOIT" → [STDLNR, STKNUM]
-        for (int from = 0; from < keys.size(); from += CHUNK) {
-            List<String> chunk = keys.subList(from, Math.min(from + CHUNK, keys.size()));
-            String ph = chunk.stream().map(x -> "?").collect(Collectors.joining(","));
-            // 배차완료 판정 기준: 가선적번호(STDLNR) 부여 여부 (STATIT 무관).
-            //   메인 SELECT 의 SHPOKY 는 raw(오라클 CHAR 패딩 가능)이고 IN 파라미터는 strip 값
-            //   → 양쪽 모두 TRIM 하여 비교(SHPOKY, SVBELN 공통).
-            // [버그수정] 기존에는 WHERE 에 STDLNR IS NOT NULL AND TRIM(STDLNR) <> '' 을 두었으나,
-            //   진단 결과 동일 IN 조건의 진단쿼리는 대상행(STDLNR=260909004T)을 정상 조회하는데
-            //   이 조건이 붙은 배차완료 SELECT 만 0건을 반환하는 현상이 확인됐다.
-            //   (Oracle 바인드/조건 결합 특성으로 STDLNR 값이 있어도 걸러지는 케이스)
-            //   → WHERE 에서 STDLNR 조건을 제거하고, 조회 후 Java 에서 STDLNR 이 실제로
-            //     채번된(공백 아님) 행만 map 에 담아 진단쿼리와 동일 결과를 보장한다.
-            String sql =
-                "SELECT TRIM(SHPOKY), TRIM(COALESCE(SVBELN,'')), TRIM(SHPOIT)," +
-                "       TRIM(COALESCE(STDLNR,'')), TRIM(COALESCE(STKNUM,''))" +
-                " FROM KNRAWMS.TMS_SHPDI" +
-                " WHERE TRIM(SHPOKY) IN (" + ph + ") OR TRIM(COALESCE(SVBELN,'')) IN (" + ph + ")";
-
-            var q = em.createNativeQuery(sql);
-            // IN 파라미터를 두 번(SHPOKY용, SVBELN용) 바인딩
-            for (int i = 0; i < chunk.size(); i++) q.setParameter(i + 1, chunk.get(i));
-            for (int i = 0; i < chunk.size(); i++) q.setParameter(chunk.size() + i + 1, chunk.get(i));
-            @SuppressWarnings("unchecked")
-            List<Object[]> chunkRows = q.getResultList();
-            for (Object[] cr : chunkRows) {
-                String shpoky = str(cr[0]);
-                String svbeln = str(cr[1]);
-                String shpoit = str(cr[2]);
-                String stdlnr = str(cr[3]);
-                String stknum = str(cr[4]);
-                // 배차완료 판정 기준: 가선적번호(STDLNR)가 실제 채번된(공백 아님) 행만.
-                if (stdlnr.isEmpty()) continue;
-                String[] val = new String[]{ stdlnr, stknum };   // [STDLNR, STKNUM]
-                if (!shpoky.isEmpty()) map.put(shpoky + "|" + shpoit, val);
-                if (!svbeln.isEmpty()) map.put(svbeln + "|" + shpoit, val);
-            }
-
-        }
-        return map;
     }
 
     // ──────────────────────────────────────────────────────────────────────────
