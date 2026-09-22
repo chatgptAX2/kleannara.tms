@@ -204,17 +204,17 @@ public class PsDispatchService {
         String vSkug05 = (req.getSkug05() != null && !req.getSkug05().isBlank())
                          ? req.getSkug05().strip() : "10";
 
-        // ── WAREKY / SKUG05 는 TRIM 비교(정규화)로 매칭한다. ──────────────────
-        //   [개선] SAP 납품분할로 신규 생성된 납품문서(TMS_SHPDI)의 WAREKY/SKUG05 값에
-        //   앞뒤 공백/포맷 차이가 있으면 정확일치(=)에서 걸러져 PS배차 조회에
-        //   나타나지 않는 문제가 있었다(출고예정정보는 해당 조건이 없어 정상 조회).
-        //   → TRIM 후 비교하여 공백 차이로 인한 누락을 방지한다.
-        StringBuilder where = new StringBuilder(" WHERE TRIM(h.WAREKY) = ? AND TRIM(i.SKUG05) = ?");
+        // ── WAREKY / SKUG05 등가 비교 (컬럼 함수 미적용 → 인덱스 사용 가능) ──────
+        //   [성능] WHERE 컬럼을 TRIM() 으로 감싸면 인덱스를 타지 못하므로, 컬럼은
+        //   기본(raw) 그대로 두고 비교값(파라미터)만 strip 하여 등가 비교한다.
+        //   (Oracle 은 CHAR 컬럼 등가 비교 시 blank-padded 비교를 하므로 패딩과 무관하게 매칭)
+        StringBuilder where = new StringBuilder(" WHERE h.WAREKY = ? AND i.SKUG05 = ?");
         // ── 고정 제외조건: 취소/삭제된 납품문서는 배차 대상에서 항상 비노출 ──────
         //   · TMS_SHPDI.STATIT = 'FCO' : 납품문서(아이템) 취소
         //   · TMS_SHPDH.STATDO = 'OCN' : 오더취소
-        where.append(" AND TRIM(COALESCE(i.STATIT,'')) <> 'FCO'")
-             .append(" AND TRIM(COALESCE(h.STATDO,'')) <> 'OCN'");
+        //   컬럼 함수(TRIM/COALESCE) 제거 — NULL 안전만 IS NULL 로 유지.
+        where.append(" AND (i.STATIT IS NULL OR i.STATIT <> 'FCO')")
+             .append(" AND (h.STATDO IS NULL OR h.STATDO <> 'OCN')");
         List<Object> params = new ArrayList<>();
         params.add(vWareky);
         params.add(vSkug05);
@@ -234,11 +234,9 @@ public class PsDispatchService {
             params.add(like);
         }
         if (shpoky != null && !shpoky.isEmpty()) {
-            // 납품문서 검색 조건: 기존 (SHPOKY LIKE %..% OR SVBELN LIKE %..%) 는
-            // 선행 와일드카드로 인덱스를 타지 못해 성능이 느림 →
-            // SVBELN(납품문서번호) 정확일치(=)로 변경하여 인덱스 사용 유도.
-            // [개선] 분할문서 등 SVBELN 값에 앞뒤 공백이 섞여 있어도 매칭되도록 TRIM 비교.
-            where.append(" AND TRIM(i.SVBELN) = ?");
+            // 납품문서 검색 조건: SVBELN(납품문서번호) 정확일치(=)로 인덱스 사용 유도.
+            //   [성능] 컬럼을 TRIM() 으로 감싸지 않고 raw 컬럼으로 비교(파라미터만 strip).
+            where.append(" AND i.SVBELN = ?");
             params.add(shpoky.trim());
         }
         if (shpmtyList != null && !shpmtyList.isEmpty()) {
@@ -513,18 +511,18 @@ public class PsDispatchService {
                             DESC02 = ?,
                             LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
                             LMOUSR  = 'WEB'
-                        WHERE TRIM(SHPOKY) = TRIM(?)
-                          AND (TRIM(SHPOIT) = TRIM(?)
-                               OR (REGEXP_LIKE(TRIM(SHPOIT), '^[0-9]+$')
-                                   AND REGEXP_LIKE(TRIM(?), '^[0-9]+$')
-                                   AND TO_NUMBER(TRIM(SHPOIT)) = TO_NUMBER(TRIM(?))))
+                        WHERE SHPOKY = ?
+                          AND (SHPOIT = ?
+                               OR (REGEXP_LIKE(SHPOIT, '^[0-9]+$')
+                                   AND REGEXP_LIKE(?, '^[0-9]+$')
+                                   AND TO_NUMBER(SHPOIT) = TO_NUMBER(?)))
                         """)
                       .setParameter(1, dispatchNo)
                       .setParameter(2, linkMark)
-                      .setParameter(3, key[0])
-                      .setParameter(4, key[1])
-                      .setParameter(5, key[1])
-                      .setParameter(6, key[1])
+                      .setParameter(3, key[0] == null ? null : key[0].strip())
+                      .setParameter(4, key[1] == null ? null : key[1].strip())
+                      .setParameter(5, key[1] == null ? null : key[1].strip())
+                      .setParameter(6, key[1] == null ? null : key[1].strip())
                       .executeUpdate();
                 }
 
@@ -540,18 +538,18 @@ public class PsDispatchService {
                             DESC02 = ?,
                             LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
                             LMOUSR  = 'WEB'
-                        WHERE TRIM(SVBELN) = TRIM(?)
-                          AND (TRIM(SHPOIT) = TRIM(?)
-                               OR (REGEXP_LIKE(TRIM(SHPOIT), '^[0-9]+$')
-                                   AND REGEXP_LIKE(TRIM(?), '^[0-9]+$')
-                                   AND TO_NUMBER(TRIM(SHPOIT)) = TO_NUMBER(TRIM(?))))
+                        WHERE SVBELN = ?
+                          AND (SHPOIT = ?
+                               OR (REGEXP_LIKE(SHPOIT, '^[0-9]+$')
+                                   AND REGEXP_LIKE(?, '^[0-9]+$')
+                                   AND TO_NUMBER(SHPOIT) = TO_NUMBER(?)))
                         """)
                       .setParameter(1, dispatchNo)
                       .setParameter(2, linkMark)
-                      .setParameter(3, key[2])
-                      .setParameter(4, key[1])
-                      .setParameter(5, key[1])
-                      .setParameter(6, key[1])
+                      .setParameter(3, key[2] == null ? null : key[2].strip())
+                      .setParameter(4, key[1] == null ? null : key[1].strip())
+                      .setParameter(5, key[1] == null ? null : key[1].strip())
+                      .setParameter(6, key[1] == null ? null : key[1].strip())
                       .executeUpdate();
                     if (n > 0) {
                         log.info("[PsDispatch] saveDispatch STDLNR 3차 폴백(SVBELN) 매칭 성공 "
@@ -711,7 +709,7 @@ public class PsDispatchService {
                 SET STDLNR  = NULL,
                     LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
                     LMOUSR  = 'WEB'
-                WHERE TRIM(STDLNR) = TRIM(?)
+                WHERE STDLNR = ?
                 """)
               .setParameter(1, dispatchNo)
               .executeUpdate();
