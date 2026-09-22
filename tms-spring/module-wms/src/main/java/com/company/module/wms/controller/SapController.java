@@ -103,10 +103,11 @@ public class SapController {
     // NOTE: POST /ps-dispatch/load-for-edit 는 PsDispatchController 에서 처리
     //       (실제 운영 스키마 DISPATCH_NO 기반, dispatch_nos 입력 / vehicles·search_rows 반환)
 
-    @PostMapping("/ps-dispatch/delete")
-    public ResponseEntity<Map<String, Object>> psDelete(@RequestBody Map<String, Object> body) {
-        return ResponseEntity.ok(sapService.psDelete(body));
-    }
+    // NOTE: POST /ps-dispatch/delete 는 PsDispatchController 에서 처리 (중복 매핑 제거)
+    //   [버그수정] 여기(SapController)의 psDelete 는 disp_h_id(단건, 구 스키마) 기반의
+    //   구버전 임시 구현으로, PsDispatchController.delete(dispatch_nos 기반, 현 운영 스키마)와
+    //   동일 경로(/api/ps-dispatch/delete)에 매핑되어 'Ambiguous handler methods' 오류를 유발했다.
+    //   → SapController 의 psDelete 매핑을 제거하고 PsDispatchController 단일 구현으로 통일한다.
 
     @PostMapping("/ps-dispatch/split")
     public ResponseEntity<Map<String, Object>> psSplit(@RequestBody Map<String, Object> body) {
