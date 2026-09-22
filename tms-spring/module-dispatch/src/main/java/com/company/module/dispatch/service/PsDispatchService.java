@@ -704,9 +704,13 @@ public class PsDispatchService {
 
             // 1) TMS_SHPDI.STDLNR 원복 (가선적번호 해제 → 미배차 전환)
             //    저장 시 STDLNR = dispatchNo 로 기록했으므로 동일 값 기준으로 되돌린다.
+            //    [버그수정] 연동구분(DESC02='OFFLINE', 미연동 배지 근거)도 함께 공백으로
+            //    초기화한다. 그렇지 않으면 배차삭제로 미배차가 되어도 '미연동' 배지가
+            //    납품문서 목록에 그대로 남는다. (DESC02 는 NOT NULL DEFAULT ' ' → ' ' 로 원복)
             int shpdiReverted = tmsEm.createNativeQuery("""
                 UPDATE KNRAWMS.TMS_SHPDI
                 SET STDLNR  = NULL,
+                    DESC02  = ' ',
                     LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
                     LMOUSR  = 'WEB'
                 WHERE STDLNR = ?

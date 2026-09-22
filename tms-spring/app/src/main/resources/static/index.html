@@ -18847,6 +18847,14 @@ async function psopDeleteDispatch() {
     if (row) row.DISPATCHED = false;
   });
 
+  /* ── 2-1. 삭제(미배차 전환)된 모든 배차의 문서 → 미연동 배지 즉시 제거 ──
+     서버에서 DESC02(연동구분)를 공백으로 초기화하므로, 재조회 전에도 화면이 맞도록
+     인메모리 searchRows 의 TMS_LINK_YN 을 함께 비운다. (savedVehs + pendingVehs 모두) */
+  [...savedVehs, ...pendingVehs].flatMap(v => v.items || []).forEach(it => {
+    const row = psopState.searchRows.find(r => r.SHPOKY === it.SHPOKY && r.SHPOIT === it.SHPOIT);
+    if (row) row.TMS_LINK_YN = '';
+  });
+
   /* ── 3. 저장된 배차 → STDLNR 제거해 미저장 상태로 전환(vehicles에 유지) ── */
   savedVehs.forEach(veh => {
     veh.STDLNR = null;   // 미저장 상태로 전환 (차량 패널에 계속 표시)
