@@ -477,8 +477,11 @@ public class SapRfcService {
             // ③ TMS_SHPDI.STDLNR → ' ' (기본값 공백 복원)
             //   [A] 개별 180초 타임아웃.  [B] LMODAT=TO_CHAR(SYSDATE,'YYYYMMDD') 로 통일
             //        (정상 언배차 로직 PsDispatchService 와 동일 패턴 — DB 시각 기준, 결과 동일).
+            // [버그수정] 연동구분(DESC02='OFFLINE'/'ONLINE', 미연동 배지 근거)도 함께 공백으로
+            //   초기화한다. 그렇지 않으면 SAP선적탭 배차삭제로 미배차가 되어도 납품문서 목록에
+            //   '미연동' 배지가 그대로 남는다. (DESC02 NOT NULL DEFAULT ' ')
             int affected = wmsUpdateLongTimeout(
-                "UPDATE KNRAWMS.TMS_SHPDI SET STDLNR=' ', LMODAT=TO_CHAR(SYSDATE,'YYYYMMDD'), LMOUSR='WEB' " +
+                "UPDATE KNRAWMS.TMS_SHPDI SET STDLNR=' ', DESC02=' ', LMODAT=TO_CHAR(SYSDATE,'YYYYMMDD'), LMOUSR='WEB' " +
                 "WHERE STDLNR IN (" + inPh + ")",
                 args
             );
