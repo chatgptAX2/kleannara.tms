@@ -186,10 +186,11 @@ public class ShipmentService {
         //   · TMS_SHPDI.STATIT = 'FCO' : 납품문서(아이템) 취소
         //   · TMS_SHPDH.STATDO = 'OCN' : 오더취소
         //   사용자 필터(statdo 등)와 무관하게 항상 적용한다.
-        //   컬럼 함수(TRIM/COALESCE) 제거 — 인덱스 사용 가능하도록 raw 컬럼 비교, NULL 안전만 유지.
+        //   [자료형] STATIT/STATDO 는 NOT NULL DEFAULT ' ' — NULL 불가.
+        //   컬럼 함수(TRIM/COALESCE) 없이 raw 컬럼 부등호 비교로 인덱스 사용 가능.
         where.append(where.length() == 0 ? " WHERE" : " AND")
-             .append(" (SI.STATIT IS NULL OR SI.STATIT <> 'FCO')")
-             .append(" AND (SH.STATDO IS NULL OR SH.STATDO <> 'OCN')");
+             .append(" SI.STATIT <> 'FCO'")
+             .append(" AND SH.STATDO <> 'OCN'");
         if (wareky != null) {
             where.append(where.length() == 0 ? " WHERE" : " AND").append(" SH.WAREKY = ?");
             params.add(wareky);

@@ -205,16 +205,16 @@ public class PsDispatchService {
                          ? req.getSkug05().strip() : "10";
 
         // ── WAREKY / SKUG05 등가 비교 (컬럼 함수 미적용 → 인덱스 사용 가능) ──────
-        //   [성능] WHERE 컬럼을 TRIM() 으로 감싸면 인덱스를 타지 못하므로, 컬럼은
-        //   기본(raw) 그대로 두고 비교값(파라미터)만 strip 하여 등가 비교한다.
-        //   (Oracle 은 CHAR 컬럼 등가 비교 시 blank-padded 비교를 하므로 패딩과 무관하게 매칭)
+        //   [자료형] TMS_SHPDH.WAREKY=VARCHAR2(4), TMS_SHPDI.SKUG05=VARCHAR2(50) — 공백
+        //   패딩 없음. 컬럼은 raw 그대로 두고 비교값(파라미터)만 strip 하여 등가 비교한다.
         StringBuilder where = new StringBuilder(" WHERE h.WAREKY = ? AND i.SKUG05 = ?");
         // ── 고정 제외조건: 취소/삭제된 납품문서는 배차 대상에서 항상 비노출 ──────
         //   · TMS_SHPDI.STATIT = 'FCO' : 납품문서(아이템) 취소
         //   · TMS_SHPDH.STATDO = 'OCN' : 오더취소
-        //   컬럼 함수(TRIM/COALESCE) 제거 — NULL 안전만 IS NULL 로 유지.
-        where.append(" AND (i.STATIT IS NULL OR i.STATIT <> 'FCO')")
-             .append(" AND (h.STATDO IS NULL OR h.STATDO <> 'OCN')");
+        //   [자료형] STATIT/STATDO 는 NOT NULL DEFAULT ' ' 이라 NULL 이 될 수 없으므로
+        //   컬럼 함수(TRIM/COALESCE) 없이 raw 컬럼 부등호 비교로 충분하다.
+        where.append(" AND i.STATIT <> 'FCO'")
+             .append(" AND h.STATDO <> 'OCN'");
         List<Object> params = new ArrayList<>();
         params.add(vWareky);
         params.add(vSkug05);
