@@ -155,7 +155,27 @@ input,select,textarea,button{font-family:'Pretendard Variable','Pretendard','App
 body{background:var(--bg);color:var(--text);font-family:'Pretendard Variable','Pretendard','Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-serif;height:100vh;display:flex;overflow:hidden;font-size:13px;line-height:1.5}
 
 /* ── SIDEBAR (LNB) — 딥 네이비 ── */
-#sidebar{width:216px;min-width:216px;background:var(--lnb-bg);border-right:1px solid var(--lnb-border);display:flex;flex-direction:column;overflow:hidden}
+#sidebar{width:216px;min-width:216px;background:var(--lnb-bg);border-right:1px solid var(--lnb-border);display:flex;flex-direction:column;overflow:hidden;
+  transition:width .22s ease,min-width .22s ease}
+/* ── LNB 접힘 상태: 폭 0 → #main(flex:1)이 자동으로 전체 폭 차지(화면 비율 자동 조정) ── */
+#sidebar.collapsed{width:0;min-width:0;border-right:0}
+#sidebar.collapsed>*{opacity:0;pointer-events:none}
+/* LNB 접기/펼치기 토글 버튼 (logo 영역 우측) */
+.lnb-toggle{
+  margin-left:auto;flex-shrink:0;width:24px;height:24px;display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--lnb-border);border-radius:6px;background:var(--lnb-surface2);
+  color:var(--lnb-text2);cursor:pointer;font-size:12px;line-height:1;transition:background .15s,color .15s;
+}
+.lnb-toggle:hover{background:var(--lnb-active-bg);color:#fff}
+/* 접힘 상태에서 다시 펼치기용 floating 버튼 (좌측 상단 고정) */
+#lnb-expand-btn{
+  position:fixed;top:8px;left:8px;z-index:1200;width:30px;height:30px;display:none;
+  align-items:center;justify-content:center;border:1px solid var(--lnb-border);border-radius:7px;
+  background:var(--lnb-bg);color:var(--lnb-text);cursor:pointer;font-size:14px;line-height:1;
+  box-shadow:0 2px 8px rgba(0,0,0,.25);transition:background .15s,transform .12s;
+}
+#lnb-expand-btn:hover{background:var(--lnb-active-bg);transform:translateX(1px)}
+body.lnb-collapsed #lnb-expand-btn{display:flex}
 #sidebar-nav{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0;padding:6px 0}
 #sidebar-nav::-webkit-scrollbar{width:3px}
 #sidebar-nav::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
@@ -3213,6 +3233,9 @@ thead th:hover .th-drag-handle{opacity:.8}
 </head>
 <body>
 
+<!-- LNB 펼치기 버튼(▷): 접힘 상태에서만 표시(body.lnb-collapsed) -->
+<button id="lnb-expand-btn" title="메뉴 펼치기" onclick="toggleLnb()">▷</button>
+
 <!-- SIDEBAR -->
 <div id="sidebar">
   <div class="logo" onclick="showPage('tmsDashboard')" title="TMS 대시보드">
@@ -3223,6 +3246,9 @@ thead th:hover .th-drag-handle{opacity:.8}
       </div>
       <div class="logo-sub">Transportation Management</div>
     </div>
+    <!-- LNB 접기 버튼(◁): logo 클릭(대시보드 이동)과 분리 위해 stopPropagation -->
+    <button class="lnb-toggle" id="lnb-collapse-btn" title="메뉴 접기"
+      onclick="event.stopPropagation();toggleLnb()">◁</button>
   </div>
   <div id="sidebar-nav">
   <div class="nav-item" onclick="showPage('tmsDashboard')" id="nav-tmsDashboard" style="margin:6px 8px 2px;background:linear-gradient(90deg,rgba(14,165,233,.18) 0%,rgba(99,102,241,.12) 100%);border:1px solid rgba(14,165,233,.25);border-radius:9px">
@@ -3563,6 +3589,43 @@ function updateBreadcrumb(crumbs) {
   const nav = document.getElementById('breadcrumb');
   if (nav) nav.style.display = 'none';
 }
+
+/* ═══════════════════════════════════════════════════════════
+   LNB 접기/펼치기  ─  ◁(접기) / ▷(펼치기)
+   · #sidebar 에 .collapsed 부여 → 폭 0 → #main(flex:1)이 남은 폭을 전부
+     차지하므로 화면 비율이 자동 조정된다.
+   · body.lnb-collapsed 로 floating 펼치기 버튼(#lnb-expand-btn) 표시 제어.
+   · 상태는 localStorage('lnbCollapsed') 로 유지.
+═══════════════════════════════════════════════════════════ */
+function applyLnbState(collapsed) {
+  const sb = document.getElementById('sidebar');
+  const cbtn = document.getElementById('lnb-collapse-btn');
+  if (sb) sb.classList.toggle('collapsed', collapsed);
+  document.body.classList.toggle('lnb-collapsed', collapsed);
+  if (cbtn) cbtn.title = collapsed ? '메뉴 펼치기' : '메뉴 접기';
+  // 레이아웃 전환에 맞춰 차트/캔버스 등 리사이즈 의존 UI 갱신
+  try { window.dispatchEvent(new Event('resize')); } catch(e) {}
+  // transition(0.22s) 종료 후 한 번 더 resize (최종 폭 반영)
+  setTimeout(() => { try { window.dispatchEvent(new Event('resize')); } catch(e) {} }, 260);
+}
+
+function toggleLnb() {
+  const sb = document.getElementById('sidebar');
+  const collapsed = !(sb && sb.classList.contains('collapsed'));
+  applyLnbState(collapsed);
+  try { localStorage.setItem('lnbCollapsed', collapsed ? '1' : '0'); } catch(e) {}
+}
+
+/* 초기 상태 복원 (저장된 값이 있으면 반영) */
+(function initLnbState(){
+  function run(){
+    let saved = '0';
+    try { saved = localStorage.getItem('lnbCollapsed') || '0'; } catch(e) {}
+    if (saved === '1') applyLnbState(true);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run);
+  else run();
+})();
 
 /* ═══════════════════════════════════════════════════════════
    TAB SYSTEM  ─  최대 10개 탭, LNB 연동
