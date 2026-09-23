@@ -162,38 +162,31 @@ body{background:var(--bg);color:var(--text);font-family:'Pretendard Variable','P
 #sidebar.collapsed>*{opacity:0;pointer-events:none}
 /* ── LNB↔콘텐츠 경계선 hover 토글 ───────────────────────────────
    · --lnb-edge : 경계선 X좌표. 펼침=사이드바 폭(216px), 접힘=0.
-   · 경계에 마우스를 올리면(#lnb-edge-zone hover) 화살표 버튼(#lnb-edge-btn)이
-     자동으로 나타난다. 펼침=◁(접기) / 접힘=▷(펼치기).
-   · ★[간섭방지] LNB 스크롤바는 경계선 '안쪽(왼편 3px)'에 있으므로, hover 존과
-     버튼을 경계선에서 콘텐츠(오른쪽) 방향으로만 배치하여 스크롤바 조작과
-     겹치지 않게 한다. */
+   · ★[간섭방지] 이전엔 top:0~bottom:0 전체 높이 hover 존(#lnb-edge-zone)이
+     콘텐츠 첫 열(체크박스) 위를 상시 덮어 클릭을 가로챘다. 이를 제거하고,
+     JS(document pointermove)로 마우스 X가 경계선 근처(±EDGE_HOT px)일 때만
+     버튼을 표시한다. 버튼만 pointer-events 를 가지므로(그 외 영역은 완전 통과)
+     체크박스·스크롤바와 간섭하지 않는다. */
 :root{--lnb-edge:216px}
 body.lnb-collapsed{--lnb-edge:0px}
 
-/* 경계 hover 감지 존 — 경계선에서 콘텐츠(오른쪽)로만 18px 세로 띠(스크롤바 미침범).
-   접힘 상태(경계 x=0)에서는 화면 좌단이라 왼쪽 가장자리 hover 로 펼치기 가능. */
-#lnb-edge-zone{
-  position:fixed;top:0;bottom:0;z-index:1190;width:18px;
-  left:var(--lnb-edge);
-  cursor:pointer;transition:left .22s ease;
-}
-/* 경계 화살표 버튼 — 평소 숨김(반투명·축소), 경계 hover/버튼 hover 시 등장.
-   경계선 '오른쪽 바깥'에 배치(왼쪽 모서리를 경계선에 맞춤) → 스크롤바와 분리. */
+/* 경계 화살표 버튼 — 평소 숨김(no pointer-events). body.lnb-edge-show 일 때만 등장.
+   경계선 '오른쪽 바깥'에 밀착 배치 → 스크롤바(경계 왼편)와 분리. */
 #lnb-edge-btn{
   position:fixed;top:50%;z-index:1191;
-  left:calc(var(--lnb-edge) + 2px);           /* 경계선 오른쪽으로 2px 띄움 */
-  width:24px;height:52px;transform:translateY(-50%) translateX(-6px) scale(.6);
+  left:var(--lnb-edge);                        /* 경계선에 왼쪽 모서리 밀착 */
+  width:20px;height:48px;transform:translateY(-50%) translateX(-6px) scale(.7);
   transform-origin:left center;
   display:flex;align-items:center;justify-content:center;
   border:1px solid var(--lnb-border);border-radius:0 8px 8px 0;
   border-left:none;
   background:var(--lnb-bg);color:var(--lnb-text);cursor:pointer;
-  font-size:13px;line-height:1;box-shadow:2px 2px 10px rgba(0,0,0,.35);
+  font-size:12px;line-height:1;box-shadow:2px 2px 10px rgba(0,0,0,.35);
   opacity:0;pointer-events:none;
   transition:opacity .16s ease,transform .16s ease,left .22s ease,background .15s;
 }
-#lnb-edge-zone:hover ~ #lnb-edge-btn,
-#lnb-edge-btn:hover{opacity:1;pointer-events:auto;transform:translateY(-50%) translateX(0) scale(1)}
+/* JS 가 경계 근처 hover 를 감지하면 body.lnb-edge-show 부여 → 버튼 등장 */
+body.lnb-edge-show #lnb-edge-btn{opacity:1;pointer-events:auto;transform:translateY(-50%) translateX(0) scale(1)}
 #lnb-edge-btn:hover{background:var(--lnb-active-bg);color:#fff}
 #sidebar-nav{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0;padding:6px 0}
 #sidebar-nav::-webkit-scrollbar{width:3px}
@@ -3252,8 +3245,8 @@ thead th:hover .th-drag-handle{opacity:.8}
 </head>
 <body>
 
-<!-- LNB↔콘텐츠 경계선 hover 토글: 경계에 마우스를 올리면 화살표 버튼이 자동 표시 -->
-<div id="lnb-edge-zone" title="메뉴 접기/펼치기"></div>
+<!-- LNB↔콘텐츠 경계선 hover 토글: 경계 근처에 마우스가 오면(JS 감지) 화살표 버튼 자동 표시.
+     hover 감지 DOM 을 두지 않아(pointermove 로 판정) 콘텐츠 체크박스/스크롤바와 간섭 없음. -->
 <button id="lnb-edge-btn" title="메뉴 접기/펼치기" onclick="toggleLnb()">◁</button>
 
 <!-- SIDEBAR -->
@@ -3611,8 +3604,9 @@ function updateBreadcrumb(crumbs) {
    LNB 접기/펼치기  ─  경계선 hover 시 자동 화살표(◁ 접기 / ▷ 펼치기)
    · #sidebar 에 .collapsed 부여 → 폭 0 → #main(flex:1)이 남은 폭을 전부
      차지하므로 화면 비율이 자동 조정된다.
-   · LNB↔콘텐츠 경계선(#lnb-edge-zone)에 마우스를 올리면 경계 중앙에
-     화살표 버튼(#lnb-edge-btn)이 자동 표시. --lnb-edge(경계 X좌표)로 위치 추적.
+   · LNB↔콘텐츠 경계선 근처에 마우스가 오면(document pointermove 감지, hover DOM
+     오버레이 없음 → 체크박스/스크롤바 무간섭) 화살표 버튼(#lnb-edge-btn)이 자동
+     표시. --lnb-edge(경계 X좌표)로 버튼 위치 추적.
    · 상태는 localStorage('lnbCollapsed') 로 유지.
 ═══════════════════════════════════════════════════════════ */
 function applyLnbState(collapsed) {
@@ -3665,6 +3659,37 @@ function toggleLnb() {
     const w = collapsed ? 0 : sb.getBoundingClientRect().width;
     document.documentElement.style.setProperty('--lnb-edge', w + 'px');
   });
+
+  /* ── 경계 근처 hover 감지(pointermove) ──────────────────────────
+     hover 감지용 DOM 오버레이를 두지 않고, 마우스 X좌표가 경계선(edgeX)에서
+     콘텐츠(오른쪽) 방향으로 EDGE_HOT(14px) 이내일 때만 body.lnb-edge-show 부여.
+     · 콘텐츠 첫 열(체크박스)은 경계선에서 충분히 떨어져 있어 클릭 간섭 없음.
+     · 세로 위치 무관하게 감지하되, 버튼 자체 hover 는 CSS 로 유지.
+     · 접힘 상태(edgeX=0)는 화면 좌단 14px 로 펼치기 hotzone 제공. */
+  const EDGE_HOT = 14;
+  let _edgeHideTimer = null;
+  document.addEventListener('pointermove', (e) => {
+    const sb = document.getElementById('sidebar');
+    const btn = document.getElementById('lnb-edge-btn');
+    if (!sb || !btn) return;
+    const collapsed = sb.classList.contains('collapsed');
+    const edgeX = collapsed ? 0 : sb.getBoundingClientRect().right;
+    const x = e.clientX;
+    // 경계선 기준 [edgeX-2, edgeX+EDGE_HOT] 범위(오른쪽 위주)면 표시.
+    // 버튼 위(edgeX ~ edgeX+20)도 포함되어 버튼으로 자연스럽게 이동 가능.
+    const near = x >= (edgeX - 2) && x <= (edgeX + Math.max(EDGE_HOT, 20));
+    if (near) {
+      if (_edgeHideTimer) { clearTimeout(_edgeHideTimer); _edgeHideTimer = null; }
+      document.body.classList.add('lnb-edge-show');
+    } else if (document.body.classList.contains('lnb-edge-show')) {
+      // 약간의 지연 후 숨김(경계→버튼 이동 중 깜빡임 방지)
+      if (_edgeHideTimer) clearTimeout(_edgeHideTimer);
+      _edgeHideTimer = setTimeout(() => {
+        document.body.classList.remove('lnb-edge-show');
+        _edgeHideTimer = null;
+      }, 120);
+    }
+  }, { passive:true });
 })();
 
 /* ═══════════════════════════════════════════════════════════
