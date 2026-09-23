@@ -728,6 +728,69 @@ public class AutoDispatchService {
         // CBM 검증 토글: BOARD_CBM_CHECK_YN=N 이면 CBM 초과 판단 스킵(중량만 검사)
         double capKgThreshold  = bigCap * cp.boardMaxTonRatio;
         double capCbmThreshold = bigCbm * cp.boardMaxCbmRatio;
+
+        // ── [ALLOW_SPLIT_ITEM] 판지 단일 아이템 사전 분할 ─────────────────────
+        //  원인/수정: 아래 bin-packing 은 '아이템(문서) 단위'로만 차량을 나눈다
+        //    (ko = !curB.isEmpty() && curKg+qtyKg > 임계치). 따라서 단일 판지 문서 1건이
+        //    가장 큰 차량 용량을 초과해도(예: 270,000kg / 17,000kg = 적재율 1588%) 쪼개지
+        //    못하고 한 대에 통째로 배정돼 적재율이 비현실적으로 튀었다(원지에는 사전분할이
+        //    있으나 판지에는 없었음).
+        //  조치: ALLOW_SPLIT_ITEM=Y 이면, 큰 차량의 중량 임계치(capKgThreshold) / CBM 임계치
+        //    (capCbmThreshold) 를 넘는 판지 아이템을 QTSHPO(번들/연 수) 기준으로 여러 청크로
+        //    미리 분할한다. 각 청크에 원지 분할과 동일한 SAP 납품분할 메타를 부여(IS_SPLIT 등)해
+        //    배차저장 시 Z_TMS_DELIVERY_SPLIT RFC 로 실제 분할이 이어지게 한다.
+        List<Map<String, Object>> boardItemsSplit = new ArrayList<>();
+        List<String> boardSplitNotes = new ArrayList<>();
+        for (Map<String, Object> it : boardItems) {
+            double itKg  = boardKg(it, skumaMap);
+            double itCbm = getItemCbm(it, skumaMap);
+            int    itQty = (int) dbl(it.get("QTSHPO"));
+
+            // 이 아이템 1건이 단독으로 임계치를 넘는가? (중량 OR CBM, CBM 검증 토글 반영)
+            boolean overKg  = capKgThreshold  > 0 && itKg  > capKgThreshold;
+            boolean overCbm = cp.boardCbmCheck && capCbmThreshold > 0 && itCbm > capCbmThreshold;
+
+            if (cp.allowSplit && itQty > 1 && (overKg || overCbm)) {
+                // 임계치를 넘지 않는 최대 번들 수 산출(중량·CBM 각각의 상한 중 더 작은 쪽).
+                double perQtyKg  = itQty > 0 ? itKg  / itQty : itKg;
+                double perQtyCbm = itQty > 0 ? itCbm / itQty : itCbm;
+                int qtyByKg  = perQtyKg  > 0 ? (int) Math.floor(capKgThreshold  / perQtyKg)  : itQty;
+                int qtyByCbm = (cp.boardCbmCheck && perQtyCbm > 0 && capCbmThreshold > 0)
+                               ? (int) Math.floor(capCbmThreshold / perQtyCbm) : itQty;
+                int chunkQty = Math.max(1, Math.min(qtyByKg, qtyByCbm));
+
+                if (chunkQty < itQty) {
+                    int remain = itQty, idx = 1;
+                    while (remain > 0) {
+                        int cq = Math.min(chunkQty, remain);
+                        double frac  = itQty > 0 ? (double) cq / itQty : 1.0;
+                        Map<String, Object> chunk = new HashMap<>(it);
+                        chunk.put("QTSHPO",    cq);
+                        chunk.put("KG_WEIGHT", round4(itKg  * frac));
+                        chunk.put("BOARD_CBM", round4(itCbm * frac));
+                        chunk.put("_SPLIT_FROM", it.get("SHPOIT"));
+                        chunk.put("_SPLIT_IDX",  idx);
+                        // ── SAP 납품분할 RFC(Z_TMS_DELIVERY_SPLIT) 적용용 표준 분할 메타 ──
+                        chunk.put("IS_SPLIT",   1);
+                        chunk.put("SVBELN",     str(it.get("SHPOKY")));   // 분할 대상(원본) 납품문서
+                        chunk.put("SPOSNR",     str(it.get("SHPOIT")));   // 품목순번
+                        chunk.put("SKUKEY",     str(it.get("SKUKEY")));
+                        chunk.put("SPLIT_QTY",  cq);                       // 분할수량(번들/연)
+                        chunk.put("ORG_SHPOKY", str(it.get("SHPOKY")));
+                        chunk.put("ORG_SHPOIT", str(it.get("SHPOIT")));
+                        boardItemsSplit.add(chunk);
+                        remain -= cq; idx++;
+                    }
+                    boardSplitNotes.add("[납품분할-판지] " + str(it.get("SHPOKY")) + "#" + str(it.get("SHPOIT"))
+                        + " (" + itQty + " → " + chunkQty + "단위×" + ((itQty + chunkQty - 1) / chunkQty) + "차)");
+                    continue;
+                }
+            }
+            boardItemsSplit.add(it);
+        }
+        boardItems = boardItemsSplit;
+        // ────────────────────────────────────────────────────────────────────
+
         List<BoardBin> vehListB = new ArrayList<>();
         List<Map<String, Object>> curB = new ArrayList<>();
         double curKg = 0, curH = 0, curCbm = 0;
@@ -770,6 +833,9 @@ public class AutoDispatchService {
                 objective, vehCar, vehKg, cap, fill,
                 vb.totalCbm > 0 ? String.format(" / CBM%.2fm³/%.1fm³(%.0f%%)", vb.totalCbm, vehCbmCap, cbmFill) : "",
                 costVal > 0 ? String.format(" / 운송비%,.0f원", costVal) : ""));
+
+            // 첫 차량에 판지 사전분할 요약 노트 반영(분할이 발생한 경우)
+            if (vbIdx == 0 && !boardSplitNotes.isEmpty()) notesB.addAll(boardSplitNotes);
 
             // 비정수 Ream 경고
             if (cp.boardBulkIntOnly) {
