@@ -160,22 +160,34 @@ body{background:var(--bg);color:var(--text);font-family:'Pretendard Variable','P
 /* ── LNB 접힘 상태: 폭 0 → #main(flex:1)이 자동으로 전체 폭 차지(화면 비율 자동 조정) ── */
 #sidebar.collapsed{width:0;min-width:0;border-right:0}
 #sidebar.collapsed>*{opacity:0;pointer-events:none}
-/* LNB 접기/펼치기 토글 버튼 (logo 영역 우측) */
-.lnb-toggle{
-  margin-left:auto;flex-shrink:0;width:24px;height:24px;display:flex;align-items:center;justify-content:center;
-  border:1px solid var(--lnb-border);border-radius:6px;background:var(--lnb-surface2);
-  color:var(--lnb-text2);cursor:pointer;font-size:12px;line-height:1;transition:background .15s,color .15s;
+/* ── LNB↔콘텐츠 경계선 hover 토글 ───────────────────────────────
+   · --lnb-edge : 경계선 X좌표. 펼침=사이드바 폭(216px), 접힘=0.
+   · 경계에 마우스를 올리면(#lnb-edge-zone hover) 경계 중앙에 원형 화살표
+     버튼(#lnb-edge-btn)이 자동으로 나타난다. 펼침=◁(접기) / 접힘=▷(펼치기). */
+:root{--lnb-edge:216px}
+body.lnb-collapsed{--lnb-edge:0px}
+
+/* 경계 hover 감지 존 — 경계선을 중심으로 좌우 각 11px(총 22px) 세로 띠 */
+#lnb-edge-zone{
+  position:fixed;top:0;bottom:0;z-index:1190;width:22px;
+  left:calc(var(--lnb-edge) - 11px);
+  cursor:pointer;transition:left .22s ease;
 }
-.lnb-toggle:hover{background:var(--lnb-active-bg);color:#fff}
-/* 접힘 상태에서 다시 펼치기용 floating 버튼 (좌측 상단 고정) */
-#lnb-expand-btn{
-  position:fixed;top:8px;left:8px;z-index:1200;width:30px;height:30px;display:none;
-  align-items:center;justify-content:center;border:1px solid var(--lnb-border);border-radius:7px;
-  background:var(--lnb-bg);color:var(--lnb-text);cursor:pointer;font-size:14px;line-height:1;
-  box-shadow:0 2px 8px rgba(0,0,0,.25);transition:background .15s,transform .12s;
+/* 경계 화살표 버튼 — 평소 숨김(반투명·축소), 경계 hover 또는 버튼 hover 시 등장 */
+#lnb-edge-btn{
+  position:fixed;top:50%;z-index:1191;
+  left:calc(var(--lnb-edge) - 13px);          /* 경계선 위에 중앙 정렬(버튼 26px) */
+  width:26px;height:52px;transform:translateY(-50%) scale(.6);
+  display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--lnb-border);border-radius:8px;
+  background:var(--lnb-bg);color:var(--lnb-text);cursor:pointer;
+  font-size:13px;line-height:1;box-shadow:0 2px 10px rgba(0,0,0,.35);
+  opacity:0;pointer-events:none;
+  transition:opacity .16s ease,transform .16s ease,left .22s ease,background .15s;
 }
-#lnb-expand-btn:hover{background:var(--lnb-active-bg);transform:translateX(1px)}
-body.lnb-collapsed #lnb-expand-btn{display:flex}
+#lnb-edge-zone:hover ~ #lnb-edge-btn,
+#lnb-edge-btn:hover{opacity:1;pointer-events:auto;transform:translateY(-50%) scale(1)}
+#lnb-edge-btn:hover{background:var(--lnb-active-bg);color:#fff}
 #sidebar-nav{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0;padding:6px 0}
 #sidebar-nav::-webkit-scrollbar{width:3px}
 #sidebar-nav::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
@@ -3233,8 +3245,9 @@ thead th:hover .th-drag-handle{opacity:.8}
 </head>
 <body>
 
-<!-- LNB 펼치기 버튼(▷): 접힘 상태에서만 표시(body.lnb-collapsed) -->
-<button id="lnb-expand-btn" title="메뉴 펼치기" onclick="toggleLnb()">▷</button>
+<!-- LNB↔콘텐츠 경계선 hover 토글: 경계에 마우스를 올리면 화살표 버튼이 자동 표시 -->
+<div id="lnb-edge-zone" title="메뉴 접기/펼치기"></div>
+<button id="lnb-edge-btn" title="메뉴 접기/펼치기" onclick="toggleLnb()">◁</button>
 
 <!-- SIDEBAR -->
 <div id="sidebar">
@@ -3246,9 +3259,6 @@ thead th:hover .th-drag-handle{opacity:.8}
       </div>
       <div class="logo-sub">Transportation Management</div>
     </div>
-    <!-- LNB 접기 버튼(◁): logo 클릭(대시보드 이동)과 분리 위해 stopPropagation -->
-    <button class="lnb-toggle" id="lnb-collapse-btn" title="메뉴 접기"
-      onclick="event.stopPropagation();toggleLnb()">◁</button>
   </div>
   <div id="sidebar-nav">
   <div class="nav-item" onclick="showPage('tmsDashboard')" id="nav-tmsDashboard" style="margin:6px 8px 2px;background:linear-gradient(90deg,rgba(14,165,233,.18) 0%,rgba(99,102,241,.12) 100%);border:1px solid rgba(14,165,233,.25);border-radius:9px">
@@ -3591,22 +3601,37 @@ function updateBreadcrumb(crumbs) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   LNB 접기/펼치기  ─  ◁(접기) / ▷(펼치기)
+   LNB 접기/펼치기  ─  경계선 hover 시 자동 화살표(◁ 접기 / ▷ 펼치기)
    · #sidebar 에 .collapsed 부여 → 폭 0 → #main(flex:1)이 남은 폭을 전부
      차지하므로 화면 비율이 자동 조정된다.
-   · body.lnb-collapsed 로 floating 펼치기 버튼(#lnb-expand-btn) 표시 제어.
+   · LNB↔콘텐츠 경계선(#lnb-edge-zone)에 마우스를 올리면 경계 중앙에
+     화살표 버튼(#lnb-edge-btn)이 자동 표시. --lnb-edge(경계 X좌표)로 위치 추적.
    · 상태는 localStorage('lnbCollapsed') 로 유지.
 ═══════════════════════════════════════════════════════════ */
 function applyLnbState(collapsed) {
-  const sb = document.getElementById('sidebar');
-  const cbtn = document.getElementById('lnb-collapse-btn');
+  const sb   = document.getElementById('sidebar');
+  const ebtn = document.getElementById('lnb-edge-btn');
   if (sb) sb.classList.toggle('collapsed', collapsed);
   document.body.classList.toggle('lnb-collapsed', collapsed);
-  if (cbtn) cbtn.title = collapsed ? '메뉴 펼치기' : '메뉴 접기';
+  // 경계 화살표: 펼침=◁(접기) / 접힘=▷(펼치기)
+  if (ebtn) {
+    ebtn.textContent = collapsed ? '▷' : '◁';
+    ebtn.title = collapsed ? '메뉴 펼치기' : '메뉴 접기';
+  }
+  // 경계선 X좌표를 실제 사이드바 폭에 동기화(펼침) / 0(접힘)
+  //  (transition 종료 후 측정해야 정확 → setTimeout 로 최종폭 반영)
+  const syncEdge = () => {
+    const w = collapsed ? 0 : (sb ? sb.getBoundingClientRect().width : 216);
+    document.documentElement.style.setProperty('--lnb-edge', w + 'px');
+  };
+  syncEdge();
   // 레이아웃 전환에 맞춰 차트/캔버스 등 리사이즈 의존 UI 갱신
   try { window.dispatchEvent(new Event('resize')); } catch(e) {}
-  // transition(0.22s) 종료 후 한 번 더 resize (최종 폭 반영)
-  setTimeout(() => { try { window.dispatchEvent(new Event('resize')); } catch(e) {} }, 260);
+  // transition(0.22s) 종료 후 한 번 더 resize + 경계 위치 재동기화
+  setTimeout(() => {
+    syncEdge();
+    try { window.dispatchEvent(new Event('resize')); } catch(e) {}
+  }, 260);
 }
 
 function toggleLnb() {
@@ -3616,15 +3641,23 @@ function toggleLnb() {
   try { localStorage.setItem('lnbCollapsed', collapsed ? '1' : '0'); } catch(e) {}
 }
 
-/* 초기 상태 복원 (저장된 값이 있으면 반영) */
+/* 초기 상태 복원 (저장값 반영) — 펼침 상태도 경계선 위치/화살표를 초기화한다. */
 (function initLnbState(){
   function run(){
     let saved = '0';
     try { saved = localStorage.getItem('lnbCollapsed') || '0'; } catch(e) {}
-    if (saved === '1') applyLnbState(true);
+    applyLnbState(saved === '1');
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run);
   else run();
+  // 창 크기 변경 시 경계선 X좌표 재동기화(펼침 폭 변동 대비)
+  window.addEventListener('resize', () => {
+    const sb = document.getElementById('sidebar');
+    if (!sb) return;
+    const collapsed = sb.classList.contains('collapsed');
+    const w = collapsed ? 0 : sb.getBoundingClientRect().width;
+    document.documentElement.style.setProperty('--lnb-edge', w + 'px');
+  });
 })();
 
 /* ═══════════════════════════════════════════════════════════
