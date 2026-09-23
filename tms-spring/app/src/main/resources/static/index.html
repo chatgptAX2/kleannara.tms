@@ -16828,17 +16828,27 @@ async function psopShowLoadImage(pendingId) {
   const v = (psopState.vehicles || []).find(x => x._pendingId === pendingId);
   if (!v) { alert('배차 데이터를 찾을 수 없습니다.'); return; }
 
-  /* ★ [버그수정] 가선적번호(STDLNR)가 있는 배차는 SAP선적탭과 '동일한' 서버 데이터
-     기반 적재뷰를 사용한다.
-     원인: 기존에는 인메모리 v.items(배차 계획/ load-for-edit 의 간소화된 아이템)를
-       psd-load 모달에 그대로 넘겨 렌더했는데, 3D 적재 배치 계산에 필요한 정확한
-       품목·치수·레이아웃 정보가 부족/불일치하여 SAP탭(_sapShowLoadImage, 서버
-       /api/ps-sap/items 조회)과 결과가 달랐다.
-     → STDLNR 이 채번된 배차(저장완료/자동로드)는 _sapShowLoadImage(STDLNR, ...) 로 위임하여
-       동일 선적에 대해 동일한 정확한 3D 적재뷰가 나오도록 통일한다. */
-  const stdlnr = (v.STDLNR && String(v.STDLNR).trim()) ? String(v.STDLNR).trim() : null;
+  /* ★ [버그수정 강화 · 위임 강제(A안)] 가선적번호가 있는 '저장/편집 배차'는
+     반드시 SAP선적탭과 '동일한' 서버 데이터 기반 적재뷰(_sapShowLoadImage)로 위임한다.
+
+     원인: 기존 psd-load 경로는 인메모리 v.items(load-for-edit → TMS_PS_DISPATCH_D 저장본)
+       기준으로 롤수를 계산했다. 이 저장본의 KG_WEIGHT 는 문서별 실물 중량(TMS_SHPDI
+       의 QTSHPO×NETWGT)과 달리 집계/누락되어 있을 수 있어, 예) 가선적 260915004T 의
+       출고문서 A(1152KG)+B(1200KG) 가 각 1롤씩 총 2롤이어야 하는데 1롤로 잘못 계산됐다.
+       반면 SAP탭(_sapShowLoadImage)은 매 조회마다 TMS_SHPDI 실물에서 문서별 KG_WEIGHT
+       를 재계산하므로 항상 정확(2롤).
+
+     조치: 저장완료(STDLNR 채번) / 편집중(_origDispatchNo) / 자동로드(_saved_*) 등
+       '가선적번호로 서버 조회 가능한' 모든 배차는 _sapShowLoadImage 로 위임하여
+       배차탭·SAP탭이 항상 동일한 정확한 결과를 내도록 단일 소스로 통일한다.
+       (미저장 신규 배차만 인메모리 미리보기 경로 유지) */
+  const _stdlnr = v.STDLNR ?? v.stdlnr;
+  const _orig   = v._origDispatchNo;
+  const stdlnr  = (_stdlnr && String(_stdlnr).trim()) ? String(_stdlnr).trim()
+                : (_orig   && String(_orig).trim())   ? String(_orig).trim()
+                : null;
   if (stdlnr) {
-    return _sapShowLoadImage(stdlnr, v.cartype || '', v.carclass_cd || '');
+    return _sapShowLoadImage(stdlnr, v.cartype || v.CARTYPE || '', v.carclass_cd || '');
   }
 
   /* STDLNR 미채번(미저장 신규 배차)은 서버 조회 대상이 없으므로,
