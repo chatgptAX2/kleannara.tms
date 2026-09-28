@@ -985,6 +985,13 @@ public class SapRfcService {
                     "  SI.QTSHPO, SI.UOMKEY, " +
                     "  ROUND(SI.QTSHPO * COALESCE(M.NETWGT,0), 1) AS KG_WEIGHT, " +
                     "  COALESCE(M.NETWGT, 0) AS GRSWGT, " +
+                    // ── [3D 일치] 원지 1롤 단중(UNIT_WEIGHT) — 배차탭 search 와 '동일' 서브쿼리 ──
+                    //   원지 롤수 계산식 rollCount = ceil(KG_WEIGHT / single_w) 의 single_w 가
+                    //   이 값이다. 기존엔 sapItems 가 UNIT_WEIGHT 를 주지 않아 프론트가 fallback 600
+                    //   으로 계산 → 배차저장 前(자동배차 items, UNIT_WEIGHT 포함)과 3D 롤수/배치가
+                    //   달랐다. 여기에 동일 서브쿼리를 추가해 저장 前/後 3D를 일치시킨다.
+                    "  (SELECT COALESCE(MAX(rd.QTYRCV), 0) FROM KNRAWMS.RECDI rd " +
+                    "    WHERE rd.SKUKEY = SI.SKUKEY) AS UNIT_WEIGHT, " +
                     "  SH.DPTNKY, COALESCE(CT.NAME01, SH.DPTNKY) AS DPTNM, " +
                     // ── 적재뷰(3D) 판지 단수 산출용 추가 필드 (출고예정정보 ShipmentService 동일 산식) ──
                     //  · SOK_PER_R : 1R당 SOK 환산계수(MEASI UOMKEY='SOK'). 속포장 분할단위 표현용.
