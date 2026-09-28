@@ -16076,8 +16076,10 @@ function _psopSyncGroupDom(keys) {
   });
 }
 function psopChkDoc(key, checked) {
-  /* 동일 납품일+납품처코드 그룹 일괄 선택/해제 (선택·해제 모두 그룹 단위) */
-  const keys = _psopGroupKeys(key);
+  /* ★ 선택 시: 동일 납품일+납품처코드 그룹 일괄 선택(유지)
+     ★ 해제 시: 클릭한 '그 문서 1건'만 개별 해제(요청)
+        (그룹 단위 해제는 클릭한 것 외 다른 문서까지 풀려 혼란 → 개별 해제로 변경) */
+  const keys = checked ? _psopGroupKeys(key) : [key];
   keys.forEach(k => {
     if (checked) psopState.selectedDocs.add(k);
     else         psopState.selectedDocs.delete(k);
@@ -16092,9 +16094,10 @@ function psopChkDoc(key, checked) {
 }
 function psopToggleDocSel(key, ev) {
   if (ev.target.tagName==='INPUT') return;
-  /* 동일 납품일+납품처코드 그룹 일괄 선택/해제 (선택·해제 모두 그룹 단위) */
+  /* ★ 선택 시: 동일 납품일+납품처코드 그룹 일괄 선택(유지)
+     ★ 해제 시: 클릭한 '그 문서 1건'만 개별 해제(요청) */
   const willSelect = !psopState.selectedDocs.has(key);
-  const keys = _psopGroupKeys(key);
+  const keys = willSelect ? _psopGroupKeys(key) : [key];
   keys.forEach(k => {
     if (willSelect) psopState.selectedDocs.add(k);
     else            psopState.selectedDocs.delete(k);
@@ -16113,11 +16116,12 @@ function psopToggleDocSel(key, ev) {
    (선택 해제 시 한 행씩 클릭하는 번거로움 해소)
 
    동작 분리 (기존 기능 보존):
-   · 체크박스 단순 클릭      → 네이티브 onchange(psopChkDoc): 동일 납품처 그룹 일괄 (유지)
-   · 체크박스 누른 채 드래그  → 지나가는 각 행을 '개별' 토글 (신규)
+   · 체크박스 단순 클릭(선택) → psopChkDoc(checked=true): 동일 납품처 그룹 일괄 선택 (유지)
+   · 체크박스 단순 클릭(해제) → psopChkDoc(checked=false): 클릭한 '그 문서 1건'만 개별 해제 (변경)
+   · 체크박스 누른 채 드래그  → 지나가는 각 행을 '개별' 토글 (유지)
 
    구현: mousedown 시엔 '대기(pending)' 상태만 잡고 preventDefault 하지 않는다.
-        (→ 클릭만 하면 네이티브 체크박스 onchange 가 정상 발생 = 그룹 일괄 유지)
+        (→ 클릭만 하면 네이티브 체크박스 onchange 가 정상 발생 = 위 선택/해제 규칙 적용)
         마우스가 실제로 다른 행으로 이동(mouseenter)하는 순간 드래그 모드로 승격하고,
         시작행 포함 지나가는 행들을 시작행 반전값 모드로 개별 토글한다. */
 function _psopApplyDragSel(key) {
