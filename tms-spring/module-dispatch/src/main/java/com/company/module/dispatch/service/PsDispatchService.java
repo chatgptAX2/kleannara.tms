@@ -441,6 +441,23 @@ public class PsDispatchService {
                             ", SHPOKY=" + str(it.getShpoky()) + ", SHPOIT=" + str(it.getShpoit()) + "]");
                     }
 
+                    // ★ [분할 선처리 — 옵션 A] 이 항목이 분할 청크(IS_SPLIT=1)면, STDLNR UPDATE 전에
+                    //   원본 TMS_SHPDI 에서 분할수량(QTSHPO)만큼 떼어낸 '신규 행'을 먼저 생성한다.
+                    //   → 이후 STDLNR UPDATE 대상 키를 신규 행(고유 SHPOIT)으로 바꿔, 여러 차량이
+                    //     동일 원본 행에 STDLNR 을 덮어써 소실되던 문제(104대→85건)를 근본 해결.
+                    //   원본 미존재/수량초과 등으로 분할 불가하면 원본 키로 fallback(기존 동작 유지).
+                    boolean isSplitChunk = (it.getIsSplit() != null && it.getIsSplit() == 1);
+                    if (isSplitChunk) {
+                        String orgSk = firstNonBlank(it.getOrgShpoky(), it.getShpoky());
+                        String orgSi = firstNonBlank(it.getOrgShpoit(), it.getShpoit());
+                        double splitQty = it.getQtshpo() == null ? 0.0 : it.getQtshpo();
+                        String[] newKey = splitTmsShpdiRow(orgSk, orgSi, splitQty, linkMark);
+                        if (newKey != null) {
+                            shpoky = newKey[0];   // 신규 분할 행 SHPOKY(원본과 동일)
+                            shpoit = newKey[1];   // 신규 분할 행 SHPOIT(원본 최대 +10 채번)
+                        }
+                    }
+
                     // TMS_PS_DISPATCH_D INSERT → MariaDB tmsEm
                     tmsEm.createNativeQuery("""
                         INSERT INTO KNRAWMS.TMS_PS_DISPATCH_D
@@ -1058,6 +1075,105 @@ public class PsDispatchService {
             if (!isBlank(v)) return v.strip();
         }
         return null;
+    }
+
+    /**
+     * ★ 배차저장 분할 선처리 — 원본 TMS_SHPDI 행에서 splitQty 만큼 떼어낸 '신규 분할 행'을
+     *   INSERT 하고, 원본 행 수량을 차감한 뒤 신규 행의 (SHPOKY, SHPOIT) 를 반환한다.
+     *   (SapRfcService.shipmentSplitOffline 의 미연동 분할 로직을 tmsEm 동일 트랜잭션으로 이식)
+     *
+     *   [문제 배경] 자동배차에서 한 납품문서(원본 SHPOKY+SHPOIT)가 여러 차량으로 분할되면,
+     *     기존에는 각 차량이 '동일 원본 행'에 STDLNR 을 UPDATE 로 덮어써(WHERE SHPOKY=? AND
+     *     SHPOIT=?) 마지막 차량 것만 남고 앞 차량들의 STDLNR 이 소실됐다(104대→85건).
+     *   [해결] 분할 청크마다 UPDATE 전에 신규 TMS_SHPDI 행(고유 SHPOIT)을 먼저 만들어,
+     *     각 차량이 '자기 전용 행'에 STDLNR 을 기록하게 한다.
+     *
+     *   @return 신규 분할 행의 {SHPOKY, SHPOIT}. 원본 미존재/수량초과 등으로 분할 불가 시 null
+     *           (호출측은 null 이면 원본 키로 fallback).
+     */
+    private String[] splitTmsShpdiRow(String orgShpoky, String orgShpoit, double splitQty, String linkMark) {
+        if (isBlank(orgShpoky) || isBlank(orgShpoit) || splitQty <= 0) return null;
+        String shpokyT = orgShpoky.strip();
+        String shpoitT = orgShpoit.strip();
+
+        // 1) 원본 행 조회 (정확 매칭 → 실패 시 SHPOIT 숫자 매칭)
+        List<?> orgRows = tmsEm.createNativeQuery(
+                "SELECT SHPOKY, SHPOIT, QTSHPO FROM KNRAWMS.TMS_SHPDI WHERE SHPOKY=? AND SHPOIT=?")
+            .setParameter(1, shpokyT).setParameter(2, shpoitT)
+            .getResultList();
+        if (orgRows.isEmpty()) {
+            orgRows = tmsEm.createNativeQuery(
+                    "SELECT SHPOKY, SHPOIT, QTSHPO FROM KNRAWMS.TMS_SHPDI " +
+                    " WHERE SHPOKY=? AND REGEXP_LIKE(SHPOIT,'^[0-9]+$') AND REGEXP_LIKE(?,'^[0-9]+$') " +
+                    "   AND TO_NUMBER(SHPOIT)=TO_NUMBER(?)")
+                .setParameter(1, shpokyT).setParameter(2, shpoitT).setParameter(3, shpoitT)
+                .getResultList();
+        }
+        if (orgRows.isEmpty()) {
+            log.warn("[PsDispatch] 분할 선처리 — 원본 TMS_SHPDI 없음(SHPOKY={}, SHPOIT={}) → 원본키 fallback",
+                     orgShpoky, orgShpoit);
+            return null;
+        }
+        Object[] row = (Object[]) orgRows.get(0);
+        String realShpoky = str(row[0]);
+        String realShpoit = str(row[1]);
+        long   orgQty     = row[2] == null ? 0L : (long) Math.floor(Double.parseDouble(row[2].toString()));
+        long   splitQtyL  = (long) Math.floor(splitQty);
+        if (splitQtyL >= orgQty) {
+            // 원본 전량을 이 차량이 가져가는 경우 → 분할 불필요(원본 행 그대로 사용)
+            return null;
+        }
+
+        // 2) 신규 SHPOIT 채번: 같은 SHPOKY 내 최대 숫자 SHPOIT + 10 (원본 자릿수 유지)
+        long maxItem;
+        try {
+            Object mx = tmsEm.createNativeQuery(
+                    "SELECT NVL(MAX(TO_NUMBER(SHPOIT)),0) FROM KNRAWMS.TMS_SHPDI " +
+                    " WHERE SHPOKY=? AND REGEXP_LIKE(SHPOIT,'^[0-9]+$')")
+                .setParameter(1, realShpoky.strip())
+                .getSingleResult();
+            maxItem = mx == null ? 0L : (long) Math.floor(Double.parseDouble(mx.toString()));
+        } catch (Exception e) {
+            maxItem = 0L;
+            try { maxItem = Long.parseLong(realShpoit.trim()); } catch (Exception ignore) {}
+        }
+        long newItemNo = maxItem + 10;
+        int  width     = realShpoit.trim().length() > 0 ? realShpoit.trim().length() : 6;
+        String newShpoit = String.format("%0" + width + "d", newItemNo);
+
+        // 3) 신규 분할 행 INSERT (원본 행 복제 + SHPOIT 신규 / 분할수량 / STDLNR 공백 / 마커)
+        int ins = tmsEm.createNativeQuery(
+                "INSERT INTO KNRAWMS.TMS_SHPDI " +
+                " (SHPOKY, SHPOIT, SKUKEY, DESC01, DESC02, SKUG05, MEASKY, UOMKEY, " +
+                "  QTSHPO, QTALOC, QTJCMP, QTSHPD, STATIT, STDLNR, SVBELN, " +
+                "  LOTA01, LOTA02, LOTA03, TLOTA01, TLOTA02, ALSTKY, " +
+                "  CREDAT, CRETIM, CREUSR, LMODAT, LMOTIM, LMOUSR) " +
+                "SELECT SHPOKY, ?, SKUKEY, DESC01, ?, SKUG05, MEASKY, UOMKEY, " +
+                "       ?, 0, 0, 0, STATIT, ' ', SVBELN, " +
+                "       LOTA01, LOTA02, LOTA03, TLOTA01, TLOTA02, ALSTKY, " +
+                "       TO_CHAR(SYSDATE,'YYYYMMDD'), TO_CHAR(SYSDATE,'HH24MISS'), 'WEB', " +
+                "       TO_CHAR(SYSDATE,'YYYYMMDD'), TO_CHAR(SYSDATE,'HH24MISS'), 'WEB' " +
+                "  FROM KNRAWMS.TMS_SHPDI WHERE SHPOKY=? AND SHPOIT=?")
+            .setParameter(1, newShpoit)
+            .setParameter(2, linkMark)              // DESC02: OFFLINE/ONLINE
+            .setParameter(3, splitQtyL)
+            .setParameter(4, realShpoky)
+            .setParameter(5, realShpoit)
+            .executeUpdate();
+
+        // 4) 원본 행 수량 차감
+        tmsEm.createNativeQuery(
+                "UPDATE KNRAWMS.TMS_SHPDI SET QTSHPO = QTSHPO - ?, " +
+                " LMODAT=TO_CHAR(SYSDATE,'YYYYMMDD'), LMOUSR='WEB' WHERE SHPOKY=? AND SHPOIT=?")
+            .setParameter(1, splitQtyL)
+            .setParameter(2, realShpoky)
+            .setParameter(3, realShpoit)
+            .executeUpdate();
+
+        log.info("[PsDispatch] 분할 선처리 — 원본({}/{}, {}) → 신규({}/{}, {}) INSERT={}건, 원본잔량={}",
+                 realShpoky, realShpoit, orgQty, realShpoky, newShpoit, splitQtyL, ins, (orgQty - splitQtyL));
+        if (ins == 0) return null;
+        return new String[]{realShpoky, newShpoit};
     }
 
     private double toDouble(Object o) {
