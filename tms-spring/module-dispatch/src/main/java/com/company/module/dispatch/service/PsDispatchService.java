@@ -173,7 +173,34 @@ public class PsDispatchService {
         //   STDLNR(가선적번호)/STKNUM(SAP선적번호)은 동일 TMS_SHPDI(i) 행의 컬럼이므로
         //   별도 배차완료 조회(loadDispatchedKeys, IN 절 반복 바인딩) 없이 한 번에 읽는다.
         "       TRIM(COALESCE(i.STDLNR,'')) AS STDLNR," +
-        "       TRIM(COALESCE(i.STKNUM,'')) AS STKNUM" +
+        "       TRIM(COALESCE(i.STKNUM,'')) AS STKNUM," +
+        // ── [3D 일치] 적재뷰(3D) 계산 필드를 sapItems(배차확정 탭) 와 '동일 산식'으로 제공 ──
+        //   배차저장 前(자동배차 items=이 search 결과)과 저장 後(sapItems)의 3D 입력을 맞춰
+        //   원지/판지 배치가 일치하도록 추가. ★ 인덱스 밀림 방지를 위해 SELECT 맨 끝에 배치
+        //   (r[21]=KG_WEIGHT, r[22]=SOK_PER_R, r[23]=PLT_PER_UNIT, r[24]=THICKNESS).
+        //     · KG_WEIGHT : QTSHPO×NETWGT (원지 롤수·판지 totalKg)
+        //     · SOK_PER_R : 1R당 SOK 환산계수(MEASI, 판지 속단위)
+        //     · PLT_PER_UNIT : 판지(SKUG05='10') RECDI 최근입고 QTYRCV(LOTA 일치, STATIT='FRV')
+        //     · THICKNESS : TMS_THICKNESS(µm) — 판지 1단(1PLT) 높이 산출
+        "       ROUND(i.QTSHPO * COALESCE(m.NETWGT,0), 1) AS KG_WEIGHT," +
+        "       COALESCE((SELECT ME.QTAUOM FROM KNRAWMS.MEASI ME" +
+        "                  WHERE ME.WAREKY=h.WAREKY AND ME.MEASKY=i.MEASKY" +
+        "                    AND ME.UOMKEY='SOK' AND ROWNUM=1), 0) AS SOK_PER_R," +
+        "       CASE WHEN i.SKUG05='10' THEN" +
+        "            COALESCE((SELECT rd.QTYRCV FROM KNRAWMS.RECDI rd" +
+        "                       WHERE rd.SKUKEY = i.SKUKEY" +
+        "                         AND rd.STATIT = 'FRV'" +
+        "                         AND rd.LOTA01 = i.LOTA01" +
+        "                         AND rd.LOTA02 = i.LOTA02" +
+        "                       ORDER BY rd.RECVKY DESC" +
+        "                       FETCH FIRST 1 ROW ONLY), 0)" +
+        "            ELSE 0 END AS PLT_PER_UNIT," +
+        "       COALESCE((SELECT CASE WHEN REGEXP_LIKE(TRIM(CV.CDESC1),'^[0-9]+(\\.[0-9]+)?$')" +
+        "                             THEN TO_NUMBER(TRIM(CV.CDESC1)) ELSE 0 END" +
+        "                  FROM KNRAWMS.CMCDV CV" +
+        "                  WHERE CV.CMCDKY='TMS_THICKNESS'" +
+        "                    AND CV.CMCDVL=SUBSTR(i.SKUKEY,3,6)" +
+        "                    AND ROWNUM=1), 0) AS THICKNESS" +
         " FROM KNRAWMS.TMS_SHPDI i" +
         " JOIN KNRAWMS.TMS_SHPDH h ON i.SHPOKY = h.SHPOKY" +
         " LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY = h.DPTNKY AND b.PTNRTY = 'CT'" +
@@ -285,6 +312,14 @@ public class PsDispatchService {
             double grswgt  = toDouble(r[14]);
             double unitW   = toDouble(r[16]);
 
+            // ── [3D 일치] sapItems(배차확정 탭) 와 '동일 산식' 3D 필드 (r[21~24]) ──
+            //   배차저장 前/後 3D 입력을 맞추기 위해 SELECT 맨 끝에 추가한 컬럼을 읽는다.
+            //     r[21]=KG_WEIGHT(QTSHPO×NETWGT) r[22]=SOK_PER_R r[23]=PLT_PER_UNIT r[24]=THICKNESS
+            double sapKgWeight = toDouble(r[21]);   // sapItems 정답 KG_WEIGHT (NETWGT 기반)
+            double sokPerR     = toDouble(r[22]);
+            double pltPerUnit  = toDouble(r[23]);
+            double thickness   = toDouble(r[24]);
+
             // 배차완료 정보: 같은 행의 STDLNR(가선적번호)/STKNUM(SAP선적번호)
             String  stdlnrVal = str(r[19]);
             String  stknumVal = str(r[20]);
@@ -303,8 +338,13 @@ public class PsDispatchService {
                 }
             }
 
+            // ── [3D 일치] KG_WEIGHT 는 sapItems 정답값(QTSHPO×NETWGT, r[21]) 우선 ──
+            //   저장 前(searchDocs)/後(sapItems)의 원지 롤수·판지 totalKg 를 맞추기 위해
+            //   sapKgWeight 가 있으면 그대로 사용(롤수/CBM 계산 로컬 변수까지 통일).
+            //   NETWGT 미등록(0) 이면 기존 산식으로 fallback.
             double kgWeight;
-            if ("R".equals(uomkey) && grswgt > 0) kgWeight = Math.round(qtshpo * grswgt * 100.0) / 100.0;
+            if (sapKgWeight > 0) kgWeight = sapKgWeight;
+            else if ("R".equals(uomkey) && grswgt > 0) kgWeight = Math.round(qtshpo * grswgt * 100.0) / 100.0;
             else kgWeight = qtshpo;
 
             double rollSingleKg = unitW > 0 ? unitW : 600.0;
@@ -354,6 +394,10 @@ public class PsDispatchService {
                 .rollCbm(rollCbm)
                 .boardCbm(boardCbm)
                 .unitWeight(unitW)
+                // [3D 일치] 판지 단수/높이 산출 필드 (sapItems 동일 산식)
+                .sokPerR(sokPerR)
+                .pltPerUnit(pltPerUnit)
+                .thickness(thickness)
                 .rollCount(rollCount)
                 .skug05(str(r[7]))
                 .skuType(skuType)
