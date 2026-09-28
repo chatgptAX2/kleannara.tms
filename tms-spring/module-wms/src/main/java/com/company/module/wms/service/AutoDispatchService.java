@@ -442,6 +442,103 @@ public class AutoDispatchService {
     }
 
     // ════════════════════════════════════════════════════════════════
+    //  적재뷰(3D) 레이아웃 산출 — SAP선적탭/배차탭 3D보기 공용
+    //  요청: 3D보기는 PS제약조건관리의 판지/원지 3D 물리검증 제약조건이 반영된
+    //        배치(roll_layout)를 사용해야 한다. sapItems 가 TMS_SHPDI 아이템을 읽은 뒤
+    //        이 메서드로 '자동배차와 동일한' 제약조건 기반 roll_layout 을 산출하여
+    //        응답에 실어주면, 프론트 _lvComputePlacement 가 그 배치대로 3D를 그린다.
+    //  입력 : items(대문자 SKU 아이템), cartype(차량유형명), profileId(옵션·미지정 시 활성)
+    //  반환 : { ok, roll_layout:[...], roll3d_fits, board_max_height_m }
+    // ════════════════════════════════════════════════════════════════
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> computeLoadLayout(List<Map<String, Object>> items,
+                                                 String cartype, Integer profileId) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        try {
+            if (items == null || items.isEmpty()) {
+                out.put("ok", true); out.put("roll_layout", new ArrayList<>()); return out;
+            }
+            // 활성 제약조건 로드 (runAuto 와 동일 소스: profile→set→const→ConstraintParams)
+            ConstraintParams cp = loadConstraintParamsForLayout(profileId);
+            Map<String, VehInfo> vehInfo = loadVehInfo();
+            InchMaps inchMaps            = loadInchMaps();
+
+            // 차량 제원(VehInfo) — cartype(명칭) 우선, 없으면 첫 유효차량
+            VehInfo vi = (cartype != null && vehInfo.containsKey(cartype))
+                       ? vehInfo.get(cartype) : null;
+            if (vi == null) {
+                for (VehInfo cand : vehInfo.values()) { if (cand != null && cand.loadKg > 0) { vi = cand; break; } }
+            }
+            if (vi == null) { out.put("ok", true); out.put("roll_layout", new ArrayList<>()); return out; }
+
+            // SKU 마스터 로드(직경/치수 계산용) — 원지 배차와 동일 소스
+            Map<String, SkuInfo> skumaMap = loadSkumaMap();
+
+            // 원지 아이템만 3D 물리검증 → roll_layout 산출
+            List<Map<String, Object>> rollItems = items.stream()
+                .filter(it -> isRoll(str(it.get("SKUKEY")))).collect(Collectors.toList());
+
+            List<Map<String, Object>> rollLayout = new ArrayList<>();
+            boolean fits = true;
+            if (!rollItems.isEmpty() && cp.roll3dCheck) {
+                RollPhysics3D rp3d = verifyRolls3D(rollItems, skumaMap, vi, cp, inchMaps, cartype);
+                if (rp3d != null && rp3d.rollLayout != null) rollLayout = rp3d.rollLayout;
+                if (rp3d != null) fits = rp3d.fits;
+            }
+
+            out.put("ok", true);
+            out.put("roll_layout", rollLayout);
+            out.put("roll3d_fits", fits);
+            out.put("board_max_height_m", cp.maxBoardHeightM);
+            return out;
+        } catch (Exception e) {
+            // 레이아웃 산출 실패는 3D 표시의 '정확도' 문제일 뿐 치명적이지 않으므로
+            // 조용히 빈 레이아웃 반환(프론트는 기하 추정으로 fallback).
+            out.put("ok", false); out.put("error", e.getMessage());
+            out.put("roll_layout", new ArrayList<>());
+            return out;
+        }
+    }
+
+    /** computeLoadLayout 전용 — 활성/지정 프로파일의 제약조건을 ConstraintParams 로 구성.
+     *  (runAuto 의 profile→set→const 로드 로직과 동일 규칙, 배차 실행 없이 파라미터만 산출) */
+    private ConstraintParams loadConstraintParamsForLayout(Integer profileId) {
+        Map<String, Object> prof = loadProfile(profileId);
+        if (prof == null) return buildConstraintParams(new LinkedHashMap<>());  // 기본값
+        long pid = toLong(prof.get("PROFILE_ID"), 0L);
+
+        // 세트 오버라이드 맵
+        Integer setId = toInt(prof.get("SET_ID"));
+        Map<Long, Map<String, Object>> setItemMap = new LinkedHashMap<>();
+        if (setId != null) {
+            try {
+                for (Map<String, Object> si : tmsJdbc.queryForList(
+                        "SELECT i.CONST_ID, i.ACTIVE_YN, i.PARAM_VALUE" +
+                        " FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM i WHERE i.SET_ID = ?", setId)) {
+                    long cid = toLong(si.get("CONST_ID"), -1L);
+                    if (cid >= 0) setItemMap.put(cid, si);
+                }
+            } catch (Exception ignore) { /* 세트 없으면 마스터 기준 */ }
+        }
+
+        List<Map<String, Object>> constRows = tmsJdbc.queryForList(
+            "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_CONST WHERE PROFILE_ID=? AND ACTIVE_YN='Y' ORDER BY SORT_SEQ", pid);
+        Map<String, Map<String, Object>> C = new LinkedHashMap<>();
+        for (Map<String, Object> r : constRows) {
+            long constId = toLong(r.get("CONST_ID"), -1L);
+            if (!setItemMap.isEmpty() && setItemMap.containsKey(constId)) {
+                Map<String, Object> si = setItemMap.get(constId);
+                if ("N".equalsIgnoreCase(str(si.get("ACTIVE_YN")))) continue;   // 세트 비활성
+                String paramVal = str(si.get("PARAM_VALUE"));
+                if (!paramVal.isEmpty()) { r = new HashMap<>(r); r.put("CONST_VALUE", paramVal); }
+            }
+            String tid = str(r.get("TARGET_ID"));
+            if (tid.isEmpty()) C.put(str(r.get("CONST_KEY")), r);   // 전역 제약만(레이아웃 산출용)
+        }
+        return buildConstraintParams(C);
+    }
+
+    // ════════════════════════════════════════════════════════════════
     //  원지 배차 (FFD/BFD BinPacking)
     // ════════════════════════════════════════════════════════════════
 
