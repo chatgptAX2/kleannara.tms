@@ -44,6 +44,28 @@ public class DispatchConfigApiService {
 
     private String today() { return LocalDate.now().format(YMDFORMAT); }
 
+    // ── [PS/HL 스코프 분리] ─────────────────────────────────────────
+    //   배차 스코프: 'PS'(SKUG05='10'/TMS_CARCLASS10) | 'HL'(SKUG05='20'/TMS_CARCLASS20).
+    //   4개 테이블(OBJECTIVE/PROFILE/CONST/CONST_SET)에 SCOPE 컬럼 추가.
+    //   기존 데이터(SCOPE NULL/공백)는 'PS' 로 취급(하위호환) → 조회는 COALESCE(SCOPE,'PS') 비교.
+    private static String normScope(Object scope) {
+        String s = scope != null ? scope.toString().trim() : "";
+        return "HL".equalsIgnoreCase(s) ? "HL" : "PS";
+    }
+    // 스코프에 대응하는 차량 제품군 공통코드 (TMS_CARCLASS10=PS, TMS_CARCLASS20=HL)
+    private static String carclassKey(String scope) {
+        return "HL".equals(scope) ? "TMS_CARCLASS20" : "TMS_CARCLASS10";
+    }
+    // 프로파일(PROFILE_ID)의 SCOPE 조회 — CONST 저장 시 스코프 상속용(없으면 'PS').
+    private String profileScope(Long profileId) {
+        if (profileId == null) return "PS";
+        try {
+            return normScope(tmsJdbc.queryForList(
+                "SELECT COALESCE(SCOPE,'PS') AS SCOPE FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE WHERE PROFILE_ID=?", profileId)
+                .stream().findFirst().map(r -> r.get("SCOPE")).orElse("PS"));
+        } catch (Exception e) { return "PS"; }
+    }
+
     /**
      * TMS_DS_DISPATCH_CONST.CONST_ID 채번.
      * SEQ_DS_DISPATCH_CONST 시퀀스가 존재하면 NEXTVAL, 없으면(ORA-02289) MAX+1로 폴백.
@@ -62,10 +84,14 @@ public class DispatchConfigApiService {
     //  목적식 (TMS_DS_DISPATCH_OBJECTIVE) — MariaDB integration
     // ══════════════════════════════════════════════════════════════
 
-    public Map<String, Object> objList() {
+    public Map<String, Object> objList() { return objList("PS"); }
+
+    public Map<String, Object> objList(String scopeIn) {
         try {
+            String scope = normScope(scopeIn);
             List<Map<String, Object>> rows = tmsJdbc.queryForList(
-                "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE ORDER BY SORT_SEQ, OBJ_ID"
+                "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE " +
+                "WHERE COALESCE(SCOPE,'PS')=? ORDER BY SORT_SEQ, OBJ_ID", scope
             );
             return Map.of("ok", true, "rows", rows);
         } catch (Exception e) { return errMap(e); }
@@ -82,14 +108,16 @@ public class DispatchConfigApiService {
             String desc  = str(body.get("OBJ_DESC"));
             int sort     = toInt(body.get("SORT_SEQ"), 0);
             String act   = str(body.getOrDefault("ACTIVE_YN", "Y"));
+            String scope = normScope(body.get("SCOPE"));
             if (code.isBlank()) return Map.of("ok", false, "error", "OBJ_CODE 필수");
 
             if (objId != null) {
+                // 수정 시 SCOPE 는 생성 시점 값 유지(변경 안 함).
                 tmsJdbc.update("UPDATE KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE SET OBJ_CODE=?,OBJ_NM=?,OBJ_ICON=?,OBJ_ALGO=?,OBJ_DESC=?,SORT_SEQ=?,ACTIVE_YN=?,LMODAT=? WHERE OBJ_ID=?",
                     code, nm, icon, algo, desc, sort, act, today(), objId);
             } else {
-                tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE (OBJ_ID,OBJ_CODE,OBJ_NM,OBJ_ICON,OBJ_ALGO,OBJ_DESC,SORT_SEQ,ACTIVE_YN,CREDAT,LMODAT) VALUES (SEQ_DS_DISPATCH_OBJECTIVE.NEXTVAL,?,?,?,?,?,?,?,?,?)",
-                    code, nm, icon, algo, desc, sort, act, today(), today());
+                tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE (OBJ_ID,OBJ_CODE,OBJ_NM,OBJ_ICON,OBJ_ALGO,OBJ_DESC,SORT_SEQ,ACTIVE_YN,SCOPE,CREDAT,LMODAT) VALUES (SEQ_DS_DISPATCH_OBJECTIVE.NEXTVAL,?,?,?,?,?,?,?,?,?,?)",
+                    code, nm, icon, algo, desc, sort, act, scope, today(), today());
                 objId = tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_OBJECTIVE.CURRVAL FROM DUAL", Long.class);
             }
             return Map.of("ok", true, "OBJ_ID", objId);
@@ -111,30 +139,38 @@ public class DispatchConfigApiService {
         Long objId = toLong(body.get("OBJ_ID"));
         if (objId == null) return Map.of("ok", false, "error", "OBJ_ID 필수");
         try {
-            tmsJdbc.update("UPDATE KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE SET ACTIVE_YN='N', LMODAT=?", today());
+            // 활성 목적식 단일 보장은 '해당 목적식의 스코프' 안에서만 처리(PS/HL 상호 독립).
+            String scope = normScope(tmsJdbc.queryForList(
+                "SELECT COALESCE(SCOPE,'PS') AS SCOPE FROM KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE WHERE OBJ_ID=?", objId)
+                .stream().findFirst().map(r -> r.get("SCOPE")).orElse("PS"));
+            tmsJdbc.update("UPDATE KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE SET ACTIVE_YN='N', LMODAT=? WHERE COALESCE(SCOPE,'PS')=?", today(), scope);
             tmsJdbc.update("UPDATE KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE SET ACTIVE_YN='Y', LMODAT=? WHERE OBJ_ID=?", today(), objId);
             return Map.of("ok", true);
         } catch (Exception e) { return errMap(e); }
     }
 
-    public Map<String, Object> objActive() {
+    public Map<String, Object> objActive() { return objActive("PS"); }
+
+    public Map<String, Object> objActive(String scopeIn) {
         try {
-            // Oracle: FETCH FIRST 1 ROWS ONLY
+            String scope = normScope(scopeIn);
+            // Oracle: FETCH FIRST 1 ROWS ONLY — 스코프 내 활성 목적식
             List<Map<String, Object>> rows = tmsJdbc.queryForList(
-                "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE WHERE ACTIVE_YN='Y' ORDER BY OBJ_ID FETCH FIRST 1 ROWS ONLY"
+                "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE WHERE ACTIVE_YN='Y' AND COALESCE(SCOPE,'PS')=? ORDER BY OBJ_ID FETCH FIRST 1 ROWS ONLY", scope
             );
             Map<String, Object> objective = rows.isEmpty() ?
-                tmsJdbc.queryForList("SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE ORDER BY SORT_SEQ, OBJ_ID FETCH FIRST 1 ROWS ONLY")
+                tmsJdbc.queryForList("SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE WHERE COALESCE(SCOPE,'PS')=? ORDER BY SORT_SEQ, OBJ_ID FETCH FIRST 1 ROWS ONLY", scope)
                     .stream().findFirst().orElse(null) : rows.get(0);
 
             if (objective == null) return Map.of("ok", false, "error", "목적식 없음");
 
             String objCode = (String) objective.get("OBJ_CODE");
+            // 프로파일도 동일 스코프 내에서 매칭
             List<Map<String, Object>> profiles = tmsJdbc.queryForList(
-                "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE WHERE OBJECTIVE=? AND ACTIVE_YN='Y' ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY", objCode
+                "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE WHERE OBJECTIVE=? AND ACTIVE_YN='Y' AND COALESCE(SCOPE,'PS')=? ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY", objCode, scope
             );
             Map<String, Object> profile = profiles.isEmpty() ?
-                tmsJdbc.queryForList("SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE WHERE OBJECTIVE=? ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY", objCode)
+                tmsJdbc.queryForList("SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE WHERE OBJECTIVE=? AND COALESCE(SCOPE,'PS')=? ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY", objCode, scope)
                     .stream().findFirst().orElse(null) : profiles.get(0);
 
             return Map.of("ok", true, "objective", objective, "profile", profile != null ? profile : "");
@@ -145,11 +181,14 @@ public class DispatchConfigApiService {
     //  제약조건 세트 (TMS_DS_DISPATCH_CONST_SET) — MariaDB integration
     // ══════════════════════════════════════════════════════════════
 
-    public Map<String, Object> setList() {
+    public Map<String, Object> setList() { return setList("PS"); }
+
+    public Map<String, Object> setList(String scopeIn) {
         try {
+            String scope = normScope(scopeIn);
             List<Map<String, Object>> rows = tmsJdbc.queryForList(
                 "SELECT s.*, (SELECT COUNT(*) FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM i WHERE i.SET_ID=s.SET_ID) AS ITEM_CNT " +
-                "FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET s ORDER BY s.SET_ID"
+                "FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET s WHERE COALESCE(s.SCOPE,'PS')=? ORDER BY s.SET_ID", scope
             );
             return Map.of("ok", true, "rows", rows);
         } catch (Exception e) { return errMap(e); }
@@ -162,17 +201,19 @@ public class DispatchConfigApiService {
             String nm     = str(body.get("SET_NM"));
             String desc   = str(body.get("SET_DESC"));
             String act    = str(body.getOrDefault("ACTIVE_YN", "Y"));
+            String scope  = normScope(body.get("SCOPE"));
             if (nm.isBlank()) return Map.of("ok", false, "error", "SET_NM 필수");
 
             if (setId != null) {
+                // 수정 시 SCOPE 유지
                 tmsJdbc.update("UPDATE KNRAWMS.TMS_DS_DISPATCH_CONST_SET SET SET_NM=?,SET_DESC=?,ACTIVE_YN=?,LMODAT=? WHERE SET_ID=?",
                     nm, desc, act, today(), setId);
             } else {
                 // SEQ_DS_DISPATCH_CONST_SET 시퀀스 미존재 → MAX+1 채번
                 setId = tmsJdbc.queryForObject(
                     "SELECT NVL(MAX(SET_ID),0)+1 FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET", Integer.class);
-                tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_CONST_SET (SET_ID,SET_NM,SET_DESC,ACTIVE_YN,CREDAT,LMODAT) VALUES (?,?,?,?,?,?)",
-                    setId, nm, desc, act, today(), today());
+                tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_CONST_SET (SET_ID,SET_NM,SET_DESC,ACTIVE_YN,SCOPE,CREDAT,LMODAT) VALUES (?,?,?,?,?,?,?)",
+                    setId, nm, desc, act, scope, today(), today());
             }
             return Map.of("ok", true, "SET_ID", setId);
         } catch (Exception e) { return errMap(e); }
@@ -635,10 +676,13 @@ public class DispatchConfigApiService {
     //  제약조건 프로파일 (TMS_DS_DISPATCH_PROFILE + TMS_DS_DISPATCH_CONST) — MariaDB
     // ══════════════════════════════════════════════════════════════
 
-    public Map<String, Object> profiles() {
+    public Map<String, Object> profiles() { return profiles("PS"); }
+
+    public Map<String, Object> profiles(String scopeIn) {
         try {
+            String scope = normScope(scopeIn);
             List<Map<String, Object>> rows = tmsJdbc.queryForList(
-                "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE ORDER BY PROFILE_ID"
+                "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE WHERE COALESCE(SCOPE,'PS')=? ORDER BY PROFILE_ID", scope
             );
             return Map.of("ok", true, "rows", rows);
         } catch (Exception e) { return errMap(e); }
@@ -652,14 +696,16 @@ public class DispatchConfigApiService {
             String obj = str(body.getOrDefault("OBJECTIVE", "MIN_VEHICLES"));
             String act = str(body.getOrDefault("ACTIVE_YN", "Y"));
             String note= str(body.get("NOTE"));
+            String scope = normScope(body.get("SCOPE"));
             if (nm.isBlank()) return Map.of("ok", false, "error", "PROFILE_NM 필수");
 
             if (pid != null) {
+                // 수정 시 SCOPE 유지
                 tmsJdbc.update("UPDATE KNRAWMS.TMS_DS_DISPATCH_PROFILE SET PROFILE_NM=?,OBJECTIVE=?,ACTIVE_YN=?,NOTE=?,LMODAT=? WHERE PROFILE_ID=?",
                     nm, obj, act, note, today(), pid);
             } else {
-                tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_PROFILE (PROFILE_ID,PROFILE_NM,OBJECTIVE,ACTIVE_YN,NOTE,CREDAT,LMODAT) VALUES (SEQ_DS_DISPATCH_PROFILE.NEXTVAL,?,?,?,?,?,?)",
-                    nm, obj, act, note, today(), today());
+                tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_PROFILE (PROFILE_ID,PROFILE_NM,OBJECTIVE,ACTIVE_YN,NOTE,SCOPE,CREDAT,LMODAT) VALUES (SEQ_DS_DISPATCH_PROFILE.NEXTVAL,?,?,?,?,?,?,?)",
+                    nm, obj, act, note, scope, today(), today());
                 pid = tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_PROFILE.CURRVAL FROM DUAL", Long.class);
             }
             return Map.of("ok", true, "PROFILE_ID", pid);
@@ -748,9 +794,11 @@ public class DispatchConfigApiService {
                 pid, type, key, val, op, tid, tnm, act, note, sort, today(), cid);
             return cid;
         } else {
+            // SCOPE: body 값 우선, 없으면 소속 프로파일의 SCOPE 를 상속(둘 다 없으면 'PS').
+            String scope = row.get("SCOPE") != null ? normScope(row.get("SCOPE")) : profileScope(pid);
             Long newCid = nextConstId();
-            tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                newCid, pid, type, key, val, op, tid, tnm, act, note, sort, today(), today());
+            tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,SCOPE,CREDAT,LMODAT) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                newCid, pid, type, key, val, op, tid, tnm, act, note, sort, scope, today(), today());
             return newCid;
         }
     }
@@ -778,31 +826,36 @@ public class DispatchConfigApiService {
             );
             if (src.isEmpty()) return Map.of("ok", false, "error", "원본 프로파일 없음");
             Map<String, Object> s = src.get(0);
-            tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_PROFILE (PROFILE_ID,PROFILE_NM,OBJECTIVE,ACTIVE_YN,NOTE,CREDAT,LMODAT) VALUES (SEQ_DS_DISPATCH_PROFILE.NEXTVAL,?,?,?,?,?,?)",
-                newNm, s.get("OBJECTIVE"), "N", "복사본: " + s.get("PROFILE_NM"), today(), today());
+            // 복사본은 원본 프로파일과 동일 SCOPE 유지(PS→PS / HL→HL).
+            String scope = normScope(s.get("SCOPE"));
+            tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_PROFILE (PROFILE_ID,PROFILE_NM,OBJECTIVE,ACTIVE_YN,NOTE,SCOPE,CREDAT,LMODAT) VALUES (SEQ_DS_DISPATCH_PROFILE.NEXTVAL,?,?,?,?,?,?,?)",
+                newNm, s.get("OBJECTIVE"), "N", "복사본: " + s.get("PROFILE_NM"), scope, today(), today());
             Long newPid = tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_PROFILE.CURRVAL FROM DUAL", Long.class);
             List<Map<String, Object>> srcRows = tmsJdbc.queryForList(
                 "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_CONST WHERE PROFILE_ID=?", srcPid
             );
             for (Map<String, Object> r : srcRows) {
-                tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,SCOPE,CREDAT,LMODAT) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     nextConstId(), newPid, r.get("CONST_TYPE"), r.get("CONST_KEY"), r.get("CONST_VALUE"), r.get("CONST_OP"),
-                    r.get("TARGET_ID"), r.get("TARGET_NM"), r.get("ACTIVE_YN"), r.get("NOTE"), r.get("SORT_SEQ"), today(), today());
+                    r.get("TARGET_ID"), r.get("TARGET_NM"), r.get("ACTIVE_YN"), r.get("NOTE"), r.get("SORT_SEQ"), scope, today(), today());
             }
             return Map.of("ok", true, "new_profile_id", newPid);
         } catch (Exception e) { return errMap(e); }
     }
 
-    public Map<String, Object> constraintMeta() {
+    public Map<String, Object> constraintMeta() { return constraintMeta("PS"); }
+
+    public Map<String, Object> constraintMeta(String scopeIn) {
         try {
+            String scope = normScope(scopeIn);
             // TMS_DS_VEHICLE: MariaDB
             List<Map<String, Object>> vehicles = tmsJdbc.queryForList(
                 "SELECT CARCLASS_CD, CARTYPE, LOAD_TON, LENGTH_M, WIDTH_M, HEIGHT_M, PALLET_HEIGHT_M, SORT_SEQ " +
                 "FROM KNRAWMS.TMS_DS_VEHICLE ORDER BY SORT_SEQ"
             );
-            // CMCDV: Oracle KNRAWMS
+            // CMCDV: Oracle KNRAWMS — 스코프별 제품군(PS=TMS_CARCLASS10 / HL=TMS_CARCLASS20)
             List<Map<String, Object>> carclasses = wmsJdbc.queryForList(
-                "SELECT CMCDVL, CDESC1 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10' ORDER BY CMCDVL"
+                "SELECT CMCDVL, CDESC1 FROM KNRAWMS.CMCDV WHERE CMCDKY=? ORDER BY CMCDVL", carclassKey(scope)
             );
             // TMS_ROUTE_COST JOIN BZPTN — tmsJdbc 단독 (동일 DB/계정이므로 JOIN 가능)
             List<Map<String, Object>> partners = tmsJdbc.queryForList(

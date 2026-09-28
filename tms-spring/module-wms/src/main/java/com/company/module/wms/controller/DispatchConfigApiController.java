@@ -25,9 +25,11 @@ public class DispatchConfigApiController {
 
     // ── 목적식 (TMS_DS_DISPATCH_OBJECTIVE) ──────────────────────────
 
+    //   scope: 'PS'(기본) | 'HL' — 미지정 시 PS(하위호환)
     @GetMapping("/dispatch-objective/list")
-    public ResponseEntity<Map<String, Object>> objList() {
-        return ResponseEntity.ok(svc.objList());
+    public ResponseEntity<Map<String, Object>> objList(
+            @RequestParam(required = false, defaultValue = "PS") String scope) {
+        return ResponseEntity.ok(svc.objList(scope));
     }
 
     @PostMapping("/dispatch-objective/save")
@@ -46,15 +48,17 @@ public class DispatchConfigApiController {
     }
 
     @GetMapping("/dispatch-objective/active")
-    public ResponseEntity<Map<String, Object>> objActive() {
-        return ResponseEntity.ok(svc.objActive());
+    public ResponseEntity<Map<String, Object>> objActive(
+            @RequestParam(required = false, defaultValue = "PS") String scope) {
+        return ResponseEntity.ok(svc.objActive(scope));
     }
 
     // ── 제약조건 세트 (TMS_DS_DISPATCH_CONST_SET) ────────────────────
 
     @GetMapping("/dispatch-const-set/list")
-    public ResponseEntity<Map<String, Object>> setList() {
-        return ResponseEntity.ok(svc.setList());
+    public ResponseEntity<Map<String, Object>> setList(
+            @RequestParam(required = false, defaultValue = "PS") String scope) {
+        return ResponseEntity.ok(svc.setList(scope));
     }
 
     @PostMapping("/dispatch-const-set/save")
@@ -146,8 +150,9 @@ public class DispatchConfigApiController {
     // ── 제약조건 프로파일 (TMS_DS_DISPATCH_PROFILE) ──────────────────
 
     @GetMapping("/dispatch-constraint/profiles")
-    public ResponseEntity<Map<String, Object>> profiles() {
-        return ResponseEntity.ok(svc.profiles());
+    public ResponseEntity<Map<String, Object>> profiles(
+            @RequestParam(required = false, defaultValue = "PS") String scope) {
+        return ResponseEntity.ok(svc.profiles(scope));
     }
 
     @PostMapping("/dispatch-constraint/profiles/save")
@@ -192,8 +197,9 @@ public class DispatchConfigApiController {
     }
 
     @GetMapping("/dispatch-constraint/meta")
-    public ResponseEntity<Map<String, Object>> constraintMeta() {
-        return ResponseEntity.ok(svc.constraintMeta());
+    public ResponseEntity<Map<String, Object>> constraintMeta(
+            @RequestParam(required = false, defaultValue = "PS") String scope) {
+        return ResponseEntity.ok(svc.constraintMeta(scope));
     }
 
     /**

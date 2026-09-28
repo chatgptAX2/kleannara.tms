@@ -3274,6 +3274,9 @@ thead th:hover .th-drag-handle{opacity:.8}
   <div class="nav-item" onclick="showPage('dispatchConstraint')" id="nav-dispatchConstraint">
     <span class="icon">🎯</span> PS제약조건관리
   </div>
+  <div class="nav-item" onclick="showPage('hlDispatchConstraint')" id="nav-hlDispatchConstraint">
+    <span class="icon">🎯</span> HL제약조건관리
+  </div>
   <div class="nav-section">기준정보 관리</div>
   <div class="nav-item" onclick="showPage('psDispatch')" id="nav-psDispatch">
     <span class="icon">🚚</span> PS 배차
@@ -3588,6 +3591,7 @@ const PAGE_META = {
   VHCMA:         { title:'차량마스터',        badge:'VHCMA',          crumb:['홈','기준정보 관리','차량마스터'] },
   dispatchStrategy:   { title:'차량유형관리',   badge:'⚙️ Strategy',    crumb:['홈','기준정보 관리','차량유형관리'] },
   dispatchConstraint: { title:'PS제약조건관리', badge:'🎯 PS제약조건관리', crumb:['홈','배차관리','PS제약조건관리'] },
+  hlDispatchConstraint: { title:'HL제약조건관리', badge:'🎯 HL제약조건관리', crumb:['홈','배차관리','HL제약조건관리'] },
   psDispatch:         { title:'PS 배차',       badge:'🚚 PS 배차',      crumb:['홈','기준정보 관리','PS 배차'] },
   psDispatchOpt:      { title:'PS 배차(최적화)', badge:'🚀 PS 배차(최적화)', crumb:['홈','배차관리','PS 배차(최적화)'] },
   returnOut:          { title:'반품출고',         badge:'↩️ 반품출고',        crumb:['홈','배차관리','반품출고'] },
@@ -3711,6 +3715,7 @@ const PAGE_ICON = {
   psDispatchOpt:'🚀',
   returnOut:'↩️',
   dispatchConstraint:'🎯',
+  hlDispatchConstraint:'🎯',
   dispatchStrategy:'⚙️',
   docMgmt:'📁',
 };
@@ -4041,7 +4046,10 @@ function _doShowPage(p) {
     renderDispatchStrategy();
   } else if (p === 'dispatchConstraint') {
     srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
-    renderDispatchConstraint();
+    renderDispatchConstraint('PS');
+  } else if (p === 'hlDispatchConstraint') {
+    srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
+    renderDispatchConstraint('HL');
   } else if (p === 'tmsDashboard') {
     srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderTmsDashboard();
@@ -22571,6 +22579,12 @@ document.addEventListener('keydown', e => {
    PS제약조건관리 (dispatchConstraint)
 ══════════════════════════════════════════════════════════════ */
 const DCON = {
+  /* 배차 스코프: 'PS'(SKUG05='10'/TMS_CARCLASS10) | 'HL'(SKUG05='20'/TMS_CARCLASS20)
+     - PS제약조건관리 = 'PS', HL제약조건관리 = 'HL'
+     - 모든 배차설정 API 호출에 scope 를 전달(GET=쿼리파라미터, POST=body.SCOPE)하여
+       목적식/프로파일/제약세트/제약항목을 스코프별로 완전 분리 관리. */
+  scope: 'PS',
+
   /* 목적식 */
   objectives: [],      // TMS_DS_DISPATCH_OBJECTIVE rows
   selObjCode: null,    // 선택된(클릭) 목적식 코드
@@ -22659,14 +22673,18 @@ const DCON_KEY_META = {
   COST_REF_DATE:   { label:'운송비 기준일',     unit:'날짜', op:'=', type:'COST', hint:'TODAY 또는 YYYYMMDD' },
 };
 
-async function renderDispatchConstraint() {
+async function renderDispatchConstraint(scope) {
+  // scope: 'PS'(기본) | 'HL' — 스코프별 목적식/프로파일/제약세트/제약항목 분리 관리.
+  //   동일 화면·동일 dcon* 함수를 재사용하고 DCON.scope 로만 분기(코드 중복 제거).
+  DCON.scope = (scope === 'HL') ? 'HL' : 'PS';
+  const scopeNm = DCON.scope === 'HL' ? 'HL제약조건관리' : 'PS제약조건관리';
   const content = document.getElementById('content');
   content.innerHTML = `
 <div class="dcon-layout" id="dcon-layout">
   <!-- 상단 툴바 -->
   <div class="dcon-topbar">
-    <div class="dcon-topbar-title">🎯 PS제약조건관리
-      <small>목적식 · 제약조건 편집 · 자동배차</small>
+    <div class="dcon-topbar-title">🎯 ${scopeNm}
+      <small>목적식 · 제약조건 편집 · 자동배차 · [${DCON.scope}] ${DCON.scope==='HL'?'TMS_CARCLASS20':'TMS_CARCLASS10'}</small>
     </div>
     <div style="display:flex;gap:6px;align-items:center">
       <button class="dcon-run-btn secondary" onclick="dconRefresh()" style="padding:5px 12px">🔄 새로고침</button>
@@ -23040,7 +23058,7 @@ async function renderDispatchConstraint() {
 /* ── 목적식 로드 ─────────────────────────────────────────── */
 async function dconLoadObjectives() {
   try {
-    const r = await fetch('/api/dispatch-objective/list');
+    const r = await fetch(`/api/dispatch-objective/list?scope=${DCON.scope}`);
     const d = await r.json();
     if (d.ok) {
       DCON.objectives = d.rows || [];
@@ -23171,7 +23189,7 @@ async function dconSaveObjForm() {
   const algo = document.getElementById('dcon-of-algo').value.trim();
   const desc = document.getElementById('dcon-of-desc').value.trim();
   if (!code || !nm) { showToast('코드와 이름은 필수입니다'); return; }
-  const body = { OBJ_CODE:code, OBJ_NM:nm, OBJ_ICON:icon, OBJ_ALGO:algo, OBJ_DESC:desc, ACTIVE_YN:'Y' };
+  const body = { OBJ_CODE:code, OBJ_NM:nm, OBJ_ICON:icon, OBJ_ALGO:algo, OBJ_DESC:desc, ACTIVE_YN:'Y', SCOPE:DCON.scope };
   if (id) body.OBJ_ID = parseInt(id);
   try {
     const r = await fetch('/api/dispatch-objective/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
@@ -23193,7 +23211,7 @@ async function dconDeleteObj(objId, nm) {
 /* ── 프로파일 로드 ───────────────────────────────────────── */
 async function dconLoadMeta() {
   try {
-    const r = await fetch('/api/dispatch-constraint/meta');
+    const r = await fetch(`/api/dispatch-constraint/meta?scope=${DCON.scope}`);
     const d = await r.json();
     if (d.ok) DCON.meta = d;
   } catch(e) { console.error('meta load error', e); }
@@ -23201,7 +23219,7 @@ async function dconLoadMeta() {
 
 async function dconLoadProfiles() {
   try {
-    const r = await fetch('/api/dispatch-constraint/profiles');
+    const r = await fetch(`/api/dispatch-constraint/profiles?scope=${DCON.scope}`);
     const d = await r.json();
     if (!d.ok) return;
     DCON.profiles = d.rows || [];
@@ -23278,7 +23296,7 @@ async function dconAddProfile() {
   try {
     const r = await fetch('/api/dispatch-constraint/profiles/save', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ PROFILE_NM:nm, OBJECTIVE:obj.trim().toUpperCase(), ACTIVE_YN:'N', NOTE:'' })
+      body: JSON.stringify({ PROFILE_NM:nm, OBJECTIVE:obj.trim().toUpperCase(), ACTIVE_YN:'N', NOTE:'', SCOPE:DCON.scope })
     });
     const d = await r.json();
     if (d.ok) { showToast('프로파일 추가됨'); await dconLoadProfiles(); }
@@ -24036,7 +24054,7 @@ const DCON_PARAM_META = {
 ══════════════════════════════════════════════════════════════ */
 async function dconLoadSets() {
   try {
-    const r = await fetch('/api/dispatch-const-set/list');
+    const r = await fetch(`/api/dispatch-const-set/list?scope=${DCON.scope}`);
     const d = await r.json();
     if (!d.ok) return;
     DCON.sets = d.rows || [];
@@ -26629,7 +26647,7 @@ async function dconSaveSetForm() {
   const id   = document.getElementById('dcon-sf-id')?.value;
   if (!nm) return showToast('세트 이름을 입력하세요', 'warn');
   try {
-    const body = { SET_NM: nm, SET_DESC: desc, ACTIVE_YN: 'Y' };
+    const body = { SET_NM: nm, SET_DESC: desc, ACTIVE_YN: 'Y', SCOPE: DCON.scope };
     if (id) body.SET_ID = Number(id);
     const r = await fetch('/api/dispatch-const-set/save', {
       method:'POST', headers:{'Content-Type':'application/json'},
