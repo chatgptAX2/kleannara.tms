@@ -13644,8 +13644,16 @@ async function _sapShowLoadImage(stknum, cartype, carclassCd) {
       if (data && data.ok) {
         const raw = data.items || data.rows || [];
         if (raw.length) { items = raw; if (data.veh) vehObj = vehObj || data.veh; }
-        /* ★[3D 통일] 서버가 PS제약조건 반영 배치(roll_layout)를 주면 그대로 사용 */
-        if (Array.isArray(data.roll_layout)) rollLayout = data.roll_layout;
+        /* ★[3D 재현] 우선순위:
+           ① load_layout_json(배차 당시 저장 스냅샷) → 배차 시점 3D 물리검증 결과 그대로 재현
+           ② data.roll_layout(현재 제약조건 실시간 산출) → 스냅샷 없을 때 fallback */
+        if (data.load_layout_json) {
+          try {
+            const snap = JSON.parse(data.load_layout_json);
+            if (snap && Array.isArray(snap.roll_layout)) rollLayout = snap.roll_layout;
+          } catch(_e) { /* 파싱 실패 시 아래 실시간 산출값 사용 */ }
+        }
+        if (rollLayout == null && Array.isArray(data.roll_layout)) rollLayout = data.roll_layout;
       } else { lastErr = (data && data.error) || 'items 조회 실패'; }
     } catch(e) { lastErr = e.message; }
 
@@ -18618,6 +18626,18 @@ function psopSaveAutoResult(vehicles, autoMeta) {
   vehicles.forEach(v => {
     psopState._pendingSeq++;
     const pid = `_pending_${psopState._pendingSeq}`;
+    // ★[이슈2] 배차 당시 3D 물리검증 배치 스냅샷 보관 → 배차저장 시 서버(LOAD_LAYOUT)로 전송,
+    //   이후 SAP선적탭 3D가 '배차 당시 그대로' 재현되도록 한다. (원지 roll_layout + 판지 높이 등)
+    const _loadLayoutObj = {
+      roll_layout:                 v.roll_layout || [],
+      physics3d_roll_fits:         v.physics3d_roll_fits ?? null,
+      physics3d_roll_floor_pct:    v.physics3d_roll_floor_pct ?? null,
+      physics3d_roll_stack_height: v.physics3d_roll_stack_height ?? null,
+      physics3d_board_fits:        v.physics3d_board_fits ?? null,
+      physics3d_board_max_height:  v.physics3d_board_max_height ?? null,
+      board_max_height_m:          v.board_max_height_m ?? null,
+      material_type:               v.material_type || '',
+    };
     psopState.vehicles.push({
       _pendingId:   pid,
       cartype:      v.cartype,
@@ -18633,6 +18653,9 @@ function psopSaveAutoResult(vehicles, autoMeta) {
       // 배차방법(자동) + 제약조건 메타 (선적목록 배지/제약조건 확인용)
       _dispatchMethod: 'AUTO',
       _autoMeta:       autoMeta || { method: 'AUTO' },
+      // 3D 배치 스냅샷(원지/판지 물리검증 결과) — 인메모리 3D + 저장 전송용
+      roll_layout:     v.roll_layout || [],
+      _loadLayout:     JSON.stringify(_loadLayoutObj),
       items:        v.items || [],
     });
     (v.items || []).forEach(it => {
@@ -19195,6 +19218,8 @@ async function psopSaveDispatch() {
         dptnky:      v.dptnky,
         dptnm:       v.dptnm,
         total_kg:    v.total_kg,
+        // ★[이슈2] 배차 당시 3D 배치 스냅샷 → 서버 TMS_PS_DISPATCH_H.LOAD_LAYOUT 저장
+        load_layout: v._loadLayout || '',
         items:       v.items,
       })) })
     });

@@ -1037,19 +1037,37 @@ public class SapRfcService {
                 out.put("ok", true);
                 out.put("items", items);
                 out.put("veh", veh);
-                // ── [3D 통일] PS제약조건관리의 원지 3D 물리검증 제약조건이 반영된 배치(roll_layout)
-                //   를 함께 산출하여 반환한다. 프론트(_lvComputePlacement)가 이 값으로 3D를
-                //   그리므로, SAP선적탭·배차탭이 '자동배차와 동일한' 제약조건 기준 3D를 보여준다.
-                //   (산출 실패 시 roll_layout 은 빈 배열 → 프론트는 기하 추정으로 fallback) */
+                // ── [3D 통일/재현] 3D 배치(roll_layout) 확보 우선순위 ─────────────────
+                //   ① 배차 당시 저장 스냅샷(TMS_PS_DISPATCH_H.LOAD_LAYOUT, stknum=DISPATCH_NO)
+                //      → 배차 시점의 PS제약조건 3D 물리검증 결과를 '그대로' 재현(가장 정확).
+                //   ② 스냅샷이 없으면(구 배차/미저장) computeLoadLayout 로 현재 제약조건 실시간 산출.
+                //   ③ 그래도 실패면 roll_layout 미포함 → 프론트 기하 추정 fallback.
+                boolean layoutFromSnapshot = false;
                 try {
-                    Map<String, Object> layout = autoDispatchService.computeLoadLayout(items, cartype, null);
-                    if (layout != null) {
-                        out.put("roll_layout",       layout.get("roll_layout"));
-                        out.put("roll3d_fits",       layout.get("roll3d_fits"));
-                        out.put("board_max_height_m", layout.get("board_max_height_m"));
+                    List<Map<String, Object>> lrows = tmsJdbc.queryForList(
+                        "SELECT LOAD_LAYOUT FROM KNRAWMS.TMS_PS_DISPATCH_H WHERE DISPATCH_NO = ?", stknum);
+                    if (!lrows.isEmpty()) {
+                        String snap = str(lrows.get(0).get("LOAD_LAYOUT"));
+                        if (snap != null && !snap.isBlank()) {
+                            out.put("load_layout_json", snap);   // 프론트가 JSON.parse 하여 사용
+                            layoutFromSnapshot = true;
+                        }
                     }
-                } catch (Exception le) {
-                    log.warn("[SAP-items] roll_layout 산출 실패(무시, 기하추정 fallback): {}", le.getMessage());
+                } catch (Exception se) {
+                    // LOAD_LAYOUT 컬럼 미생성(DDL 전) 등 → 조용히 실시간 산출로 진행
+                    log.warn("[SAP-items] LOAD_LAYOUT 조회 스킵(무시): {}", se.getMessage());
+                }
+                if (!layoutFromSnapshot) {
+                    try {
+                        Map<String, Object> layout = autoDispatchService.computeLoadLayout(items, cartype, null);
+                        if (layout != null) {
+                            out.put("roll_layout",       layout.get("roll_layout"));
+                            out.put("roll3d_fits",       layout.get("roll3d_fits"));
+                            out.put("board_max_height_m", layout.get("board_max_height_m"));
+                        }
+                    } catch (Exception le) {
+                        log.warn("[SAP-items] roll_layout 산출 실패(무시, 기하추정 fallback): {}", le.getMessage());
+                    }
                 }
                 return out;
             } catch (Exception e) { return errMap(e); }
