@@ -13633,7 +13633,8 @@ async function _sapShowLoadImage(stknum, cartype, carclassCd) {
 
     let items = null, lastErr = '';
 
-    /* 1차: /api/ps-sap/items — {stknum,cartype} → {ok, items[]} */
+    /* 1차: /api/ps-sap/items — {stknum,cartype} → {ok, items[], roll_layout[]} */
+    let rollLayout = null;   // 제약조건 기반 3D 배치(서버 산출) — 없으면 기하 추정 fallback
     try {
       const res  = await fetch('/api/ps-sap/items', {
         method:'POST', headers:{'Content-Type':'application/json'},
@@ -13643,6 +13644,8 @@ async function _sapShowLoadImage(stknum, cartype, carclassCd) {
       if (data && data.ok) {
         const raw = data.items || data.rows || [];
         if (raw.length) { items = raw; if (data.veh) vehObj = vehObj || data.veh; }
+        /* ★[3D 통일] 서버가 PS제약조건 반영 배치(roll_layout)를 주면 그대로 사용 */
+        if (Array.isArray(data.roll_layout)) rollLayout = data.roll_layout;
       } else { lastErr = (data && data.error) || 'items 조회 실패'; }
     } catch(e) { lastErr = e.message; }
 
@@ -13682,7 +13685,7 @@ async function _sapShowLoadImage(stknum, cartype, carclassCd) {
       document.getElementById('sap-load-summary').innerHTML = '';
       return;
     }
-    _sapLoadItemsCache[stknum] = { items, veh: vehObj, cartype };
+    _sapLoadItemsCache[stknum] = { items, veh: vehObj, cartype, roll_layout: rollLayout };
   }
 
   spinner.style.display = 'none';

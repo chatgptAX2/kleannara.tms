@@ -167,14 +167,18 @@ public class SapRfcService {
     /** MariaDB TMS — TMS_PS_DISPATCH_H/D, VHCMA (배차 조회/확정) */
     private final JdbcTemplate       tmsJdbc;
     private final SapJcoProperties   jcoProps;
+    /** 적재뷰(3D) 제약조건 기반 배치 산출 재사용 — SAP선적탭/배차탭 3D 통일용 */
+    private final AutoDispatchService autoDispatchService;
 
     public SapRfcService(
             @Qualifier("wmsJdbcTemplate") JdbcTemplate wmsJdbc,
             @Qualifier("tmsJdbcTemplate") JdbcTemplate tmsJdbc,
-            SapJcoProperties jcoProps) {
+            SapJcoProperties jcoProps,
+            AutoDispatchService autoDispatchService) {
         this.wmsJdbc  = wmsJdbc;
         this.tmsJdbc  = tmsJdbc;
         this.jcoProps = jcoProps;
+        this.autoDispatchService = autoDispatchService;
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -1033,6 +1037,20 @@ public class SapRfcService {
                 out.put("ok", true);
                 out.put("items", items);
                 out.put("veh", veh);
+                // ── [3D 통일] PS제약조건관리의 원지 3D 물리검증 제약조건이 반영된 배치(roll_layout)
+                //   를 함께 산출하여 반환한다. 프론트(_lvComputePlacement)가 이 값으로 3D를
+                //   그리므로, SAP선적탭·배차탭이 '자동배차와 동일한' 제약조건 기준 3D를 보여준다.
+                //   (산출 실패 시 roll_layout 은 빈 배열 → 프론트는 기하 추정으로 fallback) */
+                try {
+                    Map<String, Object> layout = autoDispatchService.computeLoadLayout(items, cartype, null);
+                    if (layout != null) {
+                        out.put("roll_layout",       layout.get("roll_layout"));
+                        out.put("roll3d_fits",       layout.get("roll3d_fits"));
+                        out.put("board_max_height_m", layout.get("board_max_height_m"));
+                    }
+                } catch (Exception le) {
+                    log.warn("[SAP-items] roll_layout 산출 실패(무시, 기하추정 fallback): {}", le.getMessage());
+                }
                 return out;
             } catch (Exception e) { return errMap(e); }
         }
