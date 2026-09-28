@@ -66,6 +66,19 @@ public class PsDispatchDocResponse {
     @JsonProperty("UNIT_WEIGHT")
     private Double unitWeight;      // RECDI 기반 단일 롤 중량 (0=미등록)
 
+    // ── [3D 일치] 적재뷰(3D) 계산 필드 — 배차확정 탭 sapItems 와 '동일 산식' ──
+    //   배차저장 前(자동배차 items = searchDocs 결과)과 저장 後(sapItems)의 3D 입력을
+    //   맞춰 원지/판지 배치가 일치하도록 노출. 프론트 _lvComputePlacement 가 판지 단수/
+    //   높이 산출에 사용하는 대문자 JSON 키(SOK_PER_R / PLT_PER_UNIT / THICKNESS).
+    @JsonProperty("SOK_PER_R")
+    private Double sokPerR;         // 1R당 SOK 환산계수 (판지 속단위, MEASI)
+
+    @JsonProperty("PLT_PER_UNIT")
+    private Double pltPerUnit;      // 판지(SKUG05='10') PLT당 개수 (RECDI FRV, 단수 산출)
+
+    @JsonProperty("THICKNESS")
+    private Double thickness;       // TMS_THICKNESS(µm) — 판지 1단(1PLT) 높이 산출
+
     @JsonProperty("ROLL_COUNT")
     private Integer rollCount;      // 원지 롤 수
 
