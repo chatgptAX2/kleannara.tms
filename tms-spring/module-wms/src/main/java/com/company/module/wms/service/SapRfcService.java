@@ -1047,7 +1047,8 @@ public class SapRfcService {
                     List<Map<String, Object>> lrows = tmsJdbc.queryForList(
                         "SELECT LOAD_LAYOUT FROM KNRAWMS.TMS_PS_DISPATCH_H WHERE DISPATCH_NO = ?", stknum);
                     if (!lrows.isEmpty()) {
-                        String snap = str(lrows.get(0).get("LOAD_LAYOUT"));
+                        // CLOB 안전 변환(Oracle 은 CLOB 을 java.sql.Clob 로 줄 수 있음)
+                        String snap = clobToString(lrows.get(0).get("LOAD_LAYOUT"));
                         if (snap != null && !snap.isBlank()) {
                             out.put("load_layout_json", snap);   // 프론트가 JSON.parse 하여 사용
                             layoutFromSnapshot = true;
@@ -2103,6 +2104,27 @@ public class SapRfcService {
 
     private String str(Object v)      { return v == null ? "" : v.toString().trim(); }
     private String nullSafe(String v) { return v == null ? "" : v; }
+
+    /**
+     * CLOB/String 어떤 형태로 조회돼도 안전하게 원문 문자열로 변환한다.
+     *   Oracle JDBC 는 CLOB 컬럼을 java.sql.Clob 로 반환할 수 있어, 이 경우
+     *   toString() 을 하면 내용이 아닌 객체 참조가 된다 → getSubString 으로 전체를 읽는다.
+     *   (Spring JdbcTemplate 이 이미 String 으로 매핑했다면 그대로 사용)
+     */
+    private String clobToString(Object v) {
+        if (v == null) return null;
+        if (v instanceof String s) return s;
+        if (v instanceof java.sql.Clob clob) {
+            try {
+                long len = clob.length();
+                return len == 0 ? "" : clob.getSubString(1, (int) len);
+            } catch (Exception e) {
+                log.warn("[SAP-items] CLOB 변환 실패: {}", e.getMessage());
+                return null;
+            }
+        }
+        return v.toString();
+    }
 
     private Long toLong(Object v) {
         try { return v == null ? null : Long.valueOf(v.toString()); }
