@@ -19146,39 +19146,40 @@ async function psopDeleteDispatch() {
     }
   }
 
-  /* ── 2. 미저장 배차 → 인메모리 제거 + DISPATCHED 해제 ── */
-  const removedItems = pendingVehs.flatMap(v => v.items || []);
-  removedItems.forEach(it => {
+  /* ── 2. 삭제된 모든 배차(저장/미저장)의 문서 → 미배차/미연동 상태로 즉시 초기화 ──
+     [버그수정] 기존에는 저장 배차를 vehicles 에 남긴 채 STDLNR 만 null 로 바꿔
+       "미저장 상태로 유지"했는데, savedKeys/selectedDocs 를 정리하지 않아
+       ① 선적목록에 삭제된 가선적번호가 그대로 남고(갱신 안 됨),
+       ② 이후 선택 동기화(_psopSyncDispatchedSelectionNow)로 삭제분이 재로드/중복되는
+       문제가 있었다. → 저장·미저장 모두 vehicles 에서 완전 제거 + 관련 상태 정리한다. */
+  const delItems = [...savedVehs, ...pendingVehs].flatMap(v => v.items || []);
+  delItems.forEach(it => {
+    const key = `${it.SHPOKY}|${it.SHPOIT}`;
+    // savedKeys(배차완료 매핑) 제거 → 재조회/렌더 시 배차완료 오표시 방지
+    psopState.savedKeys.delete(key);
+    // 선택 상태 제거 → 선택 동기화로 삭제분이 되살아나지 않도록
+    psopState.selectedDocs.delete(key);
     const row = psopState.searchRows.find(r => r.SHPOKY === it.SHPOKY && r.SHPOIT === it.SHPOIT);
-    if (row) row.DISPATCHED = false;
+    if (row) {
+      row.DISPATCHED = false;   // 미배차로 전환
+      row.IS_SAVED   = false;
+      row.STDLNR     = '';      // 가선적번호 제거
+      row.TMS_LINK_YN = '';     // 미연동 배지 제거(서버 DESC02 초기화와 일치)
+    }
   });
 
-  /* ── 2-1. 삭제(미배차 전환)된 모든 배차의 문서 → 미연동 배지 즉시 제거 ──
-     서버에서 DESC02(연동구분)를 공백으로 초기화하므로, 재조회 전에도 화면이 맞도록
-     인메모리 searchRows 의 TMS_LINK_YN 을 함께 비운다. (savedVehs + pendingVehs 모두) */
-  [...savedVehs, ...pendingVehs].flatMap(v => v.items || []).forEach(it => {
-    const row = psopState.searchRows.find(r => r.SHPOKY === it.SHPOKY && r.SHPOIT === it.SHPOIT);
-    if (row) row.TMS_LINK_YN = '';
-  });
-
-  /* ── 3. 저장된 배차 → STDLNR 제거해 미저장 상태로 전환(vehicles에 유지) ── */
-  savedVehs.forEach(veh => {
-    veh.STDLNR = null;   // 미저장 상태로 전환 (차량 패널에 계속 표시)
-  });
-
-  /* ── 4. 미저장 배차는 vehicles 배열에서 제거 ── */
-  psopState.vehicles = psopState.vehicles.filter(v => !pendingVehs.some(p => p._pendingId === v._pendingId));
+  /* ── 3. 삭제 대상 배차(저장/미저장 모두)를 vehicles 배열에서 완전 제거 ── */
+  const delPids = new Set([...savedVehs, ...pendingVehs].map(v => v._pendingId));
+  psopState.vehicles = psopState.vehicles.filter(v => !delPids.has(v._pendingId));
   psopState.selectedVehicles.clear();
-  // vehSelPid가 삭제된 미저장 배차였을 때만 초기화 (저장→미저장 전환된 건 유지)
-  if (pendingVehs.some(p => p._pendingId === psopState.vehSelPid)) {
-    psopState.vehSelPid = null;
-  }
-  // localStorage 동기화 (pending 차량 제거 반영)
+  // 선택 커서가 삭제된 배차였으면 초기화
+  if (delPids.has(psopState.vehSelPid)) psopState.vehSelPid = null;
+  // localStorage 동기화 (제거 반영)
   _psopSavePendingState();
 
-  /* ── 5. UI 갱신 ── */
+  /* ── 4. UI 갱신 ── */
   let msg = '';
-  if (dbDeleted)   msg += `🗑️ 저장된 배차 ${dbDeleted}건 DB 삭제 → 미저장 상태로 유지`;
+  if (dbDeleted)   msg += `🗑️ 저장된 배차 ${dbDeleted}건 DB 삭제(미배차 전환)`;
   if (pendingCnt)  msg += (msg ? ' / ' : '') + `↩️ 미저장 배차 ${pendingCnt}건 취소`;
   showToast(msg);
 
@@ -19186,8 +19187,9 @@ async function psopDeleteDispatch() {
   psopRenderDocTable();
   psopUpdateToolbar();
 
-  /* ── 6. 저장된 배차 삭제 후 psopSearch() 불필요 — 인메모리에서 처리 완료 ── */
-  // (기존: if (dbDeleted) await psopSearch(); — 제거함)
+  /* ── 5. 저장된 배차 삭제 시 서버 재조회로 최종 정합화 ──
+     인메모리 정리에 더해, DB 삭제 결과를 서버 기준으로 다시 맞춰 잔존/중복을 제거한다. */
+  if (dbDeleted) await psopSearch();
 }
 
 async function psopSaveDispatch() {
