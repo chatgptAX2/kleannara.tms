@@ -100,6 +100,16 @@ public class PsDispatchSaveRequest {
         @Valid
         @JsonAlias({"ITEMS"})
         private List<ItemBlock> items;
+
+        /**
+         * 적재뷰(3D) 배치 스냅샷(JSON 문자열).
+         *   자동/수기 배차 시점의 PS제약조건 3D 물리검증 결과(roll_layout/physics3d_* 등)를
+         *   그대로 담아 TMS_PS_DISPATCH_H.LOAD_LAYOUT 에 저장한다.
+         *   → SAP선적탭 조회 시 이 값을 되돌려 3D를 '배차 당시 그대로' 재현(이슈2 근본 해결).
+         *   프론트가 JSON.stringify 한 문자열을 그대로 전달(서버는 저장/반환만, 파싱 안 함).
+         */
+        @JsonAlias({"load_layout", "LOAD_LAYOUT", "loadLayoutJson"})
+        private String loadLayout;
     }
 
     @Getter

@@ -402,11 +402,14 @@ public class PsDispatchService {
             // TMS_PS_DISPATCH_H INSERT → MariaDB tmsEm
             // DISPATCH_TYPE : PS(판매/이송) 배차 저장 시 'GI'(출고) 로 고정
             //   ─ 반품 배차(배차(반품) 탭)는 별도 저장 경로에서 'GR' 로 저장한다.
+            // 적재뷰(3D) 배치 스냅샷 — 배차 당시 PS제약조건 3D 물리검증 결과(JSON)를 그대로 저장.
+            //   SAP선적탭 조회 시 되돌려 3D를 배차 당시 그대로 재현(이슈2). null/미전송이면 공백.
+            String loadLayoutJson = veh.getLoadLayout();
             tmsEm.createNativeQuery("""
                 INSERT INTO KNRAWMS.TMS_PS_DISPATCH_H
                   (DISPATCH_NO, DISPATCH_DT, RQSHPD, DPTNKY, DPTNM,
-                   CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR, DISPATCH_TYPE)
-                VALUES (?,?,?,?,?,?,'DRAFT',?,?,?,?,'GI')
+                   CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR, DISPATCH_TYPE, LOAD_LAYOUT)
+                VALUES (?,?,?,?,?,?,'DRAFT',?,?,?,?,'GI',?)
                 """)
               .setParameter(1,  dispatchNo)
               .setParameter(2,  today)
@@ -418,6 +421,7 @@ public class PsDispatchService {
               .setParameter(8,  totalCnt)
               .setParameter(9,  today)
               .setParameter(10, "SYSTEM")
+              .setParameter(11, loadLayoutJson == null ? "" : loadLayoutJson)
               .executeUpdate();
 
             List<PsDispatchSaveRequest.ItemBlock> items = veh.getItems();
