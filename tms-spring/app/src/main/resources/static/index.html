@@ -18615,7 +18615,8 @@ function psopShowAutoResultModal(vehicles, objNm, selectedCnt, autoMeta) {
       </div>
       <div class="psd-modal-foot">
         <button class="psd-btn" onclick="document.getElementById('psop-auto-modal').remove()">취소</button>
-        <button class="psd-btn success" onclick="psopSaveAutoResult(${JSON.stringify(vehicles).replace(/"/g,'&quot;')}, ${JSON.stringify(autoMeta||{method:'AUTO'}).replace(/"/g,'&quot;')})">💾 배차 저장</button>
+        <!-- 명칭 '저장' : 배차탭 하단 '배차저장' 버튼과 구분(미리보기→목록 추가 단계) -->
+        <button class="psd-btn success" onclick="psopSaveAutoResult(${JSON.stringify(vehicles).replace(/"/g,'&quot;')}, ${JSON.stringify(autoMeta||{method:'AUTO'}).replace(/"/g,'&quot;')})">💾 저장</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
