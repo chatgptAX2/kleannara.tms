@@ -2249,7 +2249,12 @@ public class AutoDispatchService {
             String sk  = str(it.get("SKUKEY"));
             if (!isRoll(sk) && !"R".equals(str(it.get("UOMKEY")))) continue;
 
-            int qty = Math.max(1, (int) dbl(it.get("QTSHPO")));
+            // ── 롤 개수 산정 (버그수정) ────────────────────────────────
+            //  QTSHPO 를 그대로 롤 개수로 쓰면 UOMKEY≠'R'(중량 단위 출고)인 경우
+            //  QTSHPO=중량(KG) 이 롤 개수로 오인되어 총롤수·Y축점유가 수백 배 폭증한다.
+            //  (예: 1740KG/실3롤 → 1740롤 오계산 → Y축점유 957,000mm)
+            //  → itemRollCount() 로 UOMKEY='R'이면 QTSHPO, 아니면 ceil(중량/단위롤중량) 계산.
+            int qty = Math.max(1, itemRollCount(it, skumaMap, cp.rollSingleKg));
             totalRolls += qty;
 
             // 너비(mm): TMS_SHPDI.WIDTH_MM 우선, 없으면 SKUMA.wMm, 없으면 SKUKEY 파싱
