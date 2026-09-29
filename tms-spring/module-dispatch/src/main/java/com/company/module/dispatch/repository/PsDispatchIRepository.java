@@ -24,7 +24,10 @@ public interface PsDispatchIRepository extends JpaRepository<PsDispatchI, Long> 
     /** 납품문서 + 라인으로 배차아이템 조회 (중복 체크) */
     boolean existsByShpokyAndShpoit(String shpoky, String shpoit);
 
-    /** 아이템 상세 조회 (RECDI 조인, 롤 중량 포함) */
+    /** 아이템 상세 조회 (RECDI 조인, 롤 중량 포함)
+     *  [원지 롤수 정확도] UNIT_WEIGHT(원지 1롤 단중)는 SKU별 최신 입고(STATIT='FRV',
+     *  RECVKY 최신) 1건만 조인 — 단순 SKUKEY 조인 시 여러 입고건과 fan-out 되어
+     *  D 행이 중복되고 단중이 비결정적으로 잡히는 것을 방지(searchDocs A안과 동일 취지). */
     @Query(value = """
         SELECT d.ITEM_ID, d.DISPATCH_NO, d.SEQ, d.SHPOKY, d.SHPOIT,
                d.SKUKEY, d.DESC01, d.QTSHPO, d.UOMKEY,
@@ -33,7 +36,14 @@ public interface PsDispatchIRepository extends JpaRepository<PsDispatchI, Long> 
                COALESCE(d.KG_WEIGHT,0) AS KG_WEIGHT,
                COALESCE(rd.QTYRCV,  0) AS UNIT_WEIGHT
         FROM KNRAWMS.TMS_PS_DISPATCH_D d
-        LEFT JOIN KNRAWMS.RECDI rd ON rd.SKUKEY = d.SKUKEY
+        LEFT JOIN (
+            SELECT SKUKEY, QTYRCV FROM (
+                SELECT r.SKUKEY, r.QTYRCV,
+                       ROW_NUMBER() OVER (PARTITION BY r.SKUKEY ORDER BY r.RECVKY DESC) AS RN
+                FROM KNRAWMS.RECDI r
+                WHERE r.STATIT = 'FRV'
+            ) WHERE RN = 1
+        ) rd ON rd.SKUKEY = d.SKUKEY
         WHERE d.DISPATCH_NO = :dispatchNo
         ORDER BY d.SEQ
         """, nativeQuery = true)
