@@ -1589,6 +1589,29 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
    배차전략 관리 — 레이아웃 & 공통
 ══════════════════════════════════════════════ */
 .ds-layout{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;background:var(--bg)}
+
+/* ══════════════════════════════════════════════════════════════
+   [차량유형관리 색 팔레트] 기존 다색(주황/초록/분홍/노랑) → 지정 5색
+   남색·보라 계열로 조화롭게 통일. 모두 ds 화면(.ds-layout) 전용 스코프라
+   다른 화면(PS배차 등 공용 .car-* 사용처)에는 영향 없음.
+     --dsc1 #000982(진남)  --dsc2 #003282(남파랑)  --dsc3 #210082(보라남)
+     --dsc4 #005B82(청록파랑)  --dsc5 #4C0082(보라)
+   ══════════════════════════════════════════════════════════════ */
+.ds-layout{
+  --dsc1:#000982; --dsc2:#003282; --dsc3:#210082; --dsc4:#005B82; --dsc5:#4C0082;
+  --dsc-soft1:#e6e8f5; --dsc-soft2:#e6ecf5; --dsc-soft3:#eae6f5; --dsc-soft4:#e3edf2; --dsc-soft5:#efe6f5;
+}
+/* 차량 톤수 배지 — 팔레트 5색을 톤수 순서로 순환 배정(ds 화면 한정 오버라이드) */
+.ds-layout .car-1t4{background:var(--dsc4)!important;box-shadow:none!important}
+.ds-layout .car-3t5{background:var(--dsc2)!important;box-shadow:none!important}
+.ds-layout .car-5t {background:var(--dsc1)!important;box-shadow:none!important}
+.ds-layout .car-5tax{background:var(--dsc3)!important;box-shadow:none!important}
+.ds-layout .car-8t {background:var(--dsc5)!important;box-shadow:none!important}
+.ds-layout .car-11t{background:var(--dsc4)!important;box-shadow:none!important}
+.ds-layout .car-15t{background:var(--dsc2)!important;box-shadow:none!important}
+.ds-layout .car-18t{background:var(--dsc1)!important;box-shadow:none!important}
+.ds-layout .car-1t4,.ds-layout .car-3t5,.ds-layout .car-5t,.ds-layout .car-5tax,
+.ds-layout .car-8t,.ds-layout .car-11t,.ds-layout .car-15t,.ds-layout .car-18t{color:#fff!important}
 /* ── 상단 타이틀바 ── */
 .ds-topbar{
   padding:14px 22px 12px;
@@ -8889,27 +8912,27 @@ function _dsBuildVehicleTableHTML() {
         </colgroup>
         <thead>
           <tr>
-            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#fff8e1;color:#e65100;vertical-align:middle">차량코드</th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--dsc-soft1);color:var(--dsc1);vertical-align:middle;font-weight:800">차량코드</th>
             <th class="ds-cartype" rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--th-bg);vertical-align:middle">차량 톤수</th>
-            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:${activeTab==='PS'?'#e3f0ff;color:#1a56db':'#e8fce8;color:#1a7a1a'};vertical-align:middle;font-weight:800">사용<br>여부</th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:${activeTab==='PS'?'var(--dsc-soft2);color:var(--dsc2)':'var(--dsc-soft4);color:var(--dsc4)'};vertical-align:middle;font-weight:800">사용<br>여부</th>
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--th-bg);vertical-align:middle">길이<br><small style="font-weight:400">(m)</small></th>
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--th-bg);vertical-align:middle">너비<br><small style="font-weight:400;color:var(--text3)">(m/범위)</small></th>
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--th-bg);vertical-align:middle">높이<br><small style="font-weight:400">(m)</small></th>
-            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--warning);color:#1a1a1a;vertical-align:middle">파렛트<br>높이(m)</th>
-            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--primary);color:#fff;vertical-align:middle">적재CBM<br><small style="font-weight:400;opacity:.85">m³</small></th>
-            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--th-bg);vertical-align:middle">상차량<br><small style="font-weight:400;color:var(--success)">(ton)★</small></th>
-            <th colspan="2" style="position:sticky;top:0;z-index:2;background:#e8eaf6;color:#3949ab;border-bottom:none">🔵 12인치 적재수량</th>
-            <th colspan="2" style="position:sticky;top:0;z-index:2;background:#e8f5e9;color:#2e7d32;border-bottom:none">🟢 3인치 적재수량</th>
-            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#fce4ec;color:#c62828;vertical-align:middle">파렛트수</th>
-            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#fce4ec;color:#c62828;vertical-align:middle">장축여부</th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--dsc3);color:#fff;vertical-align:middle">파렛트<br>높이(m)</th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--dsc1);color:#fff;vertical-align:middle">적재CBM<br><small style="font-weight:400;opacity:.85">m³</small></th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--th-bg);vertical-align:middle">상차량<br><small style="font-weight:400;color:var(--dsc2)">(ton)★</small></th>
+            <th colspan="2" style="position:sticky;top:0;z-index:2;background:var(--dsc2);color:#fff;border-bottom:none">12인치 적재수량</th>
+            <th colspan="2" style="position:sticky;top:0;z-index:2;background:var(--dsc4);color:#fff;border-bottom:none">3인치 적재수량</th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--dsc5);color:#fff;vertical-align:middle">파렛트수</th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--dsc5);color:#fff;vertical-align:middle">장축여부</th>
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--th-bg);vertical-align:middle">기본<br>차량수</th>
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--th-bg);vertical-align:middle">삭제</th>
           </tr>
           <tr>
-            <th style="position:sticky;top:36px;z-index:2;background:#dde1f5;color:#3949ab">평량 300 미만</th>
-            <th style="position:sticky;top:36px;z-index:2;background:#dde1f5;color:#3949ab">평량 300 이상</th>
-            <th style="position:sticky;top:36px;z-index:2;background:#d4edd9;color:#2e7d32">평량 300 미만</th>
-            <th style="position:sticky;top:36px;z-index:2;background:#d4edd9;color:#2e7d32">평량 300 이상</th>
+            <th style="position:sticky;top:36px;z-index:2;background:var(--dsc-soft2);color:var(--dsc2)">평량 300 미만</th>
+            <th style="position:sticky;top:36px;z-index:2;background:var(--dsc-soft2);color:var(--dsc2)">평량 300 이상</th>
+            <th style="position:sticky;top:36px;z-index:2;background:var(--dsc-soft4);color:var(--dsc4)">평량 300 미만</th>
+            <th style="position:sticky;top:36px;z-index:2;background:var(--dsc-soft4);color:var(--dsc4)">평량 300 이상</th>
           </tr>
         </thead>
         <tbody id="ds-vhc-tbody">${tbodyRows}</tbody>
@@ -8931,20 +8954,20 @@ function _dsVehicleRowHTML(r) {
   const effHm   = Math.max(0, carH - palHv);
   const cbmVal  = (lenM > 0 && wNum > 0 && effHm > 0) ? (lenM * wNum * effHm).toFixed(2) : '-';
   const cbmColor = cbmVal !== '-'
-    ? (parseFloat(cbmVal) >= 40 ? 'var(--error)' : parseFloat(cbmVal) >= 20 ? 'var(--warning)' : 'var(--primary)')
+    ? (parseFloat(cbmVal) >= 40 ? 'var(--dsc5)' : parseFloat(cbmVal) >= 20 ? 'var(--dsc4)' : 'var(--dsc1)')
     : 'var(--text3)';
   const rowCls  = isNew ? 'ds-new-row' : '';
   const useYn   = (r.USE_YN || 'Y').toUpperCase();
   const useYnBg = useYn === 'Y'
-    ? 'background:linear-gradient(135deg,#e6f9f0,#d1fae5);color:#065f46;border-color:#6ee7b7'
-    : 'background:linear-gradient(135deg,#fff1f2,#ffe4e6);color:#9f1239;border-color:#fda4af';
+    ? 'background:var(--dsc-soft4);color:var(--dsc4);border-color:var(--dsc4)'
+    : 'background:var(--bg2);color:var(--text3);border-color:var(--border)';
 
   return `<tr class="${rowCls}" id="ds-vrow-${r._id}">
     <td style="padding:3px 6px;text-align:center">
       ${isNew
-        ? `<input class="ds-input" type="text" placeholder="차량코드" style="width:100%;box-sizing:border-box;font-size:11px;background:#fff8e1;border-color:#ffcc80"
+        ? `<input class="ds-input" type="text" placeholder="차량코드" style="width:100%;box-sizing:border-box;font-size:11px;background:var(--dsc-soft1);border-color:var(--dsc1)"
              id="ds-vccd-${r._id}" value="${r.CARCLASS_CD||''}">`
-        : `<span style="display:inline-block;padding:3px 9px;border-radius:8px;font-size:11px;font-weight:700;background:linear-gradient(135deg,#fff8e1,#fff3e0);color:#e65100;white-space:nowrap;border:1px solid #ffcc80;box-shadow:0 1px 3px rgba(230,81,0,.12)">${r.CARCLASS_CD||'-'}</span>
+        : `<span style="display:inline-block;padding:3px 9px;border-radius:8px;font-size:11px;font-weight:700;background:var(--dsc-soft1);color:var(--dsc1);white-space:nowrap;border:1px solid var(--dsc1)">${r.CARCLASS_CD||'-'}</span>
            <input type="hidden" id="ds-vccd-${r._id}" value="${r.CARCLASS_CD||''}">`
       }
     </td>
@@ -8973,7 +8996,7 @@ function _dsVehicleRowHTML(r) {
       id="ds-vhgt-${r._id}" value="${r.HEIGHT_M ?? ''}" placeholder="0.0"></td>
     <td class="ds-vhc-dim-cell"><input class="ds-input ds-vhc-num" type="number" step="0.01" min="0"
       id="ds-vpal-${r._id}" value="${palH}" placeholder="0.00"
-      style="background:linear-gradient(135deg,#fffbeb,#fef9c3);border-color:var(--warning);font-weight:600"
+      style="background:var(--dsc-soft3);border-color:var(--dsc3);font-weight:600"
       oninput="dsRefreshVehicleCbm('${r._id}')"
       ${effH ? `title="가용높이: ${effH}m"` : ''}></td>
     <td id="ds-vcbm-${r._id}" style="text-align:center;font-weight:700;font-size:13px;color:${cbmColor};letter-spacing:-.3px">
@@ -8991,10 +9014,10 @@ function _dsVehicleRowHTML(r) {
       id="ds-vi3ge-${r._id}"  value="${r.INCH3_GE300  ?? ''}" placeholder="-"></td>
     <td class="ds-vhc-inch-cell"><input class="ds-input ds-vhc-inch-num" type="number" min="0" max="999"
       id="ds-vplc-${r._id}"  value="${r.PALLET_CNT ?? ''}" placeholder="-"
-      style="background:linear-gradient(135deg,#fff1f2,#ffe4e6);border-color:#fda4af;font-weight:600"></td>
+      style="background:var(--dsc-soft5);border-color:var(--dsc5);font-weight:600"></td>
     <td style="padding:3px 4px;text-align:center">
       <select class="ds-input" id="ds-vlay-${r._id}"
-        style="width:100%;box-sizing:border-box;font-size:11px;padding:3px 4px;background:linear-gradient(135deg,#fff1f2,#ffe4e6);border-color:#fda4af;font-weight:600">
+        style="width:100%;box-sizing:border-box;font-size:11px;padding:3px 4px;background:var(--dsc-soft5);border-color:var(--dsc5);font-weight:600">
         <option value="N" ${(r.LONG_AXIS_YN||'N')==='N'?'selected':''}>N</option>
         <option value="Y" ${(r.LONG_AXIS_YN||'N')==='Y'?'selected':''}>Y</option>
       </select>
