@@ -138,6 +138,24 @@ public class DispatchConfigApiService {
             String scope = normScope(body.get("SCOPE"));
             if (code.isBlank()) return Map.of("ok", false, "error", "OBJ_CODE 필수");
 
+            // ── OBJ_CODE 중복 사전 검사(스코프 내에서만) ─────────────────────
+            //   유니크 제약 UK_DS_DISPATCH_OBJECTIVE 위배(ORA-00001)를 raw 스택 대신
+            //   명확한 한글 메시지로 안내. '같은 스코프' 안에서만 중복으로 판정하므로
+            //   PS/HL 이 동일 OBJ_CODE(예: MIN_VEHICLES)를 각각 보유하는 것은 허용된다.
+            //   ※ 이 정책이 실제로 저장되려면 운영 제약이 (OBJ_CODE, SCOPE) 복합이어야 함(DDL 필요).
+            {
+                String dupSql = "SELECT COUNT(*) FROM KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE " +
+                                "WHERE OBJ_CODE=? AND COALESCE(SCOPE,'PS')=?" +
+                                (objId != null ? " AND OBJ_ID<>?" : "");
+                Integer dup = (objId != null)
+                    ? tmsJdbc.queryForObject(dupSql, Integer.class, code, scope, objId)
+                    : tmsJdbc.queryForObject(dupSql, Integer.class, code, scope);
+                if (dup != null && dup > 0) {
+                    return Map.of("ok", false, "error",
+                        "이미 존재하는 목적식 코드입니다: " + code + " (" + scope + ")");
+                }
+            }
+
             if (objId != null) {
                 // 수정 시 SCOPE 는 생성 시점 값 유지(변경 안 함).
                 tmsJdbc.update("UPDATE KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE SET OBJ_CODE=?,OBJ_NM=?,OBJ_ICON=?,OBJ_ALGO=?,OBJ_DESC=?,SORT_SEQ=?,ACTIVE_YN=?,LMODAT=? WHERE OBJ_ID=?",
