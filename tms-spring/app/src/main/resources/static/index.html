@@ -21200,7 +21200,7 @@ async function wahmaSave() {
 ═══════════════════════════════════════════════════════════ */
 const MMGR_STORE_KEY = 'wms_menu_config';
 const MMGR_VER_KEY   = 'wms_menu_ver';
-const MMGR_VER_CUR   = '20260804_returnout';  // 반품출고 메뉴 추가 시 버전 업 (기존 localStorage 자동 리셋)
+const MMGR_VER_CUR   = '20260930_hlconstraint';  // HL제약조건관리 메뉴 추가 시 버전 업 (기존 localStorage 자동 리셋)
 
 // 기본 메뉴 구조 (sidebar HTML 기반)
 function mmgrDefaultConfig() {
@@ -21210,6 +21210,7 @@ function mmgrDefaultConfig() {
     { type:'item',    id:'nav-psDispatchOpt', label:'PS 배차(최적화)', icon:'🚀', page:'psDispatchOpt', cnt:false },
     { type:'item',    id:'nav-returnOut',  label:'반품출고',        icon:'↩️', page:'returnOut',     cnt:false },
     { type:'item',    id:'nav-dispatchConstraint', label:'PS제약조건관리', icon:'🎯', page:'dispatchConstraint', cnt:false },
+    { type:'item',    id:'nav-hlDispatchConstraint', label:'HL제약조건관리', icon:'🎯', page:'hlDispatchConstraint', cnt:false },
     { type:'section', id:'sec-base',      label:'기준정보 관리' },
     { type:'item',    id:'nav-psDispatch',    label:'PS 배차',     icon:'🚚', page:'psDispatch',    cnt:false },
     { type:'item',    id:'nav-delivery',  label:'납품처 관리',     icon:'📍', page:'delivery',      cnt:true },
