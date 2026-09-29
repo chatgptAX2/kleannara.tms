@@ -80,6 +80,33 @@ public class DispatchConfigApiService {
         }
     }
 
+    /**
+     * TMS_DS_DISPATCH_OBJECTIVE.OBJ_ID 채번.
+     * SEQ_DS_DISPATCH_OBJECTIVE 시퀀스가 존재하면 NEXTVAL, 없으면(ORA-02289) MAX+1로 폴백.
+     * 운영 Oracle KNRAWMS에 시퀀스 미배포 환경에서도 안전하게 INSERT 가능.
+     */
+    private Long nextObjId() {
+        try {
+            return tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_OBJECTIVE.NEXTVAL FROM DUAL", Long.class);
+        } catch (Exception seqEx) {
+            return tmsJdbc.queryForObject(
+                "SELECT NVL(MAX(OBJ_ID),0)+1 FROM KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE", Long.class);
+        }
+    }
+
+    /**
+     * TMS_DS_DISPATCH_PROFILE.PROFILE_ID 채번.
+     * SEQ_DS_DISPATCH_PROFILE 시퀀스가 존재하면 NEXTVAL, 없으면(ORA-02289) MAX+1로 폴백.
+     */
+    private Long nextProfileId() {
+        try {
+            return tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_PROFILE.NEXTVAL FROM DUAL", Long.class);
+        } catch (Exception seqEx) {
+            return tmsJdbc.queryForObject(
+                "SELECT NVL(MAX(PROFILE_ID),0)+1 FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE", Long.class);
+        }
+    }
+
     // ══════════════════════════════════════════════════════════════
     //  목적식 (TMS_DS_DISPATCH_OBJECTIVE) — MariaDB integration
     // ══════════════════════════════════════════════════════════════
@@ -116,9 +143,10 @@ public class DispatchConfigApiService {
                 tmsJdbc.update("UPDATE KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE SET OBJ_CODE=?,OBJ_NM=?,OBJ_ICON=?,OBJ_ALGO=?,OBJ_DESC=?,SORT_SEQ=?,ACTIVE_YN=?,LMODAT=? WHERE OBJ_ID=?",
                     code, nm, icon, algo, desc, sort, act, today(), objId);
             } else {
-                tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE (OBJ_ID,OBJ_CODE,OBJ_NM,OBJ_ICON,OBJ_ALGO,OBJ_DESC,SORT_SEQ,ACTIVE_YN,SCOPE,CREDAT,LMODAT) VALUES (SEQ_DS_DISPATCH_OBJECTIVE.NEXTVAL,?,?,?,?,?,?,?,?,?,?)",
-                    code, nm, icon, algo, desc, sort, act, scope, today(), today());
-                objId = tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_OBJECTIVE.CURRVAL FROM DUAL", Long.class);
+                // OBJ_ID 채번: 시퀀스 존재 시 NEXTVAL, 없으면 MAX+1 폴백(ORA-02289 방지).
+                objId = nextObjId();
+                tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_OBJECTIVE (OBJ_ID,OBJ_CODE,OBJ_NM,OBJ_ICON,OBJ_ALGO,OBJ_DESC,SORT_SEQ,ACTIVE_YN,SCOPE,CREDAT,LMODAT) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    objId, code, nm, icon, algo, desc, sort, act, scope, today(), today());
             }
             return Map.of("ok", true, "OBJ_ID", objId);
         } catch (Exception e) { return errMap(e); }
@@ -704,9 +732,10 @@ public class DispatchConfigApiService {
                 tmsJdbc.update("UPDATE KNRAWMS.TMS_DS_DISPATCH_PROFILE SET PROFILE_NM=?,OBJECTIVE=?,ACTIVE_YN=?,NOTE=?,LMODAT=? WHERE PROFILE_ID=?",
                     nm, obj, act, note, today(), pid);
             } else {
-                tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_PROFILE (PROFILE_ID,PROFILE_NM,OBJECTIVE,ACTIVE_YN,NOTE,SCOPE,CREDAT,LMODAT) VALUES (SEQ_DS_DISPATCH_PROFILE.NEXTVAL,?,?,?,?,?,?,?)",
-                    nm, obj, act, note, scope, today(), today());
-                pid = tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_PROFILE.CURRVAL FROM DUAL", Long.class);
+                // PROFILE_ID 채번: 시퀀스 존재 시 NEXTVAL, 없으면 MAX+1 폴백(ORA-02289 방지).
+                pid = nextProfileId();
+                tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_PROFILE (PROFILE_ID,PROFILE_NM,OBJECTIVE,ACTIVE_YN,NOTE,SCOPE,CREDAT,LMODAT) VALUES (?,?,?,?,?,?,?,?)",
+                    pid, nm, obj, act, note, scope, today(), today());
             }
             return Map.of("ok", true, "PROFILE_ID", pid);
         } catch (Exception e) { return errMap(e); }
@@ -828,9 +857,10 @@ public class DispatchConfigApiService {
             Map<String, Object> s = src.get(0);
             // 복사본은 원본 프로파일과 동일 SCOPE 유지(PS→PS / HL→HL).
             String scope = normScope(s.get("SCOPE"));
-            tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_PROFILE (PROFILE_ID,PROFILE_NM,OBJECTIVE,ACTIVE_YN,NOTE,SCOPE,CREDAT,LMODAT) VALUES (SEQ_DS_DISPATCH_PROFILE.NEXTVAL,?,?,?,?,?,?,?)",
-                newNm, s.get("OBJECTIVE"), "N", "복사본: " + s.get("PROFILE_NM"), scope, today(), today());
-            Long newPid = tmsJdbc.queryForObject("SELECT SEQ_DS_DISPATCH_PROFILE.CURRVAL FROM DUAL", Long.class);
+            // PROFILE_ID 채번: 시퀀스 존재 시 NEXTVAL, 없으면 MAX+1 폴백(ORA-02289 방지).
+            Long newPid = nextProfileId();
+            tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_PROFILE (PROFILE_ID,PROFILE_NM,OBJECTIVE,ACTIVE_YN,NOTE,SCOPE,CREDAT,LMODAT) VALUES (?,?,?,?,?,?,?,?)",
+                newPid, newNm, s.get("OBJECTIVE"), "N", "복사본: " + s.get("PROFILE_NM"), scope, today(), today());
             List<Map<String, Object>> srcRows = tmsJdbc.queryForList(
                 "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_CONST WHERE PROFILE_ID=?", srcPid
             );
