@@ -3280,6 +3280,9 @@ thead th:hover .th-drag-handle{opacity:.8}
   <div class="nav-item" onclick="showPage('psDispatchOpt')" id="nav-psDispatchOpt">
     <span class="icon">🚀</span> PS 배차(최적화)
   </div>
+  <div class="nav-item" onclick="showPage('hlDispatch')" id="nav-hlDispatch">
+    <span class="icon">🚀</span> HL배차
+  </div>
   <div class="nav-item" onclick="showPage('returnOut')" id="nav-returnOut">
     <span class="icon">↩️</span> 반품출고
   </div>
@@ -3606,6 +3609,7 @@ const PAGE_META = {
   hlDispatchConstraint: { title:'HL제약조건관리', badge:'🎯 HL제약조건관리', crumb:['홈','배차관리','HL제약조건관리'] },
   psDispatch:         { title:'PS 배차',       badge:'🚚 PS 배차',      crumb:['홈','기준정보 관리','PS 배차'] },
   psDispatchOpt:      { title:'PS 배차(최적화)', badge:'🚀 PS 배차(최적화)', crumb:['홈','배차관리','PS 배차(최적화)'] },
+  hlDispatch:         { title:'HL배차', badge:'🚀 HL배차', crumb:['홈','배차관리','HL배차'] },
   returnOut:          { title:'반품출고',         badge:'↩️ 반품출고',        crumb:['홈','배차관리','반품출고'] },
   docMgmt:            { title:'서류관리',          badge:'📁 서류관리',         crumb:['홈','서류관리','서류관리'] },
 };
@@ -3725,6 +3729,7 @@ const PAGE_ICON = {
   BZPTN_DETAIL:'🗺️', VHCMA:'🚛', TMS_ROUTE_COST:'💰',
   psDispatch:'🚚',
   psDispatchOpt:'🚀',
+  hlDispatch:'🚀',
   returnOut:'↩️',
   dispatchConstraint:'🎯',
   hlDispatchConstraint:'🎯',
@@ -3824,10 +3829,14 @@ function _doShowPage(p) {
     }
   }
 
-  // ── PS배차(최적화) 이탈 시: psop-root를 body 아래 hidden 컨테이너에 보존 ──
+  // ── PS배차(최적화)/HL배차 이탈 시: psop-root를 body 아래 hidden 컨테이너에 보존 ──
+  //   PS배차(psDispatchOpt)와 HL배차(hlDispatch)는 동일한 psop-root DOM·psopState 를
+  //   scope 로 분기하여 공유한다. 두 화면 간 이동 시에는 스코프가 바뀌므로 보존하지 않고
+  //   복원 단계에서 재렌더한다(데이터 혼선 방지). 그 외 페이지로 이탈 시에만 보존.
   if (typeof psopState !== 'undefined' && psopState.initialized) {
     const psopRoot = document.getElementById('psop-root');
-    if (psopRoot && p !== 'psDispatchOpt') {
+    const _psopPages = (p === 'psDispatchOpt' || p === 'hlDispatch');
+    if (psopRoot && !_psopPages) {
       if (typeof psopSaveForm === 'function') psopSaveForm();
       let keeper = document.getElementById('psop-root-keeper');
       if (!keeper) {
@@ -3929,8 +3938,12 @@ function _doShowPage(p) {
     }
   }
 
-  // ── PS배차(최적화)로 복귀 시: keeper에서 psop-root를 꺼내 content에 재삽입 ──
-  if (p === 'psDispatchOpt' && typeof psopState !== 'undefined' && psopState.initialized) {
+  // ── PS배차(최적화)/HL배차로 복귀 시: keeper에서 psop-root를 꺼내 content에 재삽입 ──
+  //   단, 보존된 화면의 스코프(psopState.scope)와 목적 페이지 스코프가 '일치'할 때만 복원.
+  //   불일치(PS↔HL 전환) 시에는 아래 renderPsDispatchOpt(scope) 재렌더 경로로 진행한다.
+  const _psopTargetScope = (p === 'hlDispatch') ? 'HL' : (p === 'psDispatchOpt') ? 'PS' : null;
+  if (_psopTargetScope && typeof psopState !== 'undefined' && psopState.initialized
+      && psopState.scope === _psopTargetScope) {
     const keeper   = document.getElementById('psop-root-keeper');
     const psopRoot = document.getElementById('psop-root');
     const content  = document.getElementById('content');
@@ -4073,7 +4086,10 @@ function _doShowPage(p) {
     renderPsDispatch();
   } else if (p === 'psDispatchOpt') {
     srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
-    renderPsDispatchOpt();
+    renderPsDispatchOpt('PS');
+  } else if (p === 'hlDispatch') {
+    srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
+    renderPsDispatchOpt('HL');
   } else if (p === 'returnOut') {
     srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderReturnOut();
@@ -13156,6 +13172,13 @@ function psopGetInch(skukey) {
 
 /* 배차 상태 */
 const psopState = {
+  /* ── 배차 스코프: 'PS'(SKUG05='10'/TMS_CARCLASS10) | 'HL'(SKUG05='20'/TMS_CARCLASS20) ──
+     PS배차(최적화)=‘PS’(기본), HL배차=‘HL’. 이 값에 따라
+       · 납품문서 조회: /api/ps-dispatch/search?skug05=(10|20)
+       · 자동배차: /api/dispatch-objective/active?scope=, /api/dispatch-constraint/auto {scope}
+       · 차량탭/제품군: TMS_CARCLASS10|20
+     을 분기한다. 기본 'PS' 이므로 기존 PS 화면 동작은 완전히 동일(무영향). */
+  scope: 'PS',
   searchRows: [],           // 우측 납품문서 목록
   vehicles:   [],           // 좌측 차량(배차) 목록 — 인메모리(저장 전) [{_pendingId,cartype,carclass_cd,items,...}]
   selectedVehicles: new Set(), // 선택된 _pendingId 집합 (다중선택)
@@ -14443,9 +14466,12 @@ async function psopLoadVehTab() {
   try {
     const res  = await fetch('/api/dispatch/strategy');
     const data = await res.json();
-    // carclass_ps(CMCDV TMS_CARCLASS10)의 use_yn을 CARCLASS_CD 기준으로 vehicle에 병합
+    // 스코프별 제품군 USE_YN 병합: PS=carclass_ps(TMS_CARCLASS10) / HL=carclass_hl(TMS_CARCLASS20)
     const useMap = {};
-    (data.carclass_ps || data.carclass_options || []).forEach(c => { useMap[c.code] = c.use_yn; });
+    const _ccArr = (psopState.scope === 'HL')
+      ? (data.carclass_hl || [])
+      : (data.carclass_ps || data.carclass_options || []);
+    _ccArr.forEach(c => { useMap[c.code] = c.use_yn; });
     _psopVehTab.rows = (data.vehicle || []).slice()
       .sort((a,b) => (a.SORT_SEQ||0)-(b.SORT_SEQ||0))
       .map(r => ({ ...r, USE_YN: useMap[r.CARCLASS_CD] ?? 'Y' }));
@@ -14530,7 +14556,7 @@ async function psopToggleUseYn(cartype, checked) {
       /* table='vehicle' 전체 저장 → TMS_DS_VEHICLE + CMCDV.USARG1 + DS_INCH 동시 갱신 */
       body: JSON.stringify({
         table: 'vehicle',
-        rows:  _psopVehTab.rows.map(r => ({ ...r, tab: 'PS', USE_YN: r.USE_YN || 'Y' }))
+        rows:  _psopVehTab.rows.map(r => ({ ...r, tab: (psopState.scope==='HL'?'HL':'PS'), USE_YN: r.USE_YN || 'Y' }))
       }),
     });
     const data = await res.json();
@@ -14614,7 +14640,7 @@ async function psopSaveAllVehCnt() {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         table: 'vehicle',
-        rows:  _psopVehTab.rows.map(r => ({ ...r, tab: 'PS', USE_YN: r.USE_YN || 'Y' }))
+        rows:  _psopVehTab.rows.map(r => ({ ...r, tab: (psopState.scope==='HL'?'HL':'PS'), USE_YN: r.USE_YN || 'Y' }))
       }),
     });
     const data = await res.json();
@@ -15170,12 +15196,32 @@ function roRenderSapDocs() {
   wrap.innerHTML = html;
 }
 
-async function renderPsDispatchOpt() {
+async function renderPsDispatchOpt(scope) {
+  // scope: 'PS'(기본, PS배차 최적화) | 'HL'(HL배차). 기존 호출(무인자)은 'PS'로 동작 → 무영향.
+  const _scope = (scope === 'HL') ? 'HL' : 'PS';
   const c = document.getElementById('content');
   c.style.overflowY = 'hidden';
 
-  // ── 이미 초기화된 경우: _doShowPage에서 이미 복원 처리됨 → 종료 ──
-  if (psopState.initialized) return;
+  // ── 이미 초기화된 경우 ──
+  //   · 같은 스코프면: _doShowPage 에서 이미 keeper 복원 처리됨 → 종료.
+  //   · 다른 스코프면(PS↔HL 전환): 화면/상태를 해당 스코프로 재초기화하여 다시 그린다.
+  if (psopState.initialized && psopState.scope === _scope) return;
+  if (psopState.initialized && psopState.scope !== _scope) {
+    // 스코프 전환 — 이전 스코프 화면 DOM(keeper 잔존 포함) 제거 후 상태 리셋하여 재렌더
+    const oldRoot = document.getElementById('psop-root');
+    if (oldRoot && oldRoot.parentElement) oldRoot.parentElement.removeChild(oldRoot);
+    psopState.initialized   = false;
+    psopState.searchRows    = [];
+    psopState.vehicles      = [];
+    psopState.selectedVehicles.clear();
+    psopState.selectedDocs.clear();
+    if (psopState.savedKeys)  psopState.savedKeys.clear();
+    psopState.vehSelPid     = null;
+    psopState.savedForm     = null;
+    if (typeof _psopVehTab !== 'undefined') { _psopVehTab.rows = []; _psopVehTab.dirty.clear(); }
+  }
+  // 현재 스코프 확정(이후 모든 조회/자동배차/차량탭이 이 값으로 분기)
+  psopState.scope = _scope;
 
   // 기본 날짜: 오늘 기준 FROM = -3일, TO = +1일 (요청 사양)
   const fmtD  = d => d.toISOString().slice(0,10);
@@ -15694,7 +15740,9 @@ async function psopSearch() {
 
   try {
     // status='all' 고정 → 서버는 DB 배차완료+미배차 모두 반환
-    const params = new URLSearchParams({ wareky, date_from: dateFrom, date_to: dateTo, dptnky, shpoky, status: 'all' });
+    // skug05: 스코프별 제품군(PS='10' / HL='20') — 백엔드 search 가 이 값으로 HL/PS 납품문서 분리
+    const skug05 = (psopState.scope === 'HL') ? '20' : '10';
+    const params = new URLSearchParams({ wareky, date_from: dateFrom, date_to: dateTo, dptnky, shpoky, status: 'all', skug05 });
     // 전체 선택이 아닐 때만 개별 shpmty 추가 (복수 값 → 같은 키 반복)
     if (!shpmtyAll && shpmtyChks.length > 0) {
       shpmtyChks.forEach(v => params.append('shpmty', v));
@@ -18300,10 +18348,11 @@ async function psopAutoDispatch(offline) {
   if (statusEl) statusEl.textContent = `⏳ 자동배차 실행 중${isPartial ? ` (선택 ${targets.length}건)` : ''}...`;
 
   try {
-    /* 활성 목적식 + 프로파일 조회 */
+    /* 활성 목적식 + 프로파일 조회 (스코프별: PS→scope=PS / HL→scope=HL) */
+    const _scope = (psopState.scope === 'HL') ? 'HL' : 'PS';
     let profileId = null, objNm = null, useConstApi = false;
     try {
-      const ar = await fetch('/api/dispatch-objective/active');
+      const ar = await fetch(`/api/dispatch-objective/active?scope=${_scope}`);
       const ad = await ar.json();
       if (ad.ok && ad.objective) {
         objNm       = `${ad.objective.OBJ_ICON||''} ${ad.objective.OBJ_NM}`;
@@ -18315,7 +18364,8 @@ async function psopAutoDispatch(offline) {
     let data;
     if (useConstApi) {
       if (statusEl) statusEl.textContent = `⏳ [${objNm}] 자동배차 중${isPartial ? ` (선택 ${targets.length}건)` : ''}...`;
-      const body = { items: targets };
+      // scope 를 함께 전달 → 엔진이 HL 차량 제품군(TMS_CARCLASS20) 및 HL 제약을 적용
+      const body = { items: targets, scope: _scope };
       if (profileId) body.profile_id = profileId;
       const res = await fetch('/api/dispatch-constraint/auto', {
         method:'POST', headers:{'Content-Type':'application/json'},
@@ -18326,7 +18376,7 @@ async function psopAutoDispatch(offline) {
     } else {
       const res = await fetch('/api/ps-dispatch/auto', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ items: targets })
+        body: JSON.stringify({ items: targets, scope: _scope })
       });
       data = await res.json();
       if (!data.ok) throw new Error(data.error);
@@ -21200,7 +21250,7 @@ async function wahmaSave() {
 ═══════════════════════════════════════════════════════════ */
 const MMGR_STORE_KEY = 'wms_menu_config';
 const MMGR_VER_KEY   = 'wms_menu_ver';
-const MMGR_VER_CUR   = '20260930_hlconstraint';  // HL제약조건관리 메뉴 추가 시 버전 업 (기존 localStorage 자동 리셋)
+const MMGR_VER_CUR   = '20260930_hldispatch';  // HL배차 메뉴 추가 시 버전 업 (기존 localStorage 자동 리셋)
 
 // 기본 메뉴 구조 (sidebar HTML 기반)
 function mmgrDefaultConfig() {
@@ -21208,6 +21258,7 @@ function mmgrDefaultConfig() {
     { type:'item',    id:'nav-tmsDashboard', label:'대시보드',         icon:'📊', page:'tmsDashboard',  cnt:false },
     { type:'section', id:'sec-dispatch',   label:'배차관리' },
     { type:'item',    id:'nav-psDispatchOpt', label:'PS 배차(최적화)', icon:'🚀', page:'psDispatchOpt', cnt:false },
+    { type:'item',    id:'nav-hlDispatch', label:'HL배차',          icon:'🚀', page:'hlDispatch',    cnt:false },
     { type:'item',    id:'nav-returnOut',  label:'반품출고',        icon:'↩️', page:'returnOut',     cnt:false },
     { type:'item',    id:'nav-dispatchConstraint', label:'PS제약조건관리', icon:'🎯', page:'dispatchConstraint', cnt:false },
     { type:'item',    id:'nav-hlDispatchConstraint', label:'HL제약조건관리', icon:'🎯', page:'hlDispatchConstraint', cnt:false },
