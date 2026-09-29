@@ -948,8 +948,11 @@ public class DispatchConfigApiService {
                 String ptnrty = Objects.toString(it.get("ptnrty"), "CT").trim();
                 String ownrky = Objects.toString(it.get("ownrky"), "KN").trim();
                 String wareky = Objects.toString(it.getOrDefault("wareky", "W001"), "W001").trim();
-                Object colVal = it.get(columnName.toLowerCase());
-                if (colVal == null) colVal = it.get(columnName);
+                Object colValRaw = it.get(columnName.toLowerCase());
+                if (colValRaw == null) colValRaw = it.get(columnName);
+                if (colValRaw instanceof String && ((String) colValRaw).isBlank()) colValRaw = null;
+                // null-safe 바인딩(ORA-17004 방지): VARCHAR NULL → 대상 컬럼 타입으로 안전 변환
+                Object colVal = vc(colValRaw);
                 if (ptnrky.isBlank()) continue;
                 // PS 납품처(PTNL01='10') 대상인지 검증 — 조회 대상과 저장 대상 일치 보장
                 int psCount = tmsJdbc.queryForObject(
@@ -1025,13 +1028,15 @@ public class DispatchConfigApiService {
                 if (psCount == 0) { saved++; continue; }
 
                 // 각 컬럼 값 추출 (소문자 키 우선, 없으면 원본 키)
+                //   ⚠️ 빈 문자열/미설정은 NULL 로 저장하되, raw null 바인딩은 ORA-17004(열 유형
+                //      부적합)를 유발하므로 vc()(SqlParameterValue VARCHAR)로 감싼다. VARCHAR NULL
+                //      은 Oracle 이 대상 컬럼 타입(VARCHAR/NUMBER)으로 안전하게 변환/저장한다.
                 Object[] colVals = new Object[columnNames.length];
                 for (int i = 0; i < columnNames.length; i++) {
                     Object v = it.get(columnNames[i].toLowerCase());
                     if (v == null) v = it.get(columnNames[i]);
-                    // 빈 문자열은 NULL 로 저장 (미설정 상태 표현)
                     if (v instanceof String && ((String) v).isBlank()) v = null;
-                    colVals[i] = v;
+                    colVals[i] = vc(v);   // null-safe 바인딩
                 }
 
                 // 파라미터 순서: USING(3) + UPDATE(cols + lmodat + lmotim) + INSERT(ptnrky,ptnrty,ownrky,wareky + cols + lmodat + lmotim)
