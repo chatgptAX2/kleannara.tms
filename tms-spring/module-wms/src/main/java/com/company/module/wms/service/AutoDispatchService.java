@@ -69,6 +69,9 @@ public class AutoDispatchService {
         Integer profileId = toInt(body.get("profile_id"));
         String dateStr    = str(body.get("date"));
         String ptnrkyFilter = str(body.get("ptnrky"));
+        // ── [PS/HL 스코프] 'HL' 이면 차량 제품군 TMS_CARCLASS20 사용, 그 외 PS(TMS_CARCLASS10) ──
+        //   scope 미전달 시 'PS'(기본) → 기존 PS 배차 동작과 완전히 동일(무영향).
+        final String scope = "HL".equalsIgnoreCase(str(body.get("scope"))) ? "HL" : "PS";
 
         // 날짜/납품처 기반 자동 아이템 조회
         if ((items == null || items.isEmpty()) && !dateStr.isEmpty()) {
@@ -78,8 +81,8 @@ public class AutoDispatchService {
             return Map.of("ok", false, "error", "items 없음 — 해당 날짜의 출고 데이터가 없습니다");
         }
 
-        // 프로파일 로드
-        Map<String, Object> prof = loadProfile(profileId);
+        // 프로파일 로드(스코프별)
+        Map<String, Object> prof = loadProfile(profileId, scope);
         if (prof == null) return Map.of("ok", false, "error", "활성 프로파일 없음");
 
         String objective = str(prof.getOrDefault("OBJECTIVE", "MIN_VEHICLES"));
@@ -163,8 +166,8 @@ public class AutoDispatchService {
                  cp.rollPalletApply, cp.rollPalletDeductM);
 
         // 차량 마스터 로드
-        List<Map<String, Object>> carOrder = loadCarOrder();
-        Map<String, VehInfo>       vehInfo  = loadVehInfo();
+        List<Map<String, Object>> carOrder = loadCarOrder(scope);
+        Map<String, VehInfo>       vehInfo  = loadVehInfo(scope);
         InchMaps                   inchMaps = loadInchMaps();
 
         // SKUMA 로드
@@ -1353,13 +1356,20 @@ public class AutoDispatchService {
     // ════════════════════════════════════════════════════════════════
 
     /** TMS_DS_DISPATCH_PROFILE 로드 — Oracle: FETCH FIRST N ROWS ONLY */
-    private Map<String, Object> loadProfile(Integer profileId) {
+    // (하위호환) scope 미지정 → PS
+    private Map<String, Object> loadProfile(Integer profileId) { return loadProfile(profileId, "PS"); }
+
+    private Map<String, Object> loadProfile(Integer profileId, String scope) {
+        String sc = "HL".equalsIgnoreCase(scope) ? "HL" : "PS";
         List<Map<String, Object>> rows;
         if (profileId != null) {
+            // 명시 ID 로드(프론트가 active 조회로 얻은 스코프별 프로파일 ID를 그대로 전달).
             rows = tmsJdbc.queryForList("SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE WHERE PROFILE_ID=?", profileId);
         } else {
+            // 폴백: 해당 스코프의 첫 활성 프로파일(COALESCE(SCOPE,'PS') 로 기존 데이터 PS 귀속).
             rows = tmsJdbc.queryForList(
-                "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE WHERE ACTIVE_YN='Y' ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY");
+                "SELECT * FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE WHERE ACTIVE_YN='Y' AND COALESCE(SCOPE,'PS')=? " +
+                "ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY", sc);
         }
         return rows.isEmpty() ? null : rows.get(0);
     }
@@ -1384,14 +1394,22 @@ public class AutoDispatchService {
      * 차량 순서 로드 — TMS_DS_VEHICLE: Oracle KNRAWMS / CMCDV: Oracle KNRAWMS (2-step, Cross-Schema)
      * Step 1: TMS_DS_VEHICLE, Step 2: KNRAWMS.CMCDV (2-step)
      */
-    private List<Map<String, Object>> loadCarOrder() {
+    // 스코프 대응 차량 제품군 공통코드 (PS=TMS_CARCLASS10 / HL=TMS_CARCLASS20)
+    private static String carclassKey(String scope) {
+        return "HL".equalsIgnoreCase(scope) ? "TMS_CARCLASS20" : "TMS_CARCLASS10";
+    }
+
+    // (하위호환) scope 미지정 → PS
+    private List<Map<String, Object>> loadCarOrder() { return loadCarOrder("PS"); }
+
+    private List<Map<String, Object>> loadCarOrder(String scope) {
         // Step 1: Oracle KNRAWMS TMS_DS_VEHICLE
         List<Map<String, Object>> all = tmsJdbc.queryForList(
             "SELECT v.CARTYPE, v.LOAD_TON, v.SORT_SEQ, v.CARCLASS_CD FROM KNRAWMS.TMS_DS_VEHICLE v ORDER BY v.SORT_SEQ DESC"
         );
-        // Step 2: Oracle KNRAWMS.CMCDV — USE_YN 필터
+        // Step 2: Oracle KNRAWMS.CMCDV — USE_YN 필터(스코프별 제품군)
         List<Map<String, Object>> ccRows = wmsJdbc.queryForList(
-            "SELECT CMCDVL, USARG1 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10'"
+            "SELECT CMCDVL, USARG1 FROM KNRAWMS.CMCDV WHERE CMCDKY=?", carclassKey(scope)
         );
         Map<String, String> useYnMap = new HashMap<>();
         for (Map<String, Object> r : ccRows) useYnMap.put(str(r.get("CMCDVL")), str(r.get("USARG1")));
@@ -1405,14 +1423,17 @@ public class AutoDispatchService {
     }
 
     /** 차량 상세 정보 로드 — TMS_DS_VEHICLE: Oracle KNRAWMS / CMCDV USE_YN 필터: Oracle KNRAWMS → 2-step */
-    private Map<String, VehInfo> loadVehInfo() {
+    // (하위호환) scope 미지정 → PS
+    private Map<String, VehInfo> loadVehInfo() { return loadVehInfo("PS"); }
+
+    private Map<String, VehInfo> loadVehInfo(String scope) {
         List<Map<String, Object>> rows = tmsJdbc.queryForList(
             "SELECT v.CARTYPE, v.LENGTH_M, v.WIDTH_M, v.HEIGHT_M, v.LOAD_TON, " +
             "       v.PALLET_HEIGHT_M, v.CARCLASS_CD FROM KNRAWMS.TMS_DS_VEHICLE v"
         );
-        // CMCDV USE_YN 필터 (Oracle)
+        // CMCDV USE_YN 필터 (Oracle, 스코프별 제품군)
         List<Map<String, Object>> ccRows = wmsJdbc.queryForList(
-            "SELECT CMCDVL, USARG1 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10'"
+            "SELECT CMCDVL, USARG1 FROM KNRAWMS.CMCDV WHERE CMCDKY=?", carclassKey(scope)
         );
         Map<String, String> useYnMap = new HashMap<>();
         for (Map<String, Object> r : ccRows) useYnMap.put(str(r.get("CMCDVL")), str(r.get("USARG1")));
