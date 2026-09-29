@@ -709,11 +709,13 @@ public class DispatchConfigApiService {
         String ctype = (type == null || type.isBlank()) ? "GLOBAL" : type;
         String cop   = (op == null || op.isBlank())     ? "="      : op;
         Long newCid = nextConstId();
+        // ⚠️ TARGET_ID/TARGET_NM 은 null 가능 → raw null 바인딩 시 ORA-17004(열 유형 부적합)
+        //   발생. VARCHAR 타입을 명시하는 vc() 로 감싸 null-safe 바인딩한다.
         tmsJdbc.update(
             "INSERT INTO KNRAWMS.TMS_DS_DISPATCH_CONST (CONST_ID,PROFILE_ID,CONST_TYPE,CONST_KEY,CONST_VALUE,CONST_OP,TARGET_ID,TARGET_NM,ACTIVE_YN,NOTE,SORT_SEQ,CREDAT,LMODAT) " +
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             newCid, profileId, ctype, key, (constValue == null ? "" : constValue), cop,
-            (tid.isBlank() ? null : tid), (targetNm == null ? null : targetNm),
+            vc(tid.isBlank() ? null : tid), vc(targetNm == null ? null : targetNm),
             "Y", "제약조건관리 신규 항목 자동생성", 999, today(), today());
         return newCid;
     }
@@ -776,7 +778,9 @@ public class DispatchConfigApiService {
         Integer setId = toInteger(body.get("set_id"));
         if (profId == null) return Map.of("ok", false, "error", "profile_id 필수");
         try {
-            tmsJdbc.update("UPDATE KNRAWMS.TMS_DS_DISPATCH_PROFILE SET SET_ID=?, LMODAT=? WHERE PROFILE_ID=?", setId, today(), profId);
+            // SET_ID(NUMBER)는 연결 해제 시 null 가능 → 타입 명시 바인딩(ORA-17004 방지)
+            Object setIdBind = new SqlParameterValue(Types.NUMERIC, setId);
+            tmsJdbc.update("UPDATE KNRAWMS.TMS_DS_DISPATCH_PROFILE SET SET_ID=?, LMODAT=? WHERE PROFILE_ID=?", setIdBind, today(), profId);
             return Map.of("ok", true);
         } catch (Exception e) { return errMap(e); }
     }
