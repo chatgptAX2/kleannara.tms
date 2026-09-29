@@ -19411,7 +19411,7 @@ async function renderShipSchedule() {
 <div style="padding:8px 12px;box-sizing:border-box;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">
 
   <!-- ════ 검색 패널 ════ -->
-  <div id="ss-search-panel" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 12px 5px;margin-bottom:0;flex-shrink:0;overflow:visible;">
+  <div id="ss-search-panel" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 12px 5px;margin-bottom:0;flex-shrink:0;overflow:auto;box-sizing:border-box;">
 
     <!-- 패널 헤더 -->
     <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:5px;display:flex;align-items:center;gap:6px;">
@@ -19697,14 +19697,23 @@ const SS_RESIZER_KEY = 'ss_search_panel_h2';  // localStorage 키 (v2: 컴팩트
 function _ssResizerInit() {
   const panel = document.getElementById('ss-search-panel');
   if (!panel) return;
-  /* 저장된 높이 복원 */
+  /* 부모 기준 상한 산정(드래그 로직과 동일) — 저장값이 과도해도 겹치지 않도록 clamp */
+  const resizer   = document.getElementById('ss-resizer');
+  const parentBox = panel.parentElement
+    ? panel.parentElement.getBoundingClientRect().height : window.innerHeight;
+  const resizerH  = (resizer && resizer.getBoundingClientRect().height) || 8;
+  const MIN_RESULT = 120;
+  const maxH = Math.max(80, parentBox - resizerH - MIN_RESULT);
+
+  /* 저장된 높이 복원 (상한 clamp 적용) */
   const saved = parseInt(localStorage.getItem(SS_RESIZER_KEY), 10);
   if (saved && saved > 80) {
-    panel.style.height    = saved + 'px';
-    panel.style.maxHeight = saved + 'px';
+    const h = Math.min(saved, maxH);
+    panel.style.height    = h + 'px';
+    panel.style.maxHeight = h + 'px';
   } else {
     /* 초기 자연 높이를 고정값으로 확정 (이후 flex가 찌그러뜨리지 않게) */
-    const h = panel.getBoundingClientRect().height;
+    const h = Math.min(panel.getBoundingClientRect().height, maxH);
     if (h > 0) {
       panel.style.height    = h + 'px';
       panel.style.maxHeight = h + 'px';
@@ -19726,10 +19735,21 @@ function ssResizerDown(e) {
   document.body.style.userSelect = 'none';
   document.body.style.cursor     = 'ns-resize';
 
+  /* ── 상한 산정 ──────────────────────────────────────────────
+     검색조건 패널을 '부모 컨테이너 높이' 기준으로 제한한다.
+     (기존엔 window.innerHeight*0.75 로 제한 → 부모보다 커질 수 있어
+      아래 결과 그리드가 밀려나고 패널이 넘쳐 겹침 발생)
+     최대 = 부모 가용높이 − (리사이저 높이 + 결과영역 최소확보 120px). */
+    const parentBox = panel.parentElement
+      ? panel.parentElement.getBoundingClientRect().height : window.innerHeight;
+    const resizerH  = resizer.getBoundingClientRect().height || 8;
+    const MIN_RESULT = 120;   // 결과 그리드 최소 표시 높이(px)
+    const maxH = Math.max(80, parentBox - resizerH - MIN_RESULT);
+
   function onMove(ev) {
     const delta  = ev.clientY - startY;
-    /* 최소 80px, 최대 화면의 75% */
-    const newH   = Math.max(80, Math.min(window.innerHeight * 0.75, startH + delta));
+    /* 최소 80px, 최대 = 부모 기준 상한(결과영역 최소확보 보장) */
+    const newH   = Math.max(80, Math.min(maxH, startH + delta));
     panel.style.height    = newH + 'px';
     panel.style.maxHeight = newH + 'px';
   }
