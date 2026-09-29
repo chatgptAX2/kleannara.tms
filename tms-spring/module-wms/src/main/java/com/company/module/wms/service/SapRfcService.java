@@ -990,8 +990,20 @@ public class SapRfcService {
                     //   이 값이다. 기존엔 sapItems 가 UNIT_WEIGHT 를 주지 않아 프론트가 fallback 600
                     //   으로 계산 → 배차저장 前(자동배차 items, UNIT_WEIGHT 포함)과 3D 롤수/배치가
                     //   달랐다. 여기에 동일 서브쿼리를 추가해 저장 前/後 3D를 일치시킨다.
-                    "  (SELECT COALESCE(MAX(rd.QTYRCV), 0) FROM KNRAWMS.RECDI rd " +
-                    "    WHERE rd.SKUKEY = SI.SKUKEY) AS UNIT_WEIGHT, " +
+                    // ── [원지 롤수 정확도] UNIT_WEIGHT = 원지 1롤 단중 ──────────
+                    //   기존 MAX(QTYRCV) 는 여러 입고건 최댓값(여러 롤 합산분)을 잡아
+                    //   1롤 단중을 과대평가 → 롤수 과소산정 버그. 출고예정정보 PLT당개수
+                    //   와 동일 패턴(RECDI 최근입고 1건, LOTA 일치, STATIT='FRV')으로 정정.
+                    //   로트 불일치 시 최신 입고 1건 폴백(없으면 0 → 프론트 fallback).
+                    "  COALESCE(" +
+                    "    (SELECT rd.QTYRCV FROM KNRAWMS.RECDI rd " +
+                    "      WHERE rd.SKUKEY = SI.SKUKEY AND rd.STATIT = 'FRV' " +
+                    "        AND rd.LOTA01 = SI.LOTA01 AND rd.LOTA02 = SI.LOTA02 " +
+                    "      ORDER BY rd.RECVKY DESC FETCH FIRST 1 ROW ONLY), " +
+                    "    (SELECT rd.QTYRCV FROM KNRAWMS.RECDI rd " +
+                    "      WHERE rd.SKUKEY = SI.SKUKEY AND rd.STATIT = 'FRV' " +
+                    "      ORDER BY rd.RECVKY DESC FETCH FIRST 1 ROW ONLY), " +
+                    "    0) AS UNIT_WEIGHT, " +
                     "  SH.DPTNKY, COALESCE(CT.NAME01, SH.DPTNKY) AS DPTNM, " +
                     // ── 적재뷰(3D) 판지 단수 산출용 추가 필드 (출고예정정보 ShipmentService 동일 산식) ──
                     //  · SOK_PER_R : 1R당 SOK 환산계수(MEASI UOMKEY='SOK'). 속포장 분할단위 표현용.

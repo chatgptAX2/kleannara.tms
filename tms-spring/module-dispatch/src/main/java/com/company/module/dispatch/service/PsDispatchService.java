@@ -163,9 +163,21 @@ public class PsDispatchService {
         "       TRIM(COALESCE(c.CDESC1,'')) AS SHPMTY_NM," +
         "       COALESCE(m.GRSWGT, 0) AS GRSWGT," +
         "       TRIM(COALESCE(i.LOTA03,'')) AS LOTA03," +
-        "       (SELECT COALESCE(MAX(rd.QTYRCV), 0)" +
-        "        FROM KNRAWMS.RECDI rd" +
-        "        WHERE rd.SKUKEY = i.SKUKEY) AS UNIT_WEIGHT," +
+        // ── [원지 롤수 정확도] UNIT_WEIGHT = 원지 1롤 단중 ──────────────
+        //   기존 MAX(QTYRCV) 는 같은 SKU 의 여러 입고건 중 최댓값(여러 롤 합산분)을
+        //   잡아 1롤 단중을 과대평가(예:6380kg) → 롤수 과소산정(3롤→1롤) 버그.
+        //   출고예정정보 PLT당개수(PLT_PER_UNIT) 와 '동일 패턴'으로 정정:
+        //   RECDI 최근 입고 1건(LOTA01/LOTA02 일치, STATIT='FRV', RECVKY 최신).
+        //   로트 불일치 시 최신 입고 1건으로 폴백(그래도 없으면 0 → 프론트 fallback).
+        "       COALESCE(" +
+        "         (SELECT rd.QTYRCV FROM KNRAWMS.RECDI rd" +
+        "           WHERE rd.SKUKEY = i.SKUKEY AND rd.STATIT = 'FRV'" +
+        "             AND rd.LOTA01 = i.LOTA01 AND rd.LOTA02 = i.LOTA02" +
+        "           ORDER BY rd.RECVKY DESC FETCH FIRST 1 ROW ONLY)," +
+        "         (SELECT rd.QTYRCV FROM KNRAWMS.RECDI rd" +
+        "           WHERE rd.SKUKEY = i.SKUKEY AND rd.STATIT = 'FRV'" +
+        "           ORDER BY rd.RECVKY DESC FETCH FIRST 1 ROW ONLY)," +
+        "         0) AS UNIT_WEIGHT," +
         "       TRIM(COALESCE(i.SPOSNR,'')) AS SPOSNR," +
         // 연동구분: DESC02='OFFLINE'=미연동(테스트), 'ONLINE'=연동, 그 외/공백=기존
         "       TRIM(COALESCE(i.DESC02,'')) AS TMS_LINK_YN," +
@@ -922,8 +934,19 @@ public class PsDispatchService {
                     for (int from = 0; from < skList.size(); from += CHUNK) {
                         List<String> chunk = skList.subList(from, Math.min(from + CHUNK, skList.size()));
                         String skPh = chunk.stream().map(x -> "?").collect(Collectors.joining(","));
+                        // ── [원지 롤수 정확도] SKU별 '최신 입고 1건'의 QTYRCV = 원지 1롤 단중 ──
+                        //   기존엔 SKUKEY IN 조회 후 recdiMap.put 이 마지막 행으로 덮어써져
+                        //   어떤 입고건이 채택될지 비결정적(이상치 혼입 가능)이었다.
+                        //   배차확정 D(TMS_PS_DISPATCH_D)에는 LOTA 가 저장되지 않으므로
+                        //   여기선 STATIT='FRV' 최신 입고(RECVKY DESC) 1건으로 결정적 선택
+                        //   (searchDocs/sapItems 의 A안 로트조회와 동일 취지: 여러 롤 합산분 MAX 회피).
                         var recdiQ = em.createNativeQuery(
-                            "SELECT SKUKEY, COALESCE(QTYRCV, 0) FROM KNRAWMS.RECDI WHERE SKUKEY IN (" + skPh + ")"
+                            "SELECT SKUKEY, QTYRCV FROM (" +
+                            "  SELECT rd.SKUKEY, COALESCE(rd.QTYRCV,0) AS QTYRCV," +
+                            "         ROW_NUMBER() OVER (PARTITION BY rd.SKUKEY ORDER BY rd.RECVKY DESC) AS RN" +
+                            "  FROM KNRAWMS.RECDI rd" +
+                            "  WHERE rd.STATIT='FRV' AND rd.SKUKEY IN (" + skPh + ")" +
+                            ") WHERE RN = 1"
                         );
                         int pi = 1;
                         for (String sk : chunk) recdiQ.setParameter(pi++, sk);
