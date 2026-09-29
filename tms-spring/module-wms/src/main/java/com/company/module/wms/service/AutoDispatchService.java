@@ -1910,27 +1910,28 @@ public class AutoDispatchService {
                             String grm, int count,
                             List<Map<String, Object>> carOrder,
                             Map<String, VehInfo> vehInfo) {
-        // ── [차량 과대선정 버그수정] ─────────────────────────────────
-        //  목적: 인치 기준수량(DS_INCH MAX_COUNT) 상 '필요 롤수(count)를 1단에 실을 수
-        //        있는 가장 작은 차량'을 찾는다.
-        //  (버그) 기존엔 carOrder 를 역순(큰 차부터) 순회하며 cap>=count 인 첫 차를
-        //        반환 → 가장 큰 차(18톤)의 기준수량이 필요수량보다 크면 즉시 18톤을
-        //        반환해, 3롤짜리도 무조건 최대 톤으로 과대선정되는 문제.
-        //  (수정) carOrder 정순(작은 차부터) 순회하며 cap>=count 인 첫(=가장 작은) 차 반환.
-        for (Map<String, Object> car : carOrder) {
+        // ── 인치 기준수량(DS_INCH MAX_COUNT)으로 '필요 롤수(count)를 1단에 실을 수 있는
+        //    가장 작은 차량'을 선정한다. ───────────────────────────────
+        //  ★ [정렬 주의] carOrder 는 loadCarOrder() 에서 SORT_SEQ DESC 로 로드 →
+        //    index 0 이 '가장 큰 차', 마지막이 '가장 작은 차'(sortKey 클수록 작은 차).
+        //    따라서 '작은 차부터' 순회하려면 carOrder 를 reverse 해서 돌아야 한다.
+        //  (히스토리) PR#372 에서 carOrder 를 ASC(작은차부터)로 착각하여 정순 순회로
+        //    바꿨다가, 실제로는 큰 차부터 순회가 되어 3롤짜리가 18톤으로 과대선정됨.
+        //    → 원래의 reversed(작은차부터) 순회로 원복(carOrder DESC 전제).
+        List<Map<String, Object>> smallFirst = new ArrayList<>(carOrder);
+        Collections.reverse(smallFirst);   // DESC → ASC: 작은 차부터
+        for (Map<String, Object> car : smallFirst) {
             String ct  = str(car.get("CARTYPE"));
             int cap = inchMap.getOrDefault(ct, Collections.emptyMap()).getOrDefault(grm, 0);
-            if (cap >= count) return ct;   // 필요수량을 담는 가장 작은 차
+            if (cap >= count) return ct;   // 필요수량을 담는 '가장 작은' 차
         }
         // 어떤 차도 1단에 count 를 못 담음(초과) → LOAD_TON 입력된 가장 큰 차량
-        List<Map<String, Object>> reversed = new ArrayList<>(carOrder);
-        Collections.reverse(reversed);
-        for (Map<String, Object> car : reversed) {
+        //   (carOrder 는 큰 차부터이므로 정순 순회의 첫 유효 차량이 가장 큰 차)
+        for (Map<String, Object> car : carOrder) {
             String ct = str(car.get("CARTYPE"));
             if (vehInfo.getOrDefault(ct, VehInfo.EMPTY).loadKg > 0) return ct;
         }
-        return carOrder.isEmpty() ? "판별불가"
-             : str(carOrder.get(carOrder.size() - 1).get("CARTYPE"));
+        return carOrder.isEmpty() ? "판별불가" : str(carOrder.get(0).get("CARTYPE"));
     }
 
     private int sortKey(String ct, List<Map<String, Object>> carOrder) {
