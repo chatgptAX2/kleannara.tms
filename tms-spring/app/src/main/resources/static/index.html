@@ -2536,16 +2536,16 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psd-stat-bar .stat-val{font-weight:700;color:var(--text)}
 
 /* ── PS배차(최적화) 전용 요약바 색상 오버라이드 ──────────────────────
-   배경 #027cbc(진한 파랑) + 시인성 위해 글자는 흰색 계열.
-   psd-stat-bar 는 PS배차 기본 화면과 공유되므로 psop-stat-bar 로만 덮어씀. */
+   깔끔한 흰색 배경 + 검정 글자. (psd-stat-bar 는 PS배차 기본 화면과
+   공유되므로 psop-stat-bar 로만 덮어씀 — 기본 화면은 기존 하늘색 유지) */
 .psd-stat-bar.psop-stat-bar{
-  background:#027cbc;
-  border-top:2px solid #01659b;         /* 배경보다 약간 진한 경계선 */
-  color:#eaf6fd;                        /* 라벨: 밝은 하늘빛 흰색 */
-  box-shadow:0 -3px 8px rgba(2,124,188,.18);
+  background:#ffffff;
+  border-top:1px solid var(--border);   /* 흰 배경에 은은한 경계선 */
+  color:#000000;                         /* 라벨: 검정 */
+  box-shadow:none;
 }
-.psd-stat-bar.psop-stat-bar .stat-item{color:#eaf6fd}
-.psd-stat-bar.psop-stat-bar .stat-val{color:#ffffff}   /* 강조 숫자: 순백색 */
+.psd-stat-bar.psop-stat-bar .stat-item{color:#000000}
+.psd-stat-bar.psop-stat-bar .stat-val{color:#000000}   /* 강조 숫자: 검정 */
 /* 빈 상태 */
 .psd-empty{padding:32px 20px;text-align:center;color:var(--text3)}
 .psd-empty .psd-empty-icon{font-size:36px;margin-bottom:8px}
@@ -15403,7 +15403,7 @@ async function renderPsDispatchOpt() {
             <span class="stat-item">전체: <span class="stat-val" id="psop-stat-total">0</span></span>
             <span class="stat-item">미배차: <span class="stat-val" id="psop-stat-undp">0</span></span>
             <span class="stat-item">배차완료: <span class="stat-val" id="psop-stat-dp">0</span></span>
-            <span class="stat-item" title="배차저장 완료(가선적번호 부여) 건수">배차저장: <span class="stat-val" style="color:#bfe6f7" id="psop-stat-saved">0</span></span>
+            <span class="stat-item" title="배차저장 완료(가선적번호 부여) 건수">배차저장: <span class="stat-val" style="color:#000000" id="psop-stat-saved">0</span></span>
             <span class="stat-item">선택: <span class="stat-val" id="psop-stat-sel">0</span></span>
             <span id="psop-stat-summary" style="display:none;margin-left:8px;padding:2px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;font-size:11px;color:var(--text2);"></span>
             <!-- 하단부 우측: 엑셀 다운로드 / 합계 -->
