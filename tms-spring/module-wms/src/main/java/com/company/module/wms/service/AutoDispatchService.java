@@ -1910,19 +1910,27 @@ public class AutoDispatchService {
                             String grm, int count,
                             List<Map<String, Object>> carOrder,
                             Map<String, VehInfo> vehInfo) {
+        // ── [차량 과대선정 버그수정] ─────────────────────────────────
+        //  목적: 인치 기준수량(DS_INCH MAX_COUNT) 상 '필요 롤수(count)를 1단에 실을 수
+        //        있는 가장 작은 차량'을 찾는다.
+        //  (버그) 기존엔 carOrder 를 역순(큰 차부터) 순회하며 cap>=count 인 첫 차를
+        //        반환 → 가장 큰 차(18톤)의 기준수량이 필요수량보다 크면 즉시 18톤을
+        //        반환해, 3롤짜리도 무조건 최대 톤으로 과대선정되는 문제.
+        //  (수정) carOrder 정순(작은 차부터) 순회하며 cap>=count 인 첫(=가장 작은) 차 반환.
+        for (Map<String, Object> car : carOrder) {
+            String ct  = str(car.get("CARTYPE"));
+            int cap = inchMap.getOrDefault(ct, Collections.emptyMap()).getOrDefault(grm, 0);
+            if (cap >= count) return ct;   // 필요수량을 담는 가장 작은 차
+        }
+        // 어떤 차도 1단에 count 를 못 담음(초과) → LOAD_TON 입력된 가장 큰 차량
         List<Map<String, Object>> reversed = new ArrayList<>(carOrder);
         Collections.reverse(reversed);
         for (Map<String, Object> car : reversed) {
-            String ct  = str(car.get("CARTYPE"));
-            int cap = inchMap.getOrDefault(ct, Collections.emptyMap()).getOrDefault(grm, 0);
-            if (cap >= count) return ct;
-        }
-        // 초과 → LOAD_TON 입력된 가장 큰 차량
-        for (Map<String, Object> car : carOrder) {
             String ct = str(car.get("CARTYPE"));
             if (vehInfo.getOrDefault(ct, VehInfo.EMPTY).loadKg > 0) return ct;
         }
-        return carOrder.isEmpty() ? "판별불가" : str(carOrder.get(0).get("CARTYPE"));
+        return carOrder.isEmpty() ? "판별불가"
+             : str(carOrder.get(carOrder.size() - 1).get("CARTYPE"));
     }
 
     private int sortKey(String ct, List<Map<String, Object>> carOrder) {
@@ -2350,11 +2358,25 @@ public class AutoDispatchService {
             int perSlice, rows;
             double layerLengthMm;
             if (useInch) {
-                // 1단 = tier1Count 개를 cols 열로 분배 → 길이방향 행 수 = ceil(tier1Count/cols).
-                //  전체 롤은 1단(tier1Count) 단위로 maxTiers 단까지 적층.
-                //  차량 길이(Y) 점유는 "필요 단수 만큼의 1단 배치"가 아니라 1단 바닥 점유 × (1단이 여러 배치면 반복).
-                int floorGroups = (int) Math.ceil((double) layer.totalRolls / Math.max(1, tier1Count * maxTiers));
-                rows = (int) Math.ceil((double) tier1Count / Math.max(1, cols)) * Math.max(1, floorGroups);
+                // ── [Y축 점유 과대계산 버그수정] ────────────────────────────
+                //  DS_INCH MAX_COUNT(tier1Count)는 '1단(바닥 1개층)에 실을 수 있는 최대
+                //  롤 수'의 상한이다. 이를 바닥면적(Y축 점유) 계산에 그대로 쓰면 안 되고,
+                //  '실제 롤 수(layer.totalRolls)'가 바닥에 몇 행 깔리는지로 계산해야 한다.
+                //
+                //  (버그) 기존 rows = ceil(tier1Count / cols) × floorGroups →
+                //         실제 3롤뿐인데 1단 정원(예:5)만큼 5행을 점유로 잡아 Y축 과대
+                //         (예: 5행×1100=5500mm) → 불필요한 OVERFLOW/차량 과대선정 유발.
+                //  (수정) 바닥에 실제로 깔리는 롤 수 = ceil(전체롤 / maxTiers)  (단수만큼
+                //         수직 적층되므로 바닥 개수는 그만큼 줄어듦). 단, 1단 정원(tier1Count)
+                //         을 넘을 수 없으므로 min(바닥롤수, tier1Count) 로 상한.
+                //         그 바닥 롤을 cols 열로 분배 → rows = ceil(바닥롤수 / cols).
+                int floorRolls = (int) Math.ceil((double) layer.totalRolls / Math.max(1, maxTiers));
+                floorRolls = Math.min(floorRolls, Math.max(1, tier1Count)); // 1단 정원 상한
+                // 1단 정원을 초과하는 물량은 추가 '1단 그룹'으로 뒤에 이어 배치
+                int floorGroups = (int) Math.ceil(
+                    (double) layer.totalRolls / Math.max(1, tier1Count * maxTiers));
+                rows = (int) Math.ceil((double) floorRolls / Math.max(1, cols))
+                       * Math.max(1, floorGroups);
                 perSlice = cols * maxTiers;
                 layerLengthMm = rows * footMm + (zz && rows > 0 ? footMm / 2.0 : 0.0);
                 usedLengthMm += layerLengthMm;
