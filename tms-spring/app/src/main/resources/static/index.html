@@ -24391,12 +24391,14 @@ function _dconSpRenderTabs() {
 /* ── BZPTN_DETAIL 납품처 데이터 초기 로드 (페이지 진입 시 즉시 실행) ── */
 async function _dconLoadBzptnData() {
   try {
+    // 스코프별 납품처 제품군 필터 (PS='10'=판지 / HL='20'=생활) — HL 화면은 HL 납품처만 조회
+    const _sc = (DCON.scope === 'HL') ? 'HL' : 'PS';
     const [etd, fkd, dyd, rgd, pmd] = await Promise.all([
-      fetch('/api/dispatch-const-set/entry-ton/list').then(r=>r.json()),
-      fetch('/api/dispatch-const-set/forklift/list').then(r=>r.json()),
-      fetch('/api/dispatch-const-set/dynamic/list').then(r=>r.json()),
+      fetch(`/api/dispatch-const-set/entry-ton/list?scope=${_sc}`).then(r=>r.json()),
+      fetch(`/api/dispatch-const-set/forklift/list?scope=${_sc}`).then(r=>r.json()),
+      fetch(`/api/dispatch-const-set/dynamic/list?scope=${_sc}`).then(r=>r.json()),
       fetch('/api/dispatch-const-set/region/list').then(r=>r.json()),
-      fetch('/api/dispatch-const-set/ptnr-multi/list').then(r=>r.json()),
+      fetch(`/api/dispatch-const-set/ptnr-multi/list?scope=${_sc}`).then(r=>r.json()),
     ]);
     /* ENTRY_TON */
     if (etd.ok) {
@@ -26550,7 +26552,7 @@ async function _dconSpSave() {
     if (etItems.length > 0) {
       const res3 = await fetch('/api/dispatch-const-set/entry-ton/save', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ items: etItems })
+        body: JSON.stringify({ items: etItems, scope: (DCON.scope==='HL'?'HL':'PS') })
       });
       const d3 = await res3.json();
       console.debug('[dcon] entry-ton/save 응답:', d3);
@@ -26571,7 +26573,7 @@ async function _dconSpSave() {
     if (fkItems.length > 0) {
       const resFk = await fetch('/api/dispatch-const-set/forklift/save', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: fkItems }),
+        body: JSON.stringify({ items: fkItems, scope: (DCON.scope==='HL'?'HL':'PS') }),
       });
       const dFk = await resFk.json();
       console.debug('[dcon] forklift/save 응답:', dFk);
@@ -26620,7 +26622,7 @@ async function _dconSpSave() {
     if (dyItems.length > 0) {
       const resDy = await fetch('/api/dispatch-const-set/dynamic/save', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: dyItems }),
+        body: JSON.stringify({ items: dyItems, scope: (DCON.scope==='HL'?'HL':'PS') }),
       });
       const dDy = await resDy.json();
       console.debug('[dcon] dynamic/save 응답:', dDy);
@@ -26644,7 +26646,7 @@ async function _dconSpSave() {
     if (pmItems.length > 0) {
       const resPm = await fetch('/api/dispatch-const-set/ptnr-multi/save', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: pmItems }),
+        body: JSON.stringify({ items: pmItems, scope: (DCON.scope==='HL'?'HL':'PS') }),
       });
       const dPm = await resPm.json();
       console.debug('[dcon] ptnr-multi/save 응답:', dPm);

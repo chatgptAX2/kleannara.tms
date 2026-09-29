@@ -102,8 +102,9 @@ public class DispatchConfigApiController {
     }
 
     @GetMapping("/dispatch-const-set/entry-ton/list")
-    public ResponseEntity<Map<String, Object>> setEntryTonList() {
-        return ResponseEntity.ok(svc.setEntryTonList());
+    public ResponseEntity<Map<String, Object>> setEntryTonList(
+            @RequestParam(required = false, defaultValue = "PS") String scope) {
+        return ResponseEntity.ok(svc.setEntryTonList(scope));
     }
 
     @PostMapping("/dispatch-const-set/entry-ton/save")
@@ -112,8 +113,9 @@ public class DispatchConfigApiController {
     }
 
     @GetMapping("/dispatch-const-set/forklift/list")
-    public ResponseEntity<Map<String, Object>> setForkliftList() {
-        return ResponseEntity.ok(svc.setForkliftList());
+    public ResponseEntity<Map<String, Object>> setForkliftList(
+            @RequestParam(required = false, defaultValue = "PS") String scope) {
+        return ResponseEntity.ok(svc.setForkliftList(scope));
     }
 
     @PostMapping("/dispatch-const-set/forklift/save")
@@ -122,8 +124,9 @@ public class DispatchConfigApiController {
     }
 
     @GetMapping("/dispatch-const-set/dynamic/list")
-    public ResponseEntity<Map<String, Object>> setDynamicList() {
-        return ResponseEntity.ok(svc.setDynamicList());
+    public ResponseEntity<Map<String, Object>> setDynamicList(
+            @RequestParam(required = false, defaultValue = "PS") String scope) {
+        return ResponseEntity.ok(svc.setDynamicList(scope));
     }
 
     @PostMapping("/dispatch-const-set/dynamic/save")
@@ -133,8 +136,9 @@ public class DispatchConfigApiController {
 
     // ── 납품처 통합 제약(PTNR_MULTI): 동적거리/수작업/자동배차/동적대상 4컬럼 동시 관리 ──
     @GetMapping("/dispatch-const-set/ptnr-multi/list")
-    public ResponseEntity<Map<String, Object>> setPtnrMultiList() {
-        return ResponseEntity.ok(svc.setPtnrMultiList());
+    public ResponseEntity<Map<String, Object>> setPtnrMultiList(
+            @RequestParam(required = false, defaultValue = "PS") String scope) {
+        return ResponseEntity.ok(svc.setPtnrMultiList(scope));
     }
 
     @PostMapping("/dispatch-const-set/ptnr-multi/save")

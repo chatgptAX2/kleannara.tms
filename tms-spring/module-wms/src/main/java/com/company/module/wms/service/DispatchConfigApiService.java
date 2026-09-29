@@ -56,6 +56,11 @@ public class DispatchConfigApiService {
     private static String carclassKey(String scope) {
         return "HL".equals(scope) ? "TMS_CARCLASS20" : "TMS_CARCLASS10";
     }
+    // 스코프에 대응하는 납품처 제품군 코드 (BZPTN.PTNL01: PS='10', HL='20')
+    //   PS=판지, HL=생활 납품처 구분 기준. 제약조건관리 납품처 조회/저장 필터에 사용.
+    private static String ptnl01Of(String scope) {
+        return "HL".equals(scope) ? "20" : "10";
+    }
     // 프로파일(PROFILE_ID)의 SCOPE 조회 — CONST 저장 시 스코프 상속용(없으면 'PS').
     private String profileScope(Long profileId) {
         if (profileId == null) return "PS";
@@ -530,10 +535,13 @@ public class DispatchConfigApiService {
         return Map.of("ok", true, "saved", 0);
     }
 
-    public Map<String, Object> setEntryTonList() {
+    public Map<String, Object> setEntryTonList() { return setEntryTonList("PS"); }
+    public Map<String, Object> setEntryTonList(String scopeIn) {
         try {
+            String scope   = normScope(scopeIn);
+            String ptnl01  = ptnl01Of(scope);            // PS='10' / HL='20'
             // tmsJdbc 단독 — BZPTN JOIN BZPTN_DETAIL (동일 DB/계정이므로 JOIN 가능)
-            // b.PTNL01='10' : PS 납품처 대상만 조회
+            // b.PTNL01=? : 스코프별 납품처 대상만 조회 (PS=판지 '10' / HL=생활 '20')
             List<Map<String, Object>> partners = tmsJdbc.queryForList(
                 "SELECT b.PTNRKY, 'CT' AS PTNRTY, " +
                 "       COALESCE(d.OWNRKY,'KN') AS OWNRKY, " +
@@ -542,10 +550,12 @@ public class DispatchConfigApiService {
                 "       d.AREA_CD, d.MAX_TON, d.AUTO_ALLOC_YN " +
                 "FROM KNRAWMS.BZPTN b " +
                 "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=b.PTNRKY AND d.PTNRTY=b.PTNRTY AND d.OWNRKY=b.OWNRKY " +
-                "WHERE b.PTNRTY='CT' AND b.PTNL01='10' ORDER BY d.AREA_CD, b.PTNRKY"
+                "WHERE b.PTNRTY='CT' AND b.PTNL01=? ORDER BY d.AREA_CD, b.PTNRKY",
+                ptnl01
             );
             List<Map<String, Object>> carclasses = wmsJdbc.queryForList(
-                "SELECT CMCDVL AS value, CDESC1 AS label FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10' ORDER BY CMCDVL"
+                "SELECT CMCDVL AS value, CDESC1 AS label FROM KNRAWMS.CMCDV WHERE CMCDKY=? ORDER BY CMCDVL",
+                carclassKey(scope)
             );
             return Map.of("ok", true, "partners", partners, "carclasses", carclasses);
         } catch (Exception e) { return errMap(e); }
@@ -556,10 +566,12 @@ public class DispatchConfigApiService {
         return bzptnDetailBatchSave(body, "MAX_TON");
     }
 
-    public Map<String, Object> setForkliftList() {
+    public Map<String, Object> setForkliftList() { return setForkliftList("PS"); }
+    public Map<String, Object> setForkliftList(String scopeIn) {
         try {
+            String ptnl01 = ptnl01Of(normScope(scopeIn));   // PS='10' / HL='20'
             // tmsJdbc 단독 — BZPTN JOIN BZPTN_DETAIL (동일 DB/계정이므로 JOIN 가능)
-            // b.PTNL01='10' : PS 납품처 대상만 조회
+            // b.PTNL01=? : 스코프별 납품처 대상만 조회 (PS=판지 '10' / HL=생활 '20')
             List<Map<String, Object>> rows = tmsJdbc.queryForList(
                 "SELECT b.PTNRKY, 'CT' AS PTNRTY, " +
                 "       COALESCE(d.OWNRKY,'KN') AS OWNRKY, " +
@@ -568,7 +580,8 @@ public class DispatchConfigApiService {
                 "       d.AREA_CD, d.FORKLIFT_YN, d.AUTO_ALLOC_YN " +
                 "FROM KNRAWMS.BZPTN b " +
                 "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=b.PTNRKY AND d.PTNRTY=b.PTNRTY AND d.OWNRKY=b.OWNRKY " +
-                "WHERE b.PTNRTY='CT' AND b.PTNL01='10' ORDER BY d.AREA_CD, b.PTNRKY"
+                "WHERE b.PTNRTY='CT' AND b.PTNL01=? ORDER BY d.AREA_CD, b.PTNRKY",
+                ptnl01
             );
             return Map.of("ok", true, "partners", rows);
         } catch (Exception e) { return errMap(e); }
@@ -579,10 +592,12 @@ public class DispatchConfigApiService {
         return bzptnDetailBatchSave(body, "FORKLIFT_YN");
     }
 
-    public Map<String, Object> setDynamicList() {
+    public Map<String, Object> setDynamicList() { return setDynamicList("PS"); }
+    public Map<String, Object> setDynamicList(String scopeIn) {
         try {
+            String ptnl01 = ptnl01Of(normScope(scopeIn));   // PS='10' / HL='20'
             // tmsJdbc 단독 — BZPTN JOIN BZPTN_DETAIL (동일 DB/계정이므로 JOIN 가능)
-            // b.PTNL01='10' : PS 납품처 대상만 조회
+            // b.PTNL01=? : 스코프별 납품처 대상만 조회 (PS=판지 '10' / HL=생활 '20')
             List<Map<String, Object>> rows = tmsJdbc.queryForList(
                 "SELECT b.PTNRKY, 'CT' AS PTNRTY, " +
                 "       COALESCE(d.OWNRKY,'KN') AS OWNRKY, " +
@@ -591,7 +606,8 @@ public class DispatchConfigApiService {
                 "       d.AREA_CD, d.DYNAMIC_YN, d.AUTO_ALLOC_YN " +
                 "FROM KNRAWMS.BZPTN b " +
                 "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=b.PTNRKY AND d.PTNRTY=b.PTNRTY AND d.OWNRKY=b.OWNRKY " +
-                "WHERE b.PTNRTY='CT' AND b.PTNL01='10' ORDER BY d.AREA_CD, b.PTNRKY"
+                "WHERE b.PTNRTY='CT' AND b.PTNL01=? ORDER BY d.AREA_CD, b.PTNRKY",
+                ptnl01
             );
             return Map.of("ok", true, "partners", rows);
         } catch (Exception e) { return errMap(e); }
@@ -610,10 +626,12 @@ public class DispatchConfigApiService {
     //   4) DYNAMIC_YN      동적대상 사용유무 (Y/N)
     //  대상 테이블: KNRAWMS.BZPTN_DETAIL (납품처 관리와 동일)
     // ══════════════════════════════════════════════════════════════
-    public Map<String, Object> setPtnrMultiList() {
+    public Map<String, Object> setPtnrMultiList() { return setPtnrMultiList("PS"); }
+    public Map<String, Object> setPtnrMultiList(String scopeIn) {
         try {
+            String ptnl01 = ptnl01Of(normScope(scopeIn));   // PS='10' / HL='20'
             // tmsJdbc 단독 — BZPTN JOIN BZPTN_DETAIL (동일 DB/계정이므로 JOIN 가능)
-            // b.PTNL01='10' : PS 납품처 대상만 조회
+            // b.PTNL01=? : 스코프별 납품처 대상만 조회 (PS=판지 '10' / HL=생활 '20')
             List<Map<String, Object>> rows = tmsJdbc.queryForList(
                 "SELECT b.PTNRKY, 'CT' AS PTNRTY, " +
                 "       COALESCE(d.OWNRKY,'KN') AS OWNRKY, " +
@@ -622,7 +640,8 @@ public class DispatchConfigApiService {
                 "       d.AREA_CD, d.DYNAMIC_DIST_M, d.HANDWORK_YN, d.AUTO_ALLOC_YN, d.DYNAMIC_YN " +
                 "FROM KNRAWMS.BZPTN b " +
                 "LEFT JOIN KNRAWMS.BZPTN_DETAIL d ON d.PTNRKY=b.PTNRKY AND d.PTNRTY=b.PTNRTY AND d.OWNRKY=b.OWNRKY " +
-                "WHERE b.PTNRTY='CT' AND b.PTNL01='10' ORDER BY d.AREA_CD, b.PTNRKY"
+                "WHERE b.PTNRTY='CT' AND b.PTNL01=? ORDER BY d.AREA_CD, b.PTNRKY",
+                ptnl01
             );
             return Map.of("ok", true, "partners", rows);
         } catch (Exception e) { return errMap(e); }
@@ -939,6 +958,8 @@ public class DispatchConfigApiService {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> items = (List<Map<String, Object>>) body.get("items");
         if (items == null || items.isEmpty()) return Map.of("ok", true, "saved", 0);
+        // 스코프별 납품처 제품군 검증 기준 (PS='10' / HL='20')
+        String ptnl01 = ptnl01Of(normScope(body.get("scope")));
         String lmodat = today();
         String lmotim = java.time.LocalDateTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
         int saved = 0;
@@ -954,12 +975,12 @@ public class DispatchConfigApiService {
                 // null-safe 바인딩(ORA-17004 방지): VARCHAR NULL → 대상 컬럼 타입으로 안전 변환
                 Object colVal = vc(colValRaw);
                 if (ptnrky.isBlank()) continue;
-                // PS 납품처(PTNL01='10') 대상인지 검증 — 조회 대상과 저장 대상 일치 보장
+                // 스코프 납품처(PTNL01=?) 대상인지 검증 — 조회 대상과 저장 대상 일치 보장
                 int psCount = tmsJdbc.queryForObject(
-                    "SELECT COUNT(*) FROM KNRAWMS.BZPTN WHERE PTNRKY=? AND PTNRTY='CT' AND PTNL01='10'",
-                    Integer.class, ptnrky
+                    "SELECT COUNT(*) FROM KNRAWMS.BZPTN WHERE PTNRKY=? AND PTNRTY='CT' AND PTNL01=?",
+                    Integer.class, ptnrky, ptnl01
                 );
-                if (psCount == 0) { saved++; continue; } // PS 대상 아님 → 건너뜀
+                if (psCount == 0) { saved++; continue; } // 스코프 대상 아님 → 건너뜀
 
                 // Oracle MERGE INTO — UK_BZPTN_DETAIL 는 (PTNRKY, PTNRTY, OWNRKY) 3컬럼.
                 // 제약관리 화면에는 WAREKY(거점) 선택 기능이 없으므로 ON 절 식별키에서 WAREKY 제외.
@@ -992,6 +1013,8 @@ public class DispatchConfigApiService {
         List<Map<String, Object>> items = (List<Map<String, Object>>) body.get("items");
         if (items == null || items.isEmpty()) return Map.of("ok", true, "saved", 0);
         if (columnNames == null || columnNames.length == 0) return Map.of("ok", true, "saved", 0);
+        // 스코프별 납품처 제품군 검증 기준 (PS='10' / HL='20')
+        String ptnl01 = ptnl01Of(normScope(body.get("scope")));
         String lmodat = today();
         String lmotim = java.time.LocalDateTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
         int saved = 0;
@@ -1020,10 +1043,10 @@ public class DispatchConfigApiService {
                 String wareky = Objects.toString(it.getOrDefault("wareky", "W001"), "W001").trim();
                 if (ptnrky.isBlank()) continue;
 
-                // PS 납품처(PTNL01='10') 대상인지 검증
+                // 스코프 납품처(PTNL01=?) 대상인지 검증
                 int psCount = tmsJdbc.queryForObject(
-                    "SELECT COUNT(*) FROM KNRAWMS.BZPTN WHERE PTNRKY=? AND PTNRTY='CT' AND PTNL01='10'",
-                    Integer.class, ptnrky
+                    "SELECT COUNT(*) FROM KNRAWMS.BZPTN WHERE PTNRKY=? AND PTNRTY='CT' AND PTNL01=?",
+                    Integer.class, ptnrky, ptnl01
                 );
                 if (psCount == 0) { saved++; continue; }
 
