@@ -249,7 +249,13 @@ public class DeliveryService {
 
         if (bzptnDetailRepo.existsByPtnrkyAndPtnrtyAndOwnrky(ptnrky, ptnrty, ownrky)) {
             // 선택적 컬럼은 존재 시에만 SET 절 포함 (미존재 시 제외 → ORA-00904 방지)
-            String deadlineSet = hasDeadline    ? "DEADLINE_TIME=?,"  : "";
+            // ★ DEADLINE_TIME 은 운영 DB에서 NOT NULL 컬럼 → 값이 없을 때 SET 에 포함하면
+            //   NULL 업데이트로 ORA-01407 발생(동적거리만 수정·마감시간 미입력 저장 시).
+            //   따라서 '컬럼 존재 && 값이 비어있지 않을 때'만 SET 에 포함(미입력 시 기존값 유지).
+            boolean setDeadline = hasDeadline
+                    && req.getDeadlineTime() != null
+                    && !req.getDeadlineTime().isBlank();
+            String deadlineSet = setDeadline    ? "DEADLINE_TIME=?,"  : "";
             String maxTonSet   = hasMaxTon      ? "MAX_TON=?,"        : "";
             String dynDistSet  = hasDynamicDist ? "DYNAMIC_DIST_M=?," : "";
             Query q = tmsEm.createNativeQuery(
@@ -286,7 +292,7 @@ public class DeliveryService {
              .setParameter(p++, req.getLatitude())
              .setParameter(p++, req.getLongitude())
              .setParameter(p++, (req.getDelYn() == null || req.getDelYn().isBlank()) ? "N" : req.getDelYn());
-            if (hasDeadline)    q.setParameter(p++, req.getDeadlineTime());
+            if (setDeadline)    q.setParameter(p++, req.getDeadlineTime());
             if (hasMaxTon)      q.setParameter(p++, req.getMaxTon());
             if (hasDynamicDist) q.setParameter(p++, req.getDynamicDistM());
             q.setParameter(p++, nowdt).setParameter(p++, nowtm).setParameter(p++, "WEB")
@@ -295,10 +301,15 @@ public class DeliveryService {
             return "updated";
         } else {
             // 선택적 컬럼은 존재 시에만 INSERT 컬럼/값 포함
-            String deadlineCol = hasDeadline    ? "DEADLINE_TIME," : "";
+            // ★ DEADLINE_TIME(NOT NULL) 은 값이 없으면 INSERT 에서 아예 제외하여
+            //   DB 기본값/제약에 맡긴다(NULL 명시 삽입 시 ORA-01407 방지).
+            boolean setDeadline = hasDeadline
+                    && req.getDeadlineTime() != null
+                    && !req.getDeadlineTime().isBlank();
+            String deadlineCol = setDeadline    ? "DEADLINE_TIME," : "";
             String maxTonCol   = hasMaxTon      ? "MAX_TON,"       : "";
             String dynDistCol  = hasDynamicDist ? "DYNAMIC_DIST_M,": "";
-            String deadlineVal = hasDeadline    ? "?," : "";
+            String deadlineVal = setDeadline    ? "?," : "";
             String maxTonVal   = hasMaxTon      ? "?," : "";
             String dynDistVal  = hasDynamicDist ? "?," : "";
             Query q = tmsEm.createNativeQuery(
@@ -335,7 +346,7 @@ public class DeliveryService {
              .setParameter(p++, req.getLatitude())
              .setParameter(p++, req.getLongitude())
              .setParameter(p++, (req.getDelYn() == null || req.getDelYn().isBlank()) ? "N" : req.getDelYn());
-            if (hasDeadline)    q.setParameter(p++, req.getDeadlineTime());
+            if (setDeadline)    q.setParameter(p++, req.getDeadlineTime());
             if (hasMaxTon)      q.setParameter(p++, req.getMaxTon());
             if (hasDynamicDist) q.setParameter(p++, req.getDynamicDistM());
             q.setParameter(p++, nowdt).setParameter(p++, nowtm).setParameter(p++, "WEB")
