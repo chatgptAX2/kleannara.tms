@@ -344,24 +344,41 @@ select.page-size{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,
 .table-outer{flex:1;overflow:auto;min-height:0}
 table{border-collapse:collapse;font-size:12px;table-layout:fixed}
 table.full-width{width:100%}
+/* ── 데이터리스트 헤더 (마스터관리 공통) ──────────────────────────
+   ★ position 은 sticky 로 단일 선언(과거 relative 중복선언이 sticky 를
+     덮어써 세로 스크롤 시 헤더가 고정되지 않던 버그 수정). sticky 자체가
+     positioned context 를 제공하므로 col-resizer(absolute) 도 정상 배치됨.
+   ★ 모든 컬럼 헤더가 세로 스크롤 시 상단(top:0) 고정된다. */
 thead th{
   position:sticky;top:0;z-index:10;
   background:var(--th-bg);
-  padding:0;text-align:left;
+  padding:0;text-align:left;vertical-align:top;
   font-weight:700;font-size:11px;color:var(--text2);
   border-bottom:2px solid var(--border);
   border-right:1px solid var(--border);
   white-space:nowrap;user-select:none;
   min-width:60px;max-width:none;width:120px;
-  overflow:hidden;position:relative;
+  overflow:hidden;
 }
+/* 헤더 내부 구성 통일 (모든 마스터 리스트 동일):
+   ┌─────────────────────────────────────┐
+   │ ⠿  코멘트(축약, 굵게)          ⇅정렬 │  ← 1행(가로 flex)
+   │ COLUMN_NAME (컬럼명, 흐리게/모노)     │  ← 2행
+   └─────────────────────────────────────┘
+   grid 2행: 1행에 핸들/라벨/정렬아이콘, 2행에 컬럼명. 높이·여백 통일. */
 thead th .th-inner{
-  display:flex;flex-direction:column;padding:9px 10px;gap:2px;overflow:hidden;
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  grid-template-areas:"handle label sort" "col col col";
+  align-items:center;
+  padding:7px 10px;row-gap:3px;column-gap:4px;overflow:hidden;min-height:40px;box-sizing:border-box;
 }
-thead th .th-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);letter-spacing:.01em}
-thead th .th-col{font-size:10px;font-weight:400;opacity:.55;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+thead th .th-drag-handle{grid-area:handle}
+thead th .th-label{grid-area:label;font-size:11px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);letter-spacing:.01em;line-height:1.25}
+thead th .sort-icon{grid-area:sort}
+thead th .th-col{grid-area:col;font-size:9.5px;font-weight:500;opacity:.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'Consolas','Menlo',monospace;letter-spacing:.02em}
 thead th.pk-col .th-label{color:var(--warning)}
-thead th.pk-col .th-col{color:var(--warning);opacity:.7}
+thead th.pk-col .th-col{color:var(--warning);opacity:.75}
 thead th:hover .th-label{color:var(--primary)}
 
 /* 컬럼 드래그 리사이저 */
@@ -4307,6 +4324,37 @@ function tblSortBy(col) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   컬럼 라벨(코멘트) 축약 — 데이터리스트 헤더 가독성
+   · 백엔드 labels = 컬럼 코멘트(remark). 코멘트가 길면 헤더가 넓어지고
+     가독성이 떨어지므로, 표시용으로 축약한다(원본은 title 로 보존).
+   · 규칙:
+     1) 자주 나오는 긴 코멘트는 대체단어(약어)로 치환
+     2) 괄호 보충설명 "( ... )" 은 제거하여 핵심만 표시
+     3) 그래도 길면 12자에서 말줄임(…)
+═══════════════════════════════════════════════════════════ */
+const TH_LABEL_ALIAS = {
+  // 공통 감사컬럼
+  '생성일자':'생성일','생성일자 (YYYYMMDD)':'생성일','생성시각':'생성시각','생성시각 (HHMMSS)':'생성시각',
+  '생성자':'생성자','수정일자':'수정일','수정일자 (YYYYMMDD)':'수정일','수정시각':'수정시각',
+  '수정시각 (HHMMSS)':'수정시각','수정자':'수정자',
+};
+function _thShortLabel(label, col){
+  if (label == null || label === '') return col;
+  let s = String(label).trim();
+  // 1) 별칭(약어) 우선
+  if (TH_LABEL_ALIAS[s]) return TH_LABEL_ALIAS[s];
+  // 2) 괄호 보충설명 제거 (예: "적용 시작일자 (YYYYMMDD)" → "적용 시작일자")
+  const noParen = s.replace(/\s*[\(（].*?[\)）]\s*/g, '').trim();
+  if (noParen) s = noParen;
+  // 3) 슬래시/하이픈 뒤 부연 제거 (예: "단위 (KG=중량 / R=롤)" → 위에서 괄호제거됨)
+  //    구분자로 여러 뜻 나열된 경우 첫 항목만
+  if (s.length > 12 && /[·/]/.test(s)) s = s.split(/[·/]/)[0].trim();
+  // 4) 최종 길이 제한
+  if (s.length > 12) s = s.slice(0, 12) + '…';
+  return s || col;
+}
+
+/* ═══════════════════════════════════════════════════════════
    TABLE RENDER (캐시된 rows + visibleCols 기준)
 ═══════════════════════════════════════════════════════════ */
 function renderTableFromCache(){
@@ -4331,6 +4379,10 @@ function renderTableFromCache(){
     const isAsc   = state.sortCol === col && state.sortDir === 'ASC';
     const isDesc  = state.sortCol === col && state.sortDir === 'DESC';
     const sortCls = isAsc ? ' sort-asc' : isDesc ? ' sort-desc' : '';
+    // 라벨(코멘트) — 원본은 rawLabel, 표시용은 축약. 코멘트가 없으면 컬럼명으로 폴백.
+    const rawLabel = (labels[col] && labels[col] !== col) ? labels[col] : '';
+    const dispLabel = rawLabel ? _thShortLabel(rawLabel, col) : col;
+    const titleTxt = rawLabel ? `${rawLabel} [${col}]` : col;   // hover 시 코멘트 전문 + 컬럼명
     thead += `<th class="sort-th${isPk?' pk-col':''}${sticky}${sortCls}" data-col="${col}" ${colW}
       draggable="true"
       ondragstart="colOrderDragStart(event,'${col}')"
@@ -4338,10 +4390,10 @@ function renderTableFromCache(){
       ondragleave="colOrderDragLeave(event)"
       ondrop="colOrderDrop(event,'${col}')"
       ondragend="colOrderDragEnd(event)"
-      ondblclick="tblSortBy('${col}')">
+      ondblclick="tblSortBy('${col}')" title="${titleTxt.replace(/"/g,'&quot;')}">
       <div class="th-inner">
         <span class="th-drag-handle" title="드래그하여 순서 변경">⠿</span>
-        <span class="th-label">${labels[col] || col}</span>
+        <span class="th-label">${dispLabel}</span>
         <span class="th-col">${col}</span>
         <span class="sort-icon"></span>
       </div>
