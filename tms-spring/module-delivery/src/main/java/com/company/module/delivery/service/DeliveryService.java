@@ -100,6 +100,12 @@ public class DeliveryService {
         String ptnrky    = nullIfBlank(req.getPtnrky());
         String q         = nullIfBlank(req.getQ());
 
+        // ── 납품처 다중입력 검색 ────────────────────────────────────────
+        // ptnrky 값이 콤마/공백/줄바꿈/세미콜론 등 구분자를 포함하면 여러 토큰으로 분해하여
+        // 각 토큰을 (PTNRKY LIKE ? OR NAME01 LIKE ?) OR 조건으로 연결한다.
+        // 예) "1000000 1000001 대한제지" → 세 값 중 하나라도 매칭되는 납품처 조회.
+        List<String> ptnrkyTokens = splitMultiKeywords(ptnrky);   // 비어있으면 empty list
+
         boolean hasMaxTon      = hasCol("MAX_TON");
         boolean hasDeadline    = hasCol("DEADLINE_TIME");
         boolean hasDynamicDist = hasCol("DYNAMIC_DIST_M");
@@ -110,7 +116,16 @@ public class DeliveryService {
         if (wareky    != null) where.append(" AND d.WAREKY = :wareky");
         // 제품군: BZPTN.PTNL01(SAP 제품군 코드) 우선, BZPTN_DETAIL.ITEM_GROUP 병행 조건
         if (itemGroup != null) where.append(" AND (b.PTNL01 = :itemGroup OR d.ITEM_GROUP = :itemGroup)");
-        if (ptnrky    != null) where.append(" AND (b.PTNRKY LIKE :ptnrky OR b.NAME01 LIKE :ptnrky)");
+        // 납품처: 다중 토큰이면 각 토큰을 OR 로 묶어 그룹 조건 생성
+        if (!ptnrkyTokens.isEmpty()) {
+            where.append(" AND (");
+            for (int t = 0; t < ptnrkyTokens.size(); t++) {
+                if (t > 0) where.append(" OR ");
+                where.append("b.PTNRKY LIKE :ptnrky").append(t)
+                     .append(" OR b.NAME01 LIKE :ptnrky").append(t);
+            }
+            where.append(")");
+        }
         if (q         != null) where.append(" AND (b.PTNRKY LIKE :q OR b.NAME01 LIKE :q OR b.ADDR01 LIKE :q OR b.REGN01 LIKE :q)");
 
         // ── 정렬 화이트리스트 (선택적 컬럼은 존재 시에만 허용) ────────
@@ -133,7 +148,8 @@ public class DeliveryService {
         Query countQ = tmsEm.createNativeQuery(countSql);
         if (wareky    != null) countQ.setParameter("wareky",    wareky);
         if (itemGroup != null) countQ.setParameter("itemGroup", itemGroup);
-        if (ptnrky    != null) countQ.setParameter("ptnrky",    "%" + ptnrky + "%");
+        for (int t = 0; t < ptnrkyTokens.size(); t++)
+            countQ.setParameter("ptnrky" + t, "%" + ptnrkyTokens.get(t) + "%");
         if (q         != null) countQ.setParameter("q",         "%" + q + "%");
 
         Object countResult = countQ.getSingleResult();
@@ -163,7 +179,8 @@ public class DeliveryService {
         Query dataQ = tmsEm.createNativeQuery(dataSql);
         if (wareky    != null) dataQ.setParameter("wareky",    wareky);
         if (itemGroup != null) dataQ.setParameter("itemGroup", itemGroup);
-        if (ptnrky    != null) dataQ.setParameter("ptnrky",    "%" + ptnrky + "%");
+        for (int t = 0; t < ptnrkyTokens.size(); t++)
+            dataQ.setParameter("ptnrky" + t, "%" + ptnrkyTokens.get(t) + "%");
         if (q         != null) dataQ.setParameter("q",         "%" + q + "%");
         dataQ.setParameter("offset", offset);
         dataQ.setParameter("size",   size);
@@ -619,6 +636,22 @@ public class DeliveryService {
     private String str(Object o)         { return o == null ? "" : o.toString().strip(); }
     private double toDouble(Object o)    { try { return Double.parseDouble(o.toString()); } catch (Exception e) { return 0.0; } }
     private String nullIfBlank(String s) { return (s == null || s.isBlank()) ? null : s.strip(); }
+
+    /**
+     * 납품처 다중입력 검색용 키워드 분해.
+     * 콤마/세미콜론/공백/줄바꿈/탭 등 구분자로 나눠 중복·공백 제거한 토큰 목록 반환.
+     * 입력이 null/blank 이면 빈 목록.
+     * 예) "1000000, 1000001  대한제지" → ["1000000", "1000001", "대한제지"]
+     */
+    private List<String> splitMultiKeywords(String raw) {
+        if (raw == null || raw.isBlank()) return java.util.Collections.emptyList();
+        java.util.LinkedHashSet<String> set = new java.util.LinkedHashSet<>();
+        for (String tok : raw.split("[,;\\s]+")) {
+            String t = tok.strip();
+            if (!t.isEmpty()) set.add(t);
+        }
+        return new ArrayList<>(set);
+    }
 
     private Map<String, Object> toBzptnMap(Object o) {
         Map<String, Object> m = new LinkedHashMap<>();

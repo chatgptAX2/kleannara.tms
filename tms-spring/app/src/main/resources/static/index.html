@@ -6070,8 +6070,23 @@ function buildDeliveryUI() {
       </select>
     </div>
     <div class="dlv-search-group">
-      <label>납품처</label>
-      <input id="dlv-s-ptnrky" type="text" placeholder="코드/명칭" style="width:160px" oninput="dlvSearchChange()">
+      <label>납품처 <span style="font-weight:400;color:var(--text3);font-size:10px;">다중입력·검색</span></label>
+      <div style="display:flex;gap:3px;align-items:center;">
+        <div style="position:relative;width:200px;">
+          <input id="dlv-s-ptnrky" type="text" placeholder="코드/명칭 (복수 붙여넣기 가능)" style="width:100%;box-sizing:border-box;"
+            oninput="_dlvPtnrInputChange(this.value)"
+            onpaste="_dlvPtnrHandlePaste(event)"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();_dlvPtnrApplyInput(this.value);searchDelivery();}">
+          <div id="dlv-s-ptnrky-tags"
+            style="display:none;height:28px;padding:0 5px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);
+                   font-size:11px;color:var(--text);flex-wrap:nowrap;gap:3px;align-items:center;
+                   overflow-x:auto;overflow-y:hidden;scrollbar-width:none;box-sizing:border-box;">
+            <span id="dlv-s-ptnrky-placeholder" style="color:var(--text3);font-size:11px;">전체</span>
+          </div>
+        </div>
+        <button type="button" class="dlv-btn" onclick="openDlvPtnrPopup()" title="납품처 다중입력" style="padding:0 6px;">▤</button>
+        <button type="button" class="dlv-btn" onclick="clearDlvPtnrTags()" title="선택 초기화" style="padding:0 7px;">✕</button>
+      </div>
     </div>
     <button class="dlv-btn" onclick="dlvClearSearch()">↺ 초기화</button>
     <button class="dlv-btn primary" onclick="searchDelivery()">🔍 조회</button>
@@ -6542,6 +6557,9 @@ function dlvToggleGridHide() {
 function dlvClearSearch() {
   const vstel = document.getElementById('dlv-s-vstel');
   if (vstel) vstel.value = '';
+  /* 납품처 다중입력 선택 초기화 (태그 → 입력모드 복원) */
+  window._dlvPtnrSelected = [];
+  if (typeof _dlvPtnrSwitchToInputMode === 'function') _dlvPtnrSwitchToInputMode('');
   ['dlv-s-ptnrky'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
@@ -6564,11 +6582,29 @@ async function searchDelivery(page) {
   // 출하지점 select 값 → BZPTN_DETAIL.WAREKY 조건에 직접 사용
   const warekyVal = (document.getElementById('dlv-s-vstel')?.value || '').trim();
 
+  /* 납품처 다중입력: 태그(팝업/붙여넣기) 선택 배열 우선, 없으면 입력창 직접 파싱.
+     여러 값은 공백으로 join 하여 백엔드로 전달 → getList 에서 OR 토큰 분해. */
+  let dlvPtnrVal;
+  {
+    const inp     = document.getElementById('dlv-s-ptnrky');
+    const tagsEl  = document.getElementById('dlv-s-ptnrky-tags');
+    const tagMode = tagsEl && tagsEl.style.display !== 'none';
+    const direct  = (inp?.value || '').trim();
+    if (!tagMode && !direct) {
+      /* 태그모드 아니고 입력창 비었으면 이전 선택값 폐기 */
+      window._dlvPtnrSelected = [];
+    } else if (!tagMode && direct && (window._dlvPtnrSelected || []).length <= 1) {
+      /* 입력창 직접 입력값 반영 (단일/복수 모두) */
+      window._dlvPtnrSelected = _dlvPtnrParse(direct);
+    }
+    dlvPtnrVal = (window._dlvPtnrSelected || []).join(' ');
+  }
+
   const params = new URLSearchParams({
     page:     dlvState.page,
     size:     dlvState.size,
     skug05:   document.getElementById('dlv-s-skug05')?.value || '',
-    ptnrky:   (document.getElementById('dlv-s-ptnrky')?.value || '').trim(),
+    ptnrky:   dlvPtnrVal,
     sort_col: dlvState.sortCol,
     sort_dir: dlvState.sortDir,
   });
@@ -22033,7 +22069,188 @@ function ptnrPopupSelect(ptnrky, name01) {
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════
+     납품처 다중입력 팝업 (납품처관리 검색조건 전용: dlv-s-ptnrky)
+     출고예정정보 SVBELN 다중검색 UI 패턴 이식
+═══════════════════════════════════════════════════════ -->
+<div id="dlv-ptnr-popup-overlay"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;
+            align-items:center;justify-content:center;">
+  <div style="width:520px;max-width:94vw;max-height:86vh;background:var(--surface);border-radius:10px;
+              box-shadow:0 12px 40px rgba(0,0,0,.35);display:flex;flex-direction:column;overflow:hidden;">
+    <!-- 헤더 -->
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <span style="font-size:14px;font-weight:700;color:var(--text);">🏢 납품처 다중입력·검색</span>
+      <button onclick="closeDlvPtnrPopup()"
+        style="width:26px;height:26px;border:none;background:transparent;color:var(--text3);font-size:18px;cursor:pointer;">✕</button>
+    </div>
+    <!-- 본문 -->
+    <div style="padding:14px 16px;overflow-y:auto;">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px;">
+        납품처코드 또는 납품처명을 한 줄에 하나씩(또는 콤마·공백 구분) 입력하세요. 각 값 중 하나라도 일치하면 조회됩니다.
+      </div>
+      <textarea id="dlv-ptnr-textarea" rows="8"
+        placeholder="예)&#10;1000000&#10;1000001&#10;대한제지"
+        style="width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--border);border-radius:6px;
+               background:var(--surface);color:var(--text);font-size:12px;font-family:inherit;resize:vertical;"></textarea>
+      <div id="dlv-ptnr-popup-cnt" style="font-size:11px;color:var(--primary);font-weight:600;margin-top:6px;min-height:14px;"></div>
+    </div>
+    <!-- 하단 -->
+    <div style="padding:10px 16px;border-top:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:flex-end;gap:6px;">
+      <button onclick="dlvPtnrPopupReset()"
+        style="padding:6px 14px;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);cursor:pointer;">초기화</button>
+      <button onclick="dlvPtnrPopupConfirm()"
+        style="padding:6px 16px;font-size:12px;font-weight:600;border-radius:6px;border:1px solid var(--primary);background:var(--primary);color:#fff;cursor:pointer;">적용 후 조회</button>
+    </div>
+  </div>
+</div>
+
 <script>
+/* ═══════════════════════════════════════════════════════
+   납품처관리 검색조건 — 납품처 다중입력 검색 JS (dlv-s-ptnrky)
+   출고예정정보 SVBELN 다중검색 패턴 이식.
+   window._dlvPtnrSelected: 선택된 검색어 토큰 배열(문자열).
+═══════════════════════════════════════════════════════ */
+window._dlvPtnrSelected = [];
+
+/* 입력창 값 파싱 → 토큰 배열 (콤마/세미콜론/공백/줄바꿈 구분) */
+function _dlvPtnrParse(val) {
+  return (val || '').split(/[\n\r\t,;\s]+/).map(s => s.trim()).filter(s => s.length > 0);
+}
+
+/* 입력창 → 태그 모드 전환 */
+function _dlvPtnrSwitchToTagMode() {
+  const inp  = document.getElementById('dlv-s-ptnrky');
+  const tags = document.getElementById('dlv-s-ptnrky-tags');
+  if (inp)  { inp.style.display = 'none'; inp.value = ''; }
+  if (tags) { tags.style.display = 'flex'; }
+  _dlvPtnrRefreshTagsUI();
+}
+
+/* 태그 → 입력 모드 전환 */
+function _dlvPtnrSwitchToInputMode(val) {
+  const inp  = document.getElementById('dlv-s-ptnrky');
+  const tags = document.getElementById('dlv-s-ptnrky-tags');
+  if (tags) { tags.style.display = 'none'; }
+  if (inp)  { inp.style.display = ''; inp.value = val || ''; }
+}
+
+/* 선택 개수에 따라 입력/태그 모드 자동 전환 */
+function _dlvPtnrRefreshTags() {
+  const sel = window._dlvPtnrSelected;
+  if (sel.length === 0)  { _dlvPtnrSwitchToInputMode(''); return; }
+  if (sel.length === 1)  { _dlvPtnrSwitchToInputMode(sel[0]); return; }
+  _dlvPtnrSwitchToTagMode();
+}
+
+/* 태그 UI(개수 뱃지) 갱신 */
+function _dlvPtnrRefreshTagsUI() {
+  const wrap = document.getElementById('dlv-s-ptnrky-tags');
+  const ph   = document.getElementById('dlv-s-ptnrky-placeholder');
+  if (!wrap) return;
+  const sel = window._dlvPtnrSelected;
+  [...wrap.children].forEach(c => { if (c !== ph) c.remove(); });
+  if (sel.length === 0) { if (ph) ph.style.display = ''; return; }
+  if (ph) ph.style.display = 'none';
+  const badge = document.createElement('span');
+  badge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:2px 10px;' +
+    'border-radius:10px;background:var(--primary);color:#fff;font-size:11px;font-weight:600;' +
+    'white-space:nowrap;cursor:pointer;';
+  badge.title = sel.join(', ');
+  badge.innerHTML = `🏢 ${sel.length}건 <span style="cursor:pointer;font-size:12px;margin-left:2px;" onclick="event.stopPropagation();clearDlvPtnrTags();">✕</span>`;
+  badge.onclick = () => openDlvPtnrPopup();
+  wrap.appendChild(badge);
+}
+
+/* 입력 중 실시간: 태그모드 아닌 상태에서 완전히 비우면 선택배열도 즉시 초기화 */
+function _dlvPtnrInputChange(val) {
+  const tags = document.getElementById('dlv-s-ptnrky-tags');
+  const isTagMode = tags && tags.style.display !== 'none';
+  if (!isTagMode && (val == null || val.trim() === '')) {
+    window._dlvPtnrSelected = [];
+  }
+  dlvSearchChange();   // 기존 디바운스 조회 유지 (단일 입력 실시간 검색)
+}
+
+/* 붙여넣기: 복수 번호 자동 분해 */
+function _dlvPtnrHandlePaste(event) {
+  const text = (event.clipboardData || window.clipboardData).getData('text');
+  const nums = _dlvPtnrParse(text);
+  if (nums.length <= 1) return;   // 단일은 기본 붙여넣기 동작 유지
+  event.preventDefault();
+  window._dlvPtnrSelected = [...new Set(nums)];
+  _dlvPtnrSwitchToTagMode();
+  showToast(`납품처 ${window._dlvPtnrSelected.length}건 입력됨`);
+  searchDelivery();
+}
+
+/* Enter/조회 시 입력창 값 파싱 반영 */
+function _dlvPtnrApplyInput(val) {
+  const nums = _dlvPtnrParse(val);
+  if (nums.length === 0) { window._dlvPtnrSelected = []; return; }
+  window._dlvPtnrSelected = [...new Set(nums)];
+  if (nums.length > 1) {
+    _dlvPtnrSwitchToTagMode();
+    showToast(`납품처 ${nums.length}건 설정됨`);
+  }
+}
+
+/* 전체 초기화 */
+function clearDlvPtnrTags() {
+  window._dlvPtnrSelected = [];
+  _dlvPtnrSwitchToInputMode('');
+  searchDelivery();
+}
+
+/* ── 팝업 ── */
+function openDlvPtnrPopup() {
+  const ov = document.getElementById('dlv-ptnr-popup-overlay');
+  if (!ov) return;
+  ov.style.display = 'flex';
+  const ta = document.getElementById('dlv-ptnr-textarea');
+  if (ta) {
+    /* 기존 선택값 또는 입력창 값을 줄바꿈으로 프리필 */
+    const cur = (window._dlvPtnrSelected && window._dlvPtnrSelected.length)
+      ? window._dlvPtnrSelected
+      : _dlvPtnrParse(document.getElementById('dlv-s-ptnrky')?.value || '');
+    ta.value = cur.join('\n');
+    ta.focus();
+    _dlvPtnrPopupUpdateCnt();
+    ta.oninput = _dlvPtnrPopupUpdateCnt;
+  }
+}
+function _dlvPtnrPopupUpdateCnt() {
+  const ta  = document.getElementById('dlv-ptnr-textarea');
+  const el  = document.getElementById('dlv-ptnr-popup-cnt');
+  if (!ta || !el) return;
+  const n = new Set(_dlvPtnrParse(ta.value)).size;
+  el.textContent = n > 0 ? `${n}건 입력됨` : '';
+}
+function closeDlvPtnrPopup() {
+  const ov = document.getElementById('dlv-ptnr-popup-overlay');
+  if (ov) ov.style.display = 'none';
+}
+function dlvPtnrPopupReset() {
+  const ta = document.getElementById('dlv-ptnr-textarea');
+  if (ta) ta.value = '';
+  _dlvPtnrPopupUpdateCnt();
+}
+function dlvPtnrPopupConfirm() {
+  const ta = document.getElementById('dlv-ptnr-textarea');
+  const nums = _dlvPtnrParse(ta ? ta.value : '');
+  window._dlvPtnrSelected = [...new Set(nums)];
+  closeDlvPtnrPopup();
+  _dlvPtnrRefreshTags();
+  const cnt = window._dlvPtnrSelected.length;
+  if (cnt > 0) showToast(`납품처 ${cnt}건 입력됨`);
+  searchDelivery();
+}
+/* ESC/오버레이 클릭으로 닫기 */
+(function _dlvPtnrPopupBind(){
+  const ov = document.getElementById('dlv-ptnr-popup-overlay');
+  if (ov) ov.addEventListener('click', function(e){ if (e.target === this) closeDlvPtnrPopup(); });
+})();
+
 /* ═══════════════════════════════════════════════════════
    동적 대상 팝업 JS (BZPTN_DISTANCE)
 ═══════════════════════════════════════════════════════ */
