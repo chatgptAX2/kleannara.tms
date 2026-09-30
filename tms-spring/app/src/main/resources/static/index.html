@@ -393,17 +393,14 @@ thead th .col-resizer:hover,thead th .col-resizer.resizing{background:var(--prim
 
 /* ── 스크롤 정책 (마스터 리스트 공통 테이블) ──────────────────────
    · 세로 스크롤: thead th{position:sticky;top:0}(위 정의)로 헤더 상단 고정.
-   · 가로 스크롤: 컬럼을 left 로 고정하지 않아 정상 좌우 스크롤 동작.
-   → 세로/가로 스크롤이 모두 정상 작동한다(과거 모든 컬럼 left 고정으로
-     가로 스크롤이 막히던 문제 해결: 렌더에서 left/sticky-col 인라인 제거).
-   ※ 아래 .sticky-col 규칙은 좌측 고정이 필요한 다른 전용 테이블
-     (납품처/차량 리스트 등)에서만 선택적으로 사용한다. */
-thead th.sticky-col{position:sticky;left:0;z-index:20;background:var(--th-bg)}
-tbody td.sticky-col{position:sticky;left:0;z-index:4;background:var(--bg)}
+   · 가로 스크롤: 모든 컬럼에 sticky-col 을 부여하되, left/z-index 는 렌더에서
+     "누적 offset" 인라인 style 로 지정한다(각 컬럼이 자기 위치에 계단식 고정).
+     → 모든 컬럼을 고정하면서도 가로 스크롤이 정상 작동한다.
+   ※ CSS 의 left/z-index 는 인라인 style 로 덮어써진다. 여기서는
+     position:sticky 와 background(셀 뒤 비침 방지)만 담당한다. */
+thead th.sticky-col{position:sticky;background:var(--th-bg)}
+tbody td.sticky-col{position:sticky;background:var(--bg)}
 tbody tr:hover td.sticky-col{background:var(--tr-hover)}
-/* PK 컬럼은 겹침 시 최상위 강조 */
-thead th.pk-col.sticky-col{z-index:22}
-tbody td.pk-col.sticky-col{z-index:6}
 
 tbody tr{transition:background .1s}
 tbody tr:hover{background:var(--tr-hover);cursor:pointer}
@@ -4390,17 +4387,29 @@ function renderTableFromCache(){
 
   // ── [헤더 고정 정책] ──────────────────────────────────────────────
   //   · 세로 스크롤: thead 전체가 상단 고정(CSS thead th{position:sticky;top:0}).
-  //   · 가로 스크롤: 컬럼을 left 로 고정하지 않는다(정상 좌우 스크롤 보장).
-  //   (과거: 모든 컬럼에 left 누적 sticky 를 걸어 가로 스크롤이 막히던 문제 수정.
-  //    세로/가로 스크롤을 모두 살리려면 헤더는 top 고정만, left 고정은 미적용.)
+  //   · 가로 스크롤: 모든 컬럼을 sticky-col(left) 로 고정하되, 각 컬럼마다
+  //     "왼쪽 컬럼들 너비의 누적합" 을 left offset 으로 부여한다. 이렇게 하면
+  //     각 컬럼이 자기 위치에 계단식으로 순차 고정되어, 모든 컬럼을 고정하면서도
+  //     가로 스크롤이 정상 작동한다(단순 left:0 일괄 적용은 가로 스크롤이
+  //     막히므로 반드시 누적 offset 을 써야 함).
+  //   · z-index: 왼쪽 컬럼이 오른쪽 위로 겹치도록 왼쪽일수록 높게 부여.
   const DEFAULT_COL_W = 120;
+
+  // 각 컬럼의 누적 left offset 을 미리 계산
+  const _stickyLeft = [];
+  { let acc = 0;
+    cols.forEach(col => { _stickyLeft.push(acc); acc += (_colWidths[col] || DEFAULT_COL_W); }); }
+  const _nCols = cols.length;
 
   // thead (컬럼 드래그 리사이저 핸들 + 더블클릭 정렬 + 드래그 순서 변경)
   let thead = '<thead><tr>';
   cols.forEach((col, ci) => {
     const isPk    = pkCols.includes(col);
     const w       = _colWidths[col] || DEFAULT_COL_W;
-    const colW    = `style="width:${w}px;min-width:${w}px"`;
+    // 헤더 z-index: thead 기본(10) 위에서, 왼쪽 컬럼일수록 높게(오른쪽을 덮도록).
+    //   thead 일반: 10 + (역순 index) → 최소 10 초과. PK 는 추가 가중.
+    const zTh     = 30 + (_nCols - ci) + (isPk ? 1000 : 0);
+    const colW    = `style="width:${w}px;min-width:${w}px;left:${_stickyLeft[ci]}px;z-index:${zTh}"`;
     const isAsc   = state.sortCol === col && state.sortDir === 'ASC';
     const isDesc  = state.sortCol === col && state.sortDir === 'DESC';
     const sortCls = isAsc ? ' sort-asc' : isDesc ? ' sort-desc' : '';
@@ -4408,10 +4417,9 @@ function renderTableFromCache(){
     const rawLabel = (labels[col] && labels[col] !== col) ? labels[col] : '';
     const dispLabel = rawLabel ? _thShortLabel(rawLabel, col) : col;
     const titleTxt = rawLabel ? `${rawLabel} [${col}]` : col;   // hover 시 코멘트 전문 + 컬럼명
-    // PK 컬럼만 좌측 고정(sticky-col) → 가로 스크롤 시 좌측 유지. 나머지는
-    // 세로 헤더 고정만(가로 스크롤 정상). 세로+가로 동시 작동.
-    const stickyCls = isPk ? ' sticky-col' : '';
-    thead += `<th class="sort-th${isPk?' pk-col':''}${stickyCls}${sortCls}" data-col="${col}" ${colW}
+    // 모든 컬럼에 sticky-col(left 누적 offset) 부여 → 가로 스크롤 시 각 컬럼이
+    // 자기 위치에 순차 고정. 세로는 thead top:0 고정. 세로+가로 동시 작동.
+    thead += `<th class="sort-th${isPk?' pk-col':''} sticky-col${sortCls}" data-col="${col}" ${colW}
       draggable="true"
       ondragstart="colOrderDragStart(event,'${col}')"
       ondragover="colOrderDragOver(event,'${col}')"
@@ -4437,17 +4445,18 @@ function renderTableFromCache(){
   } else {
     rows.forEach(row => {
       tbody += '<tr>';
-      cols.forEach(col => {
+      cols.forEach((col, ci) => {
         const v      = row[col];
         const s      = fmtVal(v, col, tbl);
         const isPk   = pkCols.includes(col);
         const w      = _colWidths[col] || DEFAULT_COL_W;
-        // PK 셀만 좌측 고정(sticky-col). 나머지는 고정 없음 → 가로 스크롤 정상.
-        const stStyle= `width:${w}px;min-width:${w}px;`;
-        const stickyCls = isPk ? ' sticky-col' : '';
+        // 모든 셀에 sticky-col(누적 left offset). 왼쪽 컬럼이 위로 겹치도록
+        // z-index 를 왼쪽일수록 높게(PK 는 추가 가중) 부여 → 가로 스크롤 정상.
+        const zTd    = 3 + (_nCols - ci) + (isPk ? 1000 : 0);
+        const stStyle= `width:${w}px;min-width:${w}px;left:${_stickyLeft[ci]}px;z-index:${zTd};`;
         const isNum  = typeof v === 'number';
         const isEmpty= s === '';
-        tbody += `<td class="${isNum ? 'num' : ''}${isEmpty ? ' empty' : ''}${isPk?' pk-col':''}${stickyCls}" style="${stStyle}" title="${s}">${s || '-'}</td>`;
+        tbody += `<td class="${isNum ? 'num' : ''}${isEmpty ? ' empty' : ''}${isPk?' pk-col':''} sticky-col" style="${stStyle}" title="${s}">${s || '-'}</td>`;
       });
       tbody += '</tr>';
     });
