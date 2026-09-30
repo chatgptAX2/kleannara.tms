@@ -3031,8 +3031,29 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
   box-shadow:var(--shadow-lg);
 }
 .toast.show{opacity:1}
-.loading{display:flex;align-items:center;justify-content:center;padding:40px;color:var(--text3);gap:10px;font-size:13px}
-.spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+/* ── 조회 중(로딩) 표시 — 8점 원형 스피너 (첨부 이미지 형태, #027cbc 계열) ──
+   화면(영역) 가운데에 세로 배치(스피너 위 / 안내문 아래)로 중앙 표시.
+   .spinner 단일 요소를 box-shadow 8점으로 그려 기존 마크업(<div class="spinner">)
+   전부에 자동 적용된다. 각 점은 #027cbc 명암 그라데이션, steps(8) 회전. */
+.loading{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:160px;padding:40px;color:var(--text3);gap:14px;font-size:13px;text-align:center;width:100%}
+.spinner{
+  width:9px;height:9px;border:none;border-radius:50%;background:transparent;
+  /* 8개 점(중심 기준 45° 간격, 반지름 13px) — 12시부터 시계방향으로 점점 옅어짐 */
+  box-shadow:
+      0    -13px 0 0 rgba(2,124,188,1),      /* 12시 (가장 진함) */
+      9px   -9px 0 0 rgba(2,124,188,.30),    /* 1.5시 */
+     13px    0   0 0 rgba(2,124,188,.40),    /* 3시   */
+      9px    9px 0 0 rgba(2,124,188,.50),    /* 4.5시 */
+      0     13px 0 0 rgba(2,124,188,.60),    /* 6시   */
+     -9px    9px 0 0 rgba(2,124,188,.70),    /* 7.5시 */
+    -13px    0   0 0 rgba(2,124,188,.80),    /* 9시   */
+     -9px   -9px 0 0 rgba(2,124,188,.90);    /* 10.5시 */
+  animation:spin8 .9s steps(8,end) infinite;
+  flex-shrink:0;margin:0 auto;
+}
+@keyframes spin8{to{transform:rotate(360deg)}}
+/* 구형 마크업 호환: 예전 원형 border 스피너를 참조하던 곳도 동일 8점 스피너로 */
 @keyframes spin{to{transform:rotate(360deg)}}
 .empty-state{padding:60px;text-align:center;color:var(--text3)}
 .empty-state .icon{font-size:48px;margin-bottom:12px;opacity:.25}
@@ -10123,7 +10144,7 @@ async function psdSearch() {
   const tbody    = document.getElementById('psd-doc-tbody');
   if (!tbody) return;
 
-  tbody.innerHTML = `<tr><td colspan="16" style="text-align:center;padding:20px"><div class="spinner" style="margin:0 auto 8px"></div>조회 중...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="16" style="text-align:center;padding:20px"><div class="spinner" style="margin:16px auto 20px"></div>조회 중...</td></tr>`;
 
   try {
     const params = new URLSearchParams({ wareky, date_from: dateFrom, date_to: dateTo, dptnky, shpoky, status });
@@ -15922,7 +15943,7 @@ async function psopSearch() {
   if (!tbody) return;
   const _cc = _psopGetColOrder().length;
 
-  tbody.innerHTML = `<tr><td colspan="${_cc}" style="text-align:center;padding:20px"><div class="spinner" style="margin:0 auto 8px"></div>조회 중...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="${_cc}" style="text-align:center;padding:20px"><div class="spinner" style="margin:16px auto 20px"></div>조회 중...</td></tr>`;
 
   try {
     // status='all' 고정 → 서버는 DB 배차완료+미배차 모두 반환
@@ -18094,7 +18115,7 @@ async function psopLoadModalSearch() {
   const inclConf = document.getElementById('psop-load-include-confirmed')?.checked;
 
   const tbody = document.getElementById('psop-load-modal-tbody');
-  tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:20px"><div class="spinner" style="margin:0 auto 8px"></div>조회 중...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:20px"><div class="spinner" style="margin:16px auto 20px"></div>조회 중...</td></tr>`;
 
   try {
     const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo, dptnky });
@@ -21821,7 +21842,7 @@ async function _ptnrPopupDoSearch() {
   const tbody = document.getElementById('ptnr-popup-body');
   const info  = document.getElementById('ptnr-popup-info');
 
-  tbody.innerHTML = '<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--text3)"><div class="spinner" style="width:18px;height:18px;margin:auto"></div></td></tr>';
+  tbody.innerHTML = '<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--text3)"><div class="spinner" style="margin:16px auto"></div></td></tr>';
 
   try {
     const params = new URLSearchParams({ page: 1, size: 100 });
@@ -22960,7 +22981,7 @@ async function _ssPtnrDoSearch() {
   const info  = document.getElementById('ss-ptnr-popup-info');
 
   tbody.innerHTML = '<tr><td colspan="5" style="padding:16px;text-align:center;color:var(--text3);">' +
-    '<div class="spinner" style="width:18px;height:18px;margin:auto;"></div></td></tr>';
+    '<div class="spinner" style="margin:16px auto"></div></td></tr>';
 
   try {
     const params = new URLSearchParams({ page: 1, size: 100 });
