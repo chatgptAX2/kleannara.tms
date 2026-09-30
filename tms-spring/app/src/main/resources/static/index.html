@@ -9019,27 +9019,27 @@ function _dsBuildVehicleTableHTML() {
         </colgroup>
         <thead>
           <tr>
-            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#fff8e1;color:#e65100;vertical-align:middle">차량코드</th>
-            <th class="ds-cartype" rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--th-bg);vertical-align:middle">차량 톤수</th>
-            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:${activeTab==='PS'?'#e3f0ff;color:#1a56db':'#e8fce8;color:#1a7a1a'};vertical-align:middle;font-weight:800">사용<br>여부</th>
-            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--th-bg);vertical-align:middle">길이<br><small style="font-weight:400">(m)</small></th>
-            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--th-bg);vertical-align:middle">너비<br><small style="font-weight:400;color:var(--text3)">(m/범위)</small></th>
-            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--th-bg);vertical-align:middle">높이<br><small style="font-weight:400">(m)</small></th>
-            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--warning);color:#1a1a1a;vertical-align:middle">파렛트<br>높이(m)</th>
-            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--primary);color:#fff;vertical-align:middle">적재CBM<br><small style="font-weight:400;opacity:.85">m³</small></th>
-            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--th-bg);vertical-align:middle">상차량<br><small style="font-weight:400;color:var(--success)">(ton)★</small></th>
-            <th colspan="2" style="position:sticky;top:0;z-index:2;background:#e8eaf6;color:#3949ab;border-bottom:none">🔵 12인치 적재수량</th>
-            <th colspan="2" style="position:sticky;top:0;z-index:2;background:#e8f5e9;color:#2e7d32;border-bottom:none">🟢 3인치 적재수량</th>
-            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#fce4ec;color:#c62828;vertical-align:middle">파렛트수</th>
-            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#fce4ec;color:#c62828;vertical-align:middle">장축여부</th>
-            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--th-bg);vertical-align:middle">기본<br>차량수</th>
-            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--th-bg);vertical-align:middle">삭제</th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">차량코드</th>
+            <th class="ds-cartype" rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">차량 톤수</th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle;font-weight:800">사용<br>여부</th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">길이<br><small style="font-weight:400">(m)</small></th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">너비<br><small style="font-weight:400;color:var(--text3)">(m/범위)</small></th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">높이<br><small style="font-weight:400">(m)</small></th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">파렛트<br>높이(m)</th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">적재CBM<br><small style="font-weight:400;opacity:.85">m³</small></th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">상차량<br><small style="font-weight:400;color:var(--success)">(ton)★</small></th>
+            <th colspan="2" style="position:sticky;top:0;z-index:2;background:#f0f4f7;color:#37474f;border-bottom:none">🔵 12인치 적재수량</th>
+            <th colspan="2" style="position:sticky;top:0;z-index:2;background:#f0f4f7;color:#37474f;border-bottom:none">🟢 3인치 적재수량</th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">파렛트수</th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">장축여부</th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">기본<br>차량수</th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">삭제</th>
           </tr>
           <tr>
-            <th style="position:sticky;top:36px;z-index:2;background:#dde1f5;color:#3949ab">평량 300 미만</th>
-            <th style="position:sticky;top:36px;z-index:2;background:#dde1f5;color:#3949ab">평량 300 이상</th>
-            <th style="position:sticky;top:36px;z-index:2;background:#d4edd9;color:#2e7d32">평량 300 미만</th>
-            <th style="position:sticky;top:36px;z-index:2;background:#d4edd9;color:#2e7d32">평량 300 이상</th>
+            <th style="position:sticky;top:36px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 미만</th>
+            <th style="position:sticky;top:36px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 이상</th>
+            <th style="position:sticky;top:36px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 미만</th>
+            <th style="position:sticky;top:36px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 이상</th>
           </tr>
         </thead>
         <tbody id="ds-vhc-tbody">${tbodyRows}</tbody>
