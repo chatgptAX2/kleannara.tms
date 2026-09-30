@@ -7,6 +7,15 @@
 --  · 표기: 스키마 접두사 KNRAWMS. 포함. 필요 시 일괄 치환.
 --  · 주의: 아래는 서비스 코드에서 확인된 컬럼만 포함. DB 에 존재하나
 --          코드 미참조인 컬럼(감사/예비 컬럼 등)은 제외되어 있을 수 있음.
+--  ---------------------------------------------------------------------
+--  · [중요] 코드의 일부 JPA Entity 컬럼명이 실제 테이블과 다를 수 있음.
+--    따라서 100% 정확한 코멘트를 위해서는 먼저 00_INSPECT_ACTUAL_COLUMNS.sql
+--    로 실제 컬럼을 조회하여 대조할 것을 권장.
+--  · [정정이력 v2]
+--    - TMS_ROUTE_COST : 실제 컬럼(PTNRKY/CARCLASS/COST/DATE_START/DATE_END)으로
+--      정정. (기존 COST_ID/COST_AMT/EFF_DATE/EXP_DATE/UPDDAT/UPDUSR 는 실제
+--      테이블에 없어 ORA-00904 실패 → 제거/치환)
+--    - TMS_DOC_FILE.OP_DATE : 운영 DB 미적용 컬럼일 수 있어 기본 주석 처리.
 --  =====================================================================
 
 
@@ -170,18 +179,19 @@ COMMENT ON COLUMN KNRAWMS.TMS_PS_DISPATCH_D.KG_WEIGHT    IS 'KG 환산 총중량
 
 -- =====================================================================
 -- 11) TMS_ROUTE_COST : 경로별 운송비 마스터
+--   ★ 정정: 실제 배차엔진 SQL(module-wms)이 사용하는 컬럼명 기준.
+--     실제 컬럼 = PTNRKY, CARCLASS, COST, DATE_START, DATE_END
+--     (기존 Entity RouteCost.java 의 COST_AMT/EFF_DATE/EXP_DATE/COST_ID 등은
+--      논리 alias 였고 실제 테이블 컬럼이 아니라 코멘트 실행이 실패했음)
+--   ※ WAREKY / DIST_KM 은 module-delivery Repository 에만 나타나 실제 존재
+--     여부 불확실 → 00_INSPECT_ACTUAL_COLUMNS.sql 결과로 최종 확정 권장.
 -- =====================================================================
 COMMENT ON TABLE  KNRAWMS.TMS_ROUTE_COST                 IS '경로별(납품처×차종) 운송비 마스터';
-COMMENT ON COLUMN KNRAWMS.TMS_ROUTE_COST.COST_ID         IS '운송비 ID (PK)';
-COMMENT ON COLUMN KNRAWMS.TMS_ROUTE_COST.WAREKY          IS '출하 창고코드';
 COMMENT ON COLUMN KNRAWMS.TMS_ROUTE_COST.PTNRKY          IS '납품처코드';
-COMMENT ON COLUMN KNRAWMS.TMS_ROUTE_COST.CARTYPE         IS '차종명';
-COMMENT ON COLUMN KNRAWMS.TMS_ROUTE_COST.COST_AMT        IS '운송비 (원)';
-COMMENT ON COLUMN KNRAWMS.TMS_ROUTE_COST.DIST_KM         IS '거리 (km)';
-COMMENT ON COLUMN KNRAWMS.TMS_ROUTE_COST.EFF_DATE        IS '적용 시작일자 (YYYYMMDD)';
-COMMENT ON COLUMN KNRAWMS.TMS_ROUTE_COST.EXP_DATE        IS '적용 종료일자 (YYYYMMDD)';
-COMMENT ON COLUMN KNRAWMS.TMS_ROUTE_COST.UPDDAT          IS '수정일자 (YYYYMMDD)';
-COMMENT ON COLUMN KNRAWMS.TMS_ROUTE_COST.UPDUSR          IS '수정자';
+COMMENT ON COLUMN KNRAWMS.TMS_ROUTE_COST.CARCLASS        IS '차종코드 (CMCDV TMS_CARCLASS10 매핑)';
+COMMENT ON COLUMN KNRAWMS.TMS_ROUTE_COST.COST            IS '운송비 (원)';
+COMMENT ON COLUMN KNRAWMS.TMS_ROUTE_COST.DATE_START      IS '적용 시작일자 (YYYYMMDD)';
+COMMENT ON COLUMN KNRAWMS.TMS_ROUTE_COST.DATE_END        IS '적용 종료일자 (YYYYMMDD)';
 
 
 -- =====================================================================
@@ -209,7 +219,10 @@ COMMENT ON COLUMN KNRAWMS.TMS_DOC_FILE.FILE_PATH         IS '저장 경로';
 COMMENT ON COLUMN KNRAWMS.TMS_DOC_FILE.FILE_SIZE         IS '파일 크기 (bytes)';
 COMMENT ON COLUMN KNRAWMS.TMS_DOC_FILE.FILE_TYPE         IS '파일 MIME 타입';
 COMMENT ON COLUMN KNRAWMS.TMS_DOC_FILE.FILE_EXT          IS '파일 확장자';
-COMMENT ON COLUMN KNRAWMS.TMS_DOC_FILE.OP_DATE           IS '작업(문서) 일자';
+-- ★ 정정: OP_DATE(운행일자) 컬럼은 운영 DB 미적용 상태일 수 있음(코드가 존재
+--   여부를 동적 확인 후 없으면 NULL 대체). 컬럼 추가(FIX_DOC_FILE_ADD_OP_DATE.sql)
+--   적용 후에만 아래 코멘트 실행 가능하므로 기본 주석 처리함.
+-- COMMENT ON COLUMN KNRAWMS.TMS_DOC_FILE.OP_DATE        IS '작업(문서/운행) 일자';
 COMMENT ON COLUMN KNRAWMS.TMS_DOC_FILE.NOTE              IS '비고';
 COMMENT ON COLUMN KNRAWMS.TMS_DOC_FILE.CREDAT            IS '생성일자 (YYYYMMDD)';
 COMMENT ON COLUMN KNRAWMS.TMS_DOC_FILE.CRETIM            IS '생성시각 (HHMMSS)';
