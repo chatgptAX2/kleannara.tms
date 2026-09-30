@@ -385,10 +385,16 @@ thead th:hover .th-label{color:var(--primary)}
 thead th .col-resizer{position:absolute;right:0;top:0;bottom:0;width:5px;cursor:col-resize;background:transparent;z-index:30}
 thead th .col-resizer:hover,thead th .col-resizer.resizing{background:var(--primary);opacity:.6}
 
-/* PK 컬럼 고정 */
-thead th.sticky-col{position:sticky;left:0;z-index:20;background:var(--th-bg)}
-tbody td.sticky-col{position:sticky;left:0;z-index:5;background:var(--bg)}
+/* ── 컬럼 가로 고정(sticky-col) ─────────────────────────────────
+   요청: 모든 컬럼을 가로 스크롤 시 좌측 누적 고정. left offset 은
+   렌더 시 인라인 style 로 각 컬럼 너비 누적값을 부여한다.
+   · 배경 불투명 필수(뒤 셀 비침 방지). 헤더는 세로+가로 동시 고정. */
+thead th.sticky-col{position:sticky;top:0;z-index:20;background:var(--th-bg)}
+tbody td.sticky-col{position:sticky;z-index:4;background:var(--bg)}
 tbody tr:hover td.sticky-col{background:var(--tr-hover)}
+/* PK 컬럼은 겹침 시 최상위 강조 */
+thead th.pk-col.sticky-col{z-index:22}
+tbody td.pk-col.sticky-col{z-index:6}
 
 tbody tr{border-bottom:1px solid var(--tr-border);transition:background .1s}
 tbody tr:hover{background:var(--tr-hover);cursor:pointer}
@@ -4370,12 +4376,26 @@ function renderTableFromCache(){
   const start = (page - 1) * size + 1;
   const end   = Math.min(page * size, total);
 
+  // ── [모든 컬럼 가로 고정] 각 컬럼의 좌측 누적 offset 사전 계산 ──────
+  //   요청: PK 뿐 아니라 '모든 컬럼'을 sticky-col 처리하여 가로 스크롤 시
+  //   좌측에 순차(누적) 고정. 각 컬럼 left = 앞선 컬럼들의 너비 합.
+  //   너비는 사용자가 조정한 _colWidths[col] 우선, 없으면 기본 120px.
+  const DEFAULT_COL_W = 120;
+  const _leftOffset = {};
+  let _accLeft = 0;
+  cols.forEach(col => {
+    _leftOffset[col] = _accLeft;
+    _accLeft += (_colWidths[col] || DEFAULT_COL_W);
+  });
+
   // thead (컬럼 드래그 리사이저 핸들 + 더블클릭 정렬 + 드래그 순서 변경)
   let thead = '<thead><tr>';
   cols.forEach((col, ci) => {
     const isPk    = pkCols.includes(col);
-    const sticky  = isPk ? ' sticky-col' : '';
-    const colW    = _colWidths[col] ? `style="width:${_colWidths[col]}px;min-width:${_colWidths[col]}px"` : '';
+    const w       = _colWidths[col] || DEFAULT_COL_W;
+    // 모든 컬럼 sticky-col + 누적 left. PK 는 최상위 z-index 로 겹침 우선.
+    const stickyStyle = `left:${_leftOffset[col]}px;`;
+    const colW    = `style="width:${w}px;min-width:${w}px;${stickyStyle}"`;
     const isAsc   = state.sortCol === col && state.sortDir === 'ASC';
     const isDesc  = state.sortCol === col && state.sortDir === 'DESC';
     const sortCls = isAsc ? ' sort-asc' : isDesc ? ' sort-desc' : '';
@@ -4383,7 +4403,7 @@ function renderTableFromCache(){
     const rawLabel = (labels[col] && labels[col] !== col) ? labels[col] : '';
     const dispLabel = rawLabel ? _thShortLabel(rawLabel, col) : col;
     const titleTxt = rawLabel ? `${rawLabel} [${col}]` : col;   // hover 시 코멘트 전문 + 컬럼명
-    thead += `<th class="sort-th${isPk?' pk-col':''}${sticky}${sortCls}" data-col="${col}" ${colW}
+    thead += `<th class="sort-th${isPk?' pk-col':''} sticky-col${sortCls}" data-col="${col}" ${colW}
       draggable="true"
       ondragstart="colOrderDragStart(event,'${col}')"
       ondragover="colOrderDragOver(event,'${col}')"
@@ -4413,10 +4433,12 @@ function renderTableFromCache(){
         const v      = row[col];
         const s      = fmtVal(v, col, tbl);
         const isPk   = pkCols.includes(col);
-        const sticky = isPk ? ' sticky-col' : '';
+        const w      = _colWidths[col] || DEFAULT_COL_W;
+        // 모든 컬럼 sticky-col + 헤더와 동일한 누적 left offset
+        const stStyle= `left:${_leftOffset[col]}px;width:${w}px;min-width:${w}px;`;
         const isNum  = typeof v === 'number';
         const isEmpty= s === '';
-        tbody += `<td class="${isNum ? 'num' : ''}${isEmpty ? ' empty' : ''}${sticky}" title="${s}">${s || '-'}</td>`;
+        tbody += `<td class="${isNum ? 'num' : ''}${isEmpty ? ' empty' : ''}${isPk?' pk-col':''} sticky-col" style="${stStyle}" title="${s}">${s || '-'}</td>`;
       });
       tbody += '</tr>';
     });

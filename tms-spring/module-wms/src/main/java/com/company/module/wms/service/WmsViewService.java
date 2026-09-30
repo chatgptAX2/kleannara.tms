@@ -222,6 +222,27 @@ public class WmsViewService {
             log.warn("getData schema meta error [{}]: {}", tbl, metaEx.getMessage());
         }
 
+        // ── ①-b 컬럼 코멘트(라벨) 보강 : ALL_COL_COMMENTS 직접 조회 ──────
+        //   Oracle JDBC 는 connection property 'remarksReporting=true' 없이는
+        //   DatabaseMetaData.getColumns() 의 REMARKS 를 반환하지 않는다.
+        //   그 결과 labels 가 컬럼명으로만 채워져(코멘트 미표시) 왔다.
+        //   → ALL_COL_COMMENTS 를 직접 조회하여 코멘트가 있으면 라벨로 덮어쓴다.
+        //   (컬럼 코멘트가 없는 컬럼은 기존값=컬럼명 유지 → 화면에서 컬럼명 폴백)
+        try {
+            List<Map<String, Object>> cmts = jdbc(upper).queryForList(
+                "SELECT COLUMN_NAME, COMMENTS FROM ALL_COL_COMMENTS " +
+                "WHERE OWNER='KNRAWMS' AND TABLE_NAME=?", upper);
+            for (Map<String, Object> c : cmts) {
+                String col = c.get("COLUMN_NAME") == null ? null : c.get("COLUMN_NAME").toString();
+                Object rmk = c.get("COMMENTS");
+                if (col != null && rmk != null && !rmk.toString().isBlank()) {
+                    labels.put(col, rmk.toString().trim());  // 코멘트로 라벨 덮어쓰기
+                }
+            }
+        } catch (Exception cmtEx) {
+            log.warn("getData col-comment load error [{}]: {}", tbl, cmtEx.getMessage());
+        }
+
         // ── ② WHERE LIKE 절 조립 (검색어 + 검색 가능 컬럼 존재 시) ───────
         // 검색 대상: searchCols 우선, 없으면 columns 전체 대상
         List<String> targetCols = !searchCols.isEmpty() ? searchCols : columns;
