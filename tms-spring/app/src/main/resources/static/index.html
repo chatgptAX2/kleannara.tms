@@ -277,11 +277,13 @@ body.lnb-edge-show #lnb-edge-btn{opacity:1;pointer-events:auto;transform:transla
   border-radius:8px;padding:5px 11px;min-width:180px;max-width:380px;width:auto;flex-shrink:0;
   transition:border-color .15s;
 }
-.search-box:focus-within{border-color:#0ea5e9;background:rgba(14,165,233,.08)}
-.search-box input{background:none;border:none;outline:none;color:#e2e8f0;font-size:12px;flex:1;min-width:120px}
-.search-box input::placeholder{color:#475569}
+.search-box:focus-within{border-color:#0ea5e9;background:rgba(14,165,233,.12)}
+/* ★ search-wrap 가독성 개선: 입력 글씨/플레이스홀더/힌트/아이콘을 흰색 계열로.
+   (기존 #e2e8f0/#475569 는 어두운 배경에서 흐릿해 가독성이 떨어졌음) */
+.search-box input{background:none;border:none;outline:none;color:#fff;font-size:12px;flex:1;min-width:120px}
+.search-box input::placeholder{color:rgba(255,255,255,.6)}
 /* 검색 힌트 뱃지 */
-.srch-hint{font-size:10px;color:#475569;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:1px 7px;white-space:nowrap;flex-shrink:0}
+.srch-hint{font-size:10px;color:#fff;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:10px;padding:1px 7px;white-space:nowrap;flex-shrink:0}
 /* 정렬 상태 표시 칩 */
 #sort-indicator{display:none;align-items:center;gap:5px;background:rgba(14,165,233,.12);border:1px solid rgba(14,165,233,.3);border-radius:20px;padding:2px 10px;font-size:11px;color:#38bdf8;cursor:pointer;white-space:nowrap;flex-shrink:0}
 #sort-indicator:hover{background:rgba(14,165,233,.22)}
@@ -342,7 +344,11 @@ select.page-size{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,
 
 /* ── TABLE ── */
 .table-outer{flex:1;overflow:auto;min-height:0}
-table{border-collapse:collapse;font-size:12px;table-layout:fixed}
+/* ★ border-collapse:separate + border-spacing:0 : collapse 에서는 thead 의
+   position:sticky(top:0) 가 스크롤 시 해제되는 브라우저 버그가 있어, 세로
+   스크롤 헤더 고정을 안정화하려면 separate 가 필요하다. 셀 경계선은 개별
+   border 로 유지(아래 thead th / tbody td 규칙). */
+table{border-collapse:separate;border-spacing:0;font-size:12px;table-layout:fixed}
 table.full-width{width:100%}
 /* ── 데이터리스트 헤더 (마스터관리 공통) ──────────────────────────
    ★ position 은 sticky 로 단일 선언(과거 relative 중복선언이 sticky 를
@@ -399,7 +405,7 @@ tbody tr:hover td.sticky-col{background:var(--tr-hover)}
 thead th.pk-col.sticky-col{z-index:22}
 tbody td.pk-col.sticky-col{z-index:6}
 
-tbody tr{border-bottom:1px solid var(--tr-border);transition:background .1s}
+tbody tr{transition:background .1s}
 tbody tr:hover{background:var(--tr-hover);cursor:pointer}
 tbody tr.row-selected{background:var(--tr-selected)!important;outline:2px solid var(--primary);outline-offset:-2px}
 tbody tr.row-selected td{color:var(--text)!important}
@@ -408,7 +414,10 @@ tbody td{
   padding:8px 10px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   min-width:60px;max-width:none;width:120px;
+  /* ★ border-collapse:separate 에서는 tr 에 건 border-bottom 이 렌더링되지
+     않으므로(셀에만 적용 가능) 행 구분선을 td 하단 border 로 그린다. */
   border-right:1px solid var(--tr-border);
+  border-bottom:1px solid var(--tr-border);
   vertical-align:middle;font-size:12px;
 }
 tbody td.num{color:var(--td-num);text-align:right;font-variant-numeric:tabular-nums}
@@ -3422,10 +3431,10 @@ thead th:hover .th-drag-handle{opacity:.8}
     <h2 id="page-title">대시보드</h2>
     <div class="badge" id="topbar-badge">WMS Database</div>
     <div class="search-box" id="search-wrap" style="display:none">
-      <span style="color:var(--text3);font-size:13px">🔍</span>
+      <span style="color:#fff;font-size:13px">🔍</span>
       <input type="text" id="search-input" placeholder="검색..." oninput="onSearch()">
       <span id="srch-hint-badge" class="srch-hint" style="display:none"></span>
-      <span id="search-clear" style="color:var(--text3);cursor:pointer;font-size:13px;display:none" onclick="clearSearch()">✕</span>
+      <span id="search-clear" style="color:#fff;cursor:pointer;font-size:13px;display:none" onclick="clearSearch()">✕</span>
     </div>
     <div id="sort-indicator" onclick="tblClearSort()">
       <span id="sort-indicator-text"></span>
@@ -4399,7 +4408,10 @@ function renderTableFromCache(){
     const rawLabel = (labels[col] && labels[col] !== col) ? labels[col] : '';
     const dispLabel = rawLabel ? _thShortLabel(rawLabel, col) : col;
     const titleTxt = rawLabel ? `${rawLabel} [${col}]` : col;   // hover 시 코멘트 전문 + 컬럼명
-    thead += `<th class="sort-th${isPk?' pk-col':''}${sortCls}" data-col="${col}" ${colW}
+    // PK 컬럼만 좌측 고정(sticky-col) → 가로 스크롤 시 좌측 유지. 나머지는
+    // 세로 헤더 고정만(가로 스크롤 정상). 세로+가로 동시 작동.
+    const stickyCls = isPk ? ' sticky-col' : '';
+    thead += `<th class="sort-th${isPk?' pk-col':''}${stickyCls}${sortCls}" data-col="${col}" ${colW}
       draggable="true"
       ondragstart="colOrderDragStart(event,'${col}')"
       ondragover="colOrderDragOver(event,'${col}')"
@@ -4430,11 +4442,12 @@ function renderTableFromCache(){
         const s      = fmtVal(v, col, tbl);
         const isPk   = pkCols.includes(col);
         const w      = _colWidths[col] || DEFAULT_COL_W;
-        // 셀은 좌측 고정하지 않음(가로 스크롤 정상 작동). 너비만 헤더와 일치.
+        // PK 셀만 좌측 고정(sticky-col). 나머지는 고정 없음 → 가로 스크롤 정상.
         const stStyle= `width:${w}px;min-width:${w}px;`;
+        const stickyCls = isPk ? ' sticky-col' : '';
         const isNum  = typeof v === 'number';
         const isEmpty= s === '';
-        tbody += `<td class="${isNum ? 'num' : ''}${isEmpty ? ' empty' : ''}${isPk?' pk-col':''}" style="${stStyle}" title="${s}">${s || '-'}</td>`;
+        tbody += `<td class="${isNum ? 'num' : ''}${isEmpty ? ' empty' : ''}${isPk?' pk-col':''}${stickyCls}" style="${stStyle}" title="${s}">${s || '-'}</td>`;
       });
       tbody += '</tr>';
     });
