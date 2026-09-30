@@ -10385,6 +10385,9 @@ async function psdLoadVehicles() {
         // 렌더/드래그에서 대문자 키(it.SHPOKY 등)를 사용하므로 대문자로 정규화
         SHPOKY:  it.shpoky   ?? it.SHPOKY,
         SHPOIT:  it.shpoit   ?? it.SHPOIT,
+        // SVBELN(SAP 실제 납품문서번호) — 배차탭 상세/차량카드의 '납품문서' 표시에 사용.
+        //   백엔드가 소문자(svbeln)로 줄 수 있어 대문자로 정규화(누락 시 SHPOKY 로 폴백 표시).
+        SVBELN:  it.svbeln   ?? it.SVBELN,
         SKUKEY:  it.skukey   ?? it.SKUKEY,
         DESC01:  it.desc01   ?? it.DESC01,
         QTSHPO:  it.qtshpo   ?? it.QTSHPO,
@@ -10463,7 +10466,7 @@ function psdBuildVehicleCard(v) {
          ondragend="psdDragEndDoc(event)"
          ondblclick="psdRemoveItemFromVehicle('${v.dispatch_no}','${it.SHPOKY}','${it.SHPOIT}')">
       <span class="psd-car-item-drag">⠿</span>
-      <span class="psd-car-item-shpo">${it.SHPOKY}</span>
+      <span class="psd-car-item-shpo" title="출하문서키(SHPOKY): ${it.SHPOKY||''}">${it.SVBELN||it.SHPOKY}</span>
       <span class="psd-car-item-desc" title="${it.DESC01||''}">${it.DESC01||it.SKUKEY||''}</span>
       ${psdItemInchBadge(it)}
       ${(it.UOMKEY||'').trim()==='R' && it.KG_WEIGHT
@@ -11918,7 +11921,7 @@ function _psdRenderLoadCanvas(v, veh) {
                        : it.type==='board' ? `H${((it.fullStackHgtM||it.stackHgtM)*100).toFixed(0)}cm` : '-';
           return `<tr>
             <td style="color:var(--text3)">${i+1}</td>
-            <td style="font-family:monospace;color:var(--primary)">${raw.SHPOKY||''}</td>
+            <td style="font-family:monospace;color:var(--primary)" title="출하문서키(SHPOKY): ${raw.SHPOKY||''}">${raw.SVBELN||raw.SHPOKY||''}</td>
             <td style="text-align:left;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${raw.DESC01||''}">${raw.DESC01||raw.SKUKEY||''}</td>
             <td>${uomBadge}</td>
             <td>${psdFmtNum(raw.QTSHPO)} ${raw.UOMKEY||'KG'}</td>
@@ -12547,7 +12550,7 @@ function psdShowAutoResultModal(vehicles, objNm) {
       }
 
       return `<div class="psd-auto-item${isAdded?' psd-auto-item-new':''}${isSplitChunk?' psd-auto-item-split':''}">
-        <span style="font-family:monospace;color:var(--primary);min-width:90px">${it.SHPOKY}</span>
+        <span style="font-family:monospace;color:var(--primary);min-width:90px" title="출하문서키(SHPOKY): ${it.SHPOKY||''}">${it.SVBELN||it.SHPOKY}</span>
         <span style="color:var(--text3);min-width:22px;font-size:10px">#${it.SHPOIT}</span>
         ${inchBadge}${splitMark}${addedMark}
         <span style="flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${it.DESC01||''}">${it.DESC01||it.SKUKEY||''}</span>
@@ -16891,8 +16894,8 @@ function _psopVehRenderDocs(pid) {
       title="드래그하거나 더블클릭하여 납품문서 목록으로 환원"
       ondragstart="psopDragStartVehDocRow(event,'${pid}','${shpokyEsc}','${shpoitEsc}')"
       ondblclick="psopRemoveItemFromVehicleConfirm('${pid}','${shpokyEsc}','${shpoitEsc}')">
-      <td style="font-family:monospace;font-size:10px;white-space:nowrap">
-        <span style="color:var(--text3);margin-right:4px;cursor:grab">⠿</span>${it.SHPOKY||'-'}
+      <td style="font-family:monospace;font-size:10px;white-space:nowrap" title="출하문서키(SHPOKY): ${it.SHPOKY||''}">
+        <span style="color:var(--text3);margin-right:4px;cursor:grab">⠿</span>${it.SVBELN||it.SHPOKY||'-'}
       </td>
       <td style="font-size:10px;max-width:110px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${dptnm}">${dptnm}</td>
       <td style="font-size:10px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${it.DESC01||''}">${it.DESC01||'-'}</td>
@@ -16957,7 +16960,7 @@ function psopBuildVehicleCard(v) {
          ondragend="psopDragEndDoc(event)"
          ondblclick="psopRemoveItemFromVehicle('${pid}','${it.SHPOKY}','${it.SHPOIT}')">
       <span class="psd-car-item-drag">⠿</span>
-      <span class="psd-car-item-shpo">${it.SHPOKY}</span>
+      <span class="psd-car-item-shpo" title="출하문서키(SHPOKY): ${it.SHPOKY||''}">${it.SVBELN||it.SHPOKY}</span>
       <span class="psd-car-item-desc" title="${it.DESC01||''}">${it.DESC01||it.SKUKEY||''}</span>
       ${psopItemInchBadge(it)}
       ${(it.UOMKEY||'').trim()==='R' && it.KG_WEIGHT
@@ -17640,7 +17643,7 @@ function _psopRenderLoadCanvas(v, veh) {
                        : it.type==='board' ? `H${((it.fullStackHgtM||it.stackHgtM)*100).toFixed(0)}cm` : '-';
           return `<tr>
             <td style="color:var(--text3)">${i+1}</td>
-            <td style="font-family:monospace;color:var(--primary)">${raw.SHPOKY||''}</td>
+            <td style="font-family:monospace;color:var(--primary)" title="출하문서키(SHPOKY): ${raw.SHPOKY||''}">${raw.SVBELN||raw.SHPOKY||''}</td>
             <td style="text-align:left;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${raw.DESC01||''}">${raw.DESC01||raw.SKUKEY||''}</td>
             <td>${uomBadge}</td>
             <td>${psopFmtNum(raw.QTSHPO)} ${raw.UOMKEY||'KG'}</td>
@@ -18745,7 +18748,7 @@ function psopShowAutoResultModal(vehicles, objNm, selectedCnt, autoMeta) {
       }
 
       return `<div class="psd-auto-item${isAdded?' psd-auto-item-new':''}${isSplitChunk?' psd-auto-item-split':''}">
-        <span style="font-family:monospace;color:var(--primary);min-width:90px">${it.SHPOKY}</span>
+        <span style="font-family:monospace;color:var(--primary);min-width:90px" title="출하문서키(SHPOKY): ${it.SHPOKY||''}">${it.SVBELN||it.SHPOKY}</span>
         <span style="color:var(--text3);min-width:22px;font-size:10px">#${it.SHPOIT}</span>
         ${inchBadge}${splitMark}${addedMark}
         <span style="flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${it.DESC01||''}">${it.DESC01||it.SKUKEY||''}</span>
