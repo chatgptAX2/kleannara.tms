@@ -185,8 +185,17 @@ public class AutoDispatchService {
             .distinct().collect(Collectors.toList());
         Map<String, PtnrInfo> ptnrInfoMap = loadPtnrInfo(allDptnky, vehInfo);
 
-        // ── 우편번호 앞 3자리 혼적 그룹 또는 납품처 단위 그룹핑 ──────
-        Map<String, List<Map<String, Object>>> groups = buildGroups(items, cp.allowMixedLoad);
+        // ── 그룹핑 ──────────────────────────────────────────────────
+        //  PS 스코프: '동적배차'(동적거리·동적대상 기반) 그룹핑 우선 적용.
+        //    · DYNAMIC_YN='Y'(미설정=Y 간주) 납품처끼리
+        //    · BZPTN_DISTANCE(USE_YN='Y') 상 출발지 DYNAMIC_DIST_M 이내로 연결된
+        //      납품처들을 하나의 동적 그룹으로 묶어 혼적 배차(Union-Find).
+        //    · DYNAMIC_YN='N' 또는 동적대상 미연결 납품처는 단독 그룹(동적 제외).
+        //  HL 스코프: 동적배차 미적용(별도 설정 예정) → 기존 buildGroups 사용.
+        Map<String, List<Map<String, Object>>> groups =
+            "PS".equals(scope)
+                ? buildDynamicGroups(items, cp.allowMixedLoad, ptnrInfoMap)
+                : buildGroups(items, cp.allowMixedLoad);
 
         List<Map<String, Object>> allVehicles = new ArrayList<>();
 
@@ -201,7 +210,12 @@ public class AutoDispatchService {
             // 그룹 처리 전 차량 수 기록 (MAX_VEHICLES_PER_GROUP 검증용)
             int vehCountBefore = allVehicles.size();
 
-            boolean isMixedGroup = cp.allowMixedLoad && groupKey.startsWith("_ZIP_");
+            // 혼적 그룹 판정:
+            //  · _ZIP_  : 우편번호 3자리 혼적(ALLOW_MIXED_LOAD=Y 일 때만)
+            //  · _DYN_  : PS 동적배차 그룹(동적거리·동적대상 기반) — 여러 납품처를 한 차에
+            //             싣는 것이 목적이므로 ALLOW_MIXED_LOAD 와 무관하게 항상 혼적 처리.
+            boolean isDynGroup   = groupKey.startsWith("_DYN_");
+            boolean isMixedGroup = isDynGroup || (cp.allowMixedLoad && groupKey.startsWith("_ZIP_"));
             String dptnky, dptnm;
             List<Map<String, Object>> validCars;
 
@@ -215,7 +229,7 @@ public class AutoDispatchService {
                         .map(it -> str(it.get("DPTNM"))).findFirst().orElse(dk))
                     .collect(Collectors.toList());
                 dptnky = mixedDks.isEmpty() ? "" : mixedDks.get(0);
-                dptnm  = "혼적(" + String.join("/", mixedDms) + ")";
+                dptnm  = (isDynGroup ? "동적(" : "혼적(") + String.join("/", mixedDms) + ")";
 
                 // 교집합 유효 차량
                 Set<String> commonTypes = null;
@@ -1539,7 +1553,12 @@ public class AutoDispatchService {
             String mt   = str(r.get("MAX_TON"));
             pi.deadlineTime = str(r.get("DEADLINE_TIME"));
             pi.forkliftYn   = str(r.get("FORKLIFT_YN"));
-            pi.dynamicYn    = str(r.get("DYNAMIC_YN")).toUpperCase();
+            // 동적여부: 미설정(빈 값)은 'Y'(동적 가능)로 간주 — 요구사항3.
+            //   'N' 만 명시적 동적 제외. (Y/미설정 → 동적 그룹핑 후보)
+            {
+                String dy = str(r.get("DYNAMIC_YN")).toUpperCase().trim();
+                pi.dynamicYn = dy.isEmpty() ? "Y" : dy;
+            }
             pi.handworkYn   = str(r.get("HANDWORK_YN")).toUpperCase();
             pi.autoAllocYn  = str(r.get("AUTO_ALLOC_YN")).toUpperCase();
             try { pi.dynamicDistM = Double.parseDouble(str(r.get("DYNAMIC_DIST_M"))); }
@@ -1561,6 +1580,7 @@ public class AutoDispatchService {
                 PtnrInfo pi = new PtnrInfo();
                 pi.maxTonLabel = DEFAULT_MAX_TON_LABEL;
                 pi.maxLoadKg   = defaultMaxLoadKg;
+                pi.dynamicYn   = "Y";   // BZPTN_DETAIL 미존재 → 동적여부 미설정 → Y 간주(요구3)
                 result.put(dk, pi);
             }
         }
@@ -1570,6 +1590,133 @@ public class AutoDispatchService {
     // ════════════════════════════════════════════════════════════════
     //  그룹핑
     // ════════════════════════════════════════════════════════════════
+
+    /**
+     * [PS 동적배차] 동적거리·동적대상 기반 그룹핑.
+     *
+     *  요구사항(PS제약조건관리 '동적' 제약 연동):
+     *   1) 납품처관리 동적거리(BZPTN_DETAIL.DYNAMIC_DIST_M) 기준으로 동적대상 판정
+     *   2) 동적대상(BZPTN_DISTANCE)에서 USE_YN='N'(미사용) 쌍은 동적 제외
+     *   3) 동적여부(BZPTN_DETAIL.DYNAMIC_YN)=N 납품처는 동적배차 제외(미설정=Y 간주)
+     *   4) 위 1·2를 동적 그룹핑 기준으로 사용(구 AREA_CD 기준 대체)
+     *
+     *  알고리즘:
+     *   · 동적 후보 = DYNAMIC_YN != 'N' (Y 또는 미설정) 인 납품처
+     *   · BZPTN_DISTANCE 에서 USE_YN='Y' 이고 두 납품처 모두 동적 후보이며
+     *     DISTANCE <= (출발지 DYNAMIC_DIST_M) 인 쌍을 '연결'로 간주
+     *   · 연결관계를 Union-Find 로 병합 → 같은 컴포넌트끼리 동적 그룹(혼적)
+     *   · 어디에도 연결되지 않은 납품처는 단독 그룹(납품처 단위, 동적 제외)
+     *   · RQSHPD(납품요청일)가 다르면 같은 그룹이라도 분리(요청일 단위 배차 유지)
+     */
+    private Map<String, List<Map<String, Object>>> buildDynamicGroups(
+            List<Map<String, Object>> items, boolean allowMixedLoad,
+            Map<String, PtnrInfo> ptnrInfoMap) {
+
+        // 대상 납품처 집합
+        List<String> dks = items.stream()
+            .map(it -> str(it.get("DPTNKY"))).filter(s -> !s.isEmpty())
+            .distinct().collect(Collectors.toList());
+        if (dks.size() <= 1) {
+            // 납품처 1개 이하 → 동적 병합 의미 없음 → 기존 그룹핑
+            return buildGroups(items, allowMixedLoad);
+        }
+
+        // 동적 후보 여부: DYNAMIC_YN != 'N' (Y 또는 미설정 → 동적 가능)
+        java.util.function.Predicate<String> isDynCand = dk -> {
+            PtnrInfo pi = ptnrInfoMap.getOrDefault(dk, PtnrInfo.EMPTY);
+            return !"N".equals(pi.dynamicYn);   // 미설정("")·"Y" → 동적 후보
+        };
+
+        // Union-Find 초기화 (동적 후보만)
+        Map<String, String> parent = new HashMap<>();
+        for (String dk : dks) if (isDynCand.test(dk)) parent.put(dk, dk);
+
+        // BZPTN_DISTANCE 조회: USE_YN='Y' 이고 양쪽 모두 대상 납품처인 쌍
+        //   DISTANCE <= 출발지(FROM) DYNAMIC_DIST_M 인 경우만 연결.
+        List<String> candList = new ArrayList<>(parent.keySet());
+        if (candList.size() >= 2) {
+            String ph = candList.stream().map(x -> "?").collect(Collectors.joining(","));
+            List<Object> args = new ArrayList<>();
+            args.addAll(candList);   // FROM IN (...)
+            args.addAll(candList);   // TO   IN (...)
+            List<Map<String, Object>> pairs;
+            try {
+                pairs = tmsJdbc.queryForList(
+                    "SELECT PTNRKY_FROM, PTNRKY_TO, DISTANCE, NVL(USE_YN,'Y') AS USE_YN " +
+                    "FROM KNRAWMS.BZPTN_DISTANCE " +
+                    "WHERE NVL(USE_YN,'Y')='Y' " +
+                    "  AND PTNRKY_FROM IN (" + ph + ") AND PTNRKY_TO IN (" + ph + ")",
+                    args.toArray());
+            } catch (Exception e) {
+                log.warn("[AutoDispatch] BZPTN_DISTANCE 조회 실패 → 동적 그룹핑 생략: {}", e.getMessage());
+                pairs = Collections.emptyList();
+            }
+            for (Map<String, Object> pr : pairs) {
+                String from = str(pr.get("PTNRKY_FROM"));
+                String to   = str(pr.get("PTNRKY_TO"));
+                if (from.isEmpty() || to.isEmpty() || from.equals(to)) continue;
+                if (!parent.containsKey(from) || !parent.containsKey(to)) continue;
+                double dist = 0;
+                try { dist = Double.parseDouble(str(pr.get("DISTANCE"))); } catch (Exception ignore) {}
+                // 출발지 동적 허용거리 이내만 연결(요구사항1: 동적거리 기준)
+                double fromLimit = ptnrInfoMap.getOrDefault(from, PtnrInfo.EMPTY).dynamicDistM;
+                if (fromLimit > 0 && dist > fromLimit) continue;
+                ufUnion(parent, from, to);
+            }
+        }
+
+        // 그룹 구성: 동적 후보는 컴포넌트 루트(dyn_<root>)로, 비후보/미연결은 납품처 단위
+        //   RQSHPD 를 키에 포함하여 납품요청일 단위 분리 유지.
+        Map<String, List<Map<String, Object>>> groups = new LinkedHashMap<>();
+        for (Map<String, Object> it : items) {
+            String dk = str(it.get("DPTNKY"));
+            String dm = str(it.get("DPTNM"));
+            String rq = str(it.get("RQSHPD"));
+            String key;
+            if (parent.containsKey(dk)) {
+                String root = ufFind(parent, dk);
+                // 루트 컴포넌트 크기가 2 이상일 때만 동적 그룹(혼적), 단독이면 납품처 단위
+                key = "_DYN_" + root + "|동적그룹|" + rq;
+            } else {
+                // 동적 제외(DYNAMIC_YN=N) → 납품처 단위 단독 배차
+                key = dk + "|" + dm + "|" + rq;
+            }
+            groups.computeIfAbsent(key, k -> new ArrayList<>()).add(it);
+        }
+
+        // 동적 그룹 중 실제로 납품처가 1개뿐인 컴포넌트는 단독 그룹으로 환원
+        //  (혼자면 '_DYN_' 접두 대신 납품처 단위 키로 재구성 → 혼적 로직 우회)
+        Map<String, List<Map<String, Object>>> finalGroups = new LinkedHashMap<>();
+        for (Map.Entry<String, List<Map<String, Object>>> e : groups.entrySet()) {
+            String k = e.getKey();
+            List<Map<String, Object>> gi = e.getValue();
+            if (k.startsWith("_DYN_")) {
+                long distinctDk = gi.stream().map(it -> str(it.get("DPTNKY"))).distinct().count();
+                if (distinctDk <= 1) {
+                    // 단독 → 납품처 단위 키로 환원
+                    Map<String, Object> f = gi.get(0);
+                    String nk = str(f.get("DPTNKY")) + "|" + str(f.get("DPTNM")) + "|" + str(f.get("RQSHPD"));
+                    finalGroups.computeIfAbsent(nk, x -> new ArrayList<>()).addAll(gi);
+                    continue;
+                }
+            }
+            finalGroups.computeIfAbsent(k, x -> new ArrayList<>()).addAll(gi);
+        }
+        return finalGroups;
+    }
+
+    /** Union-Find: find (경로 압축) */
+    private String ufFind(Map<String, String> parent, String x) {
+        String p = parent.get(x);
+        if (p == null) return x;
+        if (!p.equals(x)) { p = ufFind(parent, p); parent.put(x, p); }
+        return p;
+    }
+    /** Union-Find: union */
+    private void ufUnion(Map<String, String> parent, String a, String b) {
+        String ra = ufFind(parent, a), rb = ufFind(parent, b);
+        if (!ra.equals(rb)) parent.put(ra, rb);
+    }
 
     private Map<String, List<Map<String, Object>>> buildGroups(
             List<Map<String, Object>> items, boolean allowMixedLoad) {
