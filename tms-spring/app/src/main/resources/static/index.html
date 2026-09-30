@@ -3032,11 +3032,20 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 }
 .toast.show{opacity:1}
 /* ── 조회 중(로딩) 표시 — 8점 원형 스피너 (첨부 이미지 형태, #027cbc 계열) ──
-   화면(영역) 가운데에 세로 배치(스피너 위 / 안내문 아래)로 중앙 표시.
+   [요청] 브라우저 뷰포트 정중앙에 고정 표시(스크롤/영역과 무관).
+   .loading 요소는 어느 컨테이너에 innerHTML 로 삽입되든 position:fixed 로
+   화면 정중앙에 떠오르며, 반투명 배경으로 조회 중 화면을 가린다. 조회가 끝나
+   부모 innerHTML 이 실제 데이터로 교체되면 .loading 도 함께 사라진다(자동 제거).
    .spinner 단일 요소를 box-shadow 8점으로 그려 기존 마크업(<div class="spinner">)
    전부에 자동 적용된다. 각 점은 #027cbc 명암 그라데이션, steps(8) 회전. */
-.loading{display:flex;flex-direction:column;align-items:center;justify-content:center;
-  min-height:160px;padding:40px;color:var(--text3);gap:14px;font-size:13px;text-align:center;width:100%}
+.loading{
+  position:fixed;inset:0;z-index:99990;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:16px;color:#0369a1;font-size:13px;font-weight:600;text-align:center;
+  background:rgba(255,255,255,.55);backdrop-filter:blur(1.5px);-webkit-backdrop-filter:blur(1.5px);
+}
+/* 스피너를 감싸는 카드(정중앙 부각) */
+.loading > .spinner{margin:0 auto}
 .spinner{
   width:9px;height:9px;border:none;border-radius:50%;background:transparent;
   /* 8개 점(중심 기준 45° 간격, 반지름 13px) — 12시부터 시계방향으로 점점 옅어짐 */
@@ -13588,7 +13597,7 @@ async function psopLoadSapList() {
   const dptnKw  = (document.getElementById('sap-kw-dptnky')?.value || '').trim();
   const wrap    = document.getElementById('sap-left-wrap');
   if (!wrap) return;
-  wrap.innerHTML = '<div class="psd-empty-state">⏳ 조회 중...</div>';
+  wrap.innerHTML = '<div class="loading"><div class="spinner"></div>조회 중...</div>';
 
   try {
     const body = { rqshpd_from: dtFrom, rqshpd_to: dtTo, stknum: stkKw };
@@ -14534,7 +14543,7 @@ async function _sapOpenVehiclePick(stdlnr, carton, vehino) {
           <button class="psd-btn" onclick="_sapVehPickSearch()">🔍 조회</button>
         </div>
         <div id="svp-result" style="height:320px;overflow-y:scroll;overflow-x:auto">
-          <div class="psd-empty-state">⏳ 조회 중...</div>
+          <div class="loading"><div class="spinner"></div>조회 중...</div>
         </div>
       </div>
     </div>`;
@@ -14570,7 +14579,7 @@ async function _sapVehPickSearch() {
   const vehClass    = document.getElementById('svp-kw-vehicleclass')?.value || '';
   const result      = document.getElementById('svp-result');
   if (!result) return;
-  result.innerHTML = '<div class="psd-empty-state">⏳ 조회 중...</div>';
+  result.innerHTML = '<div class="loading"><div class="spinner"></div>조회 중...</div>';
 
   try {
     const res = await fetch('/api/ps-sap/vehicle-search', {
@@ -14668,7 +14677,7 @@ const _psopVehTab = {
 async function psopLoadVehTab() {
   const tbody = document.getElementById('psop-vt-tbody');
   if (!tbody) return;
-  tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:28px;color:var(--text3)">⏳ 불러오는 중...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:28px;color:var(--text3)"><div class="loading"><div class="spinner"></div>불러오는 중...</div></td></tr>`;
   _psopVehTab.dirty.clear();
   try {
     const res  = await fetch('/api/dispatch/strategy');
@@ -15119,7 +15128,7 @@ async function roSearch() {
   if (!wareky) { showToast('⚠ 거점을 선택하세요 (필수)');  return; }
 
   const wrap = document.getElementById('ro-list-wrap');
-  if (wrap) wrap.innerHTML = '<div class="psd-empty-state">⏳ 조회 중...</div>';
+  if (wrap) wrap.innerHTML = '<div class="loading"><div class="spinner"></div>조회 중...</div>';
   roState.checkedSet.clear();
 
   try {
@@ -15319,7 +15328,7 @@ async function roLoadSapList() {
   const wrap = document.getElementById('ro-sap-left-wrap');
   if (!wrap) return;
   if (!skug05) { wrap.innerHTML = '<div class="psd-empty-state">⚠ 배차 탭에서 제품군을 먼저 선택하세요</div>'; return; }
-  wrap.innerHTML = '<div class="psd-empty-state">⏳ 조회 중...</div>';
+  wrap.innerHTML = '<div class="loading"><div class="spinner"></div>조회 중...</div>';
 
   try {
     const params = new URLSearchParams({ wareky, skug05, dateFrom, dateTo });
@@ -15501,7 +15510,7 @@ async function renderPsDispatchOpt(scope) {
             </tr>
           </thead>
           <tbody id="psop-vt-tbody">
-            <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text3)">로딩 중...</td></tr>
+            <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text3)"><div class="loading"><div class="spinner"></div>로딩 중...</div></td></tr>
           </tbody>
         </table>
       </div>
@@ -20155,7 +20164,7 @@ async function loadShipSchedule(pg) {
   shipScheduleState.size    = size;
 
   const area = document.getElementById('ss-result-area');
-  area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3);font-size:13px;">⏳ 조회 중...</div>';
+  area.innerHTML = '<div class="loading"><div class="spinner"></div>조회 중...</div>';
 
   try {
     const res  = await fetch('/api/shipment/schedule', {
@@ -22342,7 +22351,7 @@ async function loadDynTargets() {
   const ptnrky = _dynTargetState.ptnrky;
   if (!ptnrky) return;
   const body = document.getElementById('dyn-target-body');
-  body.innerHTML = '<tr><td colspan="16" style="padding:24px;text-align:center;color:var(--text3);">조회 중...</td></tr>';
+  body.innerHTML = '<tr><td colspan="16" style="padding:24px;text-align:center;color:var(--text3);"><div class="loading"><div class="spinner"></div>조회 중...</div></td></tr>';
   try {
     const res  = await fetch('/api/delivery/dynamic-targets/' + encodeURIComponent(ptnrky));
     const json = await res.json();
@@ -23837,7 +23846,7 @@ async function dconDeleteProfile(profileId) {
 /* ── 제약조건 편집 ───────────────────────────────────────── */
 async function dconLoadConstraints(profileId) {
   const tbody = document.getElementById('dcon-ctbody');
-  if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="dcon-empty"><span class="dcon-spinner"></span> 로딩 중…</td></tr>`;
+  if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="dcon-empty"><div class="loading"><div class="spinner"></div>로딩 중…</div></td></tr>`;
   try {
     const r = await fetch(`/api/dispatch-constraint/list?profile_id=${profileId}`);
     const d = await r.json();
@@ -24590,7 +24599,7 @@ async function dconSelectSet(setId) {
 
   /* body 로딩 스피너 */
   const body = document.getElementById('dcon-sp-body');
-  if (body) body.innerHTML = '<div class="dcon-empty"><span class="dcon-spinner"></span> 로딩 중…</div>';
+  if (body) body.innerHTML = '<div class="loading"><div class="spinner"></div>로딩 중…</div>';
 
   try {
     /* 병렬로 제약조건 + 차량유형 로드 (ENTRY_TON/FORKLIFT/DYNAMIC은 초기화 시 이미 로드됨) */
@@ -26496,7 +26505,7 @@ async function dconOpenTabMgr() {
   /* _setFullRows가 없으면 API 먼저 로드 후 렌더 */
   if (DCON.selSetId && (!DCON._setFullRows || DCON._setFullRows.length === 0)) {
     const body = document.getElementById('dcon-tab-mgr-body');
-    if (body) body.innerHTML = '<div class="dcon-empty"><span class="dcon-spinner"></span> 로딩 중…</div>';
+    if (body) body.innerHTML = '<div class="loading"><div class="spinner"></div>로딩 중…</div>';
     try {
       const rd = await fetch(`/api/dispatch-const-set/full?set_id=${DCON.selSetId}`).then(r => r.json());
       if (rd.ok) {
@@ -27618,7 +27627,7 @@ async function renderDocMgmt() {
           <button class="dm-folder-add-btn" onclick="dmOpenFolderModal()">+ 폴더 추가</button>
         </div>
         <div class="dm-folder-list" id="dm-folder-list">
-          <div class="dm-empty" style="padding:24px 14px">로딩 중...</div>
+          <div class="loading"><div class="spinner"></div>로딩 중...</div>
         </div>
       </div>
       <!-- 오른쪽 메인 패널 -->
@@ -27775,7 +27784,7 @@ async function dmSelectFolder(folderId) {
     </div>
     <!-- 파일 목록 -->
     <div class="dm-tbl-wrap" id="dm-tbl-wrap">
-      <div class="dm-empty">로딩 중...</div>
+      <div class="loading"><div class="spinner"></div>로딩 중...</div>
     </div>`;
 
   DM.pendingFiles = [];
@@ -27933,7 +27942,7 @@ async function dmLoadFiles() {
     ...(kw     && {kw}),
   });
 
-  wrap.innerHTML = '<div class="dm-empty">로딩 중...</div>';
+  wrap.innerHTML = '<div class="loading"><div class="spinner"></div>로딩 중...</div>';
   try {
     const res  = await fetch('/api/doc/files?' + params);
     const data = await res.json();
