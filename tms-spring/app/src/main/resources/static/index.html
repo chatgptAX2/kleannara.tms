@@ -1912,6 +1912,13 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .ds-vhc-table-fixed thead tr:first-child th:last-child{box-shadow:inset 0 -2px 0 #93c5fd}
 .ds-vhc-table-fixed thead tr:nth-child(2) th:last-child{box-shadow:inset 0 -2px 0 #93c5fd}
 .ds-vhc-table-fixed thead th.ds-cartype{text-align:center;min-width:0}
+/* 2단 헤더(평량) 행 — 간결 텍스트 nowrap, sticky top은 1단 높이에 맞춰 CSS 변수로 통일 */
+.ds-vhc-table-fixed thead tr.ds-vhc-subhdr th{
+  position:sticky;top:var(--ds-hdr1-h,57px);z-index:2;
+  white-space:nowrap;font-size:11px;font-weight:700;padding:5px 4px;
+  box-shadow:inset -1px 0 0 #bcd2e8, inset 0 -2px 0 #93c5fd;
+}
+.ds-vhc-table-fixed thead tr.ds-vhc-subhdr th:last-child{box-shadow:inset 0 -2px 0 #93c5fd}
 /* 차량 톤수 본문 셀도 가운데 정렬(뱃지 중앙 배치) */
 .ds-vhc-table-fixed tbody td.ds-cartype{text-align:center;background:transparent}
 /* ══════════════════════════════════════════════
@@ -9236,11 +9243,11 @@ function _dsBuildVehicleTableHTML() {
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">기본<br>차량수</th>
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">삭제</th>
           </tr>
-          <tr>
-            <th style="position:sticky;top:57px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 미만</th>
-            <th style="position:sticky;top:57px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 이상</th>
-            <th style="position:sticky;top:57px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 미만</th>
-            <th style="position:sticky;top:57px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 이상</th>
+          <tr class="ds-vhc-subhdr">
+            <th style="background:#f0f4f7;color:#37474f">평량&lt;300</th>
+            <th style="background:#f0f4f7;color:#37474f">평량&#8805;300</th>
+            <th style="background:#f0f4f7;color:#37474f">평량&lt;300</th>
+            <th style="background:#f0f4f7;color:#37474f">평량&#8805;300</th>
           </tr>
         </thead>
         <tbody id="ds-vhc-tbody">${tbodyRows}</tbody>
@@ -9347,6 +9354,40 @@ function _dsBindVehicleEvents() {
     const id  = inp.id?.match(/ds-v(?:hgt|wid|pal|len)-(.+)/)?.[1];
     if (id) dsRefreshVehicleCbm(id);
   });
+  // 2단 헤더(평량) sticky top을 1단 헤더 실제 높이에 맞춰 동기화 → 틈/겹침 방지
+  _dsSyncHeaderStickyTop();
+}
+
+/* 1단 헤더 실제 렌더 높이를 측정해 --ds-hdr1-h 변수에 반영.
+   2단 헤더가 1단 바로 아래에 정확히 붙어 스크롤 시 틈·겹침이 생기지 않도록 함.
+   폰트/줄간격/브라우저 차이에도 자동 대응(하드코딩 top 제거). */
+function _dsSyncHeaderStickyTop() {
+  const tbl = document.getElementById('ds-vhc-table');
+  if (!tbl) return;
+  const apply = () => {
+    // 기준: colspan 헤더(1단에만 속함)의 실제 높이. rowspan 셀은 1단+2단을 합친
+    // 높이라 기준으로 쓰면 2단 헤더가 그만큼 아래로 밀려 틈이 생긴다.
+    const colspanHdr = tbl.querySelector('thead tr:first-child th[colspan]')
+                    || tbl.querySelector('thead tr:first-child th');
+    if (!colspanHdr) return;
+    const h = Math.round(colspanHdr.getBoundingClientRect().height);
+    if (h > 0) tbl.style.setProperty('--ds-hdr1-h', h + 'px');
+  };
+  apply();
+  // 레이아웃 안정화 후 한 번 더(폰트 로딩/리플로우 대응)
+  requestAnimationFrame(apply);
+  setTimeout(apply, 150);
+  // 리사이즈 시 재동기화(중복 바인딩 방지)
+  if (!_dsSyncHeaderStickyTop._bound) {
+    window.addEventListener('resize', () => {
+      const t = document.getElementById('ds-vhc-table');
+      if (!t) return;
+      const c = t.querySelector('thead tr:first-child th[colspan]')
+             || t.querySelector('thead tr:first-child th');
+      if (c) t.style.setProperty('--ds-hdr1-h', Math.round(c.getBoundingClientRect().height) + 'px');
+    });
+    _dsSyncHeaderStickyTop._bound = true;
+  }
 }
 
 /* ── 탭 전환 ── */
