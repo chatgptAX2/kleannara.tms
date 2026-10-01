@@ -350,6 +350,19 @@ select.page-size{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,
    border 로 유지(아래 thead th / tbody td 규칙). */
 table{border-collapse:separate;border-spacing:0;font-size:12px;table-layout:fixed}
 table.full-width{width:100%}
+/* ── 숫자 세로 정렬: 데이터 그리드 테이블에 고정폭 숫자(tabular numbers) 적용 ──
+   [요청] 숫자가 세로로 정렬되는 그리드 테이블에 font-feature-settings:"tnum".
+   모든 <table> 및 주요 그리드 클래스에 tnum 을 주면 같은 자릿수 숫자가 세로로
+   정확히 정렬된다(한글/텍스트에는 영향 없음). font-variant-numeric 도 병행해
+   구형 브라우저/폰트 호환성 확보. */
+table,
+.ss-table, .dlv-list-table, .vhc-table, .vhctype-tbl, .wahma-table,
+.dcon-ctable, .dcon-set-ctbl, .dcon-vehicle-matrix, .dcon-ct-matrix,
+.dcon-et-tbl, .dcon-fk-tbl, .psd-sap-tbl, .psop-rz-tbl, .dm-table,
+.data-table, .mm-table{
+  font-feature-settings:"tnum";
+  font-variant-numeric:tabular-nums;
+}
 /* ── 데이터리스트 헤더 (마스터관리 공통) ──────────────────────────
    ★ position 은 sticky 로 단일 선언(과거 relative 중복선언이 sticky 를
      덮어써 세로 스크롤 시 헤더가 고정되지 않던 버그 수정). sticky 자체가
@@ -417,7 +430,7 @@ tbody td{
   border-bottom:1px solid var(--tr-border);
   vertical-align:middle;font-size:12px;
 }
-tbody td.num{color:var(--td-num);text-align:right;font-variant-numeric:tabular-nums}
+tbody td.num{color:var(--td-num);text-align:right;font-feature-settings:"tnum";font-variant-numeric:tabular-nums}
 tbody td.empty{color:var(--text3)}
 
 /* ── DRAG-COPY SELECTION ── */
@@ -2179,7 +2192,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 #psop-panel-sap input,
 #psop-panel-sap button,
 #psop-panel-sap select{
-  font-family:'Inter','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-family:'Pretendard Variable','Pretendard','Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-serif;
 }
 /* [요청] 배차확정(SAP선적) 탭 툴바 배경색 #f5f6f7 + 크기 축소(배차탭 툴바 기준 통일) */
 #psop-panel-sap .psd-toolbar{
@@ -2988,7 +3001,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
   padding:6px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   vertical-align:middle;font-size:12px;color:var(--text);
 }
-.sap-left-tbl tbody td.num,.sap-doc-tbl tbody td.num{text-align:right;font-variant-numeric:tabular-nums}
+.sap-left-tbl tbody td.num,.sap-doc-tbl tbody td.num{text-align:right;font-feature-settings:"tnum";font-variant-numeric:tabular-nums}
 .sap-left-tbl tbody td.center,.sap-doc-tbl tbody td.center{text-align:center}
 .sap-doc-tbl tbody tr{border-bottom:1px solid var(--tr-border);transition:.1s}
 .sap-doc-tbl tbody tr:hover{background:var(--tr-hover)}
