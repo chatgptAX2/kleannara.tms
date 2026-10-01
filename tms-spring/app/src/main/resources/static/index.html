@@ -2730,6 +2730,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psd-auto-mtype-roll{background:var(--pastel-sky-bg);color:var(--pastel-sky-fg);border:1px solid var(--primary)}
 .psd-auto-mtype-board{background:var(--pastel-yellow-bg);color:var(--pastel-yellow-fg);border:1px solid #f59e0b}
 .psd-auto-mtype-other{background:var(--pastel-gray-bg);color:var(--pastel-gray-fg);border:1px solid var(--border)}
+.psd-auto-mtype-mixed{background:linear-gradient(90deg,var(--pastel-sky-bg),var(--pastel-yellow-bg));color:#7c3aed;border:1px solid #a78bfa;font-weight:700}
 /* 적재율 바 */
 .psd-auto-loadbar-wrap{height:4px;background:var(--tr-border);margin:0}
 .psd-auto-loadbar{height:4px;transition:width .3s;border-radius:0}
@@ -12661,7 +12662,9 @@ function psdShowAutoResultModal(vehicles, objNm) {
       ? `<span class="psd-auto-mtype psd-auto-mtype-roll">원지</span>`
       : mtype==='BOARD'
         ? `<span class="psd-auto-mtype psd-auto-mtype-board">판지</span>`
-        : `<span class="psd-auto-mtype psd-auto-mtype-other">기타</span>`;
+        : (mtype==='MIXED' || v.material_mix_yn==='Y')
+          ? `<span class="psd-auto-mtype psd-auto-mtype-mixed" title="${v.unified_dispatch_yn==='Y'?'원지+판지 합산중량 통합 단일차량 배차':'원지+판지 혼적'}">원지+판지${v.unified_dispatch_yn==='Y'?' 통합':''}</span>`
+          : `<span class="psd-auto-mtype psd-auto-mtype-other">기타</span>`;
 
     // 적재율 바
     const loadCap  = v.load_cap || 0;
@@ -18859,7 +18862,9 @@ function psopShowAutoResultModal(vehicles, objNm, selectedCnt, autoMeta) {
       ? `<span class="psd-auto-mtype psd-auto-mtype-roll">원지</span>`
       : mtype==='BOARD'
         ? `<span class="psd-auto-mtype psd-auto-mtype-board">판지</span>`
-        : `<span class="psd-auto-mtype psd-auto-mtype-other">기타</span>`;
+        : (mtype==='MIXED' || v.material_mix_yn==='Y')
+          ? `<span class="psd-auto-mtype psd-auto-mtype-mixed" title="${v.unified_dispatch_yn==='Y'?'원지+판지 합산중량 통합 단일차량 배차':'원지+판지 혼적'}">원지+판지${v.unified_dispatch_yn==='Y'?' 통합':''}</span>`
+          : `<span class="psd-auto-mtype psd-auto-mtype-other">기타</span>`;
 
     // 적재율 바
     const loadCap  = v.load_cap || 0;
@@ -23358,7 +23363,13 @@ const DCON_KEY_META = {
   BOARD_3D_DEAD_SPACE_PCT:{ label:'[판지] 3D Dead Space 허용', unit:'%', op:'<=', type:'CARGO', hint:'3D 검증 시 여유 마진 허용비율 (0=허용안함)' },
   /* MIX_MATERIAL — 원지+판지 재질 혼적 */
   ALLOW_MATERIAL_MIX:{ label:'원지+판지 혼적 허용', unit:'Y/N', op:'=', type:'MIX_MATERIAL', hint:'Y=원지 차량의 여유공간(바닥 Y축)에 판지를 함께 적재하여 한 차량에 혼적 / N=재질별 차량 분리 배차(원지·판지 각각 별도 차량)' },
+  MIX_UNIFIED_VEHICLE_YN:{ label:'원지+판지 합산중량 통합 단일차량', unit:'Y/N', op:'=', type:'MIX_MATERIAL', hint:'Y=같은 그룹의 원지 총중량+판지 총중량을 합산하여 그 합을 한 번에 실을 수 있는 더 큰 차량 1대로 통합 배차(2대→1대 효율화, 중량·높이 검증 통과 시) / N=재질별 개별 배차. ※ALLOW_MATERIAL_MIX=Y 선행 필요' },
   MIX_3D_CHECK_YN:{ label:'[혼적] 3D 물리검증 활성', unit:'Y/N', op:'=', type:'MIX_MATERIAL', hint:'혼적(원지+판지) 3D 검증 파라미터 — 배치 검증 예약 항목' },
+  /* MIX_Z_AXIS — 혼적 Z축(수직) 적재 순서/고정 강제 */
+  MIX_ROLL_BOTTOM_FORCE:{ label:'원지 하단 고정 강제', unit:'Y/N', op:'=', type:'MIX_Z_AXIS', hint:'Y=원지를 반드시 하단(바닥)에, 판지를 상단에 배치 — 원지 압착에 의한 판지 파손 방지' },
+  MIX_BOARD_TOP_FORCE:{ label:'판지 상단 고정 강제', unit:'Y/N', op:'=', type:'MIX_Z_AXIS', hint:'Y=판지를 반드시 상단에 배치(원지 위)' },
+  MIX_BOARD_BOTTOM_FORCE:{ label:'판지 하단 고정 강제', unit:'Y/N', op:'=', type:'MIX_Z_AXIS', hint:'Y=판지도 바닥에 고정 배치(원지와 Y축으로 나란히, 상하 적층 안함) — 판지 압착 파손 방지 / N=원지 하단·판지 상단 적층' },
+  MIX_BOARD_SINGLE_TIER_YN:{ label:'판지 1단 적재만', unit:'Y/N', op:'=', type:'MIX_Z_AXIS', hint:'Y=판지는 1단(단일 높이)만 적재 허용(다단 금지) / N=판지 다단 적재 허용' },
   /* COST */
   PENALTY_RATE:    { label:'초과적재 패널티 배수', unit:'x', op:'=', type:'COST', hint:'MIN_COST 목적식 초과 패널티 (기본 3.0)' },
   COST_PENALTY_OVER:{ label:'초과적재 패널티 배수(대체키)', unit:'x', op:'=', type:'COST', hint:'초과 시 비용 패널티 (기본 1.5)' },
@@ -24723,9 +24734,12 @@ const DCON_PARAM_META = {
   BOARD_HEIGHT_MAX_M:   { label:'최대 적재 높이',            unit:'m',    hint:'판지 스택 최대 높이 (m, 기본 2.4)' },
   /* ── 혼합적재 파라미터 ── */
   ALLOW_MATERIAL_MIX:   { label:'원지+판지 혼적 허용',        unit:'Y/N',  hint:'Y=원지 차량 여유공간(바닥 Y축)에 판지 함께 적재하여 한 차량 혼적 / N=재질별 차량 분리 배차' },
+  MIX_UNIFIED_VEHICLE_YN:{ label:'원지+판지 합산중량 통합 단일차량', unit:'Y/N', hint:'Y=원지+판지 총중량 합산 → 더 큰 차량 1대 통합 배차(2대→1대) / N=재질별 개별. ※ALLOW_MATERIAL_MIX=Y 선행 필요' },
   MIX_3D_CHECK_YN:      { label:'[혼적] 3D 물리검증 활성',    unit:'Y/N',  hint:'혼적(원지+판지) 3D 검증 파라미터 — 배치 검증 예약 항목' },
   MIX_ROLL_BOTTOM_FORCE:{ label:'원지 하단 고정 강제',       unit:'Y/N',  hint:'Y=원지 반드시 하단(바닥), 판지 상단' },
   MIX_BOARD_TOP_FORCE:  { label:'판지 상단 고정 강제',       unit:'Y/N',  hint:'Y=판지 반드시 상단' },
+  MIX_BOARD_BOTTOM_FORCE:{ label:'판지 하단 고정 강제',      unit:'Y/N',  hint:'Y=판지도 바닥에 고정 배치(원지와 Y축으로 나란히, 상하 적층 안함) — 판지 압착 파손 방지 / N=원지 하단·판지 상단 적층' },
+  MIX_BOARD_SINGLE_TIER_YN:{ label:'판지 1단 적재만',        unit:'Y/N',  hint:'Y=판지는 1단(단일 높이)만 적재 허용(다단 금지) / N=판지 다단 적재 허용' },
   MIX_VERTICAL_ORDER:   { label:'수직 적재 순서',            unit:'코드', hint:'ROLL_BOTTOM=원지하단/판지상단' },
   MIX_LIFO_YN:          { label:'LIFO 배치 활성',            unit:'Y/N',  hint:'Y=나중 하차→안쪽, 먼저 하차→문 쪽' },
   MIX_FIRST_DROP_DOOR:  { label:'먼저 하차→문 쪽 배치',      unit:'Y/N',  hint:'Y=먼저 하차 납품처 문 쪽 고정' },
@@ -26742,12 +26756,18 @@ function dconCloseTabMgr() {
 
 /* 재질 혼적 제약(ALLOW_MATERIAL_MIX / MIX_3D_CHECK_YN)의 CONST_TYPE 정규화.
    과거 CARGO 타입으로 저장된 행을 MIX_MATERIAL 탭으로 이동 표시(자동배차는 CONST_KEY만 사용). */
-const _DCON_MIX_MATERIAL_KEYS = ['ALLOW_MATERIAL_MIX', 'MIX_3D_CHECK_YN'];
+const _DCON_MIX_MATERIAL_KEYS = ['ALLOW_MATERIAL_MIX', 'MIX_UNIFIED_VEHICLE_YN', 'MIX_3D_CHECK_YN'];
+/* 혼적 Z축(수직 적재) 제약 키 — MIX_Z_AXIS 탭으로 정규화 */
+const _DCON_MIX_ZAXIS_KEYS = ['MIX_ROLL_BOTTOM_FORCE', 'MIX_BOARD_TOP_FORCE', 'MIX_BOARD_BOTTOM_FORCE', 'MIX_BOARD_SINGLE_TIER_YN', 'MIX_VERTICAL_ORDER'];
 function _dconNormalizeMixMaterialType(rows) {
   if (!Array.isArray(rows)) return rows;
   rows.forEach(r => {
     if (r && _DCON_MIX_MATERIAL_KEYS.includes(r.CONST_KEY) && r.CONST_TYPE !== 'MIX_MATERIAL') {
       r.CONST_TYPE = 'MIX_MATERIAL';
+    }
+    // 혼적 Z축 수직적재 제약은 MIX_Z_AXIS 탭으로 정규화
+    if (r && _DCON_MIX_ZAXIS_KEYS.includes(r.CONST_KEY) && r.CONST_TYPE !== 'MIX_Z_AXIS') {
+      r.CONST_TYPE = 'MIX_Z_AXIS';
     }
   });
   return rows;
