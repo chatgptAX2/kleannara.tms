@@ -1873,17 +1873,26 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
   background:var(--surface2);
   letter-spacing:.1px;
 }
-.ds-vhc-table-fixed{width:100%;table-layout:fixed;min-width:860px}
-.ds-vhc-dim-cell{padding:4px 5px}
+.ds-vhc-table-fixed{width:100%;table-layout:fixed;min-width:1080px}
+/* 모든 데이터 셀: 가운데 정렬 + 균일 패딩. input/select가 셀 테두리에 닿지 않도록 여백 확보 */
+.ds-vhc-table-fixed tbody td{padding:6px 6px;text-align:center;vertical-align:middle;overflow:hidden}
+.ds-vhc-dim-cell{padding:6px 6px}
 .ds-vhc-num{
-  width:100%;box-sizing:border-box;
-  font-size:12px;padding:5px 5px;text-align:center;
+  width:100%;max-width:100%;box-sizing:border-box;
+  font-size:12px;padding:5px 4px;text-align:center;
 }
-.ds-vhc-inch-cell{padding:4px 5px;background:var(--surface)}
+.ds-vhc-inch-cell{padding:6px 6px;background:var(--surface)}
 .ds-vhc-inch-num{
-  width:100%;min-width:60px;box-sizing:border-box;
-  font-size:13px;font-weight:600;padding:5px 6px;text-align:center;
+  width:100%;max-width:100%;box-sizing:border-box;
+  font-size:13px;font-weight:600;padding:5px 4px;text-align:center;
 }
+/* 셀 내부 select(사용여부/장축여부)도 셀폭에 맞춰 가운데 정렬 */
+.ds-vhc-table-fixed tbody td > select.ds-input{width:100%;max-width:100%;box-sizing:border-box;text-align:center;text-align-last:center}
+/* 헤더: 좁은 컬럼에서 넘치지 않도록 패딩 축소 + 전부 가운데 정렬(차량 톤수 포함) */
+.ds-vhc-table-fixed thead th{padding:7px 6px;text-align:center;line-height:1.3;overflow:hidden}
+.ds-vhc-table-fixed thead th.ds-cartype{text-align:center;min-width:0}
+/* 차량 톤수 본문 셀도 가운데 정렬(뱃지 중앙 배치) */
+.ds-vhc-table-fixed tbody td.ds-cartype{text-align:center;background:transparent}
 /* ══════════════════════════════════════════════
    자동배차 시뮬레이션 패널
 ══════════════════════════════════════════════ */
@@ -9172,16 +9181,21 @@ function _dsBuildVehicleTableHTML() {
     <div style="padding:0 16px 16px;overflow-x:auto">
       <table class="ds-table ds-vhc-table-fixed" id="ds-vhc-table">
         <colgroup>
-          <col style="width:90px">
-          <col style="width:110px">
-          <col style="width:56px">
-          <col style="width:70px"><col style="width:80px"><col style="width:70px">
-          <col style="width:86px"><col style="width:72px"><col style="width:76px">
-          <col style="width:auto"><col style="width:auto">
-          <col style="width:auto"><col style="width:auto">
-          <col style="width:70px"><col style="width:70px">
-          <col style="width:70px">
-          <col style="width:50px">
+          <col style="width:88px"><!-- 차량코드 -->
+          <col style="width:104px"><!-- 차량 톤수 -->
+          <col style="width:60px"><!-- 사용여부 -->
+          <col style="width:68px"><!-- 길이 -->
+          <col style="width:80px"><!-- 너비 -->
+          <col style="width:68px"><!-- 높이 -->
+          <col style="width:76px"><!-- 파렛트높이 -->
+          <col style="width:72px"><!-- 적재CBM -->
+          <col style="width:76px"><!-- 상차량 -->
+          <col style="width:66px"><col style="width:66px"><!-- 12인치 LT/GE -->
+          <col style="width:66px"><col style="width:66px"><!-- 3인치 LT/GE -->
+          <col style="width:68px"><!-- 파렛트수 -->
+          <col style="width:72px"><!-- 장축여부 -->
+          <col style="width:66px"><!-- 기본차량수 -->
+          <col style="width:52px"><!-- 삭제 -->
         </colgroup>
         <thead>
           <tr>
@@ -9202,10 +9216,10 @@ function _dsBuildVehicleTableHTML() {
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">삭제</th>
           </tr>
           <tr>
-            <th style="position:sticky;top:36px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 미만</th>
-            <th style="position:sticky;top:36px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 이상</th>
-            <th style="position:sticky;top:36px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 미만</th>
-            <th style="position:sticky;top:36px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 이상</th>
+            <th style="position:sticky;top:56px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 미만</th>
+            <th style="position:sticky;top:56px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 이상</th>
+            <th style="position:sticky;top:56px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 미만</th>
+            <th style="position:sticky;top:56px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 이상</th>
           </tr>
         </thead>
         <tbody id="ds-vhc-tbody">${tbodyRows}</tbody>
