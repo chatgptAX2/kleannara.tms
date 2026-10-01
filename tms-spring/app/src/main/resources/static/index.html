@@ -18822,6 +18822,7 @@ async function psopAutoDispatch(offline) {
       profile_nm:    data.profile_nm || '',
       applied_set_nm: data.applied_set_nm || '',
       constraints:   data.applied_constraints || null,
+      diag:          data.dispatch_diag || null,
     };
     psopShowAutoResultModal(data.vehicles || [], objNm, isPartial ? targets.length : null, autoMeta);
   } catch(e) {
@@ -19102,6 +19103,29 @@ function psopShowAutoResultModal(vehicles, objNm, selectedCnt, autoMeta) {
     ? `<span style="font-size:11px;font-weight:600;color:#60a5fa;background:rgba(96,165,250,.12);border:1px solid #3b82f6;border-radius:4px;padding:1px 8px;margin-left:4px">선택 ${selectedCnt}건</span>`
     : '';
 
+  // ── [진단] 통합배차 전제조건 배너 (원지+판지가 2대로 나뉜 경우 원인 안내) ──
+  const _diag = autoMeta && autoMeta.diag ? autoMeta.diag : null;
+  let diagBanner = '';
+  if (_diag) {
+    const amm = _diag.ALLOW_MATERIAL_MIX === true || _diag.ALLOW_MATERIAL_MIX === 'true' || _diag.ALLOW_MATERIAL_MIX === 'Y';
+    const muv = _diag.MIX_UNIFIED_VEHICLE_YN === true || _diag.MIX_UNIFIED_VEHICLE_YN === 'true' || _diag.MIX_UNIFIED_VEHICLE_YN === 'Y';
+    const ok  = amm && muv;
+    const bg  = ok ? 'rgba(34,197,94,.10)' : 'rgba(239,68,68,.10)';
+    const bd  = ok ? '#22c55e' : '#ef4444';
+    const ic  = ok ? '✅' : '⚠️';
+    diagBanner = `
+      <div style="padding:8px 20px;background:${bg};border-bottom:1px solid ${bd};font-size:11px;color:var(--text);line-height:1.6">
+        <strong>${ic} 통합배차 제약 진단</strong>
+        &nbsp;|&nbsp; 활성 프로파일 <b>#${_diag.profile_id ?? '-'}</b>
+        &nbsp;·&nbsp; 세트 <b>${_diag.applied_set_id ?? '없음'}</b>(항목 ${_diag.set_item_count ?? 0}개)
+        &nbsp;·&nbsp; 제약행 ${_diag.const_row_count ?? 0}개
+        <br>
+        <span style="font-family:monospace">ALLOW_MATERIAL_MIX=<b style="color:${amm?'#16a34a':'#dc2626'}">${amm?'Y':'N'}</b>
+        &nbsp; MIX_UNIFIED_VEHICLE_YN=<b style="color:${muv?'#16a34a':'#dc2626'}">${muv?'Y':'N'}</b></span>
+        <br><span style="color:var(--text2)">${_esc(_diag.unified_hint || '')}</span>
+      </div>`;
+  }
+
   modal.innerHTML = `
     <div class="psd-modal" style="width:820px">
       <div class="psd-modal-hdr">
@@ -19113,6 +19137,7 @@ function psopShowAutoResultModal(vehicles, objNm, selectedCnt, autoMeta) {
         ${typeSummary}${rollSummary}${addedSummary}${splitSummary}${ptnrWarnSummary}${deadlineSummary}${noForkSummary}
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-left:auto">${summaryBadges}</div>
       </div>
+      ${diagBanner}
       <div class="psd-modal-body psd-auto-result">
         <div class="psd-auto-veh-list">${vehListHtml}</div>
       </div>

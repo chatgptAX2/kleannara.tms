@@ -465,6 +465,37 @@ public class AutoDispatchService {
         appliedConstraints.put("MIX_BOARD_SINGLE_TIER_YN", cp.mixBoardSingleTier);
         result.put("applied_constraints", appliedConstraints);
 
+        // ── [진단] 통합배차 적용 가능 여부 진단 정보 (UI 배너 표시용) ──────────
+        //  "제약을 Y로 저장했는데 왜 2대로 나뉘는가?"를 사용자가 결과에서 바로 확인.
+        Map<String, Object> diag = new LinkedHashMap<>();
+        diag.put("profile_id",       pid);
+        diag.put("applied_set_id",   setId);
+        diag.put("set_item_count",   setItemMap.size());
+        diag.put("const_row_count",  constRows.size());     // 활성 프로파일의 제약 행 수
+        diag.put("ALLOW_MATERIAL_MIX",     cp.materialMix);
+        diag.put("MIX_UNIFIED_VEHICLE_YN", cp.mixUnifiedVehicle);
+        // 통합배차 전제조건 요약
+        boolean unifiedPrereq = cp.materialMix && cp.mixUnifiedVehicle;
+        diag.put("unified_prereq_ok", unifiedPrereq);
+        String unifiedHint;
+        if (!cp.materialMix && !cp.mixUnifiedVehicle) {
+            unifiedHint = "ALLOW_MATERIAL_MIX=N, MIX_UNIFIED_VEHICLE_YN=N — 두 제약이 활성 프로파일(" + pid
+                + ")에 로드되지 않음. 제약조건관리에서 두 제약을 Y로 저장했는지, 그리고 그 세트가 '현재 활성 프로파일'에 연결됐는지 확인 필요.";
+        } else if (!cp.materialMix) {
+            unifiedHint = "ALLOW_MATERIAL_MIX=N — 재질혼적 허용이 꺼져 통합배차 전제 불충족. ALLOW_MATERIAL_MIX=Y 필요.";
+        } else if (!cp.mixUnifiedVehicle) {
+            unifiedHint = "MIX_UNIFIED_VEHICLE_YN=N — 통합 단일차량 배차가 꺼짐. MIX_UNIFIED_VEHICLE_YN=Y 필요.";
+        } else {
+            unifiedHint = "통합배차 전제 충족(ALLOW_MATERIAL_MIX=Y, MIX_UNIFIED_VEHICLE_YN=Y). "
+                + "그래도 2대라면 각 그룹 원지 차량 노트의 [통합배차-불가] 사유(중량/높이 초과)를 확인.";
+        }
+        diag.put("unified_hint", unifiedHint);
+        result.put("dispatch_diag", diag);
+        log.info("[AutoDispatch][진단] profile_id={}, set_id={}, set_items={}, const_rows={}, "
+                 + "ALLOW_MATERIAL_MIX={}, MIX_UNIFIED_VEHICLE_YN={} → {}",
+                 pid, setId, setItemMap.size(), constRows.size(),
+                 cp.materialMix, cp.mixUnifiedVehicle, unifiedHint);
+
         result.put("total_vehicles",      allVehicles.size());
         result.put("total_cost",          Math.round(totalCost));
         result.put("avg_fill_ratio",      round2(avgFill));
