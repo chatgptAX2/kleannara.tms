@@ -159,11 +159,13 @@ public class AutoDispatchService {
         ConstraintParams cp = buildConstraintParams(C);
         log.info("[AutoDispatch] 적용 제약 요약 — objective={}, entryTonLimit={}t, fixedVehPriority={}, " +
                  "maxVehPerGroup={}, roll3dCheck={}, board3dCheck={}, boardCbmCheck={}, " +
-                 "boardMaxTonRatio={}, boardMaxCbmRatio={}, rollHeightMarginM={}, rollPalletApply={}({}m)",
+                 "boardMaxTonRatio={}, boardMaxCbmRatio={}, rollHeightMarginM={}, rollPalletApply={}({}m), " +
+                 "materialMix={}, mixUnifiedVehicle={}, mixBoardBottomForce={}, mixBoardSingleTier={}",
                  objective, cp.entryTonLimit, cp.fixedVehPriority, cp.maxVehPerGroup,
                  cp.roll3dCheck, cp.board3dCheck, cp.boardCbmCheck,
                  cp.boardMaxTonRatio, cp.boardMaxCbmRatio, cp.rollHeightMarginM,
-                 cp.rollPalletApply, cp.rollPalletDeductM);
+                 cp.rollPalletApply, cp.rollPalletDeductM,
+                 cp.materialMix, cp.mixUnifiedVehicle, cp.mixBoardBottomForce, cp.mixBoardSingleTier);
 
         // 차량 마스터 로드
         List<Map<String, Object>> carOrder = loadCarOrder(scope);
@@ -309,6 +311,27 @@ public class AutoDispatchService {
 
             boolean isMixedLoad = !rollItems.isEmpty() && !boardItems.isEmpty();
 
+            // ── [B] 원지+판지 합산중량 통합 단일차량 배차 (MIX_UNIFIED_VEHICLE_YN=Y) ──
+            //  재질혼적 허용 + 원지·판지 공존 시, 두 재질의 총중량을 합산하여 그 합을
+            //  한 번에 실을 수 있는 더 큰 차량 1대로 통합 배차를 먼저 시도한다.
+            //  (예: 원지 3,162kg + 판지 106kg = 3,268kg → 5톤 1대, 3.5톤+1.4톤 2대 대신)
+            //  성공 시 원지/판지 개별 배차를 건너뛰고, 실패 시 기존 로직으로 폴백.
+            if (cp.materialMix && cp.mixUnifiedVehicle && isMixedLoad) {
+                boolean unified = tryUnifiedMixedDispatch(
+                    rollItems, boardItems, dptnky, dptnm, rqshpd, validCars, vehInfo,
+                    carOrder, inchMaps, skumaMap, routeCostMap, ptnrInfoMap,
+                    objective, cp, pid, prof, isMixedGroup, isDynBlocked, pi, allVehicles);
+                if (unified) {
+                    // 통합 성공 → 이 그룹은 처리 완료 (그룹차량수 검증만 수행)
+                    int vehCountThisGroupU = allVehicles.size() - vehCountBefore;
+                    if (cp.maxVehPerGroup > 0 && vehCountThisGroupU > cp.maxVehPerGroup) {
+                        log.warn("[AutoDispatch] [통합배차] 그룹차량수 초과 {} > {}",
+                                 vehCountThisGroupU, cp.maxVehPerGroup);
+                    }
+                    continue;
+                }
+            }
+
             // ── 원지 배차 (FFD/BFD BinPacking) ───────────────────
             int rollVehStart = allVehicles.size();
             if (!rollItems.isEmpty()) {
@@ -416,6 +439,10 @@ public class AutoDispatchService {
         appliedConstraints.put("ROLL_PALLET_DEDUCT_M",  cp.rollPalletDeductM);
         appliedConstraints.put("ALLOW_SPLIT_ITEM",      cp.allowSplit);
         appliedConstraints.put("ALLOW_MIXED_LOAD",      cp.allowMixedLoad);
+        appliedConstraints.put("ALLOW_MATERIAL_MIX",    cp.materialMix);
+        appliedConstraints.put("MIX_UNIFIED_VEHICLE_YN", cp.mixUnifiedVehicle);
+        appliedConstraints.put("MIX_BOARD_BOTTOM_FORCE", cp.mixBoardBottomForce);
+        appliedConstraints.put("MIX_BOARD_SINGLE_TIER_YN", cp.mixBoardSingleTier);
         result.put("applied_constraints", appliedConstraints);
 
         result.put("total_vehicles",      allVehicles.size());
@@ -1201,6 +1228,166 @@ public class AutoDispatchService {
             }
         }
         return remaining;  // 담지 못한 판지 (별도 배차 대상)
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  [B] 원지+판지 합산중량 통합 단일차량 배차 (MIX_UNIFIED_VEHICLE_YN=Y)
+    //
+    //  목적: 같은 그룹의 원지와 판지가 각각 저적재 차량 2대로 분리 배차되는 것을
+    //        방지하고, 두 재질의 총중량을 합산하여 한 번에 실을 수 있는 더 큰 차량
+    //        1대로 통합 배차하여 차량 수·비용을 줄인다.
+    //
+    //  판정 절차:
+    //    1) 원지 총중량 + 판지 총중량 = 합산중량 산출
+    //    2) 합산중량을 수용하는 차량을 selectCar(목적식 반영)로 선택
+    //    3) 선택 차량의 적재한도 >= 합산중량 (중량 수용 검증)
+    //    4) 높이 검증: 원지 다단 높이 + 판지 적재 높이 <= 차량 가용높이
+    //         - MIX_BOARD_SINGLE_TIER_YN=Y 이면 판지는 1단(단일 높이)만 가산
+    //    5) 모두 통과 시 통합 vehicle 1대 생성(material_type=MIXED) → true 반환
+    //       하나라도 실패하면 false 반환(호출부가 기존 개별 배차로 폴백)
+    // ════════════════════════════════════════════════════════════════
+    private boolean tryUnifiedMixedDispatch(
+        List<Map<String, Object>> rollItems,
+        List<Map<String, Object>> boardItems,
+        String dptnky, String dptnm, String rqshpd,
+        List<Map<String, Object>> validCars,
+        Map<String, VehInfo> vehInfo,
+        List<Map<String, Object>> carOrder,
+        InchMaps inchMaps,
+        Map<String, SkuInfo> skumaMap,
+        Map<String, Map<String, Double>> routeCostMap,
+        Map<String, PtnrInfo> ptnrInfoMap,
+        String objective, ConstraintParams cp,
+        long pid, Map<String, Object> prof,
+        boolean isMixedGroup, boolean isDynBlocked, PtnrInfo pi,
+        List<Map<String, Object>> allVehicles
+    ) {
+        // 1) 합산중량 산출
+        double rollKg  = rollItems.stream()
+            .mapToDouble(it -> itemRollKg(it, skumaMap, cp.rollSingleKg)).sum();
+        double boardKgSum = boardItems.stream()
+            .mapToDouble(it -> boardKg(it, skumaMap)).sum();
+        double unifiedKg = rollKg + boardKgSum;
+        if (unifiedKg <= 0) return false;
+
+        // 2) 합산중량 수용 차량 선택 (목적식 반영: MIN_VEHICLES/MIN_COST/MAX_FILL)
+        String vehCar = selectCar(unifiedKg, validCars, vehInfo, dptnky, objective, cp, routeCostMap);
+        VehInfo vi = vehInfo.getOrDefault(vehCar, VehInfo.EMPTY);
+        double cap = vi.loadKg;
+
+        // 3) 중량 수용 검증 — 선택 차량이 합산중량을 못 실으면 통합 불가 → 폴백
+        if (cap <= 0 || cap < unifiedKg) {
+            log.info("[AutoDispatch][통합배차] 중량초과로 폴백 (합산 {}kg > 차량 {} 한도 {}kg)",
+                     round2(unifiedKg), vehCar, round2(cap));
+            return false;
+        }
+
+        // 4) 높이 검증: 원지 다단 높이 + 판지 높이 <= 차량 가용높이
+        double effH = rollEffH(vehCar, pi.forkliftYn, vehInfo, cp);
+        if (cp.rollMaxHeightM > 0) effH = Math.min(effH, cp.rollMaxHeightM);
+
+        // 원지 다단 높이(최대 원지폭 × 단수 + 안전마진)
+        double rollStackH = 0.0;
+        int actualStack = Math.min(cp.maxStack, 3);
+        for (Map<String, Object> it : rollItems) {
+            String sk = str(it.get("SKUKEY"));
+            if (!isRoll(sk)) continue;
+            double rollWmm = rollWidthMm(it, skumaMap, sk);
+            double h = rollWmm / 1000.0 * actualStack + cp.rollHeightMarginM;
+            if (h > rollStackH) rollStackH = h;
+        }
+        // 판지 높이: 단일단(1단) 강제 시 1개 두께만, 아니면 계산 높이
+        double boardH = 0.0;
+        for (Map<String, Object> it : boardItems) {
+            double bh = Math.min(calcBoardHeight(it, skumaMap), cp.maxBoardHeightM);
+            if (bh <= 0) bh = cp.maxBoardHeightM;
+            if (bh > boardH) boardH = bh;
+        }
+        // 혼적 Z축 배치 방식에 따른 높이 합산:
+        //  · 판지 하단 고정강제(mixBoardBottomForce=Y): 원지와 판지가 바닥에 '나란히'(Y축 분리)
+        //    배치되므로 높이는 둘 중 큰 값(겹치지 않음).
+        //  · 그 외(원지 하단/판지 상단 적층): 원지 높이 + 판지 높이 합산.
+        //  · 판지 1단 강제(mixBoardSingleTier=Y): 판지 높이는 1단만 반영(위 boardH가 이미 단일 블록 높이).
+        double neededH = cp.mixBoardBottomForce
+            ? Math.max(rollStackH, boardH)
+            : (rollStackH + boardH);
+
+        if (neededH > effH + 0.001) {
+            log.info("[AutoDispatch][통합배차] 높이초과로 폴백 (필요 {}m > 가용 {}m, 차량 {})",
+                     round2(neededH), round2(effH), vehCar);
+            return false;
+        }
+
+        // 5) 통합 vehicle 생성
+        List<Map<String, Object>> mergedItems = new ArrayList<>();
+        // KG_WEIGHT 미설정 원지 보정
+        for (Map<String, Object> it : rollItems) {
+            Map<String, Object> itc = new HashMap<>(it);
+            if (dbl(itc.get("KG_WEIGHT")) <= 0)
+                itc.put("KG_WEIGHT", itemRollKg(it, skumaMap, cp.rollSingleKg));
+            mergedItems.add(itc);
+        }
+        mergedItems.addAll(boardItems);
+
+        int totalRc = rollItems.stream()
+            .filter(it -> isRoll(str(it.get("SKUKEY"))))
+            .mapToInt(it -> itemRollCount(it, skumaMap, cp.rollSingleKg)).sum();
+        double fill   = cap > 0 ? unifiedKg / cap * 100 : 0;
+        double costVal = routeCostMap.getOrDefault(dptnky, Collections.emptyMap())
+                         .getOrDefault(vehCar, 0.0);
+
+        List<String> notes = new ArrayList<>();
+        if (isDynBlocked) notes.add("[동적배차불가] DYNAMIC_YN=N → 고정노선 전용 오더");
+        else if ("Y".equals(pi.dynamicYn)) notes.add("[동적배차가능] DYNAMIC_YN=Y");
+        notes.add(String.format(
+            "[통합배차] 원지 %.0fkg + 판지 %.0fkg = 합산 %.0fkg → %s 1대 통합 "
+            + "(한도%.0fkg / 적재율%.1f%%%s) — 재질별 분리 배차 대비 차량 수 절감",
+            rollKg, boardKgSum, unifiedKg, vehCar, cap, fill,
+            costVal > 0 ? String.format(" / 운송비%,.0f원", costVal) : ""));
+        // 혼적 Z축 배치 노트
+        if (cp.mixBoardBottomForce) {
+            notes.add("[혼적-Z축] 판지 하단 고정강제 — 원지·판지 모두 바닥 배치(Y축 분리), 상하 적층 안함");
+        } else {
+            notes.add("[혼적-Z축] 원지 하단(바닥) / 판지 상단 배치 (파손 방지)");
+        }
+        notes.add(cp.mixBoardSingleTier
+            ? "[혼적-판지단수] 판지 1단 적재만 허용(MIX_BOARD_SINGLE_TIER_YN=Y)"
+            : "[혼적-판지단수] 판지 다단 적재 허용");
+        notes.add("[혼적-Y축] LIFO: 나중 하차→안쪽 / 먼저 하차→문 쪽 배치");
+        notes.add(String.format("[통합배차-높이] 필요 %.2fm / 차량가용 %.2fm — OK", neededH, effH));
+
+        Map<String, Object> vrow = new LinkedHashMap<>();
+        vrow.put("dptnky",        dptnky);   vrow.put("dptnm",    dptnm);
+        vrow.put("rqshpd",        rqshpd);   vrow.put("cartype",  vehCar);
+        vrow.put("total_kg",      round2(unifiedKg));
+        vrow.put("load_cap",      cap);
+        vrow.put("spare_kg",      round2(cap - unifiedKg));
+        vrow.put("fill_ratio",    round2(fill));
+        vrow.put("items",         mergedItems);
+        vrow.put("item_cnt",      mergedItems.size());
+        vrow.put("material_type", "MIXED");          // 원지+판지 통합 혼적 차량
+        vrow.put("material_mix_yn", "Y");
+        vrow.put("unified_dispatch_yn", "Y");         // 통합배차로 생성됨 표식
+        vrow.put("roll_count",    totalRc);
+        vrow.put("board_moved_cnt", boardItems.size());
+        vrow.put("board_moved_kg",  round2(boardKgSum));
+        vrow.put("route_cost",    costVal);
+        vrow.put("objective",     objective);
+        vrow.put("profile_id",    pid);
+        vrow.put("profile_nm",    str(prof.get("PROFILE_NM")));
+        vrow.put("notes",         notes);
+        vrow.put("is_mixed",      isMixedGroup);
+        vrow.put("is_mixed_load", true);
+        vrow.put("mixed_dptnm",   isMixedGroup ? dptnm : "");
+        vrow.put("forklift_yn",   pi.forkliftYn);
+        vrow.put("dynamic_yn",    pi.dynamicYn);
+        vrow.put("deadline_time", pi.deadlineTime);
+        vrow.put("max_ton_label", pi.maxTonLabel);
+        allVehicles.add(vrow);
+
+        log.info("[AutoDispatch][통합배차] 성공: {} 1대 (합산 {}kg, 적재율 {}%)",
+                 vehCar, round2(unifiedKg), round2(fill));
+        return true;
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -2129,6 +2316,11 @@ public class AutoDispatchService {
         cp.allowMixedLoad   = cbool(C, "ALLOW_MIXED_LOAD",          false);
         // ── 원지+판지 재질 혼적 허용 (신규): Y=한 차량에 원지+판지 혼적, N=재질별 분리 ──
         cp.materialMix      = cbool(C, "ALLOW_MATERIAL_MIX",        false);
+        // ── 원지+판지 합산중량 통합 단일차량 배차 (신규): Y=합산중량 기준 더 큰 차 1대 ──
+        cp.mixUnifiedVehicle = cbool(C, "MIX_UNIFIED_VEHICLE_YN",  false);
+        // ── 혼적 Z축: 판지 하단 고정강제 / 판지 1단 적재만 (신규) ──
+        cp.mixBoardBottomForce = cbool(C, "MIX_BOARD_BOTTOM_FORCE", false);
+        cp.mixBoardSingleTier  = cbool(C, "MIX_BOARD_SINGLE_TIER_YN", false);
         // ── 롤 최대 적재 단수: MAX_ROLL_STACK_TIER 우선, 미설정 시 중복키 ROLL_MAX_TIER 폴백 ──
         double maxStackVal  = cfloatMulti(C, 2.0, "MAX_ROLL_STACK_TIER", "ROLL_MAX_TIER");
         cp.maxStack         = (int) maxStackVal;
@@ -2282,6 +2474,14 @@ public class AutoDispatchService {
         int maxStack = 2;
         boolean allowSplit = true, allowMixedLoad = false;
         boolean materialMix = false;       // 원지+판지 재질 혼적 허용 (ALLOW_MATERIAL_MIX)
+        // ── 원지+판지 합산중량 통합 단일차량 배차 (MIX_UNIFIED_VEHICLE_YN) ──
+        //  Y = 같은 그룹의 원지 총중량 + 판지 총중량을 합산하여, 그 합을 한 번에 실을 수
+        //      있는 더 큰 차량 1대로 통합 배차(2대→1대 효율화). 중량/높이 검증 통과 시에만 적용.
+        //  N = 기존처럼 원지·판지를 재질별로 개별 배차.
+        boolean mixUnifiedVehicle = false;
+        // ── 혼적 Z축: 판지 하단 고정강제 / 판지 1단 적재만 ──
+        boolean mixBoardBottomForce  = false; // Y=판지를 (원지와 별도로) 바닥 고정 배치
+        boolean mixBoardSingleTier   = false; // Y=판지 1단 적재만 허용(다단 금지)
         boolean boardBulkIntOnly = true, boardInnerSplit = true;
 
         // ── 신규 반영 제약조건 ──
