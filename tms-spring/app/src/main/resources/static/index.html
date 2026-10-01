@@ -3053,20 +3053,32 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 }
 #gloading.show{display:flex}
 #gloading .gloading-msg{letter-spacing:.3px}
+/* ── 세련된 원호(arc) 스피너 ──────────────────────────────────────────
+   conic-gradient 로 '꼬리가 부드럽게 사라지는' 매끈한 원호를 그리고,
+   radial mask 로 가운데를 비운 도넛(ring) 형태로 만든다. 끊김 없는 linear
+   회전 + 양 끝 둥근 캡(::before/::after 점)으로 모던하고 깔끔한 느낌.
+   크기: 지름 50px(반지름 25px), 링 두께 5px, 색상 #027cbc. */
 .spinner{
-  /* 확대: 반지름 19px, 점 지름 ≈16px(요소 12px + box-shadow spread 2) */
-  width:12px;height:12px;border:none;border-radius:50%;background:transparent;
-  box-shadow:
-      0    -19px 0 2px rgba(2,124,188,1),      /* 12시 (가장 진함) */
-     13px   -13px 0 2px rgba(2,124,188,.30),   /* 1.5시 */
-     19px    0   0 2px rgba(2,124,188,.40),     /* 3시   */
-     13px    13px 0 2px rgba(2,124,188,.50),    /* 4.5시 */
-      0     19px 0 2px rgba(2,124,188,.60),     /* 6시   */
-    -13px    13px 0 2px rgba(2,124,188,.70),    /* 7.5시 */
-    -19px    0   0 2px rgba(2,124,188,.80),     /* 9시   */
-    -13px   -13px 0 2px rgba(2,124,188,.90);    /* 10.5시 */
-  animation:spin8 .9s steps(8,end) infinite;
-  flex-shrink:0;margin:0 auto;
+  --sp-size:50px;      /* 지름 (반지름 25px) */
+  --sp-thick:5px;      /* 링 두께 */
+  --sp-color:#027cbc;
+  width:var(--sp-size);height:var(--sp-size);border:none;border-radius:50%;
+  background:transparent;flex-shrink:0;margin:0 auto;position:relative;
+  /* 투명 → 진한 #027cbc 로 매끄럽게 이어지는 원호(꼬리 fade) */
+  background-image:conic-gradient(from 90deg,
+      rgba(2,124,188,0) 0deg,
+      rgba(2,124,188,.08) 90deg,
+      rgba(2,124,188,.45) 220deg,
+      var(--sp-color) 360deg);
+  -webkit-mask:radial-gradient(farthest-side, #0000 calc(100% - var(--sp-thick)), #000 calc(100% - var(--sp-thick)));
+          mask:radial-gradient(farthest-side, #0000 calc(100% - var(--sp-thick)), #000 calc(100% - var(--sp-thick)));
+  animation:spin8 .85s linear infinite;
+}
+/* 원호 선두(진한 쪽)에 둥근 캡 점 — 매끈한 마감 */
+.spinner::after{
+  content:"";position:absolute;top:0;left:50%;
+  width:var(--sp-thick);height:var(--sp-thick);border-radius:50%;
+  background:var(--sp-color);transform:translate(-50%,0);
 }
 @keyframes spin8{to{transform:rotate(360deg)}}
 /* 구형 마크업 호환: 예전 원형 border 스피너를 참조하던 곳도 동일 8점 스피너로 */
