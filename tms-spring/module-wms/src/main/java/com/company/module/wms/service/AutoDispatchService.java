@@ -59,6 +59,10 @@ public class AutoDispatchService {
     private static final double PAPER_DENSITY = 1200.0;   // kg/m³ (코팅지)
     private static final double PAPER_DENSITY_G_PER_MM3 = 0.0012;
 
+    // 통합배차(tryUnifiedMixedDispatch) 폴백 사유 — 그룹 루프 내에서 즉시 소비(원지 차량 노트 부착).
+    //  runAuto는 요청당 순차 처리라 그룹 루프 바로 다음 단계에서만 읽고 바로 초기화되므로 안전.
+    private String _lastUnifiedFallbackReason = null;
+
     // ════════════════════════════════════════════════════════════════
     //  진입점: /api/dispatch-constraint/auto
     // ════════════════════════════════════════════════════════════════
@@ -316,6 +320,7 @@ public class AutoDispatchService {
             //  한 번에 실을 수 있는 더 큰 차량 1대로 통합 배차를 먼저 시도한다.
             //  (예: 원지 3,162kg + 판지 106kg = 3,268kg → 5톤 1대, 3.5톤+1.4톤 2대 대신)
             //  성공 시 원지/판지 개별 배차를 건너뛰고, 실패 시 기존 로직으로 폴백.
+            _lastUnifiedFallbackReason = null;   // 그룹 시작마다 초기화
             if (cp.materialMix && cp.mixUnifiedVehicle && isMixedLoad) {
                 boolean unified = tryUnifiedMixedDispatch(
                     rollItems, boardItems, dptnky, dptnm, rqshpd, validCars, vehInfo,
@@ -330,6 +335,7 @@ public class AutoDispatchService {
                     }
                     continue;
                 }
+                // 통합 폴백됨 → 아래 재질별 개별 배차로 진행. 사유는 _lastUnifiedFallbackReason 에 보관.
             }
 
             // ── 원지 배차 (FFD/BFD BinPacking) ───────────────────
@@ -341,6 +347,20 @@ public class AutoDispatchService {
                     pi, allVehicles);
             }
             int rollVehEnd = allVehicles.size();
+
+            // ── 통합배차 폴백 사유를 이 그룹 원지 차량 노트에 부착(사용자 투명성) ──
+            //  왜 통합(1대)이 안 되고 재질별 분리 배차됐는지 결과 화면에서 바로 확인 가능.
+            if (_lastUnifiedFallbackReason != null && rollVehEnd > rollVehStart) {
+                for (int vi2 = rollVehStart; vi2 < rollVehEnd; vi2++) {
+                    Object no = allVehicles.get(vi2).get("notes");
+                    if (no instanceof List) {
+                        @SuppressWarnings("unchecked")
+                        List<String> nl = (List<String>) no;
+                        nl.add(_lastUnifiedFallbackReason);
+                    }
+                }
+                _lastUnifiedFallbackReason = null;
+            }
 
             // ── 원지+판지 재질 혼적 (ALLOW_MATERIAL_MIX=Y) 후처리 post-fill ──
             //  원지 차량의 여유(중량 + 바닥 길이 Y축)에 판지를 실어 별도 판지 차량 발생을
@@ -1270,15 +1290,48 @@ public class AutoDispatchService {
         double unifiedKg = rollKg + boardKgSum;
         if (unifiedKg <= 0) return false;
 
-        // 2) 합산중량 수용 차량 선택 (목적식 반영: MIN_VEHICLES/MIN_COST/MAX_FILL)
+        // 2) 합산중량 수용 차량 선택
+        //  목적식 selectCar는 'cap>=needKg 중 적재율 최대'를 고르지만, 수용 차량이 없으면
+        //  validCars.get(0)을 반환하는 특성이 있어 통합 가능 여부 판단이 모호해진다.
+        //  → 여기서는 '합산중량을 수용하는 차량'이 validCars에 하나라도 있는지 명시적으로
+        //    확인하고, 있으면 그 중 목적식 기준 차량을, 없으면 명확한 사유로 폴백한다.
+        double maxCapAvail = 0.0; String maxCapCar = "";
+        for (Map<String, Object> c : validCars) {
+            double cc = vehInfo.getOrDefault(str(c.get("CARTYPE")), VehInfo.EMPTY).loadKg;
+            if (cc > maxCapAvail) { maxCapAvail = cc; maxCapCar = str(c.get("CARTYPE")); }
+        }
+        // 수용 가능한 최대 차량조차 합산중량 미만이면 → 통합 불가(물리적으로 한 차에 못 실음)
+        if (maxCapAvail < unifiedKg) {
+            String reason = String.format(
+                "[통합배차-불가] 원지%.0fkg+판지%.0fkg=합산%.0fkg 가 허용차량 최대한도 %.0fkg(%s)를 초과 "
+                + "→ 한 차량 통합 불가, 재질별 분리 배차로 진행 (더 큰 차량 허용 또는 분할 필요)",
+                rollKg, boardKgSum, unifiedKg, maxCapAvail, maxCapCar.isEmpty() ? "?" : maxCapCar);
+            log.info("[AutoDispatch]{}", reason);
+            // 폴백 사유를 결과에 노출하기 위해 플래그/메시지 보관(호출부에서 원지 차량 노트에 부착)
+            _lastUnifiedFallbackReason = reason;
+            return false;
+        }
+        // 합산중량 수용 차량 선택(목적식 반영). 단, 반환 차량이 합산중량 미만이면
+        // 수용 가능한 '가장 작은' 차량으로 승급 선택(통합을 최대한 성사).
         String vehCar = selectCar(unifiedKg, validCars, vehInfo, dptnky, objective, cp, routeCostMap);
         VehInfo vi = vehInfo.getOrDefault(vehCar, VehInfo.EMPTY);
         double cap = vi.loadKg;
-
-        // 3) 중량 수용 검증 — 선택 차량이 합산중량을 못 실으면 통합 불가 → 폴백
+        if (cap < unifiedKg) {
+            // selectCar가 수용 불가 차량을 돌려준 경우: 합산중량 이상 중 가장 작은 차량으로 재선정
+            String smallestFit = ""; double smallestFitCap = Double.MAX_VALUE;
+            for (Map<String, Object> c : validCars) {
+                String ct = str(c.get("CARTYPE"));
+                double cc = vehInfo.getOrDefault(ct, VehInfo.EMPTY).loadKg;
+                if (cc >= unifiedKg && cc < smallestFitCap) { smallestFitCap = cc; smallestFit = ct; }
+            }
+            if (!smallestFit.isEmpty()) { vehCar = smallestFit; cap = smallestFitCap; vi = vehInfo.getOrDefault(vehCar, VehInfo.EMPTY); }
+        }
         if (cap <= 0 || cap < unifiedKg) {
-            log.info("[AutoDispatch][통합배차] 중량초과로 폴백 (합산 {}kg > 차량 {} 한도 {}kg)",
-                     round2(unifiedKg), vehCar, round2(cap));
+            String reason = String.format(
+                "[통합배차-불가] 합산%.0fkg 수용 차량 선정 실패(선정=%s/%.0fkg) → 재질별 분리 배차",
+                unifiedKg, vehCar, cap);
+            log.info("[AutoDispatch]{}", reason);
+            _lastUnifiedFallbackReason = reason;
             return false;
         }
 
@@ -1313,8 +1366,12 @@ public class AutoDispatchService {
             : (rollStackH + boardH);
 
         if (neededH > effH + 0.001) {
-            log.info("[AutoDispatch][통합배차] 높이초과로 폴백 (필요 {}m > 가용 {}m, 차량 {})",
-                     round2(neededH), round2(effH), vehCar);
+            String reason = String.format(
+                "[통합배차-불가] 적재높이 필요 %.2fm > 차량 가용 %.2fm(%s) → 한 차량 통합 불가, 재질별 분리 배차 "
+                + "(판지 1단적재(MIX_BOARD_SINGLE_TIER_YN=Y) 또는 판지 하단고정(MIX_BOARD_BOTTOM_FORCE=Y)로 높이 절감 가능)",
+                neededH, effH, vehCar);
+            log.info("[AutoDispatch]{}", reason);
+            _lastUnifiedFallbackReason = reason;
             return false;
         }
 
