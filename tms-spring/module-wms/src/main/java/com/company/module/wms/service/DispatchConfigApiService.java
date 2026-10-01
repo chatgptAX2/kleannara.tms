@@ -687,7 +687,8 @@ public class DispatchConfigApiService {
                         str(it.getOrDefault("const_op", "=")),
                         str(it.get("target_id")),
                         str(it.get("target_nm")),
-                        str(it.get("const_value"))
+                        str(it.get("const_value")),
+                        setId                       // 이 세트를 사용하는 프로파일에 마스터 생성
                     );
                 }
                 if (constId == null) continue;
@@ -704,27 +705,48 @@ public class DispatchConfigApiService {
        세트 항목 저장 시 const_id 가 없는 신규 키를 처리한다. 동일 CONST_KEY(+TARGET_ID) 가
        이미 있으면 그 CONST_ID 재사용, 없으면 첫 번째 프로파일에 마스터를 생성한다. */
     private Long findOrCreateConstMaster(String key, String type, String op,
-                                         String targetId, String targetNm, String constValue) {
+                                         String targetId, String targetNm, String constValue,
+                                         Integer setId) {
         if (key == null || key.isBlank()) return null;
         String tid = (targetId == null) ? "" : targetId.trim();
-        // ① 기존 마스터 재사용 (CONST_KEY + TARGET_ID 매칭; TARGET_ID 없으면 키만)
+        // ── 대상 프로파일 결정 (중요) ──────────────────────────────────
+        //  신규 제약 마스터는 '자동배차가 실제로 읽는 프로파일'에 생성해야 한다.
+        //  자동배차는 PROFILE.SET_ID 로 세트를 참조하므로, 이 세트(setId)를 연결한
+        //  프로파일을 최우선 대상으로 삼는다. (없으면 세트 scope의 활성 프로파일,
+        //  그래도 없으면 전체 활성 프로파일 → 최후에 PROFILE_ID 최솟값)
+        Long targetProfileId = resolveSetProfileId(setId);
+        // ① 기존 마스터 재사용 — 단, '대상 프로파일'에 이미 같은 CONST_KEY(+TARGET_ID)가
+        //    있으면 그것을 재사용. (다른 프로파일의 동일 키를 잘못 집어 자동배차가 못 읽던 버그 방지)
         List<Map<String, Object>> existing;
         if (tid.isBlank()) {
-            existing = tmsJdbc.queryForList(
-                "SELECT CONST_ID FROM KNRAWMS.TMS_DS_DISPATCH_CONST " +
-                "WHERE CONST_KEY=? AND (TARGET_ID IS NULL OR TARGET_ID='') ORDER BY CONST_ID FETCH FIRST 1 ROWS ONLY",
-                key);
+            existing = (targetProfileId != null)
+                ? tmsJdbc.queryForList(
+                    "SELECT CONST_ID FROM KNRAWMS.TMS_DS_DISPATCH_CONST " +
+                    "WHERE CONST_KEY=? AND PROFILE_ID=? AND (TARGET_ID IS NULL OR TARGET_ID='') " +
+                    "ORDER BY CONST_ID FETCH FIRST 1 ROWS ONLY", key, targetProfileId)
+                : tmsJdbc.queryForList(
+                    "SELECT CONST_ID FROM KNRAWMS.TMS_DS_DISPATCH_CONST " +
+                    "WHERE CONST_KEY=? AND (TARGET_ID IS NULL OR TARGET_ID='') ORDER BY CONST_ID FETCH FIRST 1 ROWS ONLY",
+                    key);
         } else {
-            existing = tmsJdbc.queryForList(
-                "SELECT CONST_ID FROM KNRAWMS.TMS_DS_DISPATCH_CONST " +
-                "WHERE CONST_KEY=? AND TARGET_ID=? ORDER BY CONST_ID FETCH FIRST 1 ROWS ONLY",
-                key, tid);
+            existing = (targetProfileId != null)
+                ? tmsJdbc.queryForList(
+                    "SELECT CONST_ID FROM KNRAWMS.TMS_DS_DISPATCH_CONST " +
+                    "WHERE CONST_KEY=? AND TARGET_ID=? AND PROFILE_ID=? ORDER BY CONST_ID FETCH FIRST 1 ROWS ONLY",
+                    key, tid, targetProfileId)
+                : tmsJdbc.queryForList(
+                    "SELECT CONST_ID FROM KNRAWMS.TMS_DS_DISPATCH_CONST " +
+                    "WHERE CONST_KEY=? AND TARGET_ID=? ORDER BY CONST_ID FETCH FIRST 1 ROWS ONLY",
+                    key, tid);
         }
         if (!existing.isEmpty()) return toLong(existing.get(0).get("CONST_ID"));
-        // ② 없으면 첫 번째 프로파일에 마스터 생성
-        List<Map<String, Object>> pr = tmsJdbc.queryForList(
-            "SELECT PROFILE_ID FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY");
-        Long profileId = pr.isEmpty() ? 1L : toLong(pr.get(0).get("PROFILE_ID"));
+        // ② 없으면 '대상 프로파일'에 마스터 생성 (최후 폴백: PROFILE_ID 최솟값)
+        Long profileId = targetProfileId;
+        if (profileId == null) {
+            List<Map<String, Object>> pr = tmsJdbc.queryForList(
+                "SELECT PROFILE_ID FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY");
+            profileId = pr.isEmpty() ? 1L : toLong(pr.get(0).get("PROFILE_ID"));
+        }
         String ctype = (type == null || type.isBlank()) ? "GLOBAL" : type;
         String cop   = (op == null || op.isBlank())     ? "="      : op;
         Long newCid = nextConstId();
@@ -737,6 +759,38 @@ public class DispatchConfigApiService {
             vc(tid.isBlank() ? null : tid), vc(targetNm == null ? null : targetNm),
             "Y", "제약조건관리 신규 항목 자동생성", 999, today(), today());
         return newCid;
+    }
+
+    /**
+     * 세트(setId)가 연결된 '자동배차가 읽는 프로파일'의 PROFILE_ID 를 해석.
+     *  ① PROFILE.SET_ID = setId 인 프로파일(자동배차가 이 세트를 로드하는 프로파일) 우선.
+     *     - 활성(ACTIVE_YN='Y') 우선, PROFILE_ID 오름차순.
+     *  ② 없으면 세트 scope 의 활성 프로파일.
+     *  ③ 그래도 없으면 null (호출부가 PROFILE_ID 최솟값으로 폴백).
+     */
+    private Long resolveSetProfileId(Integer setId) {
+        if (setId == null) return null;
+        try {
+            // ① 이 세트를 연결한 프로파일 (활성 우선)
+            List<Map<String, Object>> bySet = tmsJdbc.queryForList(
+                "SELECT PROFILE_ID FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE WHERE SET_ID=? " +
+                "ORDER BY CASE WHEN ACTIVE_YN='Y' THEN 0 ELSE 1 END, PROFILE_ID FETCH FIRST 1 ROWS ONLY",
+                setId);
+            if (!bySet.isEmpty()) return toLong(bySet.get(0).get("PROFILE_ID"));
+            // ② 세트 scope 의 활성 프로파일
+            List<Map<String, Object>> scopeRow = tmsJdbc.queryForList(
+                "SELECT COALESCE(SCOPE,'PS') AS SCOPE FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET WHERE SET_ID=?",
+                setId);
+            String scope = scopeRow.isEmpty() ? "PS" : str(scopeRow.get(0).get("SCOPE"));
+            List<Map<String, Object>> act = tmsJdbc.queryForList(
+                "SELECT PROFILE_ID FROM KNRAWMS.TMS_DS_DISPATCH_PROFILE " +
+                "WHERE ACTIVE_YN='Y' AND COALESCE(SCOPE,'PS')=? ORDER BY PROFILE_ID FETCH FIRST 1 ROWS ONLY",
+                scope);
+            if (!act.isEmpty()) return toLong(act.get(0).get("PROFILE_ID"));
+        } catch (Exception e) {
+            log.warn("[dcon] resolveSetProfileId 실패 (setId={}): {}", setId, e.getMessage());
+        }
+        return null;
     }
 
     // ══════════════════════════════════════════════════════════════
