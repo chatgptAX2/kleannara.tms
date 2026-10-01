@@ -27795,7 +27795,7 @@ const DM_COLS = [
   { key:'no',       defaultLabel:'#',       editable:false, width:'36px'  },
   { key:'ext',      defaultLabel:'형식',     editable:true,  width:'52px'  },
   { key:'orig_nm',  defaultLabel:'파일명',   editable:true,  width:null    },
-  { key:'op_date',  defaultLabel:'운행일자', editable:true,  width:'96px'  },
+  { key:'op_date',  defaultLabel:'일자',     editable:true,  width:'96px'  },
   { key:'upload',   defaultLabel:'업로드일시',editable:true, width:'110px' },
   { key:'size',     defaultLabel:'크기',     editable:true,  width:'72px'  },
   { key:'note',     defaultLabel:'비고',     editable:true,  width:'160px' },
@@ -27970,7 +27970,7 @@ async function dmSelectFolder(folderId) {
     <!-- 선택 파일 칩 목록 (드롭존 하단) -->
     <div class="dm-pending-list" id="dm-pending-list"></div>
     <div class="dm-upload-meta">
-      <label>운행일자
+      <label>일자
         <input type="date" id="dm-op-date" style="width:140px">
       </label>
       <label>비고
@@ -27981,7 +27981,7 @@ async function dmSelectFolder(folderId) {
     <div class="dm-upload-pending" id="dm-pending-txt"></div>
     <!-- 검색/필터 -->
     <div class="dm-filter-bar">
-      <label>운행일자</label>
+      <label>일자</label>
       <input class="dm-filter-inp" type="date" id="dm-f-op-from" style="width:130px">
       <span style="color:var(--text3);font-size:11px">~</span>
       <input class="dm-filter-inp" type="date" id="dm-f-op-to"   style="width:130px">
@@ -28513,7 +28513,7 @@ function dmEditMeta(fileId, origNm, opDate, note) {
 
   const lblDate = document.createElement('label');
   lblDate.className = 'dm-modal-label';
-  lblDate.textContent = '운행일자';
+  lblDate.textContent = '일자';
 
   const inpDate = document.createElement('input');
   inpDate.className = 'dm-modal-input';
@@ -28559,7 +28559,7 @@ function dmEditMeta(fileId, origNm, opDate, note) {
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   document.body.appendChild(overlay);
 
-  /* 운행일자 입력 포커스 */
+  /* 일자 입력 포커스 */
   setTimeout(() => inpDate.focus(), 50);
 }
 
