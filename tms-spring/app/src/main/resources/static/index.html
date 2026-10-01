@@ -24951,8 +24951,10 @@ function _dconSpRenderTabs() {
   if (hasPtnrMulti) typeCnt['PTNR_MULTI'] = typeCnt['PTNR_MULTI'] || 0;
   if (hasRegion)   typeCnt['REGION']    = typeCnt['REGION']    || 0;
 
-  /* 혼적⓪ 재질 혼적 탭은 항상 표시 (핵심 제약 — 데이터 없어도 추가 가능하도록) */
-  if (typeCnt['MIX_MATERIAL'] === undefined) typeCnt['MIX_MATERIAL'] = 0;
+  /* 혼적 탭(재질혼적⓪·Z축①·Y축LIFO·이중검증)은 항상 표시
+     — 핵심 제약이며 데이터가 없어도 '행 추가'로 신규 제약을 등록할 수 있어야 함 */
+  const _ALWAYS_SHOW_TABS = ['MIX_MATERIAL','MIX_Z_AXIS','MIX_Y_LIFO','MIX_DUAL_VERIFY'];
+  _ALWAYS_SHOW_TABS.forEach(t => { if (typeCnt[t] === undefined) typeCnt[t] = 0; });
   const tabs = [...tabOrder, ...Object.keys(typeCnt).filter(k=>!tabOrder.includes(k))];
   el.innerHTML = tabs.filter(t => {
     if (t === 'CARTYPE')    return hasVehicles;
@@ -24961,7 +24963,7 @@ function _dconSpRenderTabs() {
     if (t === 'DYNAMIC')    return hasDynamic;
     if (t === 'PTNR_MULTI') return hasPtnrMulti;
     if (t === 'REGION')     return hasRegion;
-    if (t === 'MIX_MATERIAL') return true;   // 항상 표시
+    if (_ALWAYS_SHOW_TABS.includes(t)) return true;   // 혼적 탭 항상 표시
     return typeCnt[t] !== undefined;
   }).map(t => {
     const gm = DCON_GRP_META[t] || { icon:'⚙️', label:t };
@@ -25329,9 +25331,14 @@ function _dconSpRenderTable(rows, ft, tab) {
     </div>`;
   });
 
-  /* 신규 추가 행 */
+  /* 신규 추가 행 — 키 옵션은 "현재 탭(CONST_TYPE)에 해당하는 키"만 노출.
+     DCON_KEY_META의 type===tab 인 키 우선, 없으면(레거시) 전체 노출로 폴백. */
   newRows.forEach(r => {
-    const selOpts = Object.entries(DCON_PARAM_META)
+    const tabKeys = Object.entries(DCON_KEY_META).filter(([,m]) => m.type === tab);
+    const keySrc = tabKeys.length > 0
+      ? tabKeys.map(([k,m]) => [k, { label: m.label, unit: m.unit }])
+      : Object.entries(DCON_PARAM_META);
+    const selOpts = keySrc
       .map(([k,v])=>`<option value="${k}" ${r.CONST_KEY===k?'selected':''}>${v.label} (${k})</option>`)
       .join('');
     cardsHtml += `<div class="dcon-param-card new-row" style="margin:4px 10px">
@@ -26646,11 +26653,12 @@ function _dconSpAddRow() {
 function _dconSpNewKeyChange(tmpId, key) {
   const r = (DCON._spNewRows||[]).find(r=>r._tmpId===tmpId);
   if (r) r.CONST_KEY = key;
-  /* 단위 표시 갱신 (카드형 & 테이블형 공통) */
+  /* 단위 표시 갱신 (카드형 & 테이블형 공통) — DCON_KEY_META 우선, 없으면 DCON_PARAM_META 폴백 */
+  const unit = (DCON_KEY_META[key]||{}).unit || (DCON_PARAM_META[key]||{}).unit || '';
   const unitEl = document.getElementById(`dcon-sp-new-unit-${tmpId}`);
-  if (unitEl) unitEl.textContent = (DCON_PARAM_META[key]||{}).unit || '';
+  if (unitEl) unitEl.textContent = unit;
   const unitCell = document.querySelector(`#dcon-sp-new-val-${tmpId}`)?.closest('tr')?.cells[3];
-  if (unitCell) unitCell.textContent = (DCON_PARAM_META[key]||{}).unit || '';
+  if (unitCell) unitCell.textContent = unit;
 }
 
 /* ── 행 삭제 ── */
