@@ -3032,32 +3032,39 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 }
 .toast.show{opacity:1}
 /* ── 조회 중(로딩) 표시 — 8점 원형 스피너 (첨부 이미지 형태, #027cbc 계열) ──
-   [요청] 브라우저 뷰포트 정중앙에 고정 표시(스크롤/영역과 무관).
-   .loading 요소는 어느 컨테이너에 innerHTML 로 삽입되든 position:fixed 로
-   화면 정중앙에 떠오르며, 반투명 배경으로 조회 중 화면을 가린다. 조회가 끝나
-   부모 innerHTML 이 실제 데이터로 교체되면 .loading 도 함께 사라진다(자동 제거).
-   .spinner 단일 요소를 box-shadow 8점으로 그려 기존 마크업(<div class="spinner">)
-   전부에 자동 적용된다. 각 점은 #027cbc 명암 그라데이션, steps(8) 회전. */
-.loading{
-  position:fixed;inset:0;z-index:99990;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:16px;color:#0369a1;font-size:13px;font-weight:600;text-align:center;
-  background:rgba(255,255,255,.55);backdrop-filter:blur(1.5px);-webkit-backdrop-filter:blur(1.5px);
+   [요청] (1) 스피너 크기 확대 (2) 브라우저 정중앙 고정 (3) 한 화면에 분할
+   패널이 여러 개여도 스피너는 '정중앙 1개'로만 표시.
+   구현: 기존 .loading 마크업(30여 곳)은 그대로 '로딩 신호' 역할만 하도록
+   화면에서 숨기고(display:none), DOM 에 보이는 .loading 이 1개라도 있으면
+   body 직속 단일 오버레이(#gloading)를 정중앙에 띄운다(_loadingObserver).
+   → 여러 패널이 각각 .loading 을 삽입해도 오버레이는 항상 1개만 보인다. */
+/* .loading 은 화면에 직접 보이지 않지만(0크기·투명), DOM 에 '존재'하는 동안
+   _loadingObserver 가 이를 감지해 전역 오버레이(#gloading)를 띄운다.
+   display:none 으로 숨기면 offsetParent 가 null 이 되어 '보임' 판별이 불가하므로,
+   position:absolute + 0크기 + opacity:0 으로 숨긴다(레이아웃 영향 없음, 감지는 가능). */
+.loading{position:absolute;left:-1px;top:-1px;width:0;height:0;padding:0;margin:0;overflow:hidden;opacity:0;pointer-events:none}
+.loading .spinner{display:none}
+/* 전역 단일 로딩 오버레이 — 브라우저 뷰포트 정중앙 고정 */
+#gloading{
+  position:fixed;inset:0;z-index:99990;display:none;
+  flex-direction:column;align-items:center;justify-content:center;
+  gap:22px;color:#027cbc;font-size:14px;font-weight:700;text-align:center;
+  background:rgba(255,255,255,.55);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);
 }
-/* 스피너를 감싸는 카드(정중앙 부각) */
-.loading > .spinner{margin:0 auto}
+#gloading.show{display:flex}
+#gloading .gloading-msg{letter-spacing:.3px}
 .spinner{
-  width:9px;height:9px;border:none;border-radius:50%;background:transparent;
-  /* 8개 점(중심 기준 45° 간격, 반지름 13px) — 12시부터 시계방향으로 점점 옅어짐 */
+  /* 확대: 반지름 19px, 점 지름 ≈16px(요소 12px + box-shadow spread 2) */
+  width:12px;height:12px;border:none;border-radius:50%;background:transparent;
   box-shadow:
-      0    -13px 0 0 rgba(2,124,188,1),      /* 12시 (가장 진함) */
-      9px   -9px 0 0 rgba(2,124,188,.30),    /* 1.5시 */
-     13px    0   0 0 rgba(2,124,188,.40),    /* 3시   */
-      9px    9px 0 0 rgba(2,124,188,.50),    /* 4.5시 */
-      0     13px 0 0 rgba(2,124,188,.60),    /* 6시   */
-     -9px    9px 0 0 rgba(2,124,188,.70),    /* 7.5시 */
-    -13px    0   0 0 rgba(2,124,188,.80),    /* 9시   */
-     -9px   -9px 0 0 rgba(2,124,188,.90);    /* 10.5시 */
+      0    -19px 0 2px rgba(2,124,188,1),      /* 12시 (가장 진함) */
+     13px   -13px 0 2px rgba(2,124,188,.30),   /* 1.5시 */
+     19px    0   0 2px rgba(2,124,188,.40),     /* 3시   */
+     13px    13px 0 2px rgba(2,124,188,.50),    /* 4.5시 */
+      0     19px 0 2px rgba(2,124,188,.60),     /* 6시   */
+    -13px    13px 0 2px rgba(2,124,188,.70),    /* 7.5시 */
+    -19px    0   0 2px rgba(2,124,188,.80),     /* 9시   */
+    -13px   -13px 0 2px rgba(2,124,188,.90);    /* 10.5시 */
   animation:spin8 .9s steps(8,end) infinite;
   flex-shrink:0;margin:0 auto;
 }
@@ -3585,7 +3592,57 @@ thead th:hover .th-drag-handle{opacity:.8}
 
 <div class="toast" id="toast"></div>
 
+<!-- 전역 단일 로딩 오버레이 (브라우저 뷰포트 정중앙 고정) — 어느 화면이든 .loading 이
+     1개라도 DOM 에 나타나면 _loadingObserver 가 이 오버레이 1개만 띄운다. -->
+<div id="gloading" aria-live="polite" aria-busy="true">
+  <div class="spinner"></div>
+  <div class="gloading-msg" id="gloading-msg">조회 중...</div>
+</div>
+
 <script>
+/* ═══════════════════════════════════════════════════════════
+   전역 로딩 오버레이 — 여러 .loading 이 떠도 정중앙 1개만 표시
+   ───────────────────────────────────────────────────────────
+   기존 .loading 마크업(각 화면/패널이 innerHTML 로 삽입)은 CSS 로 숨겨두고(.loading{display:none}),
+   DOM 에 '보이는'(offsetParent != null) .loading 이 1개라도 있으면 #gloading(단일 오버레이)을
+   띄운다. 분할 검색창/다중 패널이 동시에 로딩돼도 오버레이는 항상 1개만 뷰포트 정중앙에 뜬다.
+   조회 완료로 부모 innerHTML 이 교체되면 .loading 이 사라지고 → 오버레이도 자동으로 숨겨진다. */
+(function(){
+  let _lgTimer = null;
+  function _evalLoading(){
+    const ov  = document.getElementById('gloading');
+    if (!ov) return;
+    // '실제로 보이는' .loading 수집 (숨겨진 탭/컨테이너 안의 것은 제외)
+    let visible = null;
+    const list = document.getElementsByClassName('loading');
+    for (let i = 0; i < list.length; i++) {
+      const el = list[i];
+      if (el.offsetParent !== null || (el.getClientRects && el.getClientRects().length > 0)) { visible = el; break; }
+    }
+    if (visible) {
+      // .loading 안의 안내 문구(스피너 제외 텍스트)를 오버레이 메시지로 복사
+      let msg = (visible.textContent || '').trim();
+      if (!msg) msg = '조회 중...';
+      const msgEl = document.getElementById('gloading-msg');
+      if (msgEl && msgEl.textContent !== msg) msgEl.textContent = msg;
+      ov.classList.add('show');
+    } else {
+      ov.classList.remove('show');
+    }
+  }
+  function _scheduleEval(){ clearTimeout(_lgTimer); _lgTimer = setTimeout(_evalLoading, 60); }
+  window._evalLoadingOverlay = _evalLoading;
+  function _startObserver(){
+    try {
+      const mo = new MutationObserver(_scheduleEval);
+      mo.observe(document.body, { childList:true, subtree:true, attributes:true, attributeFilter:['style','class'] });
+      _evalLoading();
+    } catch(e){ /* 옵저버 미지원 환경 무시 */ }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _startObserver);
+  else _startObserver();
+})();
+
 /* ═══════════════════════════════════════════════════════════
    STATE
 ═══════════════════════════════════════════════════════════ */
@@ -10153,7 +10210,7 @@ async function psdSearch() {
   const tbody    = document.getElementById('psd-doc-tbody');
   if (!tbody) return;
 
-  tbody.innerHTML = `<tr><td colspan="16" style="text-align:center;padding:20px"><div class="spinner" style="margin:16px auto 20px"></div>조회 중...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="16" style="text-align:center;padding:20px"><div class="loading"><div class="spinner"></div>조회 중...</div></td></tr>`;
 
   try {
     const params = new URLSearchParams({ wareky, date_from: dateFrom, date_to: dateTo, dptnky, shpoky, status });
@@ -14124,7 +14181,7 @@ async function _sapLoadDocs(stknum) {
   if (!wrap) return;
 
   if (stknumEl) stknumEl.textContent = `가선적번호: ${stknum}`;
-  wrap.innerHTML = '<div class="psd-empty-state">⏳ 로딩...</div>';
+  wrap.innerHTML = '<div class="loading"><div class="spinner"></div>로딩...</div>';
 
   try {
     const res = await fetch('/api/ps-sap/docs', {
@@ -15952,7 +16009,7 @@ async function psopSearch() {
   if (!tbody) return;
   const _cc = _psopGetColOrder().length;
 
-  tbody.innerHTML = `<tr><td colspan="${_cc}" style="text-align:center;padding:20px"><div class="spinner" style="margin:16px auto 20px"></div>조회 중...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="${_cc}" style="text-align:center;padding:20px"><div class="loading"><div class="spinner"></div>조회 중...</div></td></tr>`;
 
   try {
     // status='all' 고정 → 서버는 DB 배차완료+미배차 모두 반환
@@ -18124,7 +18181,7 @@ async function psopLoadModalSearch() {
   const inclConf = document.getElementById('psop-load-include-confirmed')?.checked;
 
   const tbody = document.getElementById('psop-load-modal-tbody');
-  tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:20px"><div class="spinner" style="margin:16px auto 20px"></div>조회 중...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:20px"><div class="loading"><div class="spinner"></div>조회 중...</div></td></tr>`;
 
   try {
     const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo, dptnky });
@@ -21851,7 +21908,7 @@ async function _ptnrPopupDoSearch() {
   const tbody = document.getElementById('ptnr-popup-body');
   const info  = document.getElementById('ptnr-popup-info');
 
-  tbody.innerHTML = '<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--text3)"><div class="spinner" style="margin:16px auto"></div></td></tr>';
+  tbody.innerHTML = '<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--text3)"><div class="loading"><div class="spinner"></div>조회 중...</div></td></tr>';
 
   try {
     const params = new URLSearchParams({ page: 1, size: 100 });
@@ -22990,7 +23047,7 @@ async function _ssPtnrDoSearch() {
   const info  = document.getElementById('ss-ptnr-popup-info');
 
   tbody.innerHTML = '<tr><td colspan="5" style="padding:16px;text-align:center;color:var(--text3);">' +
-    '<div class="spinner" style="margin:16px auto"></div></td></tr>';
+    '<div class="loading"><div class="spinner"></div>조회 중...</div></td></tr>';
 
   try {
     const params = new URLSearchParams({ page: 1, size: 100 });
@@ -23214,7 +23271,7 @@ async function renderDispatchConstraint(scope) {
           </div>
           <!-- 목적식 목록 -->
           <div class="dcon-obj-list" id="dcon-obj-list">
-            <div class="dcon-empty"><span class="dcon-spinner"></span></div>
+            <div class="loading"><div class="spinner"></div>조회 중...</div>
           </div>
         </div>
       </div>
@@ -23226,7 +23283,7 @@ async function renderDispatchConstraint(scope) {
           <button class="dcon-run-btn secondary" onclick="dconAddProfile()" style="padding:2px 8px;font-size:10px">＋ 추가</button>
         </div>
         <div class="dcon-plist-body" id="dcon-plist">
-          <div class="dcon-empty" style="font-size:11px"><span class="dcon-spinner"></span></div>
+          <div class="loading"><div class="spinner"></div>조회 중...</div>
         </div>
       </div>
     </div>
@@ -23255,7 +23312,7 @@ async function renderDispatchConstraint(scope) {
       </div>
       <!-- 세트 목록 (전체 스크롤) -->
       <div id="dcon-set-list" style="padding:8px 10px;flex:1;overflow-y:auto">
-        <div class="dcon-empty"><span class="dcon-spinner"></span></div>
+        <div class="loading"><div class="spinner"></div>조회 중...</div>
       </div>
     </div>
 
