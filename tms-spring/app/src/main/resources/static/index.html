@@ -25740,8 +25740,26 @@ function _dconSpRenderEntryTon(ft) {
   const carclasses  = DCON._entryTonCarclasses || [];
   const etState     = DCON._entryTonState      || {};
 
-  /* 톤수 코드→라벨 맵 */
-  const ccMap = Object.fromEntries(carclasses.map(c => [c.value, c.label]));
+  /* 톤수 코드→라벨 맵 (방어적):
+     - 백엔드가 {value,label}(소문자) 또는 {VALUE,LABEL}(대문자) 어느 쪽으로 내려도 대응
+     - 코드값의 앞뒤 공백·대소문자 차이로 매칭 실패하지 않도록 정규화 키 추가
+     - CMCDVL(Z180) 미매칭 시 하드코딩 라벨맵(RC_CARCLASS_LABEL) 폴백 */
+  const _cv = (c) => (c.value ?? c.VALUE ?? '');
+  const _cl = (c) => (c.label ?? c.LABEL ?? '');
+  const _norm = (v) => String(v == null ? '' : v).trim().toUpperCase();
+  const ccMap = {};
+  carclasses.forEach(c => {
+    const v = String(_cv(c)).trim(), l = String(_cl(c)).trim();
+    if (v) { ccMap[v] = l; ccMap[_norm(v)] = l; }   // 원본키 + 정규화키 동시 등록
+  });
+  /* 코드값 → 라벨 변환(폴백 포함). 변환 실패 시 하드코딩맵, 그래도 없으면 원본 코드 반환 */
+  const tonLabelOf = (code) => {
+    const c = String(code == null ? '' : code).trim();
+    if (!c) return '';
+    return ccMap[c] || ccMap[_norm(c)]
+        || (typeof RC_CARCLASS_LABEL !== 'undefined' ? RC_CARCLASS_LABEL[c] || RC_CARCLASS_LABEL[_norm(c)] : '')
+        || c;
+  };
 
   /* 필터 적용 */
   const filtered = partners.filter(p => {
@@ -25751,8 +25769,18 @@ function _dconSpRenderEntryTon(ft) {
 
   const totalSet = Object.values(etState).filter(s => s.max_ton && s.max_ton.trim()).length;
 
-  const optionsHtml = `<option value="">-- 제한없음 --</option>` +
-    carclasses.map(c => `<option value="${c.value}">${c.label}</option>`).join('');
+  /* 드롭다운 옵션 생성 — 현재 선택값(cur) 기준으로 selected를 정확히 부여.
+     cur 과 옵션 value 를 정규화 비교하여 공백·대소문자 차이로 누락되지 않게 함. */
+  const buildOptions = (cur) => {
+    const curN = _norm(cur);
+    let h = `<option value=""${!cur ? ' selected' : ''}>-- 제한없음 --</option>`;
+    carclasses.forEach(c => {
+      const v = String(_cv(c)).trim(), l = String(_cl(c)).trim();
+      const sel = (v === String(cur).trim() || _norm(v) === curN) && curN !== '' ? ' selected' : '';
+      h += `<option value="${_esc(v)}"${sel}>${_esc(l)}</option>`;
+    });
+    return h;
+  };
 
   let html = `<div class="dcon-et-wrap">
   <div class="dcon-et-info">
@@ -25782,9 +25810,9 @@ function _dconSpRenderEntryTon(ft) {
   } else {
     filtered.forEach(p => {
       const st = etState[p.PTNRKY] || { max_ton: p.MAX_TON || '' };
-      const curTon   = st.max_ton || '';
-      const isSet    = !!(curTon && curTon.trim());
-      const tonLabel = ccMap[curTon] || (curTon ? curTon : '');
+      const curTon   = (st.max_ton || '').trim();
+      const isSet    = !!curTon;
+      const tonLabel = tonLabelOf(curTon);   // 코드(Z180)→라벨(18톤) 방어적 변환
       const autoYn   = (p.AUTO_ALLOC_YN || '').trim();
       const autoHtml = autoYn === 'Y'
         ? `<span class="dcon-et-auto dcon-et-auto-y">자동</span>`
@@ -25799,7 +25827,7 @@ function _dconSpRenderEntryTon(ft) {
           <select class="dcon-et-sel${isSet?' et-has-val':''}"
             id="dcon-et-sel-${_esc(p.PTNRKY)}"
             onchange="_dconEtChange('${_esc(p.PTNRKY)}','${_esc(p.PTNRTY||'CT')}','${_esc(p.OWNRKY||'KN')}', this.value)">
-            ${optionsHtml.replace(`value="${curTon}"`, `value="${curTon}" selected`)}
+            ${buildOptions(curTon)}
           </select>
         </td>
         <td>
@@ -25826,13 +25854,26 @@ function _dconEtChange(ptnrky, ptnrty, ownrky, val) {
   /* 해당 행 즉시 갱신 (전체 재렌더 없이) */
   const sel = document.getElementById(`dcon-et-sel-${ptnrky}`);
   if (sel) sel.className = `dcon-et-sel${val ? ' et-has-val' : ''}`;
-  const ccMap = Object.fromEntries((DCON._entryTonCarclasses||[]).map(c=>[c.value,c.label]));
+  /* 코드(Z180)→라벨(18톤) 방어적 변환 — value/VALUE 대소문자, 공백, 폴백맵 모두 대응 */
+  const _n = (x) => String(x == null ? '' : x).trim().toUpperCase();
+  const ccMap = {};
+  (DCON._entryTonCarclasses||[]).forEach(c => {
+    const v = String(c.value ?? c.VALUE ?? '').trim();
+    const l = String(c.label ?? c.LABEL ?? '').trim();
+    if (v) { ccMap[v] = l; ccMap[_n(v)] = l; }
+  });
+  const labelOf = (code) => {
+    const c = String(code == null ? '' : code).trim();
+    return ccMap[c] || ccMap[_n(c)]
+        || (typeof RC_CARCLASS_LABEL !== 'undefined' ? RC_CARCLASS_LABEL[c] || RC_CARCLASS_LABEL[_n(c)] : '')
+        || c;
+  };
   const row = sel?.closest('tr');
   if (row) {
     const statusCell = row.cells[5];
     if (statusCell) {
       if (val) {
-        statusCell.innerHTML = `<span class="dcon-et-badge-set">🚧 ${_esc(ccMap[val]||val)} 이하만</span>`;
+        statusCell.innerHTML = `<span class="dcon-et-badge-set">🚧 ${_esc(labelOf(val))} 이하만</span>`;
         row.classList.add('et-row-set');
       } else {
         statusCell.innerHTML = `<span class="dcon-et-badge-none">제한 없음</span>`;

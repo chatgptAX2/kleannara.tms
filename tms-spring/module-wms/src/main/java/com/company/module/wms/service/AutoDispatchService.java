@@ -1788,13 +1788,19 @@ public class AutoDispatchService {
         List<Map<String, Object>> ccRows = wmsJdbc.queryForList(
             "SELECT CMCDVL,CDESC1 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10'"
         );
+        // 코드→라벨 맵 (방어적): 원본키 + 정규화키(trim/대문자) 동시 등록하여
+        //   MAX_TON 값의 공백·대소문자 차이로 변환 실패하지 않도록 함.
         Map<String, String> ccMap = new HashMap<>();
-        for (Map<String, Object> r : ccRows) ccMap.put(str(r.get("CMCDVL")), str(r.get("CDESC1")));
+        for (Map<String, Object> r : ccRows) {
+            String code = str(r.get("CMCDVL")).trim();
+            String lbl  = str(r.get("CDESC1")).trim();
+            if (!code.isEmpty()) { ccMap.put(code, lbl); ccMap.put(code.toUpperCase(), lbl); }
+        }
 
         Map<String, PtnrInfo> result = new HashMap<>();
         for (Map<String, Object> r : rows) {
             PtnrInfo pi = new PtnrInfo();
-            String mt   = str(r.get("MAX_TON"));
+            String mt   = str(r.get("MAX_TON")).trim();
             pi.deadlineTime = str(r.get("DEADLINE_TIME"));
             pi.forkliftYn   = str(r.get("FORKLIFT_YN"));
             // 동적여부: 미설정(빈 값)은 'Y'(동적 가능)로 간주 — 요구사항3.
@@ -1808,13 +1814,15 @@ public class AutoDispatchService {
             try { pi.dynamicDistM = Double.parseDouble(str(r.get("DYNAMIC_DIST_M"))); }
             catch (Exception ignore) { pi.dynamicDistM = 0; }
             // MAX_TON 미설정(빈 값)이면 기본 18톤을 적용 (요구사항: PS제약조건관리·PS배차 자동배차 공통)
-            if (mt == null || mt.trim().isEmpty()) {
+            //  MAX_TON 은 코드값(예: Z180). 코드→라벨(18톤) 변환하여 vehInfo(CARTYPE 라벨 키)와 매칭.
+            //  변환/매칭 실패 시 maxLoadKg=0 이 되어 진입제한이 통째로 무시되던 버그 방지:
+            //  라벨·원본코드 양쪽으로 vehInfo 를 조회한다.
+            if (mt == null || mt.isEmpty()) {
                 pi.maxTonLabel = DEFAULT_MAX_TON_LABEL;
             } else {
-                pi.maxTonLabel = ccMap.getOrDefault(mt, mt);
+                pi.maxTonLabel = ccMap.getOrDefault(mt, ccMap.getOrDefault(mt.toUpperCase(), mt));
             }
-            pi.maxLoadKg    = pi.maxTonLabel.isEmpty() ? 0
-                : vehInfo.getOrDefault(pi.maxTonLabel, VehInfo.EMPTY).loadKg;
+            pi.maxLoadKg = resolveMaxLoadKg(pi.maxTonLabel, mt, vehInfo);
             result.put(str(r.get("PTNRKY")), pi);
         }
         // BZPTN_DETAIL 행 자체가 없는 납품처(=MAX_TON 미설정)도 기본 18톤 적용
@@ -1829,6 +1837,33 @@ public class AutoDispatchService {
             }
         }
         return result;
+    }
+
+    /**
+     * 납품처 최대진입톤수(MAX_TON)의 적재한도(kg)를 방어적으로 조회.
+     *  vehInfo 의 키는 TMS_DS_VEHICLE.CARTYPE(라벨, 예 "18톤").
+     *  ① 라벨(ccMap 변환 결과, 예 "18톤")로 조회
+     *  ② 실패 시 원본 코드(mt, 예 "Z180")로 조회 — 혹시 CARTYPE가 코드로 등록된 환경 대비
+     *  ③ 그래도 없으면 라벨 뒤 '톤' 앞 숫자로 CARTYPE 매칭 시도(예 "18톤")
+     *  모두 실패하면 0(=진입제한 미적용) 대신, 기본 18톤 한도로 폴백하여
+     *  '변환 실패로 진입제한이 통째로 무시되는' 상황을 방지한다.
+     */
+    private double resolveMaxLoadKg(String maxTonLabel, String rawCode,
+                                    Map<String, VehInfo> vehInfo) {
+        if (maxTonLabel != null && !maxTonLabel.isEmpty()) {
+            double kg = vehInfo.getOrDefault(maxTonLabel, VehInfo.EMPTY).loadKg;
+            if (kg > 0) return kg;
+            // 공백 차이 대비
+            double kg2 = vehInfo.getOrDefault(maxTonLabel.trim(), VehInfo.EMPTY).loadKg;
+            if (kg2 > 0) return kg2;
+        }
+        if (rawCode != null && !rawCode.isEmpty()) {
+            double kg = vehInfo.getOrDefault(rawCode, VehInfo.EMPTY).loadKg;
+            if (kg > 0) return kg;
+        }
+        // 최종 폴백: 기본 최대톤수(18톤) 한도 — 0으로 두면 진입제한이 전면 무시되므로 방지
+        double def = vehInfo.getOrDefault(DEFAULT_MAX_TON_LABEL, VehInfo.EMPTY).loadKg;
+        return def;   // vehInfo에 18톤도 없으면 0 (이 경우만 제한 미적용)
     }
 
     // ════════════════════════════════════════════════════════════════
