@@ -1889,7 +1889,28 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 /* 셀 내부 select(사용여부/장축여부)도 셀폭에 맞춰 가운데 정렬 */
 .ds-vhc-table-fixed tbody td > select.ds-input{width:100%;max-width:100%;box-sizing:border-box;text-align:center;text-align-last:center}
 /* 헤더: 좁은 컬럼에서 넘치지 않도록 패딩 축소 + 전부 가운데 정렬(차량 톤수 포함) */
-.ds-vhc-table-fixed thead th{padding:7px 6px;text-align:center;line-height:1.3;overflow:hidden}
+/* ── 헤더 테두리: border-collapse+sticky 조합에서 테두리가 사라지는 버그를
+      box-shadow(inset)로 그려 우회. 모든 헤더 셀에 우측+하단 경계선을 일관 적용 ── */
+.ds-vhc-table-fixed thead th{
+  padding:7px 6px;text-align:center;line-height:1.3;overflow:hidden;
+  border:none !important;                 /* collapse 테두리 제거 */
+  box-shadow:inset -1px 0 0 #bcd2e8, inset 0 -1px 0 #bcd2e8;  /* 우측·하단 경계 */
+}
+/* 1행(colspan 포함) 하단 경계는 2px 진하게 — 상단 블록 구분 */
+.ds-vhc-table-fixed thead tr:first-child th{
+  box-shadow:inset -1px 0 0 #bcd2e8, inset 0 -2px 0 #93c5fd;
+}
+/* colspan 헤더(12인치/3인치): 하단 경계를 유지해 2단 헤더와 분리선 복원 */
+.ds-vhc-table-fixed thead tr:first-child th[colspan]{
+  box-shadow:inset -1px 0 0 #bcd2e8, inset 0 -1px 0 #bcd2e8;
+}
+/* 2행(평량 300) 하단 경계 2px — 본문과 구분 */
+.ds-vhc-table-fixed thead tr:nth-child(2) th{
+  box-shadow:inset -1px 0 0 #bcd2e8, inset 0 -2px 0 #93c5fd;
+}
+/* 마지막 컬럼 우측 경계 제거 */
+.ds-vhc-table-fixed thead tr:first-child th:last-child{box-shadow:inset 0 -2px 0 #93c5fd}
+.ds-vhc-table-fixed thead tr:nth-child(2) th:last-child{box-shadow:inset 0 -2px 0 #93c5fd}
 .ds-vhc-table-fixed thead th.ds-cartype{text-align:center;min-width:0}
 /* 차량 톤수 본문 셀도 가운데 정렬(뱃지 중앙 배치) */
 .ds-vhc-table-fixed tbody td.ds-cartype{text-align:center;background:transparent}
@@ -9208,18 +9229,18 @@ function _dsBuildVehicleTableHTML() {
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">파렛트<br>높이(m)</th>
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">적재CBM<br><small style="font-weight:400;opacity:.85">m³</small></th>
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">상차량<br><small style="font-weight:400;color:var(--success)">(ton)★</small></th>
-            <th colspan="2" style="position:sticky;top:0;z-index:2;background:#f0f4f7;color:#37474f;border-bottom:none">🔵 12인치 적재수량</th>
-            <th colspan="2" style="position:sticky;top:0;z-index:2;background:#f0f4f7;color:#37474f;border-bottom:none">🟢 3인치 적재수량</th>
+            <th colspan="2" style="position:sticky;top:0;z-index:2;background:#f0f4f7;color:#37474f">🔵 12인치 적재수량</th>
+            <th colspan="2" style="position:sticky;top:0;z-index:2;background:#f0f4f7;color:#37474f">🟢 3인치 적재수량</th>
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">파렛트수</th>
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">장축여부</th>
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">기본<br>차량수</th>
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:#f0f4f7;color:#37474f;vertical-align:middle">삭제</th>
           </tr>
           <tr>
-            <th style="position:sticky;top:56px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 미만</th>
-            <th style="position:sticky;top:56px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 이상</th>
-            <th style="position:sticky;top:56px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 미만</th>
-            <th style="position:sticky;top:56px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 이상</th>
+            <th style="position:sticky;top:57px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 미만</th>
+            <th style="position:sticky;top:57px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 이상</th>
+            <th style="position:sticky;top:57px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 미만</th>
+            <th style="position:sticky;top:57px;z-index:2;background:#f0f4f7;color:#37474f">평량 300 이상</th>
           </tr>
         </thead>
         <tbody id="ds-vhc-tbody">${tbodyRows}</tbody>
