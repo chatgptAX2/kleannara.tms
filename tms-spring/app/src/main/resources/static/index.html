@@ -19113,6 +19113,14 @@ function psopShowAutoResultModal(vehicles, objNm, selectedCnt, autoMeta) {
     const bg  = ok ? 'rgba(34,197,94,.10)' : 'rgba(239,68,68,.10)';
     const bd  = ok ? '#22c55e' : '#ef4444';
     const ic  = ok ? '✅' : '⚠️';
+    // 마스터 원본값 / 세트 오버라이드값 분리 표시 (저장 경로 진단)
+    const ammM = _diag.ALLOW_MATERIAL_MIX_master, ammS = _diag.ALLOW_MATERIAL_MIX_set;
+    const muvM = _diag.MIX_UNIFIED_VEHICLE_YN_master, muvS = _diag.MIX_UNIFIED_VEHICLE_YN_set;
+    const srcLine = (ammM !== undefined || muvM !== undefined)
+      ? `<br><span style="color:var(--text3);font-size:10px">
+           ↳ 마스터값: ALLOW_MATERIAL_MIX=<b>${_esc(String(ammM ?? '-'))}</b>, MIX_UNIFIED_VEHICLE_YN=<b>${_esc(String(muvM ?? '-'))}</b>
+           &nbsp;/&nbsp; 세트오버라이드: ALLOW_MATERIAL_MIX=<b>${_esc(String(ammS ?? '-'))}</b>, MIX_UNIFIED_VEHICLE_YN=<b>${_esc(String(muvS ?? '-'))}</b>
+         </span>` : '';
     diagBanner = `
       <div style="padding:8px 20px;background:${bg};border-bottom:1px solid ${bd};font-size:11px;color:var(--text);line-height:1.6">
         <strong>${ic} 통합배차 제약 진단</strong>
@@ -19122,6 +19130,7 @@ function psopShowAutoResultModal(vehicles, objNm, selectedCnt, autoMeta) {
         <br>
         <span style="font-family:monospace">ALLOW_MATERIAL_MIX=<b style="color:${amm?'#16a34a':'#dc2626'}">${amm?'Y':'N'}</b>
         &nbsp; MIX_UNIFIED_VEHICLE_YN=<b style="color:${muv?'#16a34a':'#dc2626'}">${muv?'Y':'N'}</b></span>
+        ${srcLine}
         <br><span style="color:var(--text2)">${_esc(_diag.unified_hint || '')}</span>
       </div>`;
   }
