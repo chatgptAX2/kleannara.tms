@@ -739,7 +739,27 @@ public class DispatchConfigApiService {
                     "WHERE CONST_KEY=? AND TARGET_ID=? ORDER BY CONST_ID FETCH FIRST 1 ROWS ONLY",
                     key, tid);
         }
-        if (!existing.isEmpty()) return toLong(existing.get(0).get("CONST_ID"));
+        if (!existing.isEmpty()) {
+            Long cid = toLong(existing.get(0).get("CONST_ID"));
+            /* ── [핵심 버그 수정] 기존 마스터 재사용 시 CONST_VALUE 갱신(upsert) ──
+               기존에는 마스터를 '재사용'만 하고 CONST_VALUE 를 갱신하지 않아,
+               한 번 N 으로 생성된 Y/N 토글 제약(MIX_UNIFIED_VEHICLE_YN 등)이
+               세트 편집에서 Y 로 바꿔 저장해도 마스터 값은 N 그대로 남았다.
+               (자동배차는 마스터 CONST_VALUE 를 읽으므로 계속 N → 통합배차 미동작)
+               → 사용자가 명시적으로 값을 전달(constValue != null/blank)한 경우,
+                 재사용 마스터의 CONST_VALUE 와 ACTIVE_YN 을 입력값으로 upsert 한다. */
+            if (constValue != null && !constValue.isBlank()) {
+                try {
+                    tmsJdbc.update(
+                        "UPDATE KNRAWMS.TMS_DS_DISPATCH_CONST SET CONST_VALUE=?, ACTIVE_YN='Y', LMODAT=? WHERE CONST_ID=?",
+                        constValue.trim(), today(), cid);
+                    log.info("[dcon] findOrCreateConstMaster upsert: CONST_ID={}, KEY={}, VALUE={}", cid, key, constValue.trim());
+                } catch (Exception e) {
+                    log.warn("[dcon] findOrCreateConstMaster upsert 실패 (CONST_ID={}): {}", cid, e.getMessage());
+                }
+            }
+            return cid;
+        }
         // ② 없으면 '대상 프로파일'에 마스터 생성 (최후 폴백: PROFILE_ID 최솟값)
         Long profileId = targetProfileId;
         if (profileId == null) {

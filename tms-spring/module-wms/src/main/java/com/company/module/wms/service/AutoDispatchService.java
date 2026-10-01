@@ -474,6 +474,29 @@ public class AutoDispatchService {
         diag.put("const_row_count",  constRows.size());     // 활성 프로파일의 제약 행 수
         diag.put("ALLOW_MATERIAL_MIX",     cp.materialMix);
         diag.put("MIX_UNIFIED_VEHICLE_YN", cp.mixUnifiedVehicle);
+        // ── [진단 보강] 마스터 원본값 vs 세트 오버라이드값 분리 ──────────────
+        //  "마스터가 N인가(저장 안됨)" vs "세트 오버라이드가 안 먹는가"를 구분.
+        //  constRows(마스터 원본, 오버라이드 미적용) 에서 직접 CONST_VALUE 를 찾는다.
+        for (String dk : new String[]{"ALLOW_MATERIAL_MIX", "MIX_UNIFIED_VEHICLE_YN"}) {
+            String masterRaw = "(행없음)";   // 마스터에 해당 키 자체가 없음
+            String setRaw    = "(오버라이드없음)";
+            for (Map<String, Object> r : constRows) {
+                if (dk.equals(str(r.get("CONST_KEY"))) && str(r.get("TARGET_ID")).isEmpty()) {
+                    masterRaw = str(r.get("CONST_VALUE"));
+                    long cid = toLong(r.get("CONST_ID"), -1L);
+                    if (cid >= 0 && setItemMap.containsKey(cid)) {
+                        Map<String, Object> si = setItemMap.get(cid);
+                        String pv = str(si.get("PARAM_VALUE"));
+                        String ay = str(si.get("ACTIVE_YN"));
+                        setRaw = "N".equalsIgnoreCase(ay) ? "(세트에서 비활성)"
+                               : (pv.isEmpty() ? "(오버라이드없음)" : pv);
+                    }
+                    break;
+                }
+            }
+            diag.put(dk + "_master", masterRaw);   // 마스터 TMS_DS_DISPATCH_CONST.CONST_VALUE
+            diag.put(dk + "_set",    setRaw);       // 세트 PARAM_VALUE/ACTIVE_YN 오버라이드
+        }
         // 통합배차 전제조건 요약
         boolean unifiedPrereq = cp.materialMix && cp.mixUnifiedVehicle;
         diag.put("unified_prereq_ok", unifiedPrereq);
