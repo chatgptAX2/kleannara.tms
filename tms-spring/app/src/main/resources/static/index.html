@@ -87,18 +87,18 @@ input,select,textarea,button{font-family:'Pretendard Variable','Pretendard','App
   --primary:#0ea5e9;--primary-dark:#0284c7;--primary-navy:#1e3a5f;
   --accent:#0f172a;
   --success:#10b981;--warning:#f59e0b;--danger:#ef4444;
-  /* ── 텍스트 명도 3단계 (타이포그래피 시스템) ──
-     --text  = Primary  (본문/운송 데이터/차량번호) : #1E293B 선명한 다크 차콜
-     --text2 = Secondary(테이블 헤더/레이블/단위)    : #64748B 차분한 슬레이트 그레이
+  /* ── 텍스트 명도 3단계 (타이포그래피 시스템 · 대비 강화) ──
+     --text  = Primary  (본문/운송 데이터/차량번호) : #0F172A 딥 차콜(최대 대비)
+     --text2 = Secondary(테이블 헤더/레이블/단위)    : #475569 또렷한 슬레이트
      --text3 = Muted    (플레이스홀더/'-' 표기)      : #94A3B8 */
-  --text:#1E293B;--text2:#64748B;--text3:#94A3B8;
-  /* ── 타이포 위계 토큰 (크기/굵기/줄높이) ── */
-  --ty-page-size:20px;      --ty-page-weight:700;  --ty-page-lh:1.3;   /* 페이지 제목 */
-  --ty-section-size:16px;   --ty-section-weight:600;--ty-section-lh:1.4;/* 섹션/카드 제목 */
-  --ty-cell-size:13px;      --ty-cell-weight:400;  --ty-cell-lh:1.4;   /* 테이블 본문 셀 */
-  --ty-th-size:12px;        --ty-th-weight:600;    --ty-th-lh:1.3;     /* 테이블 컬럼 헤더 */
-  --ty-badge-size:11.5px;   --ty-badge-weight:500; --ty-badge-lh:1.2;  /* 뱃지/메타/부가정보 */
-  --ty-kpi-size:24px;       --ty-kpi-weight:700;   --ty-kpi-lh:1.2;    /* KPI 지표 수치 */
+  --text:#0F172A;--text2:#475569;--text3:#94A3B8;
+  /* ── 타이포 위계 토큰 (크기/굵기/줄높이 · 위계 강조) ── */
+  --ty-page-size:22px;      --ty-page-weight:800;  --ty-page-lh:1.25;  /* 페이지 제목 */
+  --ty-section-size:17px;   --ty-section-weight:700;--ty-section-lh:1.35;/* 섹션/카드 제목 */
+  --ty-cell-size:13px;      --ty-cell-weight:400;  --ty-cell-lh:1.45;  /* 테이블 본문 셀 */
+  --ty-th-size:12.5px;      --ty-th-weight:700;    --ty-th-lh:1.3;     /* 테이블 컬럼 헤더 */
+  --ty-badge-size:11.5px;   --ty-badge-weight:600; --ty-badge-lh:1.2;  /* 뱃지/메타/부가정보 */
+  --ty-kpi-size:26px;       --ty-kpi-weight:800;   --ty-kpi-lh:1.15;   /* KPI 지표 수치 */
   /* 테이블 전용 */
   --th-bg:#f1f5f9;--tr-hover:#f0f9ff;--tr-border:#e8edf3;
   --tr-selected:#e0f2fe;--tr-selected-vhc:#bae6fd;
@@ -134,7 +134,7 @@ input,select,textarea,button{font-family:'Pretendard Variable','Pretendard','App
   --primary:#0ea5e9;--primary-dark:#0284c7;--primary-navy:#1e3a5f;
   --accent:#e2e8f0;
   --success:#10b981;--warning:#f59e0b;--danger:#ef4444;
-  --text:#e2e8f0;--text2:#94a3b8;--text3:#475569;
+  --text:#f1f5f9;--text2:#b0bdce;--text3:#64748b;
   /* 테이블 전용 */
   --th-bg:#111827;--tr-hover:#0f2035;--tr-border:#1a2a3e;
   --tr-selected:#0c2340;--tr-selected-vhc:#0c1f3a;
@@ -441,7 +441,7 @@ thead th .th-inner{
   padding:7px 10px;row-gap:3px;column-gap:4px;overflow:hidden;min-height:40px;box-sizing:border-box;
 }
 thead th .th-drag-handle{grid-area:handle}
-thead th .th-label{grid-area:label;font-size:var(--ty-th-size);font-weight:var(--ty-th-weight);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);letter-spacing:.01em;line-height:var(--ty-th-lh)}
+thead th .th-label{grid-area:label;font-size:var(--ty-th-size);font-weight:var(--ty-th-weight);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);letter-spacing:.02em;line-height:var(--ty-th-lh)}
 thead th .sort-icon{grid-area:sort}
 thead th .th-col{grid-area:col;font-size:9.5px;font-weight:500;opacity:.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'Consolas','Menlo',monospace;letter-spacing:.02em}
 thead th.pk-col .th-label{color:var(--warning)}
@@ -1695,10 +1695,10 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
   box-shadow:0 3px 12px rgba(14,165,233,.12);
 }
 .ds-topbar-title{
-  /* 페이지 제목: 20px / Bold(700) / lh 1.3 */
+  /* 페이지 제목: 22px / ExtraBold(800) / lh 1.25 */
   font-size:var(--ty-page-size);font-weight:var(--ty-page-weight);line-height:var(--ty-page-lh);color:var(--text);
   display:flex;align-items:center;gap:9px;
-  letter-spacing:-.2px;
+  letter-spacing:-.3px;
 }
 .ds-topbar-title span{
   font-size:12px;font-weight:400;color:var(--text3);
