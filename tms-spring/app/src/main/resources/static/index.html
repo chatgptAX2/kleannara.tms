@@ -25265,6 +25265,27 @@ function _dconSpRenderTable(rows, ft, tab) {
     return `${r.CONST_KEY} ${r.CONST_VALUE} ${r.NOTE||''} ${pm.label||''} ${r.TARGET_ID||''} ${r.TARGET_NM||''}`.toLowerCase().includes(ft);
   });
 
+  /* ── [자동 보충] 혼적 탭 핵심 제약이 세트/프로파일에 아직 없으면 '미설정' 신규행으로 노출 ──
+     MIX_UNIFIED_VEHICLE_YN 처럼 마스터에 행 자체가 없어(진단: 행없음) 화면에 안 보이는
+     제약을, 사용자가 신규행을 수동 추가하지 않고도 바로 Y/N 토글·저장할 수 있게 한다.
+     (저장 시 const_id=null 신규행 경로 → findOrCreateConstMaster 가 마스터 생성+세트 저장) */
+  if (DCON.selSetId) {
+    const existKeys = new Set(rows.map(r => r.CONST_KEY));
+    DCON._spNewRows = DCON._spNewRows || [];
+    Object.entries(DCON_KEY_META)
+      .filter(([k, m]) => m.type === tab && !existKeys.has(k))
+      .forEach(([k, m]) => {
+        // 이미 이 탭의 신규행으로 동일 키가 떠 있으면 중복 추가 안 함
+        const already = DCON._spNewRows.some(nr => nr.CONST_TYPE === tab && nr.CONST_KEY === k);
+        if (already) return;
+        DCON._spNewRows.push({
+          _tmpId: 'auto_' + k, CONST_TYPE: tab, CONST_KEY: k,
+          CONST_OP: m.op || '=', _pval: (m.unit === 'Y/N' ? 'N' : ''),
+          TARGET_ID: '', _isNew: true, _autoFill: true
+        });
+      });
+  }
+
   const gm = DCON_GRP_META[tab] || {};
 
   /* ── 탭 포함 여부 확인 ── */
@@ -25368,6 +25389,41 @@ function _dconSpRenderTable(rows, ft, tab) {
   /* 신규 추가 행 — 키 옵션은 "현재 탭(CONST_TYPE)에 해당하는 키"만 노출.
      DCON_KEY_META의 type===tab 인 키 우선, 없으면(레거시) 전체 노출로 폴백. */
   newRows.forEach(r => {
+    // ── [자동 보충 행] 키 고정 + Y/N 토글 전용 카드 (수동 선택 불필요) ──
+    if (r._autoFill) {
+      const m = DCON_KEY_META[r.CONST_KEY] || {};
+      const isYN = (m.unit === 'Y/N');
+      const valCtrl = isYN
+        ? `<select class="dcon-param-sel" id="dcon-sp-new-val-${r._tmpId}"
+             onchange="_dconSpDirty()" style="width:150px">
+             <option value="Y" ${r._pval==='Y'?'selected':''}>Y — 허용/활성</option>
+             <option value="N" ${r._pval!=='Y'?'selected':''}>N — 불허/비활성</option>
+           </select>`
+        : `<input class="dcon-param-inp" type="text" id="dcon-sp-new-val-${r._tmpId}"
+             value="${_esc(r._pval||'')}" placeholder="값" oninput="_dconSpDirty()"/>`;
+      cardsHtml += `<div class="dcon-param-card new-row" style="margin:4px 10px;border-left:3px solid var(--warn,#f59e0b)">
+        <div class="dcon-param-card-hdr">
+          <span class="dcon-param-card-key">${_esc(m.label||r.CONST_KEY)}
+            <span style="font-size:9px;color:var(--warn,#f59e0b);margin-left:4px">⚠ 미설정</span></span>
+          <span style="font-size:9px;color:var(--text3)">${_esc(r.CONST_KEY)}</span>
+          ${m.unit ? `<span class="dcon-param-card-unit">${_esc(m.unit)}</span>` : ''}
+          <button class="dcon-param-del-btn" onclick="_dconSpDeleteNewRow('${r._tmpId}')" title="이 항목 숨기기">✕</button>
+        </div>
+        <div class="dcon-param-card-body">
+          ${m.hint ? `<div class="dcon-param-card-hint">💡 ${_esc(m.hint)}</div>` : ''}
+          <div class="dcon-param-inp-row">
+            <span class="dcon-param-inp-label">${_esc(r.CONST_OP||'=')}</span>
+            ${valCtrl}
+            <span style="font-size:9px;color:var(--text3);margin-left:6px">저장 시 이 세트·프로파일에 생성됩니다</span>
+          </div>
+          <input type="hidden" id="dcon-sp-new-key-${r._tmpId}" value="${_esc(r.CONST_KEY)}"/>
+          <input type="hidden" id="dcon-sp-new-op-${r._tmpId}" value="${_esc(r.CONST_OP||'=')}"/>
+          <input type="hidden" id="dcon-sp-new-tid-${r._tmpId}" value=""/>
+          <input type="hidden" id="dcon-sp-new-yn-${r._tmpId}" value="Y"/>
+        </div>
+      </div>`;
+      return;
+    }
     const tabKeys = Object.entries(DCON_KEY_META).filter(([,m]) => m.type === tab);
     const keySrc = tabKeys.length > 0
       ? tabKeys.map(([k,m]) => [k, { label: m.label, unit: m.unit }])
