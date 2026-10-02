@@ -786,9 +786,11 @@ public class PsDispatchService {
             //    [버그수정] 연동구분(DESC02='OFFLINE', 미연동 배지 근거)도 함께 공백으로
             //    초기화한다. 그렇지 않으면 배차삭제로 미배차가 되어도 '미연동' 배지가
             //    납품문서 목록에 그대로 남는다. (DESC02 는 NOT NULL DEFAULT ' ' → ' ' 로 원복)
+            //    [버그수정] STDLNR 은 NOT NULL 컬럼이라 NULL 로 업데이트하면 ORA-01407 발생.
+            //    DESC02 와 동일하게 공백(' ') 으로 원복한다. (미배차 판정은 공백/빈값 기준)
             int shpdiReverted = tmsEm.createNativeQuery("""
                 UPDATE KNRAWMS.TMS_SHPDI
-                SET STDLNR  = NULL,
+                SET STDLNR  = ' ',
                     DESC02  = ' ',
                     LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
                     LMOUSR  = 'WEB'
