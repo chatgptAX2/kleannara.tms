@@ -17453,6 +17453,7 @@ const _PSOP_CONSTRAINT_LABELS = {
   MIN_FILL_RATIO:         '최소 적재율(%)',
   MAX_FILL_RATIO:         '최대 적재율(%)',
   MAX_ROLL_STACK_TIER:    '원지 최대 적재단수',
+  ROLL_STACK_MINIMIZE_YN: '원지 단수 최소화(바닥 우선)',
   ROLL_MAX_HEIGHT_M:      '원지 최대 높이(m)',
   MAX_BOARD_HEIGHT_M:     '판지 최대 높이(m)',
   BOARD_HEIGHT_VEH_LINK_YN:'판지높이-차량연동',
@@ -23446,6 +23447,7 @@ const DCON_KEY_META = {
   /* CARGO — 원지(Roll) */
   ROLL_SINGLE_KG_FALLBACK:{ label:'[원지] 롤 단중 fallback', unit:'kg', op:'=', type:'CARGO', hint:'롤 단중 미등록 시 기본값 (기본 600)' },
   MAX_ROLL_STACK_TIER:{ label:'[원지] 최대 적재 단수', unit:'단', op:'<=', type:'CARGO', hint:'롤 최대 몇 단까지 적재 (Hard Cap, 기본 2)' },
+  ROLL_STACK_MINIMIZE_YN:{ label:'[원지] 단수 최소화(바닥 우선)', unit:'Y/N', op:'=', type:'CARGO', hint:'Y=적재함 바닥에 롤이 다 깔리면 단수를 낮춰(예:3단→1단) 낮고 안정적으로 적재(무게중심↓). 바닥에 다 못 깔릴 때만 필요한 만큼 단을 올림(필요 최소 단수). N=기존(최대 단수까지 쌓아 바닥면적 최소화). ※최대 적재 단수(MAX_ROLL_STACK_TIER)는 그대로 상한으로 유지' },
   ROLL_MAX_HEIGHT_M:{ label:'[원지] 다단 적재높이 상한', unit:'m', op:'<=', type:'CARGO', hint:'0=차량높이 자동연동 / >0=설정값과 차량높이 중 작은값' },
   ROLL_HEIGHT_MARGIN_M:{ label:'[원지] 높이 안전 여유 마진', unit:'m', op:'=', type:'CARGO', hint:'적재 높이 안전 여유 (기본 0)' },
   ROLL_PALLET_APPLY_YN:{ label:'[원지] 파레트 차감 적용', unit:'Y/N', op:'=', type:'CARGO', hint:'Y=FORKLIFT_YN=N 납품처에 파레트 높이 차감 적용' },
@@ -24807,6 +24809,7 @@ const DCON_PARAM_META = {
   ROLL_PALLET_DEDUCT_M: { label:'파레트 높이 차감',         unit:'m',    hint:'파레트 적재 시 가용 높이 차감값 (기본 0.15m)' },
   ROLL_PALLET_APPLY_YN: { label:'파레트 차감 적용 여부',    unit:'Y/N',  hint:'Y=적용(납품처FORKLIFT_YN=N 시)' },
   ROLL_HEIGHT_MARGIN_M: { label:'높이 안전 여유 마진',      unit:'m',    hint:'적재 높이 안전 여유 (m)' },
+  ROLL_STACK_MINIMIZE_YN:{ label:'원지 단수 최소화(바닥 우선)', unit:'Y/N', hint:'Y=바닥에 다 깔리면 단수를 낮춰 안정 적재(3단→1단) / N=최대 단수까지 쌓음. ※MAX_ROLL_STACK_TIER는 상한 유지' },
   ROLL_MAX_HEIGHT_M:    { label:'원지 다단 적재높이',        unit:'m',    hint:'0=차량유형관리 톤수별 높이 자동연동 / >0=설정값과 차량높이 중 작은값 적용' },
   ROLL_INCH_MIX_ALLOW:  { label:'인치/평량 혼합 허용',      unit:'Y/N',  hint:'Y=혼합 오더 허용' },
   ROLL_2D_PACK_ENGINE:  { label:'2D 바닥 패킹 연산',        unit:'Y/N',  hint:'Y=혼합 규격 시 2D 패킹 연산 적용' },

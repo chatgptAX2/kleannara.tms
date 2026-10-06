@@ -444,6 +444,7 @@ public class AutoDispatchService {
         appliedConstraints.put("MIN_FILL_RATIO",        round2(cp.minFill * 100));
         appliedConstraints.put("MAX_FILL_RATIO",        round2(cp.maxFill * 100));
         appliedConstraints.put("MAX_ROLL_STACK_TIER",   cp.maxStack);
+        appliedConstraints.put("ROLL_STACK_MINIMIZE_YN", cp.rollStackMinimize);
         appliedConstraints.put("ROLL_MAX_HEIGHT_M",     cp.rollMaxHeightM);
         appliedConstraints.put("MAX_BOARD_HEIGHT_M",    cp.maxBoardHeightM);
         appliedConstraints.put("BOARD_HEIGHT_VEH_LINK_YN", cp.boardHeightVehLink);
@@ -2470,6 +2471,8 @@ public class AutoDispatchService {
         // ── 롤 최대 적재 단수: MAX_ROLL_STACK_TIER 우선, 미설정 시 중복키 ROLL_MAX_TIER 폴백 ──
         double maxStackVal  = cfloatMulti(C, 2.0, "MAX_ROLL_STACK_TIER", "ROLL_MAX_TIER");
         cp.maxStack         = (int) maxStackVal;
+        // ── 원지 단수 최소화(바닥 우선 안정 적재): Y=바닥에 다 깔리면 단수를 낮춤 ──
+        cp.rollStackMinimize = cbool(C, "ROLL_STACK_MINIMIZE_YN", false);
         // ── 판지 최대 높이: MAX_BOARD_HEIGHT_M 우선, 미설정 시 중복키 BOARD_HEIGHT_MAX_M 폴백 ──
         cp.maxBoardHeightM  = cfloatMulti(C, 2.4, "MAX_BOARD_HEIGHT_M", "BOARD_HEIGHT_MAX_M");
         cp.boardBulkIntOnly = cbool(C, "BOARD_BULK_INTEGER_ONLY",   true);
@@ -2649,6 +2652,13 @@ public class AutoDispatchService {
         //  0 = 미설정(차량 가용높이만 사용). >0 = 차량 가용높이와 min() 적용.
         //  실제 적용 시 차량유형관리(TMS_DS_VEHICLE) 톤수별 높이값과 연동(min)됨.
         double  rollMaxHeightM   = 0.0;    // 원지 다단 적재 최대높이(m), 0=차량높이만
+        // ── 원지 단수 최소화(바닥 우선 안정 적재) (ROLL_STACK_MINIMIZE_YN) ──
+        //  Y = 적재함 바닥(Y축 길이)에 롤이 다 깔리면 단수를 낮춰(3단→1단) 낮고
+        //      안정적으로 적재. 바닥에 다 못 깔릴 때만 필요한 만큼 단을 올림
+        //      (필요 최소 단수). → 적재함 여유가 있으면 낮게 펴서 무게중심↓.
+        //  N(기본) = 기존 동작(최대 단수까지 쌓아 바닥면적 최소화).
+        //  ※ MAX_ROLL_STACK_TIER(최대 단수 상한)는 그대로 Hard Cap 으로 유지.
+        boolean rollStackMinimize = false; // 원지 단수 최소화(바닥 우선)
         // ── 판지 최대높이 차량연동 여부 ──
         //  Y = MAX_BOARD_HEIGHT_M/BOARD_HEIGHT_MAX_M 을 차량 톤수별 가용높이와 min() 연동
         boolean boardHeightVehLink = true; // 판지 최대높이 차량연동(기본 Y)
@@ -2841,13 +2851,41 @@ public class AutoDispatchService {
 
             // 세워 적재: 1단 높이 = 원지 높이(widthMm)+단간격. 높이가 차량 가용높이보다 작아야 2단 이상 가능.
             final double ROLL_TIER_GAP_MM = 30.0; // 단 사이 물리 간격(시뮬레이션과 일치)
-            int maxTiers = Math.max(1, Math.min(cp.maxStack, (int)((heightCapMm + ROLL_TIER_GAP_MM) / (widthMm + ROLL_TIER_GAP_MM))));
+            //  heightTierCap = 차량 높이가 물리적으로 허용하는 최대 단수(Hard Cap maxStack 이내).
+            int heightTierCap = Math.max(1, Math.min(cp.maxStack, (int)((heightCapMm + ROLL_TIER_GAP_MM) / (widthMm + ROLL_TIER_GAP_MM))));
 
             // ── 1단 적재 총 개수 결정 ────────────────────────────────
             //  DS_INCH MAX_COUNT(tier1Count) 가 있으면 그 값을 1단 총 개수의 상한으로 사용.
             //  없으면 (cols × 차량길이수용행) 기하 추정으로 fallback.
             int tier1Count = layer.tier1Count;                      // DS_INCH 1단 총 개수
             boolean useInch = tier1Count > 0;
+
+            // ── [단수 최소화 — 방식 A] 바닥 우선 안정 적재 ─────────────────────
+            //  ROLL_STACK_MINIMIZE_YN=Y 이면, 적재함 바닥(Y축 길이)에 이 레이어의 롤이
+            //  '필요 최소 단수'로 깔리도록 maxTiers 를 낮춘다. (바닥 여유가 있으면 3단→1단)
+            //   바닥 1단 정원(floorCapacity):
+            //     · DS_INCH 있으면 tier1Count (차량/인치/평량별 1단 최대 개수)
+            //     · 없으면 cols × (차량길이에 깔 수 있는 최대 행수) 기하 추정
+            //   필요 최소 단수 = ceil(전체롤 / 바닥정원), 단 [1 .. heightTierCap] 로 clamp.
+            int maxTiers = heightTierCap;
+            if (cp.rollStackMinimize) {
+                int floorCapacity;
+                if (useInch) {
+                    floorCapacity = Math.max(1, tier1Count);
+                } else {
+                    int maxRows = Math.max(1, (int) (carLmm / Math.max(1.0, footMm)));
+                    floorCapacity = Math.max(1, cols * maxRows);
+                }
+                int neededTiers = (int) Math.ceil((double) layer.totalRolls / floorCapacity);
+                int minimized   = Math.max(1, Math.min(heightTierCap, neededTiers));
+                if (minimized < maxTiers) {
+                    result.layerNotes.add(String.format(
+                        "[3D-원지(단수최소화)] 바닥우선 적재 ON(ROLL_STACK_MINIMIZE_YN=Y): "
+                        + "바닥정원%d개/롤%d개 → 필요단수%d단 (높이상한%d단) ⇒ %d단으로 낮춤(안정성↑)",
+                        floorCapacity, layer.totalRolls, neededTiers, heightTierCap, minimized));
+                }
+                maxTiers = minimized;
+            }
 
             int perSlice, rows;
             double layerLengthMm;
@@ -2890,6 +2928,9 @@ public class AutoDispatchService {
                         : "1단수량(기하추정)",
                 cols, zz ? "(지그재그)" : "(평행)", maxTiers, rows, layerLengthMm));
 
+            // 이 레이어에 최종 확정된 단수를 저장(stackHeightM 계산이 동일 값을 쓰도록)
+            layer.chosenTiers = maxTiers;
+
             // ── 프런트 시각화 동기화용 레이아웃 정보 저장 ──
             Map<String, Object> lo = new LinkedHashMap<>();
             lo.put("diam_mm",     round2(diamMm));
@@ -2910,9 +2951,13 @@ public class AutoDispatchService {
         final double TIER_GAP_MM = 30.0;
         result.maxCapacity  = totalCap;
         // 최고 적재 높이 = 원지 폭 × 단수 + 단간격 (세워 적재)
+        //  단수는 레이어별로 '확정된 단수(chosenTiers, 단수최소화 반영)'를 사용.
+        //  (chosenTiers 가 0이면 — 이론상 없음 — 높이상한 기준으로 폴백 계산)
         result.stackHeightM = layerMap.values().stream()
             .mapToDouble(l -> {
-                int t = Math.max(1, Math.min(cp.maxStack, (int)((heightCapFinal + TIER_GAP_MM) / (l.repWidthMm + TIER_GAP_MM))));
+                int t = (l.chosenTiers > 0)
+                    ? l.chosenTiers
+                    : Math.max(1, Math.min(cp.maxStack, (int)((heightCapFinal + TIER_GAP_MM) / (l.repWidthMm + TIER_GAP_MM))));
                 return l.repWidthMm * t + TIER_GAP_MM * (t - 1);
             })
             .max().orElse(0) / 1000.0;
@@ -2943,6 +2988,7 @@ public class AutoDispatchService {
         int    tier1Count = 0;  // 대표 인치/평량의 DS_INCH MAX_COUNT (1단 총 개수)
         String inchLabel  = ""; // "12인치" / "3인치"
         String grmCond    = ""; // "GE300" / "LT300"
+        int    chosenTiers = 0; // 이 레이어에 최종 확정된 적재 단수(단수최소화 반영). 0=미확정
 
         RollLayer(int bucket, double firstWidth) {
             this.bucket = bucket; this.repWidthMm = firstWidth;
