@@ -27292,6 +27292,26 @@ async function _dconSpSave() {
        사용자가 값을 바꾼 자동 보충 카드는 _touched=true 로 정상 저장된다. */
     if (r._autoFill && !r._touched) continue;
     if (!key) { showToast('신규 행: 제약조건 항목을 선택하세요', 'warn'); return; }
+    /* ── [버그수정] 자동 보충 카드(_autoFill)는 항상 const_id=null + 명시적 값으로 전송 ──
+       자동 보충 카드는 '세트/프로파일에 이 제약 행이 없을 때'만 뜬다. 그런데 기존엔
+       _setFullRows(세트 전체행, 비활성/타프로파일 포함)에 매칭(match)되면 그 CONST_ID 로
+       저장하거나, 마스터값과 같으면 param_value=null 로 보내 활성 프로파일에 Y 가
+       반영되지 않는 문제가 있었다(예: BOARD_BULK_INTEGER_ONLY 를 Y 로 저장해도 미반영).
+       → 자동 보충 카드는 백엔드 findOrCreateConstMaster(upsert)가 '활성 프로파일'에
+         CONST_VALUE 를 확실히 생성/갱신하도록, const_id=null + const_value=현재값 을 보낸다. */
+    if (r._autoFill) {
+      newItems.push({
+        const_id: null,
+        const_key: key,
+        const_type: r.CONST_TYPE || tab || 'GLOBAL',
+        const_op: op,
+        target_id: tid || null,
+        const_value: val || '',     // 마스터 CONST_VALUE 생성/갱신값
+        param_value: val || '',     // 세트 PARAM_VALUE 오버라이드값(명시)
+        active_yn: yn
+      });
+      continue;
+    }
     /* 1차: 현재 탭 타입 + 키 + TARGET_ID 완전 매칭 */
     let match = (DCON._setFullRows||[]).find(fr =>
       fr.CONST_KEY === key && fr.CONST_TYPE === r.CONST_TYPE &&
