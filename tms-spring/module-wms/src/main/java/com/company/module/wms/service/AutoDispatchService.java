@@ -483,6 +483,9 @@ public class AutoDispatchService {
         appliedConstraints.put("ROLL_PALLET_APPLY_YN",  cp.rollPalletApply);
         appliedConstraints.put("ROLL_PALLET_DEDUCT_M",  cp.rollPalletDeductM);
         appliedConstraints.put("ALLOW_SPLIT_ITEM",      cp.allowSplit);  // SPLIT_ALLOWED 별칭 포함
+        appliedConstraints.put("ROLL_SPLIT_ALLOWED",    cp.rollSplitAllowed);
+        appliedConstraints.put("ROLL_INTEGER_ONLY",     cp.rollIntegerOnly);
+        appliedConstraints.put("ROLL_MIN_QTY",          cp.rollMinQty);
         appliedConstraints.put("MAX_WEIGHT_KG",         cp.maxWeightKg);
         appliedConstraints.put("ALLOW_MIXED_LOAD",      cp.allowMixedLoad);
         appliedConstraints.put("ALLOW_MATERIAL_MIX",    cp.materialMix);
@@ -724,24 +727,30 @@ public class AutoDispatchService {
             int maxRc    = (inch.equals("12인치") ? bI12 : bI3).getOrDefault(grm, 0);
 
             // ── 원지 사전 분할 대상 판정 ────────────────────────────────────────
-            //  [버그수정] 기존엔 UOMKEY='R'(롤 단위 출고)만 분할 → KG 단위로 출고된 롤
-            //  (UOMKEY≠'R', 예: 18,920KG 단일건)은 분할을 못 타서 최대차 한도(17,000kg)를
-            //  초과해도 한 대에 통째로 실려 적재율 111% 등 과적 배차가 발생했다.
-            //  → 롤 품목(isRoll)이면 UOM 무관하게 '중량 기준'으로 분할 가능하도록 확대.
-            //    (itemRollCount 가 KG 출고도 롤수를 역산해 주므로 롤수 기반 분할 유지)
-            boolean splitEligible = cp.allowSplit && isRoll(sk)
+            //  [분할 게이트] 원지 전용 분할 허용(ROLL_SPLIT_ALLOWED, 미설정 시 공통
+            //  ALLOW_SPLIT_ITEM 상속) 이어야 분할. 그리고 롤 단위 출고(R)이거나,
+            //  KG 단위라도 중량이 최대차 한도(bigCap)를 초과하면 분할 대상.
+            //  ※ 원지 분할은 '중량을 쪼개는 것'이 아니라 '롤(1롤) 개수 단위 정수' 로만
+            //    수행한다(rollIntegerOnly, 기본 Y). 1롤 미만 소수 분할은 하지 않는다.
+            boolean splitEligible = cp.rollSplitAllowed && isRoll(sk)
                 && ("R".equals(uom) || itemRollKg(it, skumaMap, cp.rollSingleKg) > bigCap);
             if (splitEligible) {
-                int totalRolls = Math.max(1, itemRollCount(it, skumaMap, cp.rollSingleKg));
+                int totalRolls = Math.max(1, itemRollCount(it, skumaMap, cp.rollSingleKg)); // 전체 롤 수(정수)
                 double totalKgIt = itemRollKg(it, skumaMap, cp.rollSingleKg);
-                double perRollKg = totalRolls > 0 ? totalKgIt / totalRolls : cp.rollSingleKg;
-                int rollsByKg    = perRollKg > 0 ? (int)(bigCap / perRollKg) : totalRolls;
+                double perRollKg = totalRolls > 0 ? totalKgIt / totalRolls : cp.rollSingleKg; // 1롤 중량
+                // 한 차량 수용 가능 롤 수 = floor(차량한도 / 1롤중량) — 롤 '개수' 단위(정수)
+                int rollsByKg    = perRollKg > 0 ? (int) Math.floor(bigCap / perRollKg) : totalRolls;
+                // 1단 적재 가능 개수(maxRc)와 중량 기준 롤수 중 작은 값 → 한 차량 청크 롤수
                 int chunkRolls   = Math.min(Math.min(maxRc > 0 ? maxRc : totalRolls, rollsByKg), totalRolls);
+                // 최소 배차 롤수(ROLL_MIN_QTY) 하한 보정 — 단, 전체 롤수를 넘지 않음
+                chunkRolls = Math.min(totalRolls, Math.max(chunkRolls, cp.rollMinQty));
+                // 정수 롤 단위 강제(rollIntegerOnly): chunkRolls 는 이미 정수. 최소 1롤 보장.
+                if (cp.rollIntegerOnly) chunkRolls = Math.max(1, chunkRolls);
 
                 if (chunkRolls > 0 && chunkRolls < totalRolls) {
                     int remain = totalRolls, idx = 1;
                     while (remain > 0) {
-                        int cr = Math.min(chunkRolls, remain);
+                        int cr = Math.min(chunkRolls, remain);   // 각 차량 롤 수(정수)
                         double ckKg = round4(cr * perRollKg);
                         Map<String, Object> chunk = new HashMap<>(it);
                         chunk.put("QTSHPO", cr);
@@ -761,7 +770,11 @@ public class AutoDispatchService {
                         splitItems.add(chunk);
                         remain -= cr; idx++;
                     }
-                    splitNotesPre.add("[납품분할] " + str(it.get("SHPOKY")) + "#" + str(it.get("SHPOIT")));
+                    int chunkCount = (int) Math.ceil((double) totalRolls / chunkRolls);
+                    splitNotesPre.add(String.format(
+                        "[납품분할] %s#%s — 원지 총%d롤을 롤(1롤)단위로 차량당 최대%d롤씩 %d대로 분할"
+                        + "(정수 롤 단위, 중량분할 아님)",
+                        str(it.get("SHPOKY")), str(it.get("SHPOIT")), totalRolls, chunkRolls, chunkCount));
                     continue;
                 }
             }
@@ -920,11 +933,14 @@ public class AutoDispatchService {
             //  분할 불가(단일 품목이 최대차 초과 등) 상황이므로 수동확인 경고를 남긴다.
             boolean rollOverload = cap > 0 && vehKg > cap;
             if (rollOverload) {
+                //  원지 분할이 꺼져 있으면(ROLL_SPLIT_ALLOWED=N) 분할 미수행이 과적 원인일 수
+                //  있으므로 안내를 분기한다.
+                String fixHint = cp.rollSplitAllowed
+                    ? "단일 롤 1개가 최대차 한도를 초과하는 등 롤 단위로도 분할 불가 → 더 큰 차량 검토 필요(수동 확인)."
+                    : "원지 분할이 꺼져 있음(ROLL_SPLIT_ALLOWED=N) → 제약조건에서 원지 분할 허용(Y)으로 변경하면 롤 단위로 분할 배차됩니다.";
                 notes.add(String.format(
-                    "[중량초과-수동확인] 적재%.0fkg > 선정차량 최대한도%.0fkg(%s) · 적재율%.1f%% — "
-                    + "단일 품목이 최대차량 한도를 초과하여 한 대에 수용 불가. "
-                    + "납품분할(ALLOW_SPLIT_ITEM) 또는 더 큰 차량 검토 필요(수동 확인).",
-                    vehKg, cap, vehCar, fill));
+                    "[중량초과-수동확인] 적재%.0fkg > 선정차량 최대한도%.0fkg(%s) · 적재율%.1f%% — %s",
+                    vehKg, cap, vehCar, fill, fixHint));
             }
             if (isMixedLoad) {
                 notes.add("[혼적-Z축] 원지 하단(바닥) / 판지 상단 배치 강제 (파손 방지)");
@@ -2525,6 +2541,15 @@ public class AutoDispatchService {
         cp.maxStack         = (int) maxStackVal;
         // ── 원지 단수 최소화(바닥 우선 안정 적재): Y=바닥에 다 깔리면 단수를 낮춤 ──
         cp.rollStackMinimize = cbool(C, "ROLL_STACK_MINIMIZE_YN", false);
+        // ── 원지(롤) 분할 제약 ──────────────────────────────────────────────
+        //  rollSplitAllowed: 원지 분할 허용. 명시 설정이 있으면 그 값, 없으면 공통
+        //    분할허용(ALLOW_SPLIT_ITEM/SPLIT_ALLOWED)을 상속(별도 원지 금지 설정이 없으면
+        //    기존 동작 유지).
+        cp.rollSplitAllowed = cbool(C, "ROLL_SPLIT_ALLOWED", cp.allowSplit);
+        //  rollIntegerOnly: 롤 정수 단위 강제(기본 Y) — 원지는 롤 개수 단위로만 분할.
+        cp.rollIntegerOnly  = cbool(C, "ROLL_INTEGER_ONLY", true);
+        //  rollMinQty: 분할 시 한 차량 최소 롤 수(기본 1, 1 미만은 1로 보정).
+        cp.rollMinQty       = Math.max(1, (int) cfloat(C, "ROLL_MIN_QTY", 1.0));
         // ── 판지 최대 높이: MAX_BOARD_HEIGHT_M 우선, 미설정 시 중복키 BOARD_HEIGHT_MAX_M 폴백 ──
         cp.maxBoardHeightM  = cfloatMulti(C, 2.4, "MAX_BOARD_HEIGHT_M", "BOARD_HEIGHT_MAX_M");
         cp.boardBulkIntOnly = cbool(C, "BOARD_BULK_INTEGER_ONLY",   true);
@@ -2723,6 +2748,14 @@ public class AutoDispatchService {
         //  N(기본) = 기존 동작(최대 단수까지 쌓아 바닥면적 최소화).
         //  ※ MAX_ROLL_STACK_TIER(최대 단수 상한)는 그대로 Hard Cap 으로 유지.
         boolean rollStackMinimize = false; // 원지 단수 최소화(바닥 우선)
+        // ── 원지(롤) 분할 배차 제약 ──────────────────────────────────────
+        //  rollSplitAllowed : 원지 전용 분할 허용. 미설정 시 공통 ALLOW_SPLIT_ITEM 따름.
+        //  rollIntegerOnly  : Y(기본)=롤은 1롤(정수) 단위로만 분할(소수 롤 금지).
+        //                     → 원지는 '중량만큼 쪼개기'가 아니라 '롤 개수 단위' 분할 보장.
+        //  rollMinQty       : 분할 시 한 차량 최소 롤 수(기본 1).
+        boolean rollSplitAllowed = true;  // 원지 분할 허용(미설정 시 ALLOW_SPLIT_ITEM 상속)
+        boolean rollIntegerOnly  = true;  // 롤 정수 단위 강제(기본 Y)
+        int     rollMinQty       = 1;     // 분할 시 한 차량 최소 롤 수
         // ── 판지 최대높이 차량연동 여부 ──
         //  Y = MAX_BOARD_HEIGHT_M/BOARD_HEIGHT_MAX_M 을 차량 톤수별 가용높이와 min() 연동
         boolean boardHeightVehLink = true; // 판지 최대높이 차량연동(기본 Y)
