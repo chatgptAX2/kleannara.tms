@@ -671,6 +671,15 @@ public class DispatchConfigApiService {
             // SEQ_DS_DISPATCH_CONST_SET_ITEM 시퀀스 미존재 → 루프 전 MAX+1 로 채번 시작값 확보
             Long nextItemId = tmsJdbc.queryForObject(
                 "SELECT NVL(MAX(ITEM_ID),0)+1 FROM KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM", Long.class);
+            /* ── [ORA-00001 방지] 동일 (SET_ID, CONST_ID) 중복 INSERT 방지 ──────────
+               UK_DS_CONST_SET_ITEM = UNIQUE(SET_ID, CONST_ID).
+               (1) items 안에 같은 CONST_ID 가 2번 들어오거나(기존행+자동보충 카드가
+                   동일 마스터로 귀결), (2) findOrCreateConstMaster 가 재사용한 CONST_ID 가
+                   DELETE 제외 대상(CARTYPE)과 겹치면 동일 (SET_ID,CONST_ID) 가 중복 INSERT
+                   되어 ORA-00001 발생. → 이미 처리한 CONST_ID 는 건너뛰고(seen), INSERT 전
+                   존재 여부를 확인해 있으면 UPDATE(upsert)로 처리한다. */
+            Set<Long> seen = new HashSet<>();
+            int saved = 0;
             for (Map<String, Object> it : items) {
                 Long constId = toLong(it.get("const_id"));
                 /* ── const_id 미존재(신규 파라미터 키) → 마스터 자동 find-or-create ──
@@ -692,12 +701,21 @@ public class DispatchConfigApiService {
                     );
                 }
                 if (constId == null) continue;
+                // 동일 요청 내 같은 CONST_ID 중복 처리 방지(뒤 항목이 앞 항목을 덮어쓰지 않도록 1회만)
+                if (!seen.add(constId)) continue;
                 String yn   = Objects.toString(it.get("active_yn"), "Y").trim();
                 Object pval = it.get("param_value");
-                tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM (ITEM_ID,SET_ID,CONST_ID,ACTIVE_YN,PARAM_VALUE) VALUES (?,?,?,?,?)",
-                    nextItemId++, setId, constId, yn, vc(pval));
+                /* 존재 시 UPDATE, 없으면 INSERT (upsert) — (SET_ID,CONST_ID) 유니크 보장 */
+                int upd = tmsJdbc.update(
+                    "UPDATE KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM SET ACTIVE_YN=?, PARAM_VALUE=? WHERE SET_ID=? AND CONST_ID=?",
+                    yn, vc(pval), setId, constId);
+                if (upd == 0) {
+                    tmsJdbc.update("INSERT INTO KNRAWMS.TMS_DS_DISPATCH_CONST_SET_ITEM (ITEM_ID,SET_ID,CONST_ID,ACTIVE_YN,PARAM_VALUE) VALUES (?,?,?,?,?)",
+                        nextItemId++, setId, constId, yn, vc(pval));
+                }
+                saved++;
             }
-            return Map.of("ok", true, "saved", items.size());
+            return Map.of("ok", true, "saved", saved);
         } catch (Exception e) { return errMap(e); }
     }
 
