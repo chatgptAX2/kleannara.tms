@@ -23442,7 +23442,6 @@ const DCON_KEY_META = {
   PTNR_EXCLUDE_CAR:{ label:'납품처 제외 차종',  unit:'코드',op:'IN', type:'PARTNER', hint:'CSV (예: 18)' },
   /* CARGO */
   MAX_WEIGHT_KG:   { label:'화물 최대 중량',   unit:'kg',  op:'<=', type:'CARGO',  hint:'개별 SKU 최대 중량' },
-  FRAGILE_CARTYPE: { label:'파손주의 전용 차종',unit:'코드',op:'IN', type:'CARGO',  hint:'파손주의 화물 허용 차종' },
   SPLIT_ALLOWED:   { label:'분할 배차 허용',   unit:'Y/N', op:'=',  type:'CARGO',  hint:'Y=허용, N=한 차량에 모아야 함' },
   /* CARGO — 원지(Roll) */
   ROLL_SINGLE_KG_FALLBACK:{ label:'[원지] 롤 단중 fallback', unit:'kg', op:'=', type:'CARGO', hint:'롤 단중 미등록 시 기본값 (기본 600)' },
