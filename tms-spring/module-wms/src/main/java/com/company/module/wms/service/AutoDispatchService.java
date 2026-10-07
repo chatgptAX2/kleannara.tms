@@ -207,6 +207,8 @@ public class AutoDispatchService {
 
         // ── 납품처 제약(자동배차여부=N / 수작업=Y)으로 자동배차에서 제외된 그룹 ──
         List<Map<String, Object>> excludedGroups = new ArrayList<>();
+        // ── MAX_WEIGHT_KG(개별 SKU 최대중량) 초과 경고 수집 ──
+        List<String> weightWarnings = new ArrayList<>();
 
         // ── 각 납품처 그룹 처리 ────────────────────────────────────────
         for (Map.Entry<String, List<Map<String, Object>>> entry : groups.entrySet()) {
@@ -314,6 +316,28 @@ public class AutoDispatchService {
                 .filter(it -> !isRollItem(it) && !isBoardItem(it)).collect(Collectors.toList());
 
             boolean isMixedLoad = !rollItems.isEmpty() && !boardItems.isEmpty();
+
+            // ── [MAX_WEIGHT_KG] 개별 SKU 최대중량 초과 검증 (0=제한없음) ──
+            //  개별 아이템 1건(또는 롤이면 1롤)의 중량이 상한을 넘으면 경고 수집.
+            if (cp.maxWeightKg > 0) {
+                for (Map<String, Object> it : grpItems) {
+                    String sk = str(it.get("SKUKEY"));
+                    double itemKg;
+                    if (isRollItem(it)) {
+                        int rolls = Math.max(1, (int) dbl(it.get("QTSHPO")));
+                        double totKg = itemRollKg(it, skumaMap, cp.rollSingleKg);
+                        itemKg = rolls > 0 ? totKg / rolls : totKg;   // 1롤당 중량
+                    } else {
+                        itemKg = dbl(it.get("KG_WEIGHT"));
+                        if (itemKg <= 0) itemKg = dbl(it.get("GRSWGT"));
+                    }
+                    if (itemKg > cp.maxWeightKg) {
+                        weightWarnings.add(String.format(
+                            "[MAX_WEIGHT_KG] %s/%s SKU=%s 중량%.0fkg > 상한%.0fkg (개별중량 초과)",
+                            dptnky, dptnm, sk, itemKg, cp.maxWeightKg));
+                    }
+                }
+            }
 
             // ── [B] 원지+판지 합산중량 통합 단일차량 배차 (MIX_UNIFIED_VEHICLE_YN=Y) ──
             //  재질혼적 허용 + 원지·판지 공존 시, 두 재질의 총중량을 합산하여 그 합을
@@ -458,7 +482,8 @@ public class AutoDispatchService {
         appliedConstraints.put("ROLL_HEIGHT_MARGIN_M",  cp.rollHeightMarginM);
         appliedConstraints.put("ROLL_PALLET_APPLY_YN",  cp.rollPalletApply);
         appliedConstraints.put("ROLL_PALLET_DEDUCT_M",  cp.rollPalletDeductM);
-        appliedConstraints.put("ALLOW_SPLIT_ITEM",      cp.allowSplit);
+        appliedConstraints.put("ALLOW_SPLIT_ITEM",      cp.allowSplit);  // SPLIT_ALLOWED 별칭 포함
+        appliedConstraints.put("MAX_WEIGHT_KG",         cp.maxWeightKg);
         appliedConstraints.put("ALLOW_MIXED_LOAD",      cp.allowMixedLoad);
         appliedConstraints.put("ALLOW_MATERIAL_MIX",    cp.materialMix);
         appliedConstraints.put("MIX_UNIFIED_VEHICLE_YN", cp.mixUnifiedVehicle);
@@ -553,6 +578,10 @@ public class AutoDispatchService {
         }
         result.put("split_targets",       splitTargets);
         result.put("has_split",           !splitTargets.isEmpty());
+
+        // ── MAX_WEIGHT_KG 개별중량 초과 경고 ──
+        result.put("weight_warnings",     weightWarnings);
+        result.put("weight_warning_cnt",  weightWarnings.size());
 
         // ── 자동배차 제외 그룹 (자동배차여부=N / 수작업=Y) ──────────────
         result.put("excluded_groups",     excludedGroups);
@@ -2454,12 +2483,14 @@ public class AutoDispatchService {
     private ConstraintParams buildConstraintParams(Map<String, Map<String, Object>> C) {
         ConstraintParams cp = new ConstraintParams();
         cp.rollSingleKg     = cfloat(C, "ROLL_SINGLE_KG_FALLBACK",  600.0);
+        cp.maxWeightKg      = cfloat(C, "MAX_WEIGHT_KG",            0.0);
         cp.minFill          = cfloat(C, "MIN_FILL_RATIO",           0.0) / 100.0;
         cp.maxFill          = cfloat(C, "MAX_FILL_RATIO",           100.0) / 100.0;
         cp.penalty          = cfloat(C, "COST_PENALTY_OVER",        1.5);
         double bMin         = cfloat(C, "BOARD_MIN_FILL_RATIO",     -1.0);
         cp.boardMinFill     = bMin >= 0 ? bMin / 100.0 : cp.minFill;
-        cp.allowSplit       = cbool(C, "ALLOW_SPLIT_ITEM",          true);
+        // 분할 배차 허용: ALLOW_SPLIT_ITEM 우선, UI 화물탭 별칭 SPLIT_ALLOWED 폴백
+        cp.allowSplit       = cboolMulti(C, true, "ALLOW_SPLIT_ITEM", "SPLIT_ALLOWED");
         cp.allowMixedLoad   = cbool(C, "ALLOW_MIXED_LOAD",          false);
         // ── 원지+판지 재질 혼적 허용 (신규): Y=한 차량에 원지+판지 혼적, N=재질별 분리 ──
         cp.materialMix      = cbool(C, "ALLOW_MATERIAL_MIX",        false);
@@ -2539,6 +2570,18 @@ public class AutoDispatchService {
     private boolean cbool(Map<String, Map<String, Object>> C, String key, boolean def) {
         String v = cval(C, key, def ? "Y" : "N");
         return "Y".equalsIgnoreCase(v);
+    }
+
+    /** 여러 키(별칭) 중 먼저 설정된 값을 Y/N 으로 해석. 모두 미설정이면 def. */
+    private boolean cboolMulti(Map<String, Map<String, Object>> C, boolean def, String... keys) {
+        for (String k : keys) {
+            Map<String, Object> r = C.get(k);
+            if (r != null && r.get("CONST_VALUE") != null
+                && !r.get("CONST_VALUE").toString().isBlank()) {
+                return "Y".equalsIgnoreCase(r.get("CONST_VALUE").toString().trim());
+            }
+        }
+        return def;
     }
 
     private double parseVehicleWidth(String w) {
@@ -2662,6 +2705,9 @@ public class AutoDispatchService {
         // ── 판지 최대높이 차량연동 여부 ──
         //  Y = MAX_BOARD_HEIGHT_M/BOARD_HEIGHT_MAX_M 을 차량 톤수별 가용높이와 min() 연동
         boolean boardHeightVehLink = true; // 판지 최대높이 차량연동(기본 Y)
+        // ── 개별 SKU 최대 중량(kg) (MAX_WEIGHT_KG) ──
+        //  0 = 제한없음. >0 = 개별 아이템 중량이 이 값을 초과하면 경고 노트.
+        double  maxWeightKg = 0.0;
     }
 
     // ════════════════════════════════════════════════════════════════
