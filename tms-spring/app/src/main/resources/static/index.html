@@ -22721,14 +22721,14 @@ function renderDynTargets() {
     return `<tr style="${rowStyle}border-bottom:1px solid var(--border);">
       <td style="text-align:center;padding:5px 6px;"><input type="checkbox" ${checked} onchange="dynTargetToggle('${key.replace(/'/g,"\\'")}', this.checked)" title="${unused?'미사용 → 사용':'사용중 → 미사용'}"></td>
       <td style="text-align:center;padding:5px 8px;">${r.NO!=null?r.NO:(i+1)}</td>
-      <td style="padding:5px 8px;font-family:monospace;">${esc(r.PTNRKY_FROM)}</td>
-      <td style="padding:5px 8px;">${esc(r.FROM_NAME)||'-'}</td>
-      <td style="padding:5px 8px;">${esc(addr(r.FROM_ADDR1,r.FROM_ADDR2))||'-'}</td>
-      <td style="padding:5px 8px;">${esc(r.FROM_ZIP)||'-'}</td>
-      <td style="padding:5px 8px;font-family:monospace;">${esc(r.PTNRKY_TO)}</td>
-      <td style="padding:5px 8px;">${esc(r.TO_NAME)||'-'}</td>
-      <td style="padding:5px 8px;">${esc(addr(r.TO_ADDR1,r.TO_ADDR2))||'-'}</td>
-      <td style="padding:5px 8px;">${esc(r.TO_ZIP)||'-'}</td>
+      <td style="padding:5px 8px;font-family:monospace;">${esc(r.DISP_FROM_KY ?? r.PTNRKY_FROM)}</td>
+      <td style="padding:5px 8px;">${esc(r.DISP_FROM_NAME ?? r.FROM_NAME)||'-'}</td>
+      <td style="padding:5px 8px;">${esc(addr(r.DISP_FROM_ADDR1 ?? r.FROM_ADDR1, r.DISP_FROM_ADDR2 ?? r.FROM_ADDR2))||'-'}</td>
+      <td style="padding:5px 8px;">${esc(r.DISP_FROM_ZIP ?? r.FROM_ZIP)||'-'}</td>
+      <td style="padding:5px 8px;font-family:monospace;">${esc(r.DISP_TO_KY ?? r.PTNRKY_TO)}</td>
+      <td style="padding:5px 8px;">${esc(r.DISP_TO_NAME ?? r.TO_NAME)||'-'}</td>
+      <td style="padding:5px 8px;">${esc(addr(r.DISP_TO_ADDR1 ?? r.TO_ADDR1, r.DISP_TO_ADDR2 ?? r.TO_ADDR2))||'-'}</td>
+      <td style="padding:5px 8px;">${esc(r.DISP_TO_ZIP ?? r.TO_ZIP)||'-'}</td>
       <td style="padding:5px 8px;text-align:right;">${num(r.DISTANCE)}</td>
       <td style="padding:5px 8px;text-align:right;">${num(r.DURATION)}</td>
       <td style="padding:5px 8px;text-align:center;">${useCell}</td>

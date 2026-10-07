@@ -554,7 +554,9 @@ public class DeliveryService {
             for (Object[] r : raw) {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("NO",            idx++);
-                m.put("PTNRKY_FROM",   str(r[0]));
+                // ── 원본 키(PTNRKY_FROM/TO)는 그대로 보존 — 토글/삭제가 이 값으로 DB 조작 ──
+                String fromKy = str(r[0]);
+                m.put("PTNRKY_FROM",   fromKy);
                 m.put("FROM_NAME",     str(r[1]));
                 m.put("FROM_ADDR1",    str(r[2]));
                 m.put("FROM_ADDR2",    str(r[3]));
@@ -570,6 +572,26 @@ public class DeliveryService {
                 m.put("CREDAT",        str(r[13]));
                 m.put("CRETIM",        str(r[14]));
                 m.put("CREUSR",        str(r[15]));
+                // ── [표시 정규화] 조회 기준 납품처(ptnrky)를 항상 '출발(FROM)'에 고정 ──
+                //  이동거리는 양방향 동일하므로, 기준 납품처가 도착(TO)인 쌍은 표시용으로
+                //  FROM↔TO 를 뒤집어 보여준다. (원본 PTNRKY_FROM/TO 는 위에서 보존했으므로
+                //  토글/삭제 로직에는 영향 없음) → '다른 납품처가 출발에 섞여 보이는' 혼란 제거.
+                boolean baseIsTo = ptnrky.equals(str(r[5])) && !ptnrky.equals(fromKy);
+                if (baseIsTo) {
+                    m.put("DISP_FROM_KY",   str(r[5]));  m.put("DISP_FROM_NAME", str(r[6]));
+                    m.put("DISP_FROM_ADDR1",str(r[7]));  m.put("DISP_FROM_ADDR2",str(r[8]));
+                    m.put("DISP_FROM_ZIP",  str(r[9]));
+                    m.put("DISP_TO_KY",     fromKy);      m.put("DISP_TO_NAME",   str(r[1]));
+                    m.put("DISP_TO_ADDR1",  str(r[2]));   m.put("DISP_TO_ADDR2",  str(r[3]));
+                    m.put("DISP_TO_ZIP",    str(r[4]));
+                } else {
+                    m.put("DISP_FROM_KY",   fromKy);      m.put("DISP_FROM_NAME", str(r[1]));
+                    m.put("DISP_FROM_ADDR1",str(r[2]));   m.put("DISP_FROM_ADDR2",str(r[3]));
+                    m.put("DISP_FROM_ZIP",  str(r[4]));
+                    m.put("DISP_TO_KY",     str(r[5]));   m.put("DISP_TO_NAME",   str(r[6]));
+                    m.put("DISP_TO_ADDR1",  str(r[7]));   m.put("DISP_TO_ADDR2",  str(r[8]));
+                    m.put("DISP_TO_ZIP",    str(r[9]));
+                }
                 rows.add(m);
             }
         } catch (Exception e) {
