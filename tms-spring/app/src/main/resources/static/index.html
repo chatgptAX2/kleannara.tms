@@ -19104,6 +19104,7 @@ function psopShowAutoResultModal(vehicles, objNm, selectedCnt, autoMeta) {
           ${totalKgHtml}
           <span class="veh-kg">/ ${psopFmtNum(loadCap)}KG · ${v.item_cnt}건</span>
           ${spareKg>0?`<span class="psd-auto-spare">여유 ${psopFmtNum(spareKg)}KG</span>`:''}
+          ${v.overload ? `<span class="psd-auto-overload" style="display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:800;color:#fff;background:#dc2626;border-radius:5px;padding:1px 7px;" title="적재중량이 차량 최대한도를 초과했습니다. 납품분할 또는 더 큰 차량 검토 필요(수동 확인).">⚠ 중량초과 ${loadCap>0?(usedKg/loadCap*100).toFixed(0):''}%</span>` : ''}
         </span>
       </div>
       ${loadBar}
@@ -19160,6 +19161,11 @@ function psopShowAutoResultModal(vehicles, objNm, selectedCnt, autoMeta) {
   const splitSummary = splitVehCnt > 0
     ? `<span style="font-size:11px;color:#fb923c;font-weight:700;margin-left:4px">✂️ 납품분할 ${splitVehCnt}대</span>`
     : '';
+  // 중량초과(과적) 집계 — 선정 차량 최대한도를 적재중량이 초과한 차량
+  const overloadVehCnt = vehicles.filter(v => v.overload).length;
+  const overloadSummary = overloadVehCnt > 0
+    ? `<span style="font-size:11px;color:#fff;background:#dc2626;border-radius:5px;padding:1px 7px;font-weight:800;margin-left:4px" title="적재중량이 차량 최대한도를 초과한 차량 — 수동 확인 필요">⚠ 중량초과 ${overloadVehCnt}대</span>`
+    : '';
 
   const modal = document.createElement('div');
   modal.id = 'psop-auto-modal';
@@ -19212,7 +19218,7 @@ function psopShowAutoResultModal(vehicles, objNm, selectedCnt, autoMeta) {
       </div>
       <div style="padding:10px 20px;background:var(--th-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span style="font-size:12px;font-weight:700;color:var(--text)">차량 ${totalVeh}대 · 문서 ${totalDoc}건 · 총 ${psopFmtNum(totalKg)} KG</span>
-        ${typeSummary}${rollSummary}${addedSummary}${splitSummary}${ptnrWarnSummary}${deadlineSummary}${noForkSummary}
+        ${typeSummary}${rollSummary}${addedSummary}${splitSummary}${overloadSummary}${ptnrWarnSummary}${deadlineSummary}${noForkSummary}
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-left:auto">${summaryBadges}</div>
       </div>
       ${diagBanner}
