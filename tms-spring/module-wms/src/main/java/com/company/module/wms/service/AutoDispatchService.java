@@ -723,8 +723,16 @@ public class AutoDispatchService {
             String grm   = getGrm(sk);
             int maxRc    = (inch.equals("12인치") ? bI12 : bI3).getOrDefault(grm, 0);
 
-            if (cp.allowSplit && "R".equals(uom) && isRoll(sk)) {
-                int totalRolls = (int) dbl(it.get("QTSHPO"));
+            // ── 원지 사전 분할 대상 판정 ────────────────────────────────────────
+            //  [버그수정] 기존엔 UOMKEY='R'(롤 단위 출고)만 분할 → KG 단위로 출고된 롤
+            //  (UOMKEY≠'R', 예: 18,920KG 단일건)은 분할을 못 타서 최대차 한도(17,000kg)를
+            //  초과해도 한 대에 통째로 실려 적재율 111% 등 과적 배차가 발생했다.
+            //  → 롤 품목(isRoll)이면 UOM 무관하게 '중량 기준'으로 분할 가능하도록 확대.
+            //    (itemRollCount 가 KG 출고도 롤수를 역산해 주므로 롤수 기반 분할 유지)
+            boolean splitEligible = cp.allowSplit && isRoll(sk)
+                && ("R".equals(uom) || itemRollKg(it, skumaMap, cp.rollSingleKg) > bigCap);
+            if (splitEligible) {
+                int totalRolls = Math.max(1, itemRollCount(it, skumaMap, cp.rollSingleKg));
                 double totalKgIt = itemRollKg(it, skumaMap, cp.rollSingleKg);
                 double perRollKg = totalRolls > 0 ? totalKgIt / totalRolls : cp.rollSingleKg;
                 int rollsByKg    = perRollKg > 0 ? (int)(bigCap / perRollKg) : totalRolls;
@@ -906,6 +914,18 @@ public class AutoDispatchService {
             notes.add(String.format("[%s] %s 선정 (적재%.0fkg / 한도%.0fkg / 적재율%.1f%%%s)",
                 objective, vehCar, vehKg, cap, fill,
                 costVal > 0 ? String.format(" / 운송비%,.0f원", costVal) : ""));
+            // ── [중량초과 경고] 선정 차량 한도를 적재중량이 초과한 경우 명확히 플래그 ──
+            //  selectCar 가 수용 가능한 차가 없을 때 '가장 큰 차'를 폴백 반환하므로,
+            //  최대차 한도까지 초과하면 과적 상태로 배차된다(적재율 100% 초과). 이 경우
+            //  분할 불가(단일 품목이 최대차 초과 등) 상황이므로 수동확인 경고를 남긴다.
+            boolean rollOverload = cap > 0 && vehKg > cap;
+            if (rollOverload) {
+                notes.add(String.format(
+                    "[중량초과-수동확인] 적재%.0fkg > 선정차량 최대한도%.0fkg(%s) · 적재율%.1f%% — "
+                    + "단일 품목이 최대차량 한도를 초과하여 한 대에 수용 불가. "
+                    + "납품분할(ALLOW_SPLIT_ITEM) 또는 더 큰 차량 검토 필요(수동 확인).",
+                    vehKg, cap, vehCar, fill));
+            }
             if (isMixedLoad) {
                 notes.add("[혼적-Z축] 원지 하단(바닥) / 판지 상단 배치 강제 (파손 방지)");
                 notes.add("[혼적-Y축] LIFO: 나중 하차→안쪽 / 먼저 하차→문 쪽 배치");
@@ -918,6 +938,7 @@ public class AutoDispatchService {
             vrow.put("load_cap",      cap);
             vrow.put("spare_kg",      round2(cap - vehKg));
             vrow.put("fill_ratio",    round2(fill));
+            vrow.put("overload",      rollOverload);   // 선정차량 한도 초과(과적) 여부
             vrow.put("items",         b.items);
             vrow.put("item_cnt",      b.items.size());
             vrow.put("material_type", "ROLL");
