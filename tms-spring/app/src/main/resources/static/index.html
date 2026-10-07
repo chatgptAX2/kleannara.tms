@@ -25466,12 +25466,13 @@ function _dconSpRenderTable(rows, ft, tab) {
       const isYN = (m.unit === 'Y/N');
       const valCtrl = isYN
         ? `<select class="dcon-param-sel" id="dcon-sp-new-val-${r._tmpId}"
-             onchange="_dconSpDirty()" style="width:150px">
+             onchange="_dconSpTouchAutoFill('${r._tmpId}');_dconSpDirty()" style="width:150px">
              <option value="Y" ${r._pval==='Y'?'selected':''}>Y — 허용/활성</option>
              <option value="N" ${r._pval!=='Y'?'selected':''}>N — 불허/비활성</option>
            </select>`
         : `<input class="dcon-param-inp" type="text" id="dcon-sp-new-val-${r._tmpId}"
-             value="${_esc(r._pval||'')}" placeholder="값" oninput="_dconSpDirty()"/>`;
+             value="${_esc(r._pval||'')}" placeholder="값"
+             oninput="_dconSpTouchAutoFill('${r._tmpId}');_dconSpDirty()"/>`;
       cardsHtml += `<div class="dcon-param-card new-row" style="margin:4px 10px;border-left:3px solid var(--warn,#f59e0b)">
         <div class="dcon-param-card-hdr">
           <span class="dcon-param-card-key">${_esc(m.label||r.CONST_KEY)}
@@ -26877,6 +26878,15 @@ function _dconSpDeleteNewRow(tmpId) {
   _dconSpRender();
 }
 
+/* ── 자동 보충(_autoFill) 카드를 '사용자가 건드림' 표시 ──
+   미설정 제약을 자동 노출만 하고 값을 바꾸지 않았으면 저장 대상에서 제외하고,
+   사용자가 값을 한 번이라도 바꾸면 _touched=true 로 표시해 저장에 포함한다.
+   (불필요한 마스터 행 대량 생성 방지 + 의도한 제약만 저장) */
+function _dconSpTouchAutoFill(tmpId) {
+  const r = (DCON._spNewRows||[]).find(r=>r._tmpId===tmpId);
+  if (r) r._touched = true;
+}
+
 /* ── 더티 표시 ── */
 function _dconSpDirty() {
   const hint = document.getElementById('dcon-sp-hint');
@@ -27265,11 +27275,22 @@ async function _dconSpSave() {
   const newItems = [];
   const spNewRows = DCON._spNewRows || [];
   for (const r of spNewRows) {
-    const key  = document.getElementById(`dcon-sp-new-key-${r._tmpId}`)?.value;
+    const keyEl = document.getElementById(`dcon-sp-new-key-${r._tmpId}`);
+    /* ── [버그수정] DOM 에 렌더되지 않은(=현재 탭이 아닌 다른 탭의) 신규행은 건너뛴다.
+       자동 보충 카드(_autoFill)로 여러 탭의 신규행이 _spNewRows 에 누적되면,
+       현재 탭에 없는 행의 getElementById 가 null → 기존엔 '항목을 선택하세요'
+       경고가 떠서 값 입력 후에도 저장이 막혔다. 현재 화면에 실제 존재하는 행만 처리. */
+    if (!keyEl) continue;
+    const key  = keyEl.value;
     const op   = document.getElementById(`dcon-sp-new-op-${r._tmpId}`)?.value || '=';
     const val  = document.getElementById(`dcon-sp-new-val-${r._tmpId}`)?.value || '';
     const tid  = document.getElementById(`dcon-sp-new-tid-${r._tmpId}`)?.value || '';
     const yn   = document.getElementById(`dcon-sp-new-yn-${r._tmpId}`)?.value || 'Y';
+    /* 자동 보충 카드(_autoFill)는 '미설정' 제약을 자동 노출한 것이므로, 사용자가
+       값을 한 번도 바꾸지 않았으면(_touched 아님) 저장 대상에서 조용히 제외한다.
+       → 건드리지 않은 미설정 제약이 기본값으로 대량 생성되는 것을 방지.
+       사용자가 값을 바꾼 자동 보충 카드는 _touched=true 로 정상 저장된다. */
+    if (r._autoFill && !r._touched) continue;
     if (!key) { showToast('신규 행: 제약조건 항목을 선택하세요', 'warn'); return; }
     /* 1차: 현재 탭 타입 + 키 + TARGET_ID 완전 매칭 */
     let match = (DCON._setFullRows||[]).find(fr =>
