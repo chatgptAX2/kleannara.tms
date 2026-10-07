@@ -776,6 +776,21 @@ public class DispatchConfigApiService {
                     log.warn("[dcon] findOrCreateConstMaster upsert 실패 (CONST_ID={}): {}", cid, e.getMessage());
                 }
             }
+            /* ── [버그수정] 재사용 마스터의 CONST_TYPE 동기화 ──────────────────
+               find 조회는 CONST_KEY(+TARGET_ID/PROFILE) 만 보고 CONST_TYPE 은 보지 않으므로,
+               동일 키 마스터가 '다른 탭 타입'(예: ROLL_UNIT fallback, 과거 GLOBAL)으로 존재하면
+               그 타입 그대로 재사용되어, 사용자가 저장한 탭(예: CARGO)의 rows 필터
+               (CONST_TYPE===tab)에 안 잡혀 '저장했는데 미설정' 으로 표시됐다.
+               → 호출부가 명시한 type 으로 CONST_TYPE 을 맞춰, 저장한 탭에서 바로 보이게 한다. */
+            if (type != null && !type.isBlank() && !"GLOBAL".equalsIgnoreCase(type)) {
+                try {
+                    tmsJdbc.update(
+                        "UPDATE KNRAWMS.TMS_DS_DISPATCH_CONST SET CONST_TYPE=?, LMODAT=? WHERE CONST_ID=?",
+                        type, today(), cid);
+                } catch (Exception e) {
+                    log.warn("[dcon] findOrCreateConstMaster CONST_TYPE 동기화 실패 (CONST_ID={}): {}", cid, e.getMessage());
+                }
+            }
             return cid;
         }
         // ② 없으면 '대상 프로파일'에 마스터 생성 (최후 폴백: PROFILE_ID 최솟값)
