@@ -16783,6 +16783,30 @@ function _psopSelectedDispatchedStdlnrs() {
   return set;
 }
 
+/* ── 삭제 대상 배차 _pendingId 집합 산출 ───────────────
+   배차삭제 버튼/실행의 대상은 다음 둘을 합집합으로 본다.
+   ① 배차 탭에서 직접 체크한 차량(selectedVehicles)
+   ② 납품문서 목록에서 '배차완료 문서'를 체크하여 선적목록에 자동 로드된
+      차량(_autoBySel=true) — 이 경우 selectedVehicles 에는 안 들어가므로
+      기존 로직에서는 삭제 버튼이 활성화되지 않던 문제가 있었다.
+      (예: 납품문서 0062360788 체크 → 가선적 로드되나 삭제 버튼 비활성)
+   → 사용자가 '납품문서 체크 후 배차삭제' 를 할 수 있도록 ②를 포함한다. */
+function _psopDeletableVehiclePids() {
+  const pids = new Set();
+  // ① 직접 선택한 차량
+  psopState.selectedVehicles.forEach(pid => pids.add(pid));
+  // ② 선택된 배차완료 문서로 자동 로드된 _autoBySel 차량
+  const wantSet = _psopSelectedDispatchedStdlnrs();
+  if (wantSet.size) {
+    psopState.vehicles.forEach(v => {
+      if (v._autoBySel && wantSet.has(String(v.STDLNR || '').trim())) {
+        pids.add(v._pendingId);
+      }
+    });
+  }
+  return pids;
+}
+
 let _psopDocSelSyncTimer = null;
 function psopSyncDispatchedSelection() {
   // 드래그/연속 클릭 중 과도한 호출 방지 (디바운스)
@@ -16931,7 +16955,11 @@ function psopUpdateToolbar() {
   if (btn('psop-btn-manual'))  btn('psop-btn-manual').disabled  = selCnt === 0;
   if (btn('psop-btn-split'))   btn('psop-btn-split').disabled   = selCnt === 0;
   if (btn('psop-btn-confirm')) btn('psop-btn-confirm').disabled = true; // 인메모리 단계에서 사용 안함
-  if (btn('psop-btn-del'))     btn('psop-btn-del').disabled     = selVehCnt === 0;
+  // 배차삭제: ① 배차 탭에서 직접 선택한 차량 또는 ② 납품문서 목록에서 배차완료 문서를
+  //   선택해 자동 로드된 차량(_autoBySel) 이 있으면 활성화한다.
+  //   (기존엔 selVehCnt 만 봐서, 납품문서만 체크한 경우 버튼이 비활성화되던 문제 수정)
+  const delCnt = _psopDeletableVehiclePids().size;
+  if (btn('psop-btn-del'))     btn('psop-btn-del').disabled     = delCnt === 0;
   if (btn('psop-btn-save'))    btn('psop-btn-save').disabled    = !hasSaveTarget; // 저장 대상 없으면 비활성
   // 미연동(테스트) 버튼 — 연동 버튼과 동일 활성 조건
   if (btn('psop-btn-auto-offline'))  btn('psop-btn-auto-offline').disabled  = psopState.searchRows.filter(r=>!r.DISPATCHED).length === 0;
@@ -19718,8 +19746,11 @@ function psopConfirmDispatch() {
 }
 
 async function psopDeleteDispatch() {
-  const pids = [...psopState.selectedVehicles];
-  if (!pids.length) { showToast('삭제할 배차를 선택하세요.'); return; }
+  // 삭제 대상: ① 배차 탭에서 직접 선택한 차량 + ② 납품문서 목록에서 배차완료 문서를
+  //   체크해 자동 로드된 차량(_autoBySel). 둘을 합집합으로 처리하여, 사용자가
+  //   납품문서(예: 0062360788)만 체크해도 해당 배차를 삭제할 수 있게 한다.
+  const pids = [..._psopDeletableVehiclePids()];
+  if (!pids.length) { showToast('삭제할 배차 또는 배차완료 납품문서를 선택하세요.'); return; }
 
   /* ── 저장된 배차(STDLNR 있음) vs 미저장 배차 분리 ── */
   const savedVehs   = [];   // DB에 있는 배차 → /api/ps-dispatch/delete
