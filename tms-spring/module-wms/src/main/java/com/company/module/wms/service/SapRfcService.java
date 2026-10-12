@@ -248,6 +248,36 @@ public class SapRfcService {
                         stdoutLog("[shipment-create][사전진단] 납품문서 중복: SVBELN=" + e.getKey()
                                 + " 가 다수 가선적번호에 걸침 → " + e.getValue()
                                 + " (원지 롤 분할로 SVBELN 공유 추정. SAP 납품분할 선행 필요)");
+
+                        // ── [B안 설계 근거 수집] 중복 SVBELN 의 품목(SHPOIT=SPOSNR)별·가선적별
+                        //    수량(QTSHPO) 분배 상세를 로깅한다. 운영에서 Z_TMS_DELIVERY_SPLIT 의
+                        //    입력(SVBELN/SPOSNR/SKUKEY/SPLIT_QTY)을 정확히 구성하기 위한 근거.
+                        //    ※ 조회/로깅 전용 — DB 변경 없음. SAP RFC 호출 없음.
+                        try {
+                            List<Map<String, Object>> items = wmsJdbc.queryForList(
+                                "SELECT SI.STDLNR, SI.SHPOIT, SI.SKUKEY, SI.QTSHPO, SI.UOMKEY " +
+                                "FROM KNRAWMS.TMS_SHPDI SI " +
+                                "WHERE SI.SVBELN=? AND SI.STDLNR IN (" + inClause + ") " +
+                                "ORDER BY SI.SHPOIT, SI.STDLNR",
+                                buildArgs(e.getKey(), inputStdlnrs)
+                            );
+                            StringBuilder sb = new StringBuilder();
+                            sb.append("[shipment-create][사전진단-상세] SVBELN=").append(e.getKey())
+                              .append(" 품목/가선적별 수량 분배 (Z_TMS_DELIVERY_SPLIT 입력 설계 근거):")
+                              .append(System.lineSeparator());
+                            for (Map<String, Object> it : items) {
+                                sb.append("    - SPOSNR(SHPOIT)=").append(str(it.get("SHPOIT")))
+                                  .append(", SKUKEY=").append(str(it.get("SKUKEY")))
+                                  .append(", STDLNR=").append(str(it.get("STDLNR")))
+                                  .append(", QTSHPO=").append(str(it.get("QTSHPO")))
+                                  .append(" ").append(str(it.get("UOMKEY")))
+                                  .append(System.lineSeparator());
+                            }
+                            stdoutLog(sb.toString());
+                        } catch (Exception detEx) {
+                            stdoutLog("[shipment-create][사전진단-상세-SKIP] SVBELN=" + e.getKey()
+                                    + " 품목분배 조회 실패: " + detEx.getMessage());
+                        }
                     }
                 }
             } catch (Exception preEx) {
@@ -2120,6 +2150,18 @@ public class SapRfcService {
 
     private long safeParseLong(String s) {
         try { return Long.parseLong(s.trim()); } catch (Exception e) { return 0L; }
+    }
+
+    /**
+     * SQL IN-절 바인딩용 Object[] 구성 헬퍼.
+     * 선행 단일 파라미터(first) 뒤에 목록(rest)을 순서대로 이어 붙인다.
+     * (예: SVBELN 1개 + STDLNR N개 → [SVBELN, STDLNR1, STDLNR2, ...])
+     */
+    private Object[] buildArgs(Object first, List<String> rest) {
+        List<Object> args = new ArrayList<>();
+        args.add(first);
+        if (rest != null) args.addAll(rest);
+        return args.toArray();
     }
 
     /**
