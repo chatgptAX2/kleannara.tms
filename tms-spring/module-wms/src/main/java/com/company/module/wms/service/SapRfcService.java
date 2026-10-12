@@ -204,6 +204,13 @@ public class SapRfcService {
         List<Object> stknumsRaw = (List<Object>) body.get("stknums");
         if (stknumsRaw == null || stknumsRaw.isEmpty()) return err("stknums 필수");
 
+        // [B안] 중복 SVBELN(원지 롤 분할로 공유된 납품문서)을 선적생성 직전에
+        //   SAP 납품분할(Z_TMS_DELIVERY_SPLIT)로 자동 분리할지 여부.
+        //   - 기본값 true: 공유 납품문서를 가선적별로 분리하여 '가선적 N개 = 선적 N개' 보장.
+        //   - false 로 명시하면 기존 동작(A안: 중복 시 즉시 차단 + 원인 안내)만 수행.
+        //   운영 담당자가 통제할 수 있도록 요청 파라미터로 노출(auto_split).
+        boolean autoSplit = !Boolean.FALSE.equals(parseBool(body.get("auto_split"), true));
+
         String env   = detectEnv();
         String today = LocalDate.now().format(YMDFORMAT);
         List<Map<String, Object>> results = new ArrayList<>();
@@ -320,30 +327,75 @@ public class SapRfcService {
                     continue;
                 }
 
-                // 1-1) [사전 방어] 이 가선적번호의 SVBELN 중, 다른 가선적번호가 이미
-                //      이번 호출에서 선적을 선점한 것이 있으면 SAP RFC 를 호출하지 않고
-                //      명확한 원인 메시지로 즉시 실패시킨다. (SAP 의 모호한 거부 메시지 대신
-                //      "어느 가선적번호와 어느 납품문서가 중복인지" 를 TMS 가 먼저 설명)
+                // 1-1) [중복 감지] 이 가선적번호의 SVBELN 중, 다른 가선적번호가 이미
+                //      이번 호출에서 선적을 선점한 것이 있는지 확인한다.
+                List<String> conflictSvbelns = new ArrayList<>();
                 List<String> conflictMsgs = new ArrayList<>();
                 for (String sv : vbelnList) {
                     String claimedBy = claimedSvbeln.get(sv);
                     if (claimedBy != null && !claimedBy.equals(stdlnr)) {
+                        conflictSvbelns.add(sv);
                         conflictMsgs.add("납품문서 " + sv + " → 가선적번호 " + claimedBy + " 가 선점");
                     }
                 }
+
                 if (!conflictMsgs.isEmpty()) {
                     String detail = String.join(" / ", conflictMsgs);
-                    stdoutLog("[shipment-create][중복차단] stdlnr=" + stdlnr + " " + detail);
-                    row.put("ok", false);
-                    row.put("svbeln_cnt", vbelnList.size());
-                    row.put("dup_svbeln", true);
-                    row.put("message",
-                        "동일 납품문서가 다른 가선적번호에 이미 배정되어 선적생성이 불가합니다. "
-                        + "(" + detail + ") "
-                        + "원지 롤 분할로 하나의 납품문서가 여러 차량에 공유된 상태입니다. "
-                        + "SAP 납품분할을 먼저 수행하여 가선적번호별로 납품문서를 분리한 뒤 선적생성하세요.");
-                    results.add(row);
-                    continue;
+
+                    // ── [B안] auto_split=true 이면: 차단 대신 SAP 납품분할(Z_TMS_DELIVERY_SPLIT)을
+                    //    선행하여 이 가선적의 공유 납품문서를 새 SVBELN 으로 분리한 뒤 선적생성을 계속한다.
+                    if (autoSplit) {
+                        stdoutLog("[shipment-create][자동납품분할] stdlnr=" + stdlnr
+                                + " 공유납품문서=" + conflictSvbelns + " → 납품분할 선행 시도");
+                        List<Map<String, Object>> splitDetails = new ArrayList<>();
+                        boolean splitAllOk = true;
+                        for (String sv : conflictSvbelns) {
+                            Map<String, Object> sp = splitSharedSvbelnForStdlnr(stdlnr, sv);
+                            splitDetails.add(sp);
+                            if (Boolean.TRUE.equals(sp.get("ok"))) {
+                                String newSv = str(sp.get("newSvbeln"));
+                                // 선적생성에 사용할 납품문서목록을 분리된 신규 SVBELN 으로 교체
+                                vbelnList.remove(sv);
+                                if (!newSv.isEmpty() && !vbelnList.contains(newSv)) vbelnList.add(newSv);
+                            } else {
+                                splitAllOk = false;
+                            }
+                        }
+                        row.put("auto_split", true);
+                        row.put("auto_split_detail", splitDetails);
+
+                        if (!splitAllOk) {
+                            // 분할 실패 → 안전하게 이 가선적은 실패 처리(선적생성 미시도)
+                            String spMsg = splitDetails.stream()
+                                .map(d -> str(d.get("msg"))).filter(s -> !s.isEmpty())
+                                .collect(Collectors.joining(" / "));
+                            stdoutLog("[shipment-create][자동납품분할-실패] stdlnr=" + stdlnr + " " + spMsg);
+                            row.put("ok", false);
+                            row.put("svbeln_cnt", vbelnList.size());
+                            row.put("dup_svbeln", true);
+                            row.put("message",
+                                "공유 납품문서의 SAP 납품분할에 실패하여 선적생성을 중단했습니다. ("
+                                + spMsg + ") 운영 담당자 확인이 필요합니다.");
+                            results.add(row);
+                            continue;
+                        }
+                        stdoutLog("[shipment-create][자동납품분할-성공] stdlnr=" + stdlnr
+                                + " 분리 후 납품문서목록=" + vbelnList);
+                        // 분할 성공 → 아래 2) 선적생성 로직을 그대로 계속 진행
+                    } else {
+                        // ── [A안] auto_split=false: 기존 동작 — 즉시 차단 + 원인 안내 ──
+                        stdoutLog("[shipment-create][중복차단] stdlnr=" + stdlnr + " " + detail);
+                        row.put("ok", false);
+                        row.put("svbeln_cnt", vbelnList.size());
+                        row.put("dup_svbeln", true);
+                        row.put("message",
+                            "동일 납품문서가 다른 가선적번호에 이미 배정되어 선적생성이 불가합니다. "
+                            + "(" + detail + ") "
+                            + "원지 롤 분할로 하나의 납품문서가 여러 차량에 공유된 상태입니다. "
+                            + "SAP 납품분할을 먼저 수행하여 가선적번호별로 납품문서를 분리한 뒤 선적생성하세요.");
+                        results.add(row);
+                        continue;
+                    }
                 }
 
                 // 2) RFC 호출 (I_GUBUN='C', T_VBELN=납품문서목록)
@@ -1733,6 +1785,112 @@ public class SapRfcService {
     }
 
     /**
+     * [B안 근본 해결] 선적생성 시, 특정 가선적번호(stdlnr)가 다른 가선적과 공유하는
+     * 납품문서(orgSvbeln)를 <b>그 가선적이 보유한 품목·수량만큼 떼어내어</b>
+     * SAP 납품분할(Z_TMS_DELIVERY_SPLIT)로 <b>새 납품문서(SVBELN_O)로 분리</b>한다.
+     *
+     * <p>배경: 원지 롤 분할(splitTmsShpdiRow)은 분할 신규행의 SVBELN 을 원본 그대로
+     * 복제하므로, 여러 가선적이 동일 SVBELN 을 공유한다. SAP 는 납품문서당 선적 1개만
+     * 허용하므로 2번째 가선적부터 선적생성이 거부된다. 이를 해결하기 위해, 선적생성
+     * 직전에 공유 납품문서를 가선적 단위로 분리하여 각 가선적이 고유 SVBELN 을 갖게 한다.</p>
+     *
+     * <p>처리:
+     * <ol>
+     *   <li>TMS_SHPDI 에서 (STDLNR=stdlnr AND SVBELN=orgSvbeln) 품목 목록 조회
+     *       → RFC 입력 [{SVBELN, SPOSNR(=SHPOIT), SKUKEY, SPLIT_QTY(=QTSHPO)}]</li>
+     *   <li>Z_TMS_DELIVERY_SPLIT 호출 → 각 품목에 SVBELN_O(신규 채번) 수신</li>
+     *   <li>성공(MSGTY='S') 시 해당 가선적의 TMS_SHPDI 행 SVBELN 을 SVBELN_O 로 갱신</li>
+     * </ol>
+     * ※ 운영 SAP 연동 전용. mock 환경에서는 callSapRfcDeliverySplit 이 가짜 SVBELN_O 를
+     *   채번하여 흐름만 검증한다(실제 분리 아님).</p>
+     *
+     * @return { ok, newSvbeln(대표 신규문서), splitRows, msg }
+     */
+    private Map<String, Object> splitSharedSvbelnForStdlnr(String stdlnr, String orgSvbeln) {
+        Map<String, Object> ret = new LinkedHashMap<>();
+        // 1) 이 가선적이 보유한, 해당 원본 SVBELN 의 품목 목록 조회
+        List<Map<String, Object>> items;
+        try {
+            items = wmsJdbc.queryForList(
+                "SELECT SI.SHPOIT, SI.SKUKEY, SI.QTSHPO FROM KNRAWMS.TMS_SHPDI SI " +
+                "WHERE SI.STDLNR=? AND SI.SVBELN=? ORDER BY SI.SHPOIT",
+                stdlnr, orgSvbeln);
+        } catch (Exception ex) {
+            ret.put("ok", false);
+            ret.put("msg", "분할대상 품목 조회 실패: " + ex.getMessage());
+            return ret;
+        }
+        if (items.isEmpty()) {
+            ret.put("ok", false);
+            ret.put("msg", "분할대상 품목 없음(STDLNR=" + stdlnr + ", SVBELN=" + orgSvbeln + ")");
+            return ret;
+        }
+
+        // 2) RFC 입력 파라미터 구성 [{SVBELN, SPOSNR, SKUKEY, SPLIT_QTY}]
+        List<Map<String, Object>> rfcParams = new ArrayList<>();
+        for (Map<String, Object> it : items) {
+            Map<String, Object> p = new LinkedHashMap<>();
+            p.put("SVBELN",    orgSvbeln);
+            p.put("SPOSNR",    str(it.get("SHPOIT")));
+            p.put("SKUKEY",    str(it.get("SKUKEY")));
+            p.put("SPLIT_QTY", toLongOr0(it.get("QTSHPO")));
+            rfcParams.add(p);
+        }
+        stdoutLog("[shipment-create][자동납품분할][REQ] stdlnr=" + stdlnr
+                + " orgSVBELN=" + orgSvbeln + " 품목수=" + rfcParams.size());
+
+        // 3) SAP 납품분할 RFC 호출 (Z_TMS_DELIVERY_SPLIT)
+        Map<String, Object> rfc = callSapRfcDeliverySplit(rfcParams);
+        boolean rfcOk = Boolean.TRUE.equals(rfc.get("ok"));
+        if (!rfcOk) {
+            ret.put("ok", false);
+            ret.put("msg", "SAP 납품분할 실패: " + str(rfc.get("msg")));
+            ret.put("mock", rfc.get("mock"));
+            return ret;
+        }
+
+        // 4) 채번된 SVBELN_O 로 해당 가선적의 TMS_SHPDI 행 SVBELN 갱신
+        //    (품목순번 SHPOIT=SPOSNR + STDLNR + 원본 SVBELN 으로 정확 매칭)
+        int updated = 0;
+        String repSvbelnO = "";
+        List<Map<String, Object>> splitRows = new ArrayList<>();
+        String today = LocalDate.now().format(YMDFORMAT);
+        for (Map<String, Object> p : rfcParams) {
+            String svbelnO = str(p.get("SVBELN_O"));
+            String posnr   = str(p.get("SPOSNR"));
+            if (svbelnO.isBlank() || !"S".equalsIgnoreCase(str(p.get("MSGTY")))) continue;
+            if (repSvbelnO.isEmpty()) repSvbelnO = svbelnO;
+            try {
+                int n = wmsJdbc.update(
+                    "UPDATE KNRAWMS.TMS_SHPDI SET SVBELN=?, LMODAT=?, LMOUSR='WEB' " +
+                    "WHERE STDLNR=? AND SVBELN=? AND SHPOIT=?",
+                    svbelnO, today, stdlnr, orgSvbeln, posnr);
+                updated += n;
+                stdoutLog("[shipment-create][자동납품분할][TMS갱신] stdlnr=" + stdlnr
+                        + " SHPOIT=" + posnr + " SVBELN " + orgSvbeln + " → " + svbelnO + " (" + n + "건)");
+            } catch (Exception ex) {
+                stdoutLog("[shipment-create][자동납품분할][TMS갱신-오류] stdlnr=" + stdlnr
+                        + " SHPOIT=" + posnr + " → " + ex.getMessage());
+            }
+            Map<String, Object> sr = new LinkedHashMap<>();
+            sr.put("sposnr", posnr);
+            sr.put("org_svbeln", orgSvbeln);
+            sr.put("new_svbeln", svbelnO);
+            splitRows.add(sr);
+        }
+
+        ret.put("ok", updated > 0);
+        ret.put("newSvbeln", repSvbelnO);
+        ret.put("splitRows", splitRows);
+        ret.put("updated", updated);
+        ret.put("mock", rfc.get("mock"));
+        ret.put("msg", updated > 0
+                ? ("납품분할 완료: " + orgSvbeln + " → " + repSvbelnO + " (" + updated + "행 갱신)")
+                : ("납품분할 응답은 성공했으나 TMS_SHPDI 갱신 0건(SVBELN_O 미채번 또는 매칭 실패)"));
+        return ret;
+    }
+
+    /**
      * TMS 임의 분할 납품문서번호를 SAP 채번번호(SVBELN_O)로 갱신.
      *
      * <p>TMS_PS_DISPATCH_D 에 이미 저장된 분할행이 존재하는 경우,
@@ -2162,6 +2320,22 @@ public class SapRfcService {
         args.add(first);
         if (rest != null) args.addAll(rest);
         return args.toArray();
+    }
+
+    /**
+     * 느슨한 Boolean 파싱. null/빈값이면 기본값(def) 반환.
+     * true/"true"/"Y"/"1"/"yes" → true, false/"false"/"N"/"0"/"no" → false.
+     */
+    private boolean parseBool(Object v, boolean def) {
+        if (v == null) return def;
+        if (v instanceof Boolean) return (Boolean) v;
+        String s = v.toString().trim();
+        if (s.isEmpty()) return def;
+        if (s.equalsIgnoreCase("true") || s.equals("1")
+            || s.equalsIgnoreCase("Y") || s.equalsIgnoreCase("yes")) return true;
+        if (s.equalsIgnoreCase("false") || s.equals("0")
+            || s.equalsIgnoreCase("N") || s.equalsIgnoreCase("no")) return false;
+        return def;
     }
 
     /**
