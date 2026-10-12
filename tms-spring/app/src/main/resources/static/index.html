@@ -14612,6 +14612,14 @@ async function psopSapShipmentCreate() {
     // 결과 모달 표시
     _sapShowRfcResultModal('SAP 선적생성 결과', data.results || [], data.env || '');
 
+    // 중복 납품문서(동일 SVBELN 공유)로 일부 실패한 경우 — 원인 요약 토스트 안내
+    if (data.dup_svbeln_notice) {
+      const grp = Array.isArray(data.dup_svbeln_groups) ? data.dup_svbeln_groups : [];
+      const grpTxt = grp.map(g => `납품문서 ${g.svbeln} ↔ 가선적 ${(g.stdlnrs||[]).join(', ')}`).join(' / ');
+      console.warn('[SAP선적생성] 중복 납품문서 감지', grp);
+      showToast(`⚠️ ${data.dup_svbeln_notice}${grpTxt ? ' [' + grpTxt + ']' : ''}`, 'warning');
+    }
+
     if (data.ok) {
       _sapState.checkedSet.clear();
       await psopLoadSapList();
