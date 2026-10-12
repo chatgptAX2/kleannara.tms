@@ -208,6 +208,57 @@ public class SapRfcService {
         String today = LocalDate.now().format(YMDFORMAT);
         List<Map<String, Object>> results = new ArrayList<>();
 
+        // ════════════════════════════════════════════════════════════════
+        //  [사전 진단] 중복 SVBELN(납품문서) 교차 감지
+        // ----------------------------------------------------------------
+        //  SAP 선적(shipment)은 "납품문서(SVBELN)" 단위로 생성되며, 하나의 납품문서는
+        //  SAP 에서 선적을 1개만 가질 수 있다. 그런데 원지 롤 분할(splitTmsShpdiRow)은
+        //  신규 분할 행의 SVBELN 을 원본 그대로 복제하므로, 서로 다른 가선적번호(STDLNR)가
+        //  동일 SVBELN 을 공유하게 된다. 이 경우 먼저 처리된 STDLNR 이 선적을 선점하면
+        //  뒤따르는 STDLNR 은 SAP 가 "선적문서가 생성된 납품문서가 존재합니다"로 거부한다.
+        //  → 처리 루프에 앞서 입력된 모든 STDLNR 의 SVBELN 매핑을 한 번에 조회하고,
+        //    "동일 SVBELN 이 2개 이상의 STDLNR 에 걸친" 충돌 상황을 사전에 식별해 둔다.
+        //    (실제 교차처리는 운영에서만 검증 가능하므로, 여기서는 사전 진단/명확한
+        //     원인 메시지 제공에 집중한다. SAP 납품분할 선행은 별도 조치로 안내.)
+        List<String> inputStdlnrs = new ArrayList<>();
+        for (Object o : stknumsRaw) {
+            String s = str(o);
+            if (!s.isEmpty() && !inputStdlnrs.contains(s)) inputStdlnrs.add(s);
+        }
+        // svbeln -> (해당 SVBELN 을 사용하는 STDLNR 집합)
+        Map<String, java.util.LinkedHashSet<String>> svbelnToStdlnrs = new LinkedHashMap<>();
+        if (!inputStdlnrs.isEmpty()) {
+            try {
+                String inClause = inputStdlnrs.stream()
+                    .map(x -> "?").collect(Collectors.joining(","));
+                List<Map<String, Object>> xref = wmsJdbc.queryForList(
+                    "SELECT DISTINCT SI.STDLNR, SI.SVBELN FROM KNRAWMS.TMS_SHPDI SI " +
+                    "WHERE SI.STDLNR IN (" + inClause + ") AND SI.SVBELN <> ' '",
+                    inputStdlnrs.toArray()
+                );
+                for (Map<String, Object> r : xref) {
+                    String sv = str(r.get("SVBELN"));
+                    String sd = str(r.get("STDLNR"));
+                    if (sv.isEmpty() || sd.isEmpty()) continue;
+                    svbelnToStdlnrs.computeIfAbsent(sv, k -> new java.util.LinkedHashSet<>()).add(sd);
+                }
+                // 교차(충돌) 로그
+                for (Map.Entry<String, java.util.LinkedHashSet<String>> e : svbelnToStdlnrs.entrySet()) {
+                    if (e.getValue().size() > 1) {
+                        stdoutLog("[shipment-create][사전진단] 납품문서 중복: SVBELN=" + e.getKey()
+                                + " 가 다수 가선적번호에 걸침 → " + e.getValue()
+                                + " (원지 롤 분할로 SVBELN 공유 추정. SAP 납품분할 선행 필요)");
+                    }
+                }
+            } catch (Exception preEx) {
+                // 사전 진단 실패는 치명적이지 않음 — 기존 루프 로직으로 진행
+                stdoutLog("[shipment-create][사전진단-SKIP] 중복 SVBELN 조회 실패: " + preEx.getMessage());
+            }
+        }
+        // 이번 호출 안에서 이미 선적이 "선점(생성 성공)"된 SVBELN 추적
+        //  value = 선점한 STDLNR (진단 메시지에 어느 가선적번호가 먼저 가져갔는지 표시)
+        Map<String, String> claimedSvbeln = new LinkedHashMap<>();
+
         for (Object o : stknumsRaw) {
             String stdlnr = str(o);
             if (stdlnr.isEmpty()) continue;
@@ -239,6 +290,32 @@ public class SapRfcService {
                     continue;
                 }
 
+                // 1-1) [사전 방어] 이 가선적번호의 SVBELN 중, 다른 가선적번호가 이미
+                //      이번 호출에서 선적을 선점한 것이 있으면 SAP RFC 를 호출하지 않고
+                //      명확한 원인 메시지로 즉시 실패시킨다. (SAP 의 모호한 거부 메시지 대신
+                //      "어느 가선적번호와 어느 납품문서가 중복인지" 를 TMS 가 먼저 설명)
+                List<String> conflictMsgs = new ArrayList<>();
+                for (String sv : vbelnList) {
+                    String claimedBy = claimedSvbeln.get(sv);
+                    if (claimedBy != null && !claimedBy.equals(stdlnr)) {
+                        conflictMsgs.add("납품문서 " + sv + " → 가선적번호 " + claimedBy + " 가 선점");
+                    }
+                }
+                if (!conflictMsgs.isEmpty()) {
+                    String detail = String.join(" / ", conflictMsgs);
+                    stdoutLog("[shipment-create][중복차단] stdlnr=" + stdlnr + " " + detail);
+                    row.put("ok", false);
+                    row.put("svbeln_cnt", vbelnList.size());
+                    row.put("dup_svbeln", true);
+                    row.put("message",
+                        "동일 납품문서가 다른 가선적번호에 이미 배정되어 선적생성이 불가합니다. "
+                        + "(" + detail + ") "
+                        + "원지 롤 분할로 하나의 납품문서가 여러 차량에 공유된 상태입니다. "
+                        + "SAP 납품분할을 먼저 수행하여 가선적번호별로 납품문서를 분리한 뒤 선적생성하세요.");
+                    results.add(row);
+                    continue;
+                }
+
                 // 2) RFC 호출 (I_GUBUN='C', T_VBELN=납품문서목록)
                 stdoutLog("[shipment-create][RFC-REQ] stdlnr=" + stdlnr
                         + " gubun=C vbeln=" + vbelnList);
@@ -254,6 +331,15 @@ public class SapRfcService {
                 row.put("tknum", tknum);
                 row.put("mock", isMock);
                 row.put("svbeln_cnt", vbelnList.size());
+
+                // 2-1) 선적 생성에 성공한 SVBELN 은 이번 호출 안에서 "선점" 으로 기록한다.
+                //      이후 동일 SVBELN 을 공유하는 다른 가선적번호는 1-1 사전 방어에서
+                //      명확한 원인 메시지로 즉시 차단된다. (SAP 모호 메시지 방지)
+                if (rfcOk) {
+                    for (String sv : vbelnList) {
+                        claimedSvbeln.putIfAbsent(sv, stdlnr);
+                    }
+                }
 
                 // 3) RFC 성공 시 WMS_IFC301 호출 + SAP 선적번호(TMS_SHPDI.STKNUM) 기록
                 // ※ SAP 선적번호는 TMS_SHPDI.STKNUM 에 저장한다. (운영 TMS_PS_DISPATCH_H 에는
@@ -298,7 +384,30 @@ public class SapRfcService {
         }
 
         boolean allOk = !results.isEmpty() && results.stream().allMatch(r -> Boolean.TRUE.equals(r.get("ok")));
-        return Map.of("ok", allOk, "results", results, "env", env);
+
+        // ── 중복 SVBELN 교차(충돌) 요약: 다수 가선적번호가 공유한 납품문서 목록 ──
+        //    프론트가 "왜 일부만 성공했는지" 를 한눈에 안내할 수 있도록 함께 반환한다.
+        List<Map<String, Object>> dupGroups = new ArrayList<>();
+        for (Map.Entry<String, java.util.LinkedHashSet<String>> e : svbelnToStdlnrs.entrySet()) {
+            if (e.getValue().size() > 1) {
+                Map<String, Object> g = new LinkedHashMap<>();
+                g.put("svbeln", e.getKey());
+                g.put("stdlnrs", new ArrayList<>(e.getValue()));
+                dupGroups.add(g);
+            }
+        }
+
+        Map<String, Object> ret = new LinkedHashMap<>();
+        ret.put("ok", allOk);
+        ret.put("results", results);
+        ret.put("env", env);
+        if (!dupGroups.isEmpty()) {
+            ret.put("dup_svbeln_groups", dupGroups);
+            ret.put("dup_svbeln_notice",
+                "일부 가선적번호가 동일 SAP 납품문서를 공유하여(원지 롤 분할 등) 선적생성이 거부되었습니다. "
+                + "SAP 납품분할을 먼저 수행해 가선적번호별로 납품문서를 분리한 뒤 다시 선적생성하세요.");
+        }
+        return ret;
     }
 
     // ════════════════════════════════════════════════════════════════
