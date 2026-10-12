@@ -781,6 +781,26 @@ public class PsDispatchService {
             String dispatchNo = rawNo == null ? "" : rawNo.strip();
             if (dispatchNo.isEmpty()) continue;
 
+            // [진단] 삭제 대상 배차에 SAP선적번호(STKNUM)가 남아있는지 먼저 확인한다.
+            //   배차삭제로 미배차가 되는데 STKNUM 이 남으면 조회 화면에서
+            //   "미배차인데 SAP선적번호 있음" 모순이 발생하므로, 아래 1) 에서 함께 초기화한다.
+            //   (STKNUM 이 있다는 것은 SAP 에 실제 선적문서가 있었다는 의미 → 운영 추적용 로그)
+            try {
+                @SuppressWarnings("unchecked")
+                List<Object> stknumRows = tmsEm.createNativeQuery(
+                        "SELECT DISTINCT TRIM(COALESCE(STKNUM,'')) FROM KNRAWMS.TMS_SHPDI " +
+                        "WHERE STDLNR = ? AND TRIM(COALESCE(STKNUM,'')) <> ''")
+                    .setParameter(1, dispatchNo)
+                    .getResultList();
+                if (stknumRows != null && !stknumRows.isEmpty()) {
+                    log.warn("[PsDispatch] deleteDispatch dispatchNo={} — 삭제 대상에 SAP선적번호(STKNUM)가 "
+                           + "남아있어 함께 초기화함. STKNUM={} (SAP 선적문서가 실제 존재하면 SAP 선적삭제를 "
+                           + "별도로 수행해야 함)", dispatchNo, stknumRows);
+                }
+            } catch (Exception diagEx) {
+                log.warn("[PsDispatch] deleteDispatch STKNUM 진단 조회 실패(무시): {}", diagEx.getMessage());
+            }
+
             // 1) TMS_SHPDI.STDLNR 원복 (가선적번호 해제 → 미배차 전환)
             //    저장 시 STDLNR = dispatchNo 로 기록했으므로 동일 값 기준으로 되돌린다.
             //    [버그수정] 연동구분(DESC02='OFFLINE', 미연동 배지 근거)도 함께 공백으로
@@ -788,9 +808,13 @@ public class PsDispatchService {
             //    납품문서 목록에 그대로 남는다. (DESC02 는 NOT NULL DEFAULT ' ' → ' ' 로 원복)
             //    [버그수정] STDLNR 은 NOT NULL 컬럼이라 NULL 로 업데이트하면 ORA-01407 발생.
             //    DESC02 와 동일하게 공백(' ') 으로 원복한다. (미배차 판정은 공백/빈값 기준)
+            //    [버그수정] STKNUM(SAP선적번호)도 함께 공백으로 초기화한다. 그렇지 않으면
+            //    배차삭제 후 미배차 상태인데 SAP선적번호가 조회에 그대로 남아
+            //    "미배차 + SAP선적번호 존재" 모순이 발생한다. (조회는 i.STKNUM 을 직접 표시)
             int shpdiReverted = tmsEm.createNativeQuery("""
                 UPDATE KNRAWMS.TMS_SHPDI
                 SET STDLNR  = ' ',
+                    STKNUM  = ' ',
                     DESC02  = ' ',
                     LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
                     LMOUSR  = 'WEB'
@@ -835,7 +859,7 @@ public class PsDispatchService {
 
             deleted += hDeleted;
             log.info("[PsDispatch] deleteDispatch dispatchNo={} 삭제완료 "
-                     + "(TMS_SHPDI.STDLNR 원복={}건, TMS_SHPDH 원복 SHPOKY={}건, TMS_PS_DISPATCH_H 삭제={}건)",
+                     + "(TMS_SHPDI.STDLNR/STKNUM 원복={}건, TMS_SHPDH 원복 SHPOKY={}건, TMS_PS_DISPATCH_H 삭제={}건)",
                      dispatchNo, shpdiReverted, shpokySet.size(), hDeleted);
         }
         return deleted;
