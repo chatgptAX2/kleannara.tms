@@ -16815,6 +16815,44 @@ function _psopDeletableVehiclePids() {
   return pids;
 }
 
+/* ── SAP 선적생성 여부 판정 ──────────────────────────
+   특정 가선적번호(STDLNR)에 SAP선적번호(STKNUM)가 채번되어 있으면 true.
+   판정 근거: 납품문서 목록(searchRows)에서 해당 STDLNR 행의 STKNUM 존재 여부.
+   SAP 선적이 생성된 배차는 '배차확정(SAP선적) 탭 > SAP 선적삭제'로만 해제해야 하며
+   (SAP↔TMS 정합성 보호), 일반 배차삭제 대상에서 제외한다. */
+function _psopStdlnrHasSapShipment(stdlnr) {
+  const no = String(stdlnr || '').trim();
+  if (!no) return false;
+  return (psopState.searchRows || []).some(r =>
+    String(r.STDLNR || '').trim() === no &&
+    String(r.STKNUM || '').trim() !== ''
+  );
+}
+
+/* 차량(_pendingId)이 SAP 선적생성된 배차인지 판정 */
+function _psopVehicleHasSapShipment(v) {
+  if (!v) return false;
+  if (_psopStdlnrHasSapShipment(v.STDLNR)) return true;
+  // items 안에 STKNUM 이 실린 경우도 방어적으로 확인
+  return (v.items || []).some(it => String(it && it.STKNUM || '').trim() !== '');
+}
+
+/* 삭제 대상 중 SAP 선적생성된 차량의 _pendingId → 가선적/선적번호 목록 반환 */
+function _psopSapLockedAmongDeletable() {
+  const locked = [];
+  _psopDeletableVehiclePids().forEach(pid => {
+    const v = psopState.vehicles.find(x => x._pendingId === pid);
+    if (v && _psopVehicleHasSapShipment(v)) {
+      const stdlnr = String(v.STDLNR || '').trim();
+      const stknum = ((psopState.searchRows || []).find(r =>
+        String(r.STDLNR || '').trim() === stdlnr && String(r.STKNUM || '').trim() !== ''
+      ) || {}).STKNUM || '';
+      locked.push({ pid, stdlnr, stknum: String(stknum).trim() });
+    }
+  });
+  return locked;
+}
+
 let _psopDocSelSyncTimer = null;
 function psopSyncDispatchedSelection() {
   // 드래그/연속 클릭 중 과도한 호출 방지 (디바운스)
@@ -16966,8 +17004,27 @@ function psopUpdateToolbar() {
   // 배차삭제: ① 배차 탭에서 직접 선택한 차량 또는 ② 납품문서 목록에서 배차완료 문서를
   //   선택해 자동 로드된 차량(_autoBySel) 이 있으면 활성화한다.
   //   (기존엔 selVehCnt 만 봐서, 납품문서만 체크한 경우 버튼이 비활성화되던 문제 수정)
-  const delCnt = _psopDeletableVehiclePids().size;
-  if (btn('psop-btn-del'))     btn('psop-btn-del').disabled     = delCnt === 0;
+  //   ※ [정합성 보호] SAP 선적생성된 차량(STKNUM 존재)은 배차삭제 대상에서 제외한다.
+  //     SAP 선적이 있으면 '배차확정(SAP선적) 탭 > SAP 선적삭제'로만 해제해야 하므로,
+  //     삭제 가능 차량이 전부 SAP 잠금이면 버튼을 비활성화하고 안내 툴팁을 단다.
+  const delPids    = _psopDeletableVehiclePids();
+  const sapLocked  = _psopSapLockedAmongDeletable();
+  const deletableNonSap = delPids.size - sapLocked.length;
+  const delBtn = btn('psop-btn-del');
+  if (delBtn) {
+    delBtn.disabled = deletableNonSap <= 0;
+    if (delPids.size > 0 && deletableNonSap <= 0) {
+      // 선택된 것이 모두 SAP 선적생성된 차량 → 삭제 불가 안내
+      delBtn.title = 'SAP 선적이 생성된 배차는 삭제할 수 없습니다. '
+        + '배차확정(SAP선적) 탭에서 SAP 선적삭제를 먼저 수행하세요.';
+    } else if (sapLocked.length > 0) {
+      // 일부만 SAP 잠금 → 삭제 시 해당 건은 자동 제외됨을 안내
+      delBtn.title = `SAP 선적생성된 ${sapLocked.length}건은 삭제 대상에서 제외됩니다. `
+        + '(배차확정 탭에서 SAP 선적삭제 필요)';
+    } else {
+      delBtn.title = '';
+    }
+  }
   if (btn('psop-btn-save'))    btn('psop-btn-save').disabled    = !hasSaveTarget; // 저장 대상 없으면 비활성
   // 미연동(테스트) 버튼 — 연동 버튼과 동일 활성 조건
   if (btn('psop-btn-auto-offline'))  btn('psop-btn-auto-offline').disabled  = psopState.searchRows.filter(r=>!r.DISPATCHED).length === 0;
@@ -19757,8 +19814,31 @@ async function psopDeleteDispatch() {
   // 삭제 대상: ① 배차 탭에서 직접 선택한 차량 + ② 납품문서 목록에서 배차완료 문서를
   //   체크해 자동 로드된 차량(_autoBySel). 둘을 합집합으로 처리하여, 사용자가
   //   납품문서(예: 0062360788)만 체크해도 해당 배차를 삭제할 수 있게 한다.
-  const pids = [..._psopDeletableVehiclePids()];
+  let pids = [..._psopDeletableVehiclePids()];
   if (!pids.length) { showToast('삭제할 배차 또는 배차완료 납품문서를 선택하세요.'); return; }
+
+  // [정합성 보호] SAP 선적생성된 차량(STKNUM 존재)은 삭제 대상에서 제외한다.
+  //   SAP 선적이 있는 배차를 일반 배차삭제로 지우면 SAP에는 선적이 남고 TMS만
+  //   연결을 잃어 정합성이 깨진다. → 'SAP선적삭제'(배차확정 탭)로만 해제해야 함.
+  const sapLocked    = _psopSapLockedAmongDeletable();
+  const sapLockedPids = new Set(sapLocked.map(x => x.pid));
+  if (sapLockedPids.size) {
+    const info = sapLocked
+      .map(x => `가선적 ${x.stdlnr}${x.stknum ? '(SAP선적 ' + x.stknum + ')' : ''}`)
+      .join(', ');
+    pids = pids.filter(pid => !sapLockedPids.has(pid));
+    if (!pids.length) {
+      // 선택한 것이 전부 SAP 선적생성된 배차 → 삭제 불가 안내 후 종료
+      alert('선택한 배차는 모두 SAP 선적이 생성되어 배차삭제할 수 없습니다.\n\n'
+        + info + '\n\n'
+        + 'SAP 선적이 생성된 배차는 SAP↔TMS 정합성 보호를 위해 일반 배차삭제가 불가합니다.\n'
+        + '배차확정(SAP선적) 탭에서 "SAP 선적삭제"를 먼저 수행한 뒤 배차삭제하세요.');
+      return;
+    }
+    // 일부만 SAP 잠금 → 제외하고 나머지만 삭제 진행함을 안내
+    if (!confirm(`SAP 선적이 생성된 ${sapLocked.length}건은 삭제 대상에서 제외됩니다.\n(${info})\n\n`
+      + '나머지 배차만 삭제를 진행하시겠습니까?')) return;
+  }
 
   /* ── 저장된 배차(STDLNR 있음) vs 미저장 배차 분리 ── */
   const savedVehs   = [];   // DB에 있는 배차 → /api/ps-dispatch/delete
