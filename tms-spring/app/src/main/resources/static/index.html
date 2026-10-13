@@ -11194,11 +11194,17 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
     const heightMm = sdims.widthMm || footMm;                      // 높이(=높이(cm) 원천 mm)
     const lo       = _lvFindRollLayout(rollLayout, sk);            // 백엔드 레이어 layout
 
-    // 레이어 버킷 키: 가로폭(footMm) 50mm 반올림 — 같은 규격 원지끼리 묶음.
-    const bucket = Math.round(footMm / 50) * 50;
+    // 바닥 배치 피치(pitchMm): 세워 적재 시 바닥에 닿는 footprint = 실제 원 직경.
+    //  백엔드 verifyRolls3D 가 열(cols)·Y점유를 '실제 직경(diam_mm)' 기준으로 산출하므로,
+    //  프런트도 동일하게 lo.diam_mm 을 바닥 배치 피치로 사용해야 3D/2D 뷰가 2열로 정확히
+    //  그려진다. (lo 없으면 footMm fallback — 기존 동작 유지)
+    const pitchMm  = (lo && lo.diam_mm > 0) ? lo.diam_mm : footMm;
+
+    // 레이어 버킷 키: 바닥 피치(pitchMm) 50mm 반올림 — 같은 규격 원지끼리 묶음.
+    const bucket = Math.round(pitchMm / 50) * 50;
     if (!_rollLayers.has(bucket)) {
       _rollLayers.set(bucket, {
-        footMm, heightMm, diamMm: footMm, widMm: heightMm, lo, queue: []
+        footMm, heightMm, diamMm: pitchMm, widMm: heightMm, pitchMm, lo, queue: []
       });
     }
     const lyr = _rollLayers.get(bucket);
@@ -11211,24 +11217,26 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
 
   // ── 레이어별 슬롯 배치 (Y 진행 커서 rollY 공유) ────────────────────
   _rollLayers.forEach((lyr) => {
-    const { footMm, heightMm, diamMm, widMm, lo, queue } = lyr;
+    const { footMm, heightMm, diamMm, widMm, pitchMm, lo, queue } = lyr;
     if (!queue.length) return;
+    // 바닥 배치 피치(= 실제 원 직경). 세워 적재 시 X 열간격·Y 행간격 모두 이 값 사용.
+    const pMm = (pitchMm > 0) ? pitchMm : footMm;
 
     // Z(높이) 다단 — 원지 높이(heightMm)+단간격 기준.
     let tiers = Math.max(1, Math.min(maxStack, Math.floor((rollCapMm + TIER_GAP) / (heightMm + TIER_GAP))));
     if (lo && lo.max_tiers > 0) tiers = lo.max_tiers;
 
-    // 열(X) 배치 계획 — roll_layout 우선, 없으면 기하 판정.
+    // 열(X) 배치 계획 — roll_layout 우선, 없으면 기하 판정. (간격 기준 = 실제 직경 pMm)
     let plan;
     if (lo) {
       plan = { mode: (lo.zigzag ? 'zigzag' : 'straight'),
                cols: Math.max(1, lo.cols|0),
-               dx: (lo.zigzag ? (footMm * _LV_ZZ_RATIO + 2) : footMm),
+               dx: (lo.zigzag ? (pMm * _LV_ZZ_RATIO + 2) : pMm),
                zigzag: !!lo.zigzag };
-    } else if (footMm * 2.0 <= carWmm) {
-      plan = { mode:'straight', cols: Math.max(2, Math.floor(carWmm / footMm)), dx: footMm, zigzag:false };
+    } else if (pMm * 2.0 <= carWmm) {
+      plan = { mode:'straight', cols: Math.max(2, Math.floor(carWmm / pMm)), dx: pMm, zigzag:false };
     } else {
-      plan = _lvPlanRollCols(footMm, carWmm);
+      plan = _lvPlanRollCols(pMm, carWmm);
     }
     const cols = plan.cols;
     const tier1Count = (lo && lo.tier1_count > 0) ? (lo.tier1_count|0) : 0;
@@ -11250,18 +11258,18 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
       const rowsPerTier = Math.max(1, Math.ceil(tier1Count / Math.max(1, cols)));
       while (qi < queue.length) {
         const groupStartY = rollY;
-        if (groupStartY + footMm > carLmm + 0.5) break;
-        // 1단 슬롯(행×열) 산출 — tier1Count 상한, 차량 길이 내에서만.
+        if (groupStartY + pMm > carLmm + 0.5) break;
+        // 1단 슬롯(행×열) 산출 — tier1Count 상한, 차량 길이 내에서만. (간격=실제 직경 pMm)
         const slots = [];
         let lastRowY = groupStartY;
         for (let r = 0; r < rowsPerTier && slots.length < tier1Count; r++) {
-          const rowY = groupStartY + r * (footMm + GAP);
-          if (rowY + footMm > carLmm + 0.5) break;   // 이 행부터 차량 길이 초과 → 그룹 종료
+          const rowY = groupStartY + r * (pMm + GAP);
+          if (rowY + pMm > carLmm + 0.5) break;   // 이 행부터 차량 길이 초과 → 그룹 종료
           for (let ci = 0; ci < cols && slots.length < tier1Count; ci++) {
-            const x   = plan.zigzag ? Math.round(ci * plan.dx) : ci * footMm;
-            const offY= plan.zigzag ? (ci % 2) * (footMm / 2) : 0;
+            const x   = plan.zigzag ? Math.round(ci * plan.dx) : ci * pMm;
+            const offY= plan.zigzag ? (ci % 2) * (pMm / 2) : 0;
             const y   = rowY + offY;
-            if (y + footMm > carLmm + 0.5) continue;
+            if (y + pMm > carLmm + 0.5) continue;
             slots.push({ x, y });
           }
           lastRowY = rowY;
@@ -11275,7 +11283,7 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
             const rl = nextRoll();
             blocks.push({
               x: slots[s].x, y: slots[s].y, z,
-              w: footMm, l: footMm, h: heightMm,
+              w: pMm, l: pMm, h: heightMm,
               color: rl.color, type:'roll', label: rl.label, idx: rl.idx,
               cyl: true, vertical: true, diamMm, widMm, rollNo: (placed+1),
               tier: ti+1, totalTiers: tiers,
@@ -11286,7 +11294,7 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
         }
         if (!anyPlaced) break;
         // 다음 그룹은 이번 그룹의 마지막 행 바로 뒤에 이어붙임(공간 낭비 제거).
-        rollY = lastRowY + footMm + GAP;
+        rollY = lastRowY + pMm + GAP;
         if (rollY > carLmm) break;
       }
     } else {
@@ -11296,16 +11304,16 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
       while (qi < queue.length) {
         let anyPlaced = false;
         for (let ci = 0; ci < cols && qi < queue.length; ci++) {
-          const x         = plan.zigzag ? Math.round(ci * plan.dx) : ci * footMm;
-          const offY      = plan.zigzag ? (ci % 2) * (footMm / 2) : 0;
-          const rowStartY = cycleStartY + cycle * (footMm + GAP) + offY;
-          if (rowStartY + footMm > carLmm + 0.5) continue;
+          const x         = plan.zigzag ? Math.round(ci * plan.dx) : ci * pMm;
+          const offY      = plan.zigzag ? (ci % 2) * (pMm / 2) : 0;
+          const rowStartY = cycleStartY + cycle * (pMm + GAP) + offY;
+          if (rowStartY + pMm > carLmm + 0.5) continue;
           for (let ti = 0; ti < tiers && qi < queue.length; ti++) {
             const z  = ti * (heightMm + TIER_GAP);
             const rl = nextRoll();
             blocks.push({
               x, y: rowStartY, z,
-              w: footMm, l: footMm, h: heightMm,
+              w: pMm, l: pMm, h: heightMm,
               color: rl.color, type:'roll', label: rl.label, idx: rl.idx,
               cyl: true, vertical: true, diamMm, widMm, rollNo: (placed+1),
               tier: ti+1, totalTiers: tiers,
@@ -11317,7 +11325,7 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
         }
         if (!anyPlaced) break;
         cycle++;
-        rollY = cycleStartY + cycle * (footMm + GAP) + (plan.zigzag ? (footMm / 2) : 0);
+        rollY = cycleStartY + cycle * (pMm + GAP) + (plan.zigzag ? (pMm / 2) : 0);
         if (rollY > carLmm) break;
       }
     }
