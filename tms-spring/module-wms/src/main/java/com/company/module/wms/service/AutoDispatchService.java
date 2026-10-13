@@ -492,6 +492,7 @@ public class AutoDispatchService {
         appliedConstraints.put("MIX_UNIFIED_VEHICLE_YN", cp.mixUnifiedVehicle);
         appliedConstraints.put("MIX_BOARD_BOTTOM_FORCE", cp.mixBoardBottomForce);
         appliedConstraints.put("MIX_BOARD_SINGLE_TIER_YN", cp.mixBoardSingleTier);
+        appliedConstraints.put("MIX_CONTIGUOUS_FRONT_YN", cp.mixContiguousFront);
         result.put("applied_constraints", appliedConstraints);
 
         // ── [진단] 통합배차 적용 가능 여부 진단 정보 (UI 배너 표시용) ──────────
@@ -945,6 +946,11 @@ public class AutoDispatchService {
             if (isMixedLoad) {
                 notes.add("[혼적-Z축] 원지 하단(바닥) / 판지 상단 배치 강제 (파손 방지)");
                 notes.add("[혼적-Y축] LIFO: 나중 하차→안쪽 / 먼저 하차→문 쪽 배치");
+                if (cp.mixContiguousFront) {
+                    notes.add("[혼적-Y축] 전면 순차 적재(MIX_CONTIGUOUS_FRONT_YN=Y): "
+                            + "적재함 앞(진행방향)부터 원지→판지를 간격 없이 연속 배치 → "
+                            + "가운데 빈 공간 제거, 하중 전면 집중(안정성↑)");
+                }
             }
 
             Map<String, Object> vrow = new LinkedHashMap<>();
@@ -969,6 +975,8 @@ public class AutoDispatchService {
             vrow.put("physics3d_roll_stack_height", round2(rp3d.stackHeightM));
             // 프런트 적재 시각화(_lvComputePlacement)와 동일 배치를 위한 DS_INCH 기반 레이아웃
             vrow.put("roll_layout",   rp3d.rollLayout);
+            // 혼적 Y축 전면 순차(연속) 적재 플래그 — 프런트 뷰가 원지→판지를 빈틈없이 이어 배치
+            vrow.put("mix_contiguous_front", cp.mixContiguousFront);
             vrow.put("is_mixed",      isMixedGroup);
             vrow.put("is_mixed_load", isMixedLoad);
             vrow.put("mixed_dptnm",   isMixedGroup ? dptnm : "");
@@ -2536,6 +2544,9 @@ public class AutoDispatchService {
         // ── 혼적 Z축: 판지 하단 고정강제 / 판지 1단 적재만 (신규) ──
         cp.mixBoardBottomForce = cbool(C, "MIX_BOARD_BOTTOM_FORCE", false);
         cp.mixBoardSingleTier  = cbool(C, "MIX_BOARD_SINGLE_TIER_YN", false);
+        // ── 혼적 Y축: 전면부터 순차(빈틈없이 연속) 적재 (신규, 기본 Y) ──
+        //  Y=적재함 앞(진행방향)부터 원지→판지를 간격 없이 이어 배치(가운데 빈공간 제거, 안정성↑).
+        cp.mixContiguousFront  = cbool(C, "MIX_CONTIGUOUS_FRONT_YN", true);
         // ── 롤 최대 적재 단수: MAX_ROLL_STACK_TIER 우선, 미설정 시 중복키 ROLL_MAX_TIER 폴백 ──
         double maxStackVal  = cfloatMulti(C, 2.0, "MAX_ROLL_STACK_TIER", "ROLL_MAX_TIER");
         cp.maxStack         = (int) maxStackVal;
@@ -2720,6 +2731,10 @@ public class AutoDispatchService {
         // ── 혼적 Z축: 판지 하단 고정강제 / 판지 1단 적재만 ──
         boolean mixBoardBottomForce  = false; // Y=판지를 (원지와 별도로) 바닥 고정 배치
         boolean mixBoardSingleTier   = false; // Y=판지 1단 적재만 허용(다단 금지)
+        // ── 혼적 Y축: 전면부터 순차(빈틈없이 연속) 적재 — 원지 전면, 판지가 원지 바로 뒤에 ──
+        //  Y=적재함 앞(진행방향)부터 원지→판지를 간격 없이 이어 배치하여 가운데 빈 공간을
+        //  없애고 하중을 전면에 집중(안정성↑). 기본 Y(활성).
+        boolean mixContiguousFront   = true;
         boolean boardBulkIntOnly = true, boardInnerSplit = true;
 
         // ── 신규 반영 제약조건 ──
