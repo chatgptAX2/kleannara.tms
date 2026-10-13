@@ -2931,21 +2931,25 @@ public class AutoDispatchService {
             double widthMm = layer.repWidthMm;                 // 높이(=높이(cm) 원천)
             double footMm  = layer.repFootMm > 0 ? layer.repFootMm : diamMm; // 가로폭(=너비)
 
-            // 세워 적재(수직 원통): 바닥 원 지름 = 가로폭(너비=footMm).
-            //  ── 열(X) 배치 판정 (Req D) ──────────────────────────────
-            //  ① 원지 너비(footMm) vs 적재함 너비(carWmm) 비교로 평행/지그재그 판정.
-            //     · 2열 평행(밀착) 가능(2×footMm ≤ carWmm) → 평행 2열.
-            //     · 평행 2열 불가 → 지그재그(원지 사이 간격을 띄워) 2열 시도.
-            //  ② 1단 적재 개수는 차량유형관리 DS_INCH MAX_COUNT(tier1Count)를 기준으로 함.
-            //     (DS_INCH 매핑 없으면 기하학적 planRollCols 로 fallback)
+            // 세워 적재(수직 원통) 바닥 배치: 바닥 점유 폭(X/Y)은 '실제 원 직경(diamMm)'이다.
+            //  [버그수정] 기존에는 footMm(원지 너비=축 길이, 세워놓으면 '높이')로 열(X)을
+            //   판정하여, 3인치(footMm≈1400mm)는 2×1400=2800 > 차폭2400 → 1열로 잘못 떨어졌다.
+            //   세워 적재 시 바닥에 닿는 footprint 는 원의 지름(diamMm)이므로, 열 판정과 Y축
+            //   점유는 diamMm 기준이어야 물리적으로 맞다. (예: Ø1000mm → 2×1000=2000 ≤ 2400 ⇒ 2열)
+            //  ── 열(X) 배치 판정 ──────────────────────────────────────
+            //  ① 실제 직경(diamMm) 기준: 2×diamMm ≤ carWmm → 평행 2열(밀착).
+            //  ② 평행 2열 불가 → 지그재그(√3/2 네스팅)로 2열 이상 가능한지 기하 판정.
+            //  ③ DS_INCH(차량유형관리) 매핑이 있으면(useInch 아래), 3인치 등 2열 표준 적재를
+            //     물리적으로 2열이 실제 들어갈 때(2×diamMm ≤ carWmm)에 한해 2열을 보장한다.
+            double colPitchMm = diamMm;   // 바닥 배치 피치(열 간격·행 간격) = 실제 직경
             int cols;
             boolean zz;
-            boolean straight2 = (footMm * 2.0 <= carWmm);           // 평행 2열(밀착) 가능?
+            boolean straight2 = (colPitchMm * 2.0 <= carWmm);        // 평행 2열(밀착) 가능?
             if (straight2) {
-                cols = Math.max(2, (int) (carWmm / footMm)); zz = false;
+                cols = Math.max(2, (int) (carWmm / colPitchMm)); zz = false;
             } else {
                 // 평행 2열 불가 → 지그재그로 2열 이상 가능한지 기하 판정(√3/2 네스팅).
-                int[] plan = planRollCols(footMm, carWmm);
+                int[] plan = planRollCols(colPitchMm, carWmm);
                 cols = plan[0]; zz = (plan[1] == 1);
             }
 
@@ -3010,13 +3014,14 @@ public class AutoDispatchService {
                 rows = (int) Math.ceil((double) floorRolls / Math.max(1, cols))
                        * Math.max(1, floorGroups);
                 perSlice = cols * maxTiers;
-                layerLengthMm = rows * footMm + (zz && rows > 0 ? footMm / 2.0 : 0.0);
+                // Y축(길이) 점유: 바닥 행 간격도 실제 직경(colPitchMm) 기준. 지그재그면 반피치 추가.
+                layerLengthMm = rows * colPitchMm + (zz && rows > 0 ? colPitchMm / 2.0 : 0.0);
                 usedLengthMm += layerLengthMm;
                 totalCap += tier1Count * maxTiers * floorGroups;
             } else {
-                perSlice = cols * maxTiers; // footMm 깊이 슬라이스(사이클)당 수용 롤 수 = 열 × 단
+                perSlice = cols * maxTiers; // 깊이 슬라이스(사이클)당 수용 롤 수 = 열 × 단
                 rows = (int) Math.ceil((double) layer.totalRolls / perSlice);
-                layerLengthMm = rows * footMm + (zz && rows > 0 ? footMm / 2.0 : 0.0);
+                layerLengthMm = rows * colPitchMm + (zz && rows > 0 ? colPitchMm / 2.0 : 0.0);
                 usedLengthMm += layerLengthMm;
                 totalCap += rows * perSlice;
             }
