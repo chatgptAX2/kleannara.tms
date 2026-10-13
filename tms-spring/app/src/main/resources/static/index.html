@@ -11334,7 +11334,24 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
   });
 
   // ── 판지(직육면체) Shelf + Z축 다단 적층 — 원지 뒤 Y부터 시작 ──
-  let curY = rollY;   // 판지 shelf 시작 Y (원지 적재 뒤)
+  //  [혼적 전면 순차 적재] MIX_CONTIGUOUS_FRONT_YN=Y(기본): 판지를 '원지 블록의 실제
+  //   Y 끝(max(y+l))' 바로 뒤에 간격 없이 이어 배치하여 가운데 빈 공간을 제거한다.
+  //   (기존 rollY 커서가 그룹 반복으로 과대 전진해 원지~판지 사이가 벌어지던 문제 수정)
+  const _mixContiguous = (veh && (veh.mix_contiguous_front === true
+                                  || veh.mix_contiguous_front === 'Y')) ? true
+                        : (veh && veh.mix_contiguous_front === false) ? false
+                        : true; // 플래그 없으면 기본 연속 적재
+  let curY;
+  if (_mixContiguous) {
+    // 원지 블록들의 실제 Y 끝(최댓값) 바로 뒤에 판지를 붙인다.
+    const rollBlocks = blocks.filter(b => b.type === 'roll');
+    const rollMaxY = rollBlocks.length
+      ? Math.max(...rollBlocks.map(b => b.y + (b.l || 0)))
+      : 0;
+    curY = rollMaxY > 0 ? (rollMaxY + GAP) : 0;
+  } else {
+    curY = rollY;   // 기존 동작(원지 커서 뒤)
+  }
   let curX = 0;
   let curShelfL = 0;
   items.forEach((it, idx) => {
@@ -23612,6 +23629,7 @@ const DCON_KEY_META = {
   MIX_BOARD_TOP_FORCE:{ label:'판지 상단 고정 강제', unit:'Y/N', op:'=', type:'MIX_Z_AXIS', hint:'Y=판지를 반드시 상단에 배치(원지 위)' },
   MIX_BOARD_BOTTOM_FORCE:{ label:'판지 하단 고정 강제', unit:'Y/N', op:'=', type:'MIX_Z_AXIS', hint:'Y=판지도 바닥에 고정 배치(원지와 Y축으로 나란히, 상하 적층 안함) — 판지 압착 파손 방지 / N=원지 하단·판지 상단 적층' },
   MIX_BOARD_SINGLE_TIER_YN:{ label:'판지 1단 적재만', unit:'Y/N', op:'=', type:'MIX_Z_AXIS', hint:'Y=판지는 1단(단일 높이)만 적재 허용(다단 금지) / N=판지 다단 적재 허용' },
+  MIX_CONTIGUOUS_FRONT_YN:{ label:'전면부터 순차(연속) 적재', unit:'Y/N', op:'=', type:'MIX_Z_AXIS', hint:'Y(기본)=적재함 앞(진행방향)부터 원지→판지를 간격 없이 연속 배치하여 가운데 빈 공간 제거(하중 전면 집중, 주행 안정성↑) / N=재질별 분리 배치(가운데 공간 허용)' },
   /* COST */
   PENALTY_RATE:    { label:'초과적재 패널티 배수', unit:'x', op:'=', type:'COST', hint:'MIN_COST 목적식 초과 패널티 (기본 3.0)' },
   COST_PENALTY_OVER:{ label:'초과적재 패널티 배수(대체키)', unit:'x', op:'=', type:'COST', hint:'초과 시 비용 패널티 (기본 1.5)' },
@@ -24983,6 +25001,7 @@ const DCON_PARAM_META = {
   MIX_BOARD_TOP_FORCE:  { label:'판지 상단 고정 강제',       unit:'Y/N',  hint:'Y=판지 반드시 상단' },
   MIX_BOARD_BOTTOM_FORCE:{ label:'판지 하단 고정 강제',      unit:'Y/N',  hint:'Y=판지도 바닥에 고정 배치(원지와 Y축으로 나란히, 상하 적층 안함) — 판지 압착 파손 방지 / N=원지 하단·판지 상단 적층' },
   MIX_BOARD_SINGLE_TIER_YN:{ label:'판지 1단 적재만',        unit:'Y/N',  hint:'Y=판지는 1단(단일 높이)만 적재 허용(다단 금지) / N=판지 다단 적재 허용' },
+  MIX_CONTIGUOUS_FRONT_YN:{ label:'전면부터 순차(연속) 적재', unit:'Y/N',  hint:'Y(기본)=적재함 앞(진행방향)부터 원지→판지를 간격 없이 연속 배치하여 가운데 빈 공간 제거(하중 전면 집중, 주행 안정성↑) / N=재질별 분리 배치' },
   MIX_VERTICAL_ORDER:   { label:'수직 적재 순서',            unit:'코드', hint:'ROLL_BOTTOM=원지하단/판지상단' },
   MIX_LIFO_YN:          { label:'LIFO 배치 활성',            unit:'Y/N',  hint:'Y=나중 하차→안쪽, 먼저 하차→문 쪽' },
   MIX_FIRST_DROP_DOOR:  { label:'먼저 하차→문 쪽 배치',      unit:'Y/N',  hint:'Y=먼저 하차 납품처 문 쪽 고정' },
@@ -27116,7 +27135,7 @@ function dconCloseTabMgr() {
    과거 CARGO 타입으로 저장된 행을 MIX_MATERIAL 탭으로 이동 표시(자동배차는 CONST_KEY만 사용). */
 const _DCON_MIX_MATERIAL_KEYS = ['ALLOW_MATERIAL_MIX', 'MIX_UNIFIED_VEHICLE_YN', 'MIX_3D_CHECK_YN'];
 /* 혼적 Z축(수직 적재) 제약 키 — MIX_Z_AXIS 탭으로 정규화 */
-const _DCON_MIX_ZAXIS_KEYS = ['MIX_ROLL_BOTTOM_FORCE', 'MIX_BOARD_TOP_FORCE', 'MIX_BOARD_BOTTOM_FORCE', 'MIX_BOARD_SINGLE_TIER_YN', 'MIX_VERTICAL_ORDER'];
+const _DCON_MIX_ZAXIS_KEYS = ['MIX_ROLL_BOTTOM_FORCE', 'MIX_BOARD_TOP_FORCE', 'MIX_BOARD_BOTTOM_FORCE', 'MIX_BOARD_SINGLE_TIER_YN', 'MIX_CONTIGUOUS_FRONT_YN', 'MIX_VERTICAL_ORDER'];
 function _dconNormalizeMixMaterialType(rows) {
   if (!Array.isArray(rows)) return rows;
   rows.forEach(r => {
