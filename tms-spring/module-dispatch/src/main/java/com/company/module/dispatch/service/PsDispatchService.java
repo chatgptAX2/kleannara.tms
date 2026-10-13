@@ -781,10 +781,15 @@ public class PsDispatchService {
             String dispatchNo = rawNo == null ? "" : rawNo.strip();
             if (dispatchNo.isEmpty()) continue;
 
-            // [진단] 삭제 대상 배차에 SAP선적번호(STKNUM)가 남아있는지 먼저 확인한다.
-            //   배차삭제로 미배차가 되는데 STKNUM 이 남으면 조회 화면에서
-            //   "미배차인데 SAP선적번호 있음" 모순이 발생하므로, 아래 1) 에서 함께 초기화한다.
-            //   (STKNUM 이 있다는 것은 SAP 에 실제 선적문서가 있었다는 의미 → 운영 추적용 로그)
+            // [정합성 방어] SAP 선적생성된 배차(STKNUM 존재)는 배차삭제를 차단한다.
+            //   ■ 원칙
+            //     - SAP 선적이 생성된 상태(STKNUM 채번)에서 배차만 삭제하면, SAP 에는 선적이
+            //       남아있는데 TMS 는 그 연결(STDLNR/STKNUM)을 잃어 SAP↔TMS 정합성이 깨진다.
+            //     - 따라서 SAP 선적이 있는 배차는 반드시 '배차확정(SAP선적) 탭 > SAP 선적삭제'로
+            //       SAP 선적을 먼저 삭제(shipmentDelete: RFC I_GUBUN='D')해야 하며,
+            //       일반 배차삭제 경로에서는 SAP 선적을 건드리지 않고 삭제 자체를 거부한다.
+            //   ■ 구현: 삭제 전 TMS_SHPDI 에서 이 배차(STDLNR=dispatchNo)의 STKNUM 잔존을 확인,
+            //     하나라도 있으면 예외를 던져 트랜잭션을 롤백하고 명확한 메시지를 반환한다.
             try {
                 @SuppressWarnings("unchecked")
                 List<Object> stknumRows = tmsEm.createNativeQuery(
@@ -793,12 +798,19 @@ public class PsDispatchService {
                     .setParameter(1, dispatchNo)
                     .getResultList();
                 if (stknumRows != null && !stknumRows.isEmpty()) {
-                    log.warn("[PsDispatch] deleteDispatch dispatchNo={} — 삭제 대상에 SAP선적번호(STKNUM)가 "
-                           + "남아있어 함께 초기화함. STKNUM={} (SAP 선적문서가 실제 존재하면 SAP 선적삭제를 "
-                           + "별도로 수행해야 함)", dispatchNo, stknumRows);
+                    String stknums = stknumRows.stream().map(this::str)
+                        .filter(s -> !s.isEmpty()).collect(Collectors.joining(", "));
+                    log.warn("[PsDispatch] deleteDispatch 차단 dispatchNo={} — SAP선적번호(STKNUM={}) 존재. "
+                           + "SAP 선적삭제를 먼저 수행해야 함(정합성 보호).", dispatchNo, stknums);
+                    throw new IllegalStateException(
+                        "SAP 선적이 생성된 배차(가선적번호 " + dispatchNo + ", SAP선적번호 " + stknums + ")는 "
+                        + "배차삭제할 수 없습니다. '배차확정(SAP선적)' 탭에서 SAP 선적삭제를 먼저 수행하세요. "
+                        + "(SAP↔TMS 정합성 보호를 위해 일반 배차삭제로는 SAP 선적을 삭제하지 않습니다.)");
                 }
+            } catch (IllegalStateException ise) {
+                throw ise;   // 차단 메시지는 그대로 상위로 전파
             } catch (Exception diagEx) {
-                log.warn("[PsDispatch] deleteDispatch STKNUM 진단 조회 실패(무시): {}", diagEx.getMessage());
+                log.warn("[PsDispatch] deleteDispatch STKNUM 확인 조회 실패(무시하고 진행): {}", diagEx.getMessage());
             }
 
             // 1) TMS_SHPDI.STDLNR 원복 (가선적번호 해제 → 미배차 전환)
@@ -808,13 +820,12 @@ public class PsDispatchService {
             //    납품문서 목록에 그대로 남는다. (DESC02 는 NOT NULL DEFAULT ' ' → ' ' 로 원복)
             //    [버그수정] STDLNR 은 NOT NULL 컬럼이라 NULL 로 업데이트하면 ORA-01407 발생.
             //    DESC02 와 동일하게 공백(' ') 으로 원복한다. (미배차 판정은 공백/빈값 기준)
-            //    [버그수정] STKNUM(SAP선적번호)도 함께 공백으로 초기화한다. 그렇지 않으면
-            //    배차삭제 후 미배차 상태인데 SAP선적번호가 조회에 그대로 남아
-            //    "미배차 + SAP선적번호 존재" 모순이 발생한다. (조회는 i.STKNUM 을 직접 표시)
+            //    ※ STKNUM(SAP선적번호)은 여기서 건드리지 않는다. SAP 선적이 있는 배차는
+            //      위 방어에서 이미 차단되므로, 이 지점에 도달한 배차는 STKNUM 이 비어 있다.
+            //      (SAP 선적삭제는 오직 shipmentDelete 경로에서만 STKNUM 을 초기화한다.)
             int shpdiReverted = tmsEm.createNativeQuery("""
                 UPDATE KNRAWMS.TMS_SHPDI
                 SET STDLNR  = ' ',
-                    STKNUM  = ' ',
                     DESC02  = ' ',
                     LMODAT  = TO_CHAR(SYSDATE, 'YYYYMMDD'),
                     LMOUSR  = 'WEB'
