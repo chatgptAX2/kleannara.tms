@@ -23629,7 +23629,7 @@ const DCON_KEY_META = {
   MIX_BOARD_TOP_FORCE:{ label:'판지 상단 고정 강제', unit:'Y/N', op:'=', type:'MIX_Z_AXIS', hint:'Y=판지를 반드시 상단에 배치(원지 위)' },
   MIX_BOARD_BOTTOM_FORCE:{ label:'판지 하단 고정 강제', unit:'Y/N', op:'=', type:'MIX_Z_AXIS', hint:'Y=판지도 바닥에 고정 배치(원지와 Y축으로 나란히, 상하 적층 안함) — 판지 압착 파손 방지 / N=원지 하단·판지 상단 적층' },
   MIX_BOARD_SINGLE_TIER_YN:{ label:'판지 1단 적재만', unit:'Y/N', op:'=', type:'MIX_Z_AXIS', hint:'Y=판지는 1단(단일 높이)만 적재 허용(다단 금지) / N=판지 다단 적재 허용' },
-  MIX_CONTIGUOUS_FRONT_YN:{ label:'전면부터 순차(연속) 적재', unit:'Y/N', op:'=', type:'MIX_Z_AXIS', hint:'Y(기본)=적재함 앞(진행방향)부터 원지→판지를 간격 없이 연속 배치하여 가운데 빈 공간 제거(하중 전면 집중, 주행 안정성↑) / N=재질별 분리 배치(가운데 공간 허용)' },
+  MIX_CONTIGUOUS_FRONT_YN:{ label:'전면부터 순차(연속) 적재', unit:'Y/N', op:'=', type:'MIX_Y_LIFO', hint:'Y(기본)=적재함 앞(진행방향)부터 원지→판지를 간격 없이 연속 배치하여 가운데 빈 공간 제거(하중 전면 집중, 주행 안정성↑) / N=재질별 분리 배치(가운데 공간 허용)' },
   /* COST */
   PENALTY_RATE:    { label:'초과적재 패널티 배수', unit:'x', op:'=', type:'COST', hint:'MIN_COST 목적식 초과 패널티 (기본 3.0)' },
   COST_PENALTY_OVER:{ label:'초과적재 패널티 배수(대체키)', unit:'x', op:'=', type:'COST', hint:'초과 시 비용 패널티 (기본 1.5)' },
@@ -27135,7 +27135,11 @@ function dconCloseTabMgr() {
    과거 CARGO 타입으로 저장된 행을 MIX_MATERIAL 탭으로 이동 표시(자동배차는 CONST_KEY만 사용). */
 const _DCON_MIX_MATERIAL_KEYS = ['ALLOW_MATERIAL_MIX', 'MIX_UNIFIED_VEHICLE_YN', 'MIX_3D_CHECK_YN'];
 /* 혼적 Z축(수직 적재) 제약 키 — MIX_Z_AXIS 탭으로 정규화 */
-const _DCON_MIX_ZAXIS_KEYS = ['MIX_ROLL_BOTTOM_FORCE', 'MIX_BOARD_TOP_FORCE', 'MIX_BOARD_BOTTOM_FORCE', 'MIX_BOARD_SINGLE_TIER_YN', 'MIX_CONTIGUOUS_FRONT_YN', 'MIX_VERTICAL_ORDER'];
+const _DCON_MIX_ZAXIS_KEYS = ['MIX_ROLL_BOTTOM_FORCE', 'MIX_BOARD_TOP_FORCE', 'MIX_BOARD_BOTTOM_FORCE', 'MIX_BOARD_SINGLE_TIER_YN', 'MIX_VERTICAL_ORDER'];
+/* 혼적 Y축(앞뒤 배치) 제약 키 — MIX_Y_LIFO 탭으로 정규화.
+   ※ MIX_CONTIGUOUS_FRONT_YN 은 과거 MIX_Z_AXIS 탭으로 저장됐을 수 있으므로,
+     여기서 MIX_Y_LIFO 로 재정규화하여 기존 저장분도 올바른(Y축) 탭에 표시되게 한다. */
+const _DCON_MIX_YLIFO_KEYS = ['MIX_CONTIGUOUS_FRONT_YN'];
 function _dconNormalizeMixMaterialType(rows) {
   if (!Array.isArray(rows)) return rows;
   rows.forEach(r => {
@@ -27145,6 +27149,10 @@ function _dconNormalizeMixMaterialType(rows) {
     // 혼적 Z축 수직적재 제약은 MIX_Z_AXIS 탭으로 정규화
     if (r && _DCON_MIX_ZAXIS_KEYS.includes(r.CONST_KEY) && r.CONST_TYPE !== 'MIX_Z_AXIS') {
       r.CONST_TYPE = 'MIX_Z_AXIS';
+    }
+    // 혼적 Y축 앞뒤배치 제약은 MIX_Y_LIFO 탭으로 정규화 (기존 MIX_Z_AXIS 저장분 포함)
+    if (r && _DCON_MIX_YLIFO_KEYS.includes(r.CONST_KEY) && r.CONST_TYPE !== 'MIX_Y_LIFO') {
+      r.CONST_TYPE = 'MIX_Y_LIFO';
     }
   });
   return rows;
