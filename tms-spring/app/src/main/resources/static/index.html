@@ -16854,12 +16854,18 @@ function _psopStdlnrHasSapShipment(stdlnr) {
   );
 }
 
-/* 차량(_pendingId)이 SAP 선적생성된 배차인지 판정 */
+/* 차량(_pendingId)이 SAP 선적생성된 배차인지 판정.
+   [중요] SAP 선적 잠금은 '이미 배차저장되어 가선적번호(STDLNR)를 가진 차량' 에만 적용한다.
+   배차저장 전 임시 차량(STDLNR 없음)은 아직 SAP 선적과 무관하므로 삭제 가능해야 한다.
+   (버그: 임시 차량의 items 에 과거 SAP선적번호(STKNUM)가 남아있으면, 저장 전인데도
+    SAP 잠금으로 오판되어 배차삭제 버튼이 비활성화되던 문제 수정) */
 function _psopVehicleHasSapShipment(v) {
   if (!v) return false;
-  if (_psopStdlnrHasSapShipment(v.STDLNR)) return true;
-  // items 안에 STKNUM 이 실린 경우도 방어적으로 확인
-  return (v.items || []).some(it => String(it && it.STKNUM || '').trim() !== '');
+  const stdlnr = String(v.STDLNR || '').trim();
+  // 가선적번호가 없는 임시(미저장) 차량은 SAP 잠금 대상 아님 → 삭제 허용
+  if (!stdlnr) return false;
+  // 저장된 차량만: 해당 가선적번호에 SAP 선적번호(STKNUM)가 실제 채번됐는지 확인
+  return _psopStdlnrHasSapShipment(stdlnr);
 }
 
 /* 삭제 대상 중 SAP 선적생성된 차량의 _pendingId → 가선적/선적번호 목록 반환 */
