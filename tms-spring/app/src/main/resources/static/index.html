@@ -2553,6 +2553,9 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psd-load-summary-tbl th{padding:5px 8px;background:var(--th-bg);color:var(--text3);font-size:10px;font-weight:700;border-bottom:1px solid var(--border);text-align:center;white-space:nowrap}
 .psd-load-summary-tbl td{padding:5px 8px;border-bottom:1px solid var(--tr-border);color:var(--text);text-align:center;white-space:nowrap}
 .psd-load-summary-tbl tr:hover td{background:var(--tr-hover)}
+/* [요청2] 3D 하이라이트 연동: 클릭된 행 강조 + 클릭 가능 커서 */
+.psd-load-summary-tbl tbody tr{cursor:pointer}
+.psd-load-summary-tbl tbody tr.lv-row-hilite td{background:rgba(59,130,246,.22);box-shadow:inset 3px 0 0 #3b82f6}
 /* 적재뷰 요약 테이블 컬럼 너비 조정(리사이즈) — colgroup 기반 고정 레이아웃 */
 .psd-load-summary-tbl.lv-resizable{table-layout:fixed}
 .psd-load-summary-tbl.lv-resizable th{position:relative;overflow:hidden;text-overflow:ellipsis}
@@ -11391,43 +11394,57 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
     // 온전한 PLT(정수배) 여부 — 속포장 분할 판정 기준.
     const isWholePlt  = pltPerUnit > 0 && Math.abs(qty % pltPerUnit) < 1e-6;
 
-    // 적재 단위(unit) 결정: {count(개수), kind('단'|'속')}
-    let unitCount, unitKind;
-    if (isInner && !isWholePlt) {
-      // 속포장 & 정수배 아님(분할) → 연수에 맞는 속(SOK) 단위로 세분화
-      const sokCnt = sokPerR > 0 ? Math.round(qty * sokPerR) : 0;
-      unitCount = Math.max(1, sokCnt > 0 ? sokCnt : pltCnt);
-      unitKind  = sokCnt > 0 ? '속' : '단';   // SOK 미등록 시 부득이 '단'
+    // ── 적재 단위(unit) 결정 — 파렛트(단) + 속(SOK) 혼합 표시 ──────────────
+    //  [요구사항] 파렛트당 개수(PLT_PER_UNIT) 의 정수배만큼은 '파렛트(단)' 로 표시하고,
+    //   정수 파렛트로 안 떨어지는 '나머지' 수량만 '속(SOK)' 으로 세분화하여 표시한다.
+    //   (기존 버그: 속포장+비정수배이면 전량을 속으로 쪼개어, 온전한 파렛트까지 속으로
+    //    잘게 표시됨 — 예: 6연/PLT당6R 이 1단이어야 하는데 전부 속으로 분해)
+    //
+    //  danCount : 온전 파렛트(단) 개수 = floor(연수 / PLT당개수)   ← 1단 = PLT당개수 R
+    //  remR     : 파렛트로 안 떨어지는 잔여 연수(R)
+    //  sokCount : 잔여 연수를 속(SOK) 으로 환산 = round(remR × SOK_PER_R)
+    //    · 벌크('B') 또는 PLT당개수 미조회: 기존대로 전량 '단'(pltCnt).
+    //    · 속포장('A') 이면서 잔여가 있을 때만 그 잔여분을 속으로 표시.
+    let danCount = 0;     // 파렛트(단) 블록 수
+    let sokCount = 0;     // 속(SOK) 블록 수
+    let danUnitR = pltPerUnit > 0 ? pltPerUnit : qty;  // 1단에 담기는 연수(R)
+    if (isInner && pltPerUnit > 0 && sokPerR > 0) {
+      // 속포장 + 메타 완비 → 단 + 속 혼합
+      danCount = Math.floor(qty / pltPerUnit);                 // 온전 파렛트 수
+      const remR = qty - danCount * pltPerUnit;                // 잔여 연수
+      sokCount = remR > 1e-6 ? Math.max(1, Math.round(remR * sokPerR)) : 0;
     } else {
-      // 벌크 / 속포장 비분할(온전 PLT) → 1PLT = 1단
-      unitCount = Math.max(1, pltCnt);
-      unitKind  = '단';
+      // 벌크 / 메타 미비 → 전량 단(파렛트)
+      danCount = Math.max(1, pltCnt);
+      sokCount = 0;
     }
+    // 표시용 대표 단위명(요약 라벨). 단만/속만/혼합 구분.
+    const unitKind = (danCount > 0 && sokCount > 0) ? '단+속'
+                   : (sokCount > 0 ? '속' : '단');
+    // 1속당 연수 = 1R ÷ SOK_PER_R (높이 계산용)
+    const rPerSok = sokPerR > 0 ? (1.0 / sokPerR) : 0;
 
-    // ── 1블록(1단/1속) 높이 산출 — 출고예정정보 '높이(cm)' 산식과 통일 (Req) ──
-    //   [출고예정정보 높이(cm)] = (QTSHPO × 500 × 두께µm) / PLT개수 / 10,000  ← 1PLT(=1단) 높이
-    //     · QTSHPO×500 : 총매수 (1R=500매)  · 두께 : TMS_THICKNESS(µm)  · PLT개수 : PLT_CNT
-    //   · '단'(벌크/속포장 비분할) → 1블록 = 1PLT → hMm = 1PLT 높이
-    //   · '속'(속포장 분할)        → 1블록 = 1속  → hMm = 속당높이
-    //        속당높이(cm) = (QTSHPO × 500 / SOK총수) × 두께 / PLT개수 / 10,000
-    //   · 두께 미조회(0) 시 기존 1연두께(gsm/1.2e6×500) 로 fallback.
+    // ── 블록 높이 산출 — 출고예정정보 '높이(cm)' 산식과 통일 (Req) ──
+    //   1PLT(1단) 높이(cm) = (연수 × 500 × 두께µm) / PLT개수 / 10,000
+    //     · 연수×500 : 총매수(1R=500매)  · 두께 : TMS_THICKNESS(µm)  · PLT개수 : pltCnt
+    //   · 1단 높이 = 1PLT 높이
+    //   · 1속 높이 = 1단 높이 × (1속당 연수 / 1단당 연수) = onePltCm × (rPerSok / danUnitR)
+    //   · 두께 미조회(0) 시 기존 1연두께(gsm/1.2e6×500) fallback.
     const thickness = Number(it.THICKNESS||0);        // TMS_THICKNESS(µm)
-    const sheetsTot = qty * 500;                       // 총매수(1R=500매)
-    let oneUnitCm;                                     // 1블록 높이(cm)
+    let onePltCm;                                      // 1단(1PLT) 높이(cm)
     if (thickness > 0 && pltCnt > 0) {
-      const onePltCm = (sheetsTot * thickness) / pltCnt / 10000.0;   // 1PLT(1단) 높이
-      if (unitKind === '속') {
-        // 1속 높이 = 1PLT높이 ÷ (총속수 ÷ PLT수) = 속당높이
-        oneUnitCm = unitCount > 0 ? (onePltCm * pltCnt / unitCount) : onePltCm;
-      } else {
-        oneUnitCm = onePltCm;
-      }
+      onePltCm = (qty * 500 * thickness) / pltCnt / 10000.0;
     } else {
-      // fallback: 1연(500장) 두께 기준
-      oneUnitCm = Math.max(gsm/1200000.0*500.0, 0.02) * 100.0;
+      // fallback: 1단 = (1단당 연수) × 1연두께
+      const oneReamCm = Math.max(gsm/1200000.0*500.0, 0.02) * 100.0;
+      onePltCm = Math.max(1, danUnitR) * oneReamCm;
     }
-    let hMm = Math.max(1.0, oneUnitCm * 10.0);          // cm → mm
-    if (boardCapMm > 0) hMm = Math.min(hMm, boardCapMm); // 차량 유효높이 상한 clamp
+    let hDanMm = Math.max(1.0, onePltCm * 10.0);        // 1단 높이(mm)
+    // 1속 높이(mm) = 1단 높이 × (1속당 연수 / 1단당 연수)
+    let hSokMm = (rPerSok > 0 && danUnitR > 0)
+      ? Math.max(1.0, hDanMm * (rPerSok / danUnitR))
+      : hDanMm;
+    if (boardCapMm > 0) { hDanMm = Math.min(hDanMm, boardCapMm); hSokMm = Math.min(hSokMm, boardCapMm); }
 
     // 방향 선택(백엔드 로직): 차량너비에 잔재 적은 방향
     let bw, bl;
@@ -11439,28 +11456,33 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
     else if (lMm <= carWmm)   { bw = lMm; bl = wMm; }
     else { bw = Math.min(wMm,carWmm); bl = Math.max(wMm,lMm); }
 
-    const tiersCap = Math.max(1, Math.floor(boardCapMm / Math.max(1.0, hMm)));
-    let remaining = unitCount, no = 0;
-    while (remaining > 0) {
-      // 새 shelf 행 필요?
-      if (curX + bw > carWmm + 0.5) { curY += curShelfL + GAP; curX = 0; curShelfL = bl; }
-      if (curShelfL <= 0) curShelfL = bl;
-      if (curY + bl > carLmm + 0.5) break; // Y 초과 → 중단
-      // 이 X열에 tiersCap 단위(단/속)까지 적층
-      const place = Math.min(tiersCap, remaining);
-      for (let ti = 0; ti < place; ti++) {
-        blocks.push({
-          x: curX, y: curY, z: ti*hMm,
-          w: bw, l: bl, h: hMm,
-          color, type:'board', label, idx,
-          cyl:false, no: ++no,
-          tier: ti+1, totalTiers: place,      // (몇 번째 / 이 열 총) 단위 수
-          unitKind                            // '단'(벌크·비분할) | '속'(속포장 분할)
-        });
+    // ── 블록 생성: '단(파렛트)' 먼저 쌓고, 이어서 '속(SOK)' 을 쌓는다 ──
+    //   각 단위는 자기 높이(hDanMm/hSokMm)에 맞춰 같은 X열에 적층, 넘치면 다음 열.
+    let no = 0;
+    const _placeUnits = (count, unitH, kind) => {
+      let remaining = count;
+      const tiersCap = Math.max(1, Math.floor(boardCapMm / Math.max(1.0, unitH)));
+      while (remaining > 0) {
+        if (curX + bw > carWmm + 0.5) { curY += curShelfL + GAP; curX = 0; curShelfL = bl; }
+        if (curShelfL <= 0) curShelfL = bl;
+        if (curY + bl > carLmm + 0.5) break; // Y 초과 → 중단
+        const place = Math.min(tiersCap, remaining);
+        for (let ti = 0; ti < place; ti++) {
+          blocks.push({
+            x: curX, y: curY, z: ti*unitH,
+            w: bw, l: bl, h: unitH,
+            color, type:'board', label, idx,
+            cyl:false, no: ++no,
+            tier: ti+1, totalTiers: place,
+            unitKind: kind                    // '단'(파렛트) | '속'(SOK)
+          });
+        }
+        remaining -= place;
+        curX += bw;
       }
-      remaining -= place;
-      curX += bw;
-    }
+    };
+    if (danCount > 0) _placeUnits(danCount, hDanMm, '단');   // 온전 파렛트 먼저
+    if (sokCount > 0) _placeUnits(sokCount, hSokMm, '속');   // 잔여를 속으로
   });
 
   /* ── 파렛트 footprint 산출 (요청1: 파렛트 너비 = 화물 너비) ──
@@ -11564,6 +11586,24 @@ function _lvDimSprite(lines) {
    containerId : 캔버스를 담을 DOM id
    placement   : _lvComputePlacement 결과
    opts        : { title }  */
+/* [요청2] 하단 적재목록 행 클릭 → 3D 해당 품목 하이라이트 토글.
+   containerId: 3D 컨테이너('psd-load-3d'|'sap-load-3d' 등), idx: 품목 인덱스.
+   같은 행을 다시 클릭하면 해제(전체 복원). 행 배경도 함께 강조. */
+let _lvHiliteState = {};   // containerId → 현재 하이라이트된 idx (null=없음)
+function _lvHighlightItem(containerId, idx, rowEl) {
+  const store = _lv3dScenes[containerId];
+  if (!store || typeof store.highlight !== 'function') return;
+  const cur = _lvHiliteState[containerId];
+  const next = (cur === idx) ? null : idx;   // 같은 품목 재클릭 → 해제
+  _lvHiliteState[containerId] = next;
+  store.highlight(next);
+  // 행 선택 표시 (같은 테이블 내 형제 행)
+  if (rowEl && rowEl.parentElement) {
+    [...rowEl.parentElement.children].forEach(tr => tr.classList.remove('lv-row-hilite'));
+    if (next != null) rowEl.classList.add('lv-row-hilite');
+  }
+}
+
 function _lvRender3D(containerId, placement, opts) {
   opts = opts || {};
   const container = document.getElementById(containerId);
@@ -11761,6 +11801,9 @@ function _lvRender3D(containerId, placement, opts) {
         grp.add(tl);
       }
     }
+    // [요청2] 하단 테이블 ↔ 3D 하이라이트 연동용: 메쉬에 품목 인덱스/원색 기록
+    mesh.userData.itemIdx = b.idx;
+    mesh.userData.baseColor = col;
     grp.add(mesh);
 
     /* ── 품목 치수(가로/세로/높이) 라벨 — 품목별 최상단 블록 위에 1회 ── */
@@ -11839,8 +11882,26 @@ function _lvRender3D(containerId, placement, opts) {
   window.addEventListener('resize', onResize);
 
   // 씬 스토어 먼저 등록 → tick 에서 animId 갱신
-  const store = { renderer, animId: 0, controls, onResize };
+  const store = { renderer, animId: 0, controls, onResize, grp, THREE };
   _lv3dScenes[containerId] = store;
+
+  // [요청2] 하단 테이블 ↔ 3D 하이라이트 API 등록.
+  //  idx=특정 품목 인덱스면 그 품목만 선명, 나머지는 반투명(dim). idx=null 이면 전체 복원.
+  store.highlight = (idx) => {
+    grp.traverse(obj => {
+      if (!obj.isMesh || obj.userData.itemIdx === undefined) return;
+      const on = (idx == null) || (obj.userData.itemIdx === idx);
+      if (obj.material) {
+        obj.material.transparent = !on;
+        obj.material.opacity = on ? 1.0 : 0.18;
+        // 강조 대상은 살짝 발광 느낌(emissive)으로 부각
+        if (obj.material.emissive) {
+          obj.material.emissive.set(on && idx != null ? 0x333333 : 0x000000);
+        }
+        obj.material.needsUpdate = true;
+      }
+    });
+  };
 
   // ── 렌더 루프 ──
   function tick() {
@@ -12106,13 +12167,20 @@ function _lvRenderLoadCanvas2D(canvas, wrap, items, veh, view, rollLayout) {
   });
 
   /* ── 범례 (품목별 1회) ── */
-  //  판지: 총 적재 단위 개수·명칭('단'/'속') 을 blocks 에서 idx별 집계해 표기.
-  const _boardUnit = {};   // idx → {cnt, kind}
+  //  판지: 단(파렛트)/속(SOK) 개수를 각각 집계해 'N단 M속' 혼합 표기.
+  const _boardUnit = {};   // idx → {dan, sok}
   (placement.blocks||[]).forEach(b => {
     if (b.type !== 'board') return;
-    if (!_boardUnit[b.idx]) _boardUnit[b.idx] = { cnt:0, kind:(b.unitKind||'단') };
-    _boardUnit[b.idx].cnt++;
+    if (!_boardUnit[b.idx]) _boardUnit[b.idx] = { dan:0, sok:0 };
+    if ((b.unitKind||'단') === '속') _boardUnit[b.idx].sok++;
+    else                             _boardUnit[b.idx].dan++;
   });
+  const _fmtBoardUnit = (bu) => {
+    const parts = [];
+    if (bu.dan > 0) parts.push(`${psdFmtNum(bu.dan)}단`);
+    if (bu.sok > 0) parts.push(`${psdFmtNum(bu.sok)}속`);
+    return parts.length ? parts.join(' ') : '1단';
+  };
   const _legSeen = new Set();
   (placement.blocks||[]).forEach(b => {
     if (_legSeen.has(b.idx)) return; _legSeen.add(b.idx);
@@ -12120,8 +12188,8 @@ function _lvRenderLoadCanvas2D(canvas, wrap, items, veh, view, rollLayout) {
     if (vz.type === 'roll')
       legendItems.push({ color:vz.color, label:`${vz.label} (롤×${vz.rollCount}, Ø${(vz.diamMm/10).toFixed(0)}cm, 폭${(vz.widMm/10).toFixed(0)}cm, ${b.totalTiers||1}단)` });
     else if (vz.type === 'board') {
-      const bu = _boardUnit[b.idx] || { cnt:1, kind:'단' };
-      legendItems.push({ color:vz.color, label:`${vz.label} (판지 ${psdFmtNum(vz.reams)}연, ${psdFmtNum(bu.cnt)}${bu.kind}, H${((vz.fullStackHgtM||vz.stackHgtM)*100).toFixed(0)}cm)` });
+      const bu = _boardUnit[b.idx] || { dan:1, sok:0 };
+      legendItems.push({ color:vz.color, label:`${vz.label} (판지 ${psdFmtNum(vz.reams)}연, ${_fmtBoardUnit(bu)}, H${((vz.fullStackHgtM||vz.stackHgtM)*100).toFixed(0)}cm)` });
     }
   });
 
@@ -12255,10 +12323,12 @@ function _psdRenderLoadCanvas(v, veh) {
                        : it.type==='board' ? `${psdFmtNum(it.reams)}연` : '-';
           const dimTxt = it.type==='roll' ? `Ø${(it.diamMm/10).toFixed(0)}cm`
                        : it.type==='board' ? `H${((it.fullStackHgtM||it.stackHgtM)*100).toFixed(0)}cm` : '-';
-          return `<tr>
+          // 품목 색상 점 — 3D 블록 색과 동일(어느 색이 어느 품목인지 즉시 매칭)
+          const dot = `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${it.color||'#888'};margin-right:4px;vertical-align:middle"></span>`;
+          return `<tr onclick="_lvHighlightItem('psd-load-3d',${i},this)" title="클릭 시 위 3D에서 이 품목만 강조 표시">
             <td style="color:var(--text3)">${i+1}</td>
             <td style="font-family:monospace;color:var(--primary)" title="출하문서키(SHPOKY): ${raw.SHPOKY||''}">${raw.SVBELN||raw.SHPOKY||''}</td>
-            <td style="text-align:left;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${raw.DESC01||''}">${raw.DESC01||raw.SKUKEY||''}</td>
+            <td style="text-align:left;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${raw.DESC01||''}">${dot}${raw.DESC01||raw.SKUKEY||''}</td>
             <td>${uomBadge}</td>
             <td>${psdFmtNum(raw.QTSHPO)} ${raw.UOMKEY||'KG'}</td>
             <td style="font-weight:700">${cntTxt}</td>
@@ -14394,11 +14464,12 @@ function _sapRenderLoadCanvas() {
               : `<span style="color:#cbd5e1">기타</span>`;
           const cntTxt = it.type==='roll'?`${it.rollCount}롤`:it.type==='board'?`${_sapFmtNum(it.reams)}연`:'-';
           const dimTxt = it.type==='roll'?`Ø${(it.diamMm/10).toFixed(0)}cm`:it.type==='board'?`H${((it.fullStackHgtM||it.stackHgtM)*100).toFixed(0)}cm`:'-';
-          return `<tr>
+          const dot = `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${it.color||'#888'};margin-right:4px;vertical-align:middle"></span>`;
+          return `<tr onclick="_lvHighlightItem('sap-load-3d',${i},this)" title="클릭 시 위 3D에서 이 품목만 강조 표시">
             <td style="color:var(--text3)">${i+1}</td>
             <td style="font-family:monospace;font-size:10px;color:var(--primary)">${raw.SHPOKY||''}</td>
             <td style="font-family:monospace;font-size:10px;color:var(--text2)">${raw.SKUKEY||''}</td>
-            <td style="text-align:left;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${raw.DESC01||''}">${raw.DESC01||raw.SKUKEY||''}</td>
+            <td style="text-align:left;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${raw.DESC01||''}">${dot}${raw.DESC01||raw.SKUKEY||''}</td>
             <td>${uomBadge}</td>
             <td>${_sapFmtNum(raw.QTSHPO)} ${raw.UOMKEY||'KG'}</td>
             <td style="font-weight:700">${cntTxt}</td>
@@ -18082,10 +18153,11 @@ function _psopRenderLoadCanvas(v, veh) {
                        : it.type==='board' ? `${psopFmtNum(it.reams)}연` : '-';
           const dimTxt = it.type==='roll' ? `Ø${(it.diamMm/10).toFixed(0)}cm`
                        : it.type==='board' ? `H${((it.fullStackHgtM||it.stackHgtM)*100).toFixed(0)}cm` : '-';
-          return `<tr>
+          const dot = `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${it.color||'#888'};margin-right:4px;vertical-align:middle"></span>`;
+          return `<tr onclick="_lvHighlightItem('psd-load-3d',${i},this)" title="클릭 시 위 3D에서 이 품목만 강조 표시">
             <td style="color:var(--text3)">${i+1}</td>
             <td style="font-family:monospace;color:var(--primary)" title="출하문서키(SHPOKY): ${raw.SHPOKY||''}">${raw.SVBELN||raw.SHPOKY||''}</td>
-            <td style="text-align:left;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${raw.DESC01||''}">${raw.DESC01||raw.SKUKEY||''}</td>
+            <td style="text-align:left;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${raw.DESC01||''}">${dot}${raw.DESC01||raw.SKUKEY||''}</td>
             <td>${uomBadge}</td>
             <td>${psopFmtNum(raw.QTSHPO)} ${raw.UOMKEY||'KG'}</td>
             <td style="font-weight:700">${cntTxt}</td>
