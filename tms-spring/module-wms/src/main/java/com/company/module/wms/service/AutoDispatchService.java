@@ -852,6 +852,15 @@ public class AutoDispatchService {
             if (isDynBlocked) notes.add("[동적배차불가] DYNAMIC_YN=N → 고정노선 전용 오더");
             else if ("Y".equals(pi.dynamicYn)) notes.add("[동적배차가능] DYNAMIC_YN=Y");
 
+            // ── [보조] 원지 단순 높이검사 (3D 물리검증 전 1차 스크리닝) ──────────────
+            //  초과 시 더 큰 차량으로 업그레이드 시도 → 실패하면 rollHeightBlocked=true 로
+            //  '배차 차단' 처리(경고 노트만 남기던 기존 동작에서 차단으로 강화).
+            //  [정확도 개선] 단수는 min(maxStack,3) 고정이 아니라, 차량 유효높이/ROLL_MAX_HEIGHT_M
+            //  상한 안에서 실제로 쌓을 수 있는 단수(= 3D 확정 단수와 동일 공식)를 사용한다.
+            boolean rollHeightBlocked = false;   // 원지 높이초과 배차 차단 플래그
+            double  rollBlockedStackH = 0.0;     // 차단 사유 표시용(필요 적재높이)
+            double  rollBlockedCapH   = 0.0;     // 차단 사유 표시용(가용 상한)
+            final double TIER_GAP_M   = 0.030;   // 단 사이 물리 간격(3D 검증과 동일 30mm)
             for (Map<String, Object> it : b.items) {
                 String sk = str(it.get("SKUKEY"));
                 if (!isRoll(sk)) continue;
@@ -861,13 +870,19 @@ public class AutoDispatchService {
                 // ── 원지 세워 적재(수직) : 1단 높이 = 원지 폭(widthMm), 직경 아님 ──
                 //  실제 상차와 동일하게 원통을 세워 적재하므로 다단 높이는 폭 기준.
                 double rollWmm = rollWidthMm(it, skumaMap, sk);
-                int    actualStack = Math.min(cp.maxStack, 3);
-                // 높이 안전 여유 마진(ROLL_HEIGHT_MARGIN_M) 반영: 적재 높이에 마진 가산
-                double stackH      = rollWmm / 1000.0 * actualStack + cp.rollHeightMarginM;
                 double effH        = rollEffH(vehCar, pi.forkliftYn, vehInfo, cp);
                 // ── 원지 다단 적재높이 상한(ROLL_MAX_HEIGHT_M) 차량높이 연동 ──
                 //  설정값이 있으면 차량 가용높이와 min() 하여 실제 적용 상한으로 사용.
                 if (cp.rollMaxHeightM > 0) effH = Math.min(effH, cp.rollMaxHeightM);
+
+                // 상한 내에서 실제로 쌓을 수 있는 단수(= 3D heightTierCap 과 동일 공식).
+                //  tiers = min(maxStack, floor((상한 + 간격)/(원지폭 + 간격))), 최소 1단.
+                double rollWm      = rollWmm / 1000.0;
+                int    actualStack = Math.max(1, Math.min(cp.maxStack,
+                        (int)((effH + TIER_GAP_M) / (rollWm + TIER_GAP_M))));
+                // 적재 높이 = 원지폭 × 단수 + 단간격 + 안전마진(ROLL_HEIGHT_MARGIN_M)
+                double stackH      = rollWm * actualStack + TIER_GAP_M * (actualStack - 1)
+                                     + cp.rollHeightMarginM;
 
                 if (stackH > effH) {
                     boolean upgraded = false;
@@ -880,7 +895,10 @@ public class AutoDispatchService {
                         }
                     }
                     if (!upgraded) {
-                        notes.add(String.format("[높이초과-수동확인] %s 원지폭%.0fmm(세워적재)×%d단=%.2fm > 차량가용%.2fm",
+                        // [강화] 업그레이드 불가 → 경고가 아니라 '배차 차단'으로 처리.
+                        rollHeightBlocked = true;
+                        if (stackH > rollBlockedStackH) { rollBlockedStackH = stackH; rollBlockedCapH = effH; }
+                        notes.add(String.format("[높이초과-배차차단] %s 원지폭%.0fmm(세워적재)×%d단=%.2fm > 적재가능높이%.2fm",
                             sk, rollWmm, actualStack, stackH, effH));
                     }
                 }
@@ -908,12 +926,33 @@ public class AutoDispatchService {
                     RollPhysics3D rp3dUp = verifyRolls3D(b.items, skumaMap, cvi, cp, inchMaps, ct);
                     if (rp3dUp.fits) {
                         notes.add(String.format("[3D-원지-업그레이드] %s→%s (3D 공간 부족 해소)", vehCar, ct));
-                        vehCar = ct; upgraded3d = true;
+                        vehCar = ct; upgraded3d = true; rp3d = rp3dUp;
                         notes.add(rp3dUp.summary);
                         break;
                     }
                 }
-                if (!upgraded3d) notes.add("[3D-원지-수동확인] 가용 차량 중 3D 배치 가능한 차량 없음 — 수동 배차 필요");
+                if (!upgraded3d) {
+                    notes.add("[3D-원지-수동확인] 가용 차량 중 3D 배치 가능한 차량 없음 — 수동 배차 필요");
+                    // [강화] 3D 검증이 '높이초과'로 적재불가이고 업그레이드도 불가하면 배차 차단.
+                    if (rp3d.heightOver) {
+                        rollHeightBlocked = true;
+                        if (rp3d.stackHeightM > rollBlockedStackH) {
+                            rollBlockedStackH = rp3d.stackHeightM;
+                            rollBlockedCapH   = rp3d.heightCapM;
+                        }
+                        notes.add(String.format(
+                            "[3D-원지-높이초과-배차차단] 원지 적재높이 %.2fm > 적재가능높이 상한 %.2fm — 배차 보류(수동 확인 필요)",
+                            rp3d.stackHeightM, rp3d.heightCapM));
+                    }
+                }
+            }
+            // ── [차단 표시] 원지 높이초과 배차차단 최종 노트(결과 상단 노출용) ──────
+            if (rollHeightBlocked) {
+                notes.add(0, String.format(
+                    "⛔ [배차차단-높이초과] 원지 적재높이 %.2fm 가 적재가능높이 상한 %.2fm 를 초과하여 "
+                    + "자동배차를 차단했습니다. (제약조건 ROLL_MAX_HEIGHT_M / 차량 유효높이 확인, "
+                    + "단수 하향 또는 차량 상향 후 재배차 필요)",
+                    rollBlockedStackH, rollBlockedCapH));
             }
             // ─────────────────────────────────────────────────────────
 
@@ -973,6 +1012,19 @@ public class AutoDispatchService {
             vrow.put("physics3d_roll_fits",        rp3d.fits);
             vrow.put("physics3d_roll_floor_pct",   round2(rp3d.usedFloorRatio));
             vrow.put("physics3d_roll_stack_height", round2(rp3d.stackHeightM));
+            // ── [높이초과 차단] 배차결과 표시용 플래그 ────────────────────────────
+            //  roll_height_over    : 원지 적재높이가 적재가능높이 상한을 초과했는지(3D 검증 결과)
+            //  roll_height_cap     : 적용된 적재가능높이 상한(m) = min(차량유효높이, ROLL_MAX_HEIGHT_M)
+            //  dispatch_blocked    : 높이초과로 자동배차가 차단되었는지(수동 확인 필요)
+            //  blocked_reason      : 차단 사유(배차결과 뱃지/안내 문구용)
+            vrow.put("roll_height_over",  rp3d.heightOver || rollHeightBlocked);
+            vrow.put("roll_height_cap",   round2(rp3d.heightCapM > 0 ? rp3d.heightCapM : rollBlockedCapH));
+            vrow.put("dispatch_blocked",  rollHeightBlocked);
+            if (rollHeightBlocked) {
+                vrow.put("blocked_reason", String.format(
+                    "원지 적재높이 %.2fm > 적재가능높이 상한 %.2fm (높이초과)",
+                    rollBlockedStackH, rollBlockedCapH));
+            }
             // 프런트 적재 시각화(_lvComputePlacement)와 동일 배치를 위한 DS_INCH 기반 레이아웃
             vrow.put("roll_layout",   rp3d.rollLayout);
             // 혼적 Y축 전면 순차(연속) 적재 플래그 — 프런트 뷰가 원지→판지를 빈틈없이 이어 배치
@@ -2801,7 +2853,10 @@ public class AutoDispatchService {
 
     // ── 원지(원통) 3D 검증 결과 VO ───────────────────────────────────
     private static class RollPhysics3D {
-        boolean fits;           // 차량에 물리적으로 적재 가능한가
+        boolean fits;           // 차량에 물리적으로 적재 가능한가 (길이 AND 높이 모두 충족)
+        boolean lengthOver;     // Y축(길이) 점유 초과 여부
+        boolean heightOver;     // Z축(높이) 적재높이 상한 초과 여부  ← [A안 추가]
+        double  heightCapM;     // 적용된 높이 상한(m) = min(차량유효높이, ROLL_MAX_HEIGHT_M)
         int     totalRolls;     // 검증 대상 총 롤 수
         int     maxCapacity;    // 해당 차량의 최대 수용 롤 수 (3D 기준)
         double  usedFloorRatio; // 바닥 점유율 (%)
@@ -3084,13 +3139,33 @@ public class AutoDispatchService {
         result.usedFloorRatio = carLmm > 0 ? Math.min(100.0, usedLengthMm / carLmm * 100.0) : 0.0;
         // Dead Space 허용 비율(ROLL_3D_DEAD_SPACE_PCT) 반영: 기본 2% + 설정 비율만큼 여유 허용
         double rollMargin = 1.02 + (cp.rollDeadSpacePct / 100.0);
-        result.fits = (usedLengthMm <= carLmm * rollMargin);
+        // ── [A안] 적재 가능 판정 = 길이(Y축) AND 높이(Z축) 모두 충족 ──────────────
+        //  (기존) fits = 길이만 검사 → 원지 다단 높이가 차량 유효높이/ROLL_MAX_HEIGHT_M 을
+        //         초과해도 '적재가능'으로 통과되어 과높이 배차가 발생했다(판지엔 있던 검사가
+        //         원지엔 누락). → 판지 verifyBoards3D 와 동일하게 높이 초과도 fits 에 반영.
+        //  높이 상한(heightCapMm) = min(차량 유효높이, ROLL_MAX_HEIGHT_M×1000).
+        //  적재높이(stackHeightM) 가 상한×여유마진 을 넘으면 heightOver=true → 적재불가.
+        result.heightCapM  = heightCapMm / 1000.0;
+        result.lengthOver  = (usedLengthMm > carLmm * rollMargin);
+        result.heightOver  = (result.stackHeightM * 1000.0 > heightCapMm * rollMargin);
+        result.fits        = !result.lengthOver && !result.heightOver;
 
+        String overReason = result.fits ? "OK"
+            : (result.lengthOver && result.heightOver) ? "OVERFLOW(길이+높이초과)"
+            : result.heightOver ? "OVERFLOW(높이초과)"
+            : "OVERFLOW(길이초과)";
         result.summary = String.format(
             "[3D-원지검증] %s / 총%d롤 / Y축점유%.0fmm/%.0fmm(%.0f%%) / 최고단높이%.2fm(상한%.2fm) / %s",
             result.fits ? "적재가능" : "적재불가(차량업그레이드필요)",
             totalRolls, usedLengthMm, carLmm, result.usedFloorRatio,
-            result.stackHeightM, heightCapMm / 1000.0, result.fits ? "OK" : "OVERFLOW");
+            result.stackHeightM, heightCapMm / 1000.0, overReason);
+        // 높이 초과인 경우 레이어 노트에 명시적 사유 추가(배차 결과 노트로 노출됨).
+        if (result.heightOver) {
+            result.layerNotes.add(String.format(
+                "[3D-원지-높이초과] 원지 적재높이 %.2fm > 적재가능높이 상한 %.2fm "
+                + "(차량 유효높이/ROLL_MAX_HEIGHT_M 기준) — 단수 축소 또는 차량 상향 필요",
+                result.stackHeightM, heightCapMm / 1000.0));
+        }
         return result;
     }
 
