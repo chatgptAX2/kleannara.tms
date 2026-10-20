@@ -11214,7 +11214,7 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
     // 대표 규격은 첫 품목 기준 유지하되, lo 는 유효한 값이 있으면 채택.
     if (!lyr.lo && lo) lyr.lo = lo;
     // 이 품목의 롤 인스턴스를 큐에 추가(색/라벨/원품목idx 보존).
-    for (let i = 0; i < rollCount; i++) lyr.queue.push({ color, label, idx });
+    for (let i = 0; i < rollCount; i++) lyr.queue.push({ color, label, idx, sku: sk });
     _rollNeeded += rollCount;
   });
 
@@ -11287,7 +11287,7 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
             blocks.push({
               x: slots[s].x, y: slots[s].y, z,
               w: pMm, l: pMm, h: heightMm,
-              color: rl.color, type:'roll', label: rl.label, idx: rl.idx,
+              color: rl.color, type:'roll', label: rl.label, idx: rl.idx, sku: rl.sku,
               cyl: true, vertical: true, diamMm, widMm, rollNo: (placed+1),
               tier: ti+1, totalTiers: tiers,
               zigzag: plan.zigzag
@@ -11317,7 +11317,7 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
             blocks.push({
               x, y: rowStartY, z,
               w: pMm, l: pMm, h: heightMm,
-              color: rl.color, type:'roll', label: rl.label, idx: rl.idx,
+              color: rl.color, type:'roll', label: rl.label, idx: rl.idx, sku: rl.sku,
               cyl: true, vertical: true, diamMm, widMm, rollNo: (placed+1),
               tier: ti+1, totalTiers: tiers,
               zigzag: plan.zigzag
@@ -11471,7 +11471,7 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
           blocks.push({
             x: curX, y: curY, z: ti*unitH,
             w: bw, l: bl, h: unitH,
-            color, type:'board', label, idx,
+            color, type:'board', label, idx, sku: sk,
             cyl:false, no: ++no,
             tier: ti+1, totalTiers: place,
             unitKind: kind                    // '단'(파렛트) | '속'(SOK)
@@ -11571,11 +11571,17 @@ function _lvTierSprite(text) {
 function _lvDimSprite(lines) {
   const arr = Array.isArray(lines) ? lines : [lines];
   const cv = document.createElement('canvas');
-  cv.width = 200; cv.height = 26 * arr.length + 12;
   const c2 = cv.getContext('2d');
+  // 가장 긴 줄에 맞춰 캔버스 폭 자동 확장 — 품목코드(SKUKEY)가 길어도 잘리지 않도록.
+  const FONT = 'bold 20px sans-serif';
+  c2.font = FONT;
+  let maxTextW = 0;
+  arr.forEach(t => { maxTextW = Math.max(maxTextW, c2.measureText(String(t)).width); });
+  cv.width = Math.max(200, Math.ceil(maxTextW) + 28);
+  cv.height = 26 * arr.length + 12;
   c2.fillStyle = 'rgba(15,23,42,.72)'; c2.fillRect(0,0,cv.width,cv.height);
   c2.strokeStyle = 'rgba(96,165,250,.7)'; c2.lineWidth = 2; c2.strokeRect(1,1,cv.width-2,cv.height-2);
-  c2.font = 'bold 20px sans-serif'; c2.fillStyle = '#bfdbfe';
+  c2.font = FONT; c2.fillStyle = '#bfdbfe';
   c2.textAlign='center'; c2.textBaseline='middle';
   arr.forEach((t,i)=> c2.fillText(t, cv.width/2, 18 + i*26));
   const tex = new THREE.CanvasTexture(cv);
@@ -11820,6 +11826,10 @@ function _lvRender3D(containerId, placement, opts) {
         // 판지/기타: 가로(W) × 세로(L) × 높이(H)
         dimLines = [`가로 ${(b.w/10).toFixed(0)} · 세로 ${(b.l/10).toFixed(0)}cm`, `높이 ${(b.h/10).toFixed(0)}cm`];
       }
+      /* [요청] 3D 시각화 블록 위에 품목코드(SKUKEY) 함께 표시 — 치수 라벨 맨 윗줄에 추가.
+         blocks 생성 시 b.sku(순수 SKUKEY)를 기록해 둠. 없으면 label(DESC01 축약)로 대체. */
+      const skuCode = (b.sku || b.label || '').trim();
+      if (skuCode) dimLines.unshift(`[${skuCode}]`);
       const d = _lvDimSprite(dimLines);
       const topY = (b.z + b.h)*S;
       const cx = b.x*S + bw/2, cz = b.y*S + bl/2;
