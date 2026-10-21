@@ -12341,7 +12341,7 @@ function _psdRenderLoadCanvas(v, veh) {
     <table class="psd-load-summary-tbl">
       <thead>
         <tr>
-          <th>#</th><th>납품번호</th><th>품명</th><th>유형</th>
+          <th>#</th><th>납품번호</th><th>납품처명</th><th>품명</th><th>유형</th>
           <th>수량(단위)</th><th>롤수/매수</th><th>직경/높이</th><th>중량(KG)</th>
         </tr>
       </thead>
@@ -12359,9 +12359,11 @@ function _psdRenderLoadCanvas(v, veh) {
                        : it.type==='board' ? `H${((it.fullStackHgtM||it.stackHgtM)*100).toFixed(0)}cm` : '-';
           // 품목 색상 점 — 3D 블록 색과 동일(어느 색이 어느 품목인지 즉시 매칭)
           const dot = `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${it.color||'#888'};margin-right:4px;vertical-align:middle"></span>`;
+          const dptnm = raw.DPTNM || raw.DPTNKY || '';
           return `<tr onclick="_lvHighlightItem('psd-load-3d',${i},this)" title="클릭 시 위 3D에서 이 품목만 강조 표시">
             <td style="color:var(--text3)">${i+1}</td>
             <td style="font-family:monospace;color:var(--primary)" title="출하문서키(SHPOKY): ${raw.SHPOKY||''}">${raw.SVBELN||raw.SHPOKY||''}</td>
+            <td style="text-align:left;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${dptnm}">${dptnm}</td>
             <td style="text-align:left;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${raw.DESC01||''}">${dot}${raw.DESC01||raw.SKUKEY||''}</td>
             <td>${uomBadge}</td>
             <td>${psdFmtNum(raw.QTSHPO)} ${raw.UOMKEY||'KG'}</td>
@@ -12371,7 +12373,7 @@ function _psdRenderLoadCanvas(v, veh) {
           </tr>`;
         }).join('')}
         <tr style="background:var(--th-bg);font-weight:700">
-          <td colspan="7" style="text-align:right;padding-right:16px">합계</td>
+          <td colspan="8" style="text-align:right;padding-right:16px">합계</td>
           <td style="${ratioCls}">${psdFmtNum(Math.round(usedKgV))} KG${ratioV!=null?' ('+ratioV+'%)</td>':'</td>'}
         </tr>
       </tbody>
@@ -14503,7 +14505,7 @@ function _sapRenderLoadCanvas() {
     <table class="psd-load-summary-tbl">
       <thead>
         <tr>
-          <th>#</th><th>출고문서번호</th><th>품목코드</th><th>품명</th><th>유형</th>
+          <th>#</th><th>출고문서번호</th><th>납품처명</th><th>품목코드</th><th>품명</th><th>유형</th>
           <th>수량(단위)</th><th>롤수/매수</th><th>직경/높이</th><th>중량(KG)</th>
         </tr>
       </thead>
@@ -14518,9 +14520,11 @@ function _sapRenderLoadCanvas() {
           const cntTxt = it.type==='roll'?`${it.rollCount}롤`:it.type==='board'?`${_sapFmtNum(it.reams)}연`:'-';
           const dimTxt = it.type==='roll'?`Ø${(it.diamMm/10).toFixed(0)}cm`:it.type==='board'?`H${((it.fullStackHgtM||it.stackHgtM)*100).toFixed(0)}cm`:'-';
           const dot = `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${it.color||'#888'};margin-right:4px;vertical-align:middle"></span>`;
+          const dptnm = raw.DPTNM || raw.DPTNKY || '';
           return `<tr onclick="_lvHighlightItem('sap-load-3d',${i},this)" title="클릭 시 위 3D에서 이 품목만 강조 표시">
             <td style="color:var(--text3)">${i+1}</td>
             <td style="font-family:monospace;font-size:10px;color:var(--primary)">${raw.SHPOKY||''}</td>
+            <td style="text-align:left;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${dptnm}">${dptnm}</td>
             <td style="font-family:monospace;font-size:10px;color:var(--text2)">${raw.SKUKEY||''}</td>
             <td style="text-align:left;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${raw.DESC01||''}">${dot}${raw.DESC01||raw.SKUKEY||''}</td>
             <td>${uomBadge}</td>
@@ -14531,7 +14535,7 @@ function _sapRenderLoadCanvas() {
           </tr>`;
         }).join('')}
         <tr style="background:var(--th-bg);font-weight:700">
-          <td colspan="8" style="text-align:right;padding-right:16px">합계</td>
+          <td colspan="9" style="text-align:right;padding-right:16px">합계</td>
           <td style="${ratioCls}">${_sapFmtNum(Math.round(usedKgV))} KG${ratioV!=null?' ('+ratioV+'%)':''}</td>
         </tr>
       </tbody>
