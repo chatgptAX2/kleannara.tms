@@ -11006,7 +11006,9 @@ function _psdSwitchView(view) {
     if (d3Wrap)     d3Wrap.style.display = 'block';
     _psdGetVehInfo().then(vi => {
       const veh = vi[v.cartype] || null;
-      const placement = _lvComputePlacement(v.items || [], veh, 0, 0, 0, v.roll_layout || null);
+      // 적용된 원지 최대높이/단수 제약을 미리보기에도 반영(과높이 적재 표시 방지)
+      const _lc = _lvExtractLoadConstraints(v);
+      const placement = _lvComputePlacement(v.items || [], veh, _lc.rollStack, _lc.rollMaxH, _lc.boardMaxH, v.roll_layout || null);
       /* 컨테이너가 레이아웃 잡힌 뒤 렌더 (clientWidth 확보) */
       requestAnimationFrame(() => _lvRender3D('psd-load-3d', placement, { title: v.cartype }));
     });
@@ -11134,6 +11136,21 @@ function _lvRollDiameter(weightKg, gsm, widthMm){
   const dSq=(4.0*Lm*tM)/Math.PI; if(dSq<=0)return null; return Math.sqrt(dSq)*1000.0;
 }
 
+/* 배차 결과(v)에서 적용된 원지/판지 높이·단수 제약값을 추출.
+   _autoMeta.constraints(=백엔드 applied_constraints) 우선, 상위 필드 폴백.
+   반환: { rollStack, rollMaxH, boardMaxH } — 미설정/없으면 0(=차량높이 자동연동).
+   적재 미리보기(_lvComputePlacement)가 자동배차 엔진과 동일한 높이 상한을 쓰도록 하여,
+   원지 최대높이(ROLL_MAX_HEIGHT_M) 제약을 초과한 과높이 적재가 그려지는 것을 방지한다. */
+function _lvExtractLoadConstraints(v){
+  const c = (v && (v._autoMeta && v._autoMeta.constraints)) || (v && v.applied_constraints) || {};
+  const num = (x)=>{ const n = parseFloat(x); return isFinite(n) ? n : 0; };
+  return {
+    rollStack:  num(c.MAX_ROLL_STACK_TIER),
+    rollMaxH:   num(c.ROLL_MAX_HEIGHT_M),
+    boardMaxH:  num(c.MAX_BOARD_HEIGHT_M),
+  };
+}
+
 /* ────────────────────────────────────────────────────────────────
    ★ 실제 배치 좌표 산출 — 백엔드 verifyRolls3D / verifyBoards3D 의
    Shelf + Z축 다단 적층 로직을 클라이언트에서 그대로 포팅.
@@ -11226,8 +11243,14 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
     const pMm = (pitchMm > 0) ? pitchMm : footMm;
 
     // Z(높이) 다단 — 원지 높이(heightMm)+단간격 기준.
-    let tiers = Math.max(1, Math.min(maxStack, Math.floor((rollCapMm + TIER_GAP) / (heightMm + TIER_GAP))));
-    if (lo && lo.max_tiers > 0) tiers = lo.max_tiers;
+    //  적재가능 단수 상한(높이 기준): floor((rollCap+간격)/(원지높이+간격)), 최소 1단.
+    //   rollCapMm = min(차량 유효높이, ROLL_MAX_HEIGHT_M). 즉 원지 최대높이 제약을 반영.
+    const heightTierCap = Math.max(1, Math.floor((rollCapMm + TIER_GAP) / (heightMm + TIER_GAP)));
+    let tiers = Math.max(1, Math.min(maxStack, heightTierCap));
+    // 백엔드 roll_layout(max_tiers)이 있으면 그대로 쓰되, 높이 상한(heightTierCap)을
+    //  절대 넘지 않도록 clamp — 원지 최대높이 제약 초과 적재가 미리보기에 그려지는 것을 방지.
+    //  (과거: lo.max_tiers 를 무조건 채택 → 제약·차량높이 미반영 시 과높이 2단 표시 버그)
+    if (lo && lo.max_tiers > 0) tiers = Math.max(1, Math.min(lo.max_tiers, heightTierCap));
 
     // 열(X) 배치 계획 — roll_layout 우선, 없으면 기하 판정. (간격 기준 = 실제 직경 pMm)
     let plan;
@@ -11956,7 +11979,7 @@ function _psdBottomFootprintPx(vizItems, isFront, SCALE, boxW) {
    적재함 규격은 박스 바깥에 표기, 품목 높이 수치 표시.
    반환: { vizItems } (범례/요약 테이블용)
    ────────────────────────────────────────────────────────────────── */
-function _lvRenderLoadCanvas2D(canvas, wrap, items, veh, view, rollLayout) {
+function _lvRenderLoadCanvas2D(canvas, wrap, items, veh, view, rollLayout, loadCons) {
   const ctx = canvas.getContext('2d');
   const _vd = _lvVehDims(veh);
   const carLen = _vd.len, carWid = _vd.wid, carHgt = _vd.hgt;
@@ -11999,8 +12022,9 @@ function _lvRenderLoadCanvas2D(canvas, wrap, items, veh, view, rollLayout) {
     }
   });
 
-  /* ── 실제 배치 좌표 (3D와 동일) ── */
-  const placement = _lvComputePlacement(items||[], veh, 0, 0, 0, rollLayout || null);
+  /* ── 실제 배치 좌표 (3D와 동일) — 원지 최대높이/단수 제약 반영 ── */
+  const _lc = loadCons || { rollStack:0, rollMaxH:0, boardMaxH:0 };
+  const placement = _lvComputePlacement(items||[], veh, _lc.rollStack||0, _lc.rollMaxH||0, _lc.boardMaxH||0, rollLayout || null);
   const carWmm = placement.car.W, carLmm = placement.car.L;
   const palHmm = placement.car.palHgt || 0;
 
@@ -12293,7 +12317,7 @@ function _psdRenderLoadCanvas(v, veh) {
   const wrap   = document.getElementById('psd-load-canvas-wrap');
   if (!canvas || !wrap) return;
   /* 공용 2D 렌더러로 위임 (원지 세워적재/단수표시/규격표시/높이표시 일원화) */
-  const { vizItems, legendItems } = _lvRenderLoadCanvas2D(canvas, wrap, v.items || [], veh, _psdLoadView === 'side' ? 'side' : 'front', v.roll_layout || null);
+  const { vizItems, legendItems } = _lvRenderLoadCanvas2D(canvas, wrap, v.items || [], veh, _psdLoadView === 'side' ? 'side' : 'front', v.roll_layout || null, _lvExtractLoadConstraints(v));
   const items = v.items || [];
 
 
