@@ -23734,17 +23734,19 @@ const DCON_KEY_META = {
   ROLL_PALLET_DEDUCT_M:{ label:'[원지] 파레트 높이 차감', unit:'m', op:'=', type:'ROLL_STACK', hint:'파레트 적재 시 가용 높이 차감 (기본 0.15)' },
   ROLL_3D_CHECK_YN:{ label:'[원지] 3D 물리검증 활성', unit:'Y/N', op:'=', type:'ROLL_3D_VERIFY', hint:'Y=원지 3D 검증 / N=검증 스킵' },
   ROLL_3D_DEAD_SPACE_PCT:{ label:'[원지] 3D Dead Space 허용', unit:'%', op:'<=', type:'ROLL_3D_VERIFY', hint:'3D 검증 시 여유 마진 허용비율 (0=허용안함)' },
-  /* CARGO — 판지(Board) */
-  BOARD_CBM_CHECK_YN:{ label:'[판지] CBM 검증 활성', unit:'Y/N', op:'=', type:'CARGO', hint:'N=CBM 이중검증 스킵(중량만 검사)' },
-  BOARD_MAX_TON_RATIO:{ label:'[판지] 중량 최대 사용률', unit:'%', op:'<=', type:'CARGO', hint:'Double-Threshold 중량 상한 (기본 100%)' },
-  BOARD_MAX_CBM_RATIO:{ label:'[판지] CBM 최대 사용률', unit:'%', op:'<=', type:'CARGO', hint:'Double-Threshold 부피 상한 (기본 100%)' },
-  BOARD_MIN_FILL_RATIO:{ label:'[판지] 최소 적재율', unit:'%', op:'>=', type:'CARGO', hint:'판지 전용 최소 적재율 (미설정 시 전역값)' },
-  MAX_BOARD_HEIGHT_M:{ label:'[판지] 최대 적재 높이', unit:'m', op:'<=', type:'CARGO', hint:'판지 스택 최대 높이 (기본 2.4)' },
-  BOARD_HEIGHT_VEH_LINK_YN:{ label:'[판지] 최대높이 차량연동', unit:'Y/N', op:'=', type:'CARGO', hint:'Y=차량 가용높이와 연동 (기본 Y)' },
-  BOARD_BULK_INTEGER_ONLY:{ label:'[판지] 벌크 1PLT 정수 강제', unit:'Y/N', op:'=', type:'CARGO', hint:'Y=벌크 개체 내 분할 불가' },
-  BOARD_INNER_SPLIT_ALLOW:{ label:'[판지] 속포장 분할 허용', unit:'Y/N', op:'=', type:'CARGO', hint:'Y=속 단위 분할 허용' },
-  BOARD_3D_CHECK_YN:{ label:'[판지] 3D 물리검증 활성', unit:'Y/N', op:'=', type:'CARGO', hint:'Y=판지 3D 검증 / N=검증 스킵' },
-  BOARD_3D_DEAD_SPACE_PCT:{ label:'[판지] 3D Dead Space 허용', unit:'%', op:'<=', type:'CARGO', hint:'3D 검증 시 여유 마진 허용비율 (0=허용안함)' },
+  /* 판지① CBM·중량 이중 검증 (BOARD_CBM_WEIGHT) */
+  BOARD_CBM_CHECK_YN:{ label:'[판지] CBM 검증 활성', unit:'Y/N', op:'=', type:'BOARD_CBM_WEIGHT', hint:'N=CBM 이중검증 스킵(중량만 검사)' },
+  BOARD_MAX_TON_RATIO:{ label:'[판지] 중량 최대 사용률', unit:'%', op:'<=', type:'BOARD_CBM_WEIGHT', hint:'Double-Threshold 중량 상한 (기본 100%)' },
+  BOARD_MAX_CBM_RATIO:{ label:'[판지] CBM 최대 사용률', unit:'%', op:'<=', type:'BOARD_CBM_WEIGHT', hint:'Double-Threshold 부피 상한 (기본 100%)' },
+  BOARD_MIN_FILL_RATIO:{ label:'[판지] 최소 적재율', unit:'%', op:'>=', type:'BOARD_CBM_WEIGHT', hint:'판지 전용 최소 적재율 (미설정 시 전역값)' },
+  /* 판지② 벌크·속포장 제약 (BOARD_BULK_SPLIT) */
+  BOARD_BULK_INTEGER_ONLY:{ label:'[판지] 벌크 1PLT 정수 강제', unit:'Y/N', op:'=', type:'BOARD_BULK_SPLIT', hint:'Y=벌크 개체 내 분할 불가' },
+  BOARD_INNER_SPLIT_ALLOW:{ label:'[판지] 속포장 분할 허용', unit:'Y/N', op:'=', type:'BOARD_BULK_SPLIT', hint:'Y=속 단위 분할 허용' },
+  /* 판지④ 3D 물리 검증 (BOARD_3D_VERIFY) — 최대 적재 높이/차량연동 포함 */
+  MAX_BOARD_HEIGHT_M:{ label:'[판지] 최대 적재 높이', unit:'m', op:'<=', type:'BOARD_3D_VERIFY', hint:'판지 스택 최대 높이 (기본 2.4)' },
+  BOARD_HEIGHT_VEH_LINK_YN:{ label:'[판지] 최대높이 차량연동', unit:'Y/N', op:'=', type:'BOARD_3D_VERIFY', hint:'Y=차량 가용높이와 연동 (기본 Y)' },
+  BOARD_3D_CHECK_YN:{ label:'[판지] 3D 물리검증 활성', unit:'Y/N', op:'=', type:'BOARD_3D_VERIFY', hint:'Y=판지 3D 검증 / N=검증 스킵' },
+  BOARD_3D_DEAD_SPACE_PCT:{ label:'[판지] 3D Dead Space 허용', unit:'%', op:'<=', type:'BOARD_3D_VERIFY', hint:'3D 검증 시 여유 마진 허용비율 (0=허용안함)' },
   /* MIX_MATERIAL — 원지+판지 재질 혼적 */
   ALLOW_MATERIAL_MIX:{ label:'원지+판지 혼적 허용', unit:'Y/N', op:'=', type:'MIX_MATERIAL', hint:'Y=원지 차량의 여유공간(바닥 Y축)에 판지를 함께 적재하여 한 차량에 혼적 / N=재질별 차량 분리 배차(원지·판지 각각 별도 차량)' },
   MIX_UNIFIED_VEHICLE_YN:{ label:'원지+판지 합산중량 통합 단일차량', unit:'Y/N', op:'=', type:'MIX_MATERIAL', hint:'Y=같은 그룹의 원지 총중량+판지 총중량을 합산하여 그 합을 한 번에 실을 수 있는 더 큰 차량 1대로 통합 배차(2대→1대 효율화, 중량·높이 검증 통과 시) / N=재질별 개별 배차. ※ALLOW_MATERIAL_MIX=Y 선행 필요' },
@@ -27271,6 +27273,12 @@ const _DCON_MIX_YLIFO_KEYS = ['MIX_CONTIGUOUS_FRONT_YN'];
 const _DCON_ROLL_STACK_KEYS = ['MAX_ROLL_STACK_TIER', 'ROLL_STACK_MINIMIZE_YN', 'ROLL_MAX_HEIGHT_M', 'ROLL_HEIGHT_MARGIN_M', 'ROLL_PALLET_APPLY_YN', 'ROLL_PALLET_DEDUCT_M'];
 /* 원지④ 3D 물리 검증 제약 키 — ROLL_3D_VERIFY 탭으로 정규화 (기존 CARGO 저장분 포함). */
 const _DCON_ROLL_3D_KEYS = ['ROLL_3D_CHECK_YN', 'ROLL_3D_DEAD_SPACE_PCT'];
+/* 판지① CBM·중량 이중 검증 제약 키 — BOARD_CBM_WEIGHT 탭으로 정규화 (기존 CARGO 저장분 포함). */
+const _DCON_BOARD_CBM_KEYS = ['BOARD_CBM_CHECK_YN', 'BOARD_MAX_TON_RATIO', 'BOARD_MAX_CBM_RATIO', 'BOARD_MIN_FILL_RATIO'];
+/* 판지② 벌크·속포장 제약 키 — BOARD_BULK_SPLIT 탭으로 정규화. */
+const _DCON_BOARD_BULK_KEYS = ['BOARD_BULK_INTEGER_ONLY', 'BOARD_INNER_SPLIT_ALLOW'];
+/* 판지④ 3D 물리 검증 제약 키(최대높이/차량연동 포함) — BOARD_3D_VERIFY 탭으로 정규화. */
+const _DCON_BOARD_3D_KEYS = ['MAX_BOARD_HEIGHT_M', 'BOARD_HEIGHT_VEH_LINK_YN', 'BOARD_3D_CHECK_YN', 'BOARD_3D_DEAD_SPACE_PCT'];
 function _dconNormalizeMixMaterialType(rows) {
   if (!Array.isArray(rows)) return rows;
   rows.forEach(r => {
@@ -27294,8 +27302,55 @@ function _dconNormalizeMixMaterialType(rows) {
     if (r && _DCON_ROLL_3D_KEYS.includes(r.CONST_KEY) && r.CONST_TYPE !== 'ROLL_3D_VERIFY') {
       r.CONST_TYPE = 'ROLL_3D_VERIFY';
     }
+    // 판지 CBM·중량 이중검증 제약은 BOARD_CBM_WEIGHT(판지①) 탭으로 정규화 (기존 CARGO 저장분 포함)
+    if (r && _DCON_BOARD_CBM_KEYS.includes(r.CONST_KEY) && r.CONST_TYPE !== 'BOARD_CBM_WEIGHT') {
+      r.CONST_TYPE = 'BOARD_CBM_WEIGHT';
+    }
+    // 판지 벌크·속포장 제약은 BOARD_BULK_SPLIT(판지②) 탭으로 정규화
+    if (r && _DCON_BOARD_BULK_KEYS.includes(r.CONST_KEY) && r.CONST_TYPE !== 'BOARD_BULK_SPLIT') {
+      r.CONST_TYPE = 'BOARD_BULK_SPLIT';
+    }
+    // 판지 3D 물리검증(최대높이/차량연동 포함) 제약은 BOARD_3D_VERIFY(판지④) 탭으로 정규화
+    if (r && _DCON_BOARD_3D_KEYS.includes(r.CONST_KEY) && r.CONST_TYPE !== 'BOARD_3D_VERIFY') {
+      r.CONST_TYPE = 'BOARD_3D_VERIFY';
+    }
   });
-  return rows;
+  return _dconDedupRows(rows);
+}
+
+/* ── 제약조건 중복 행 제거 ──────────────────────────────────────────────────
+   탭 정규화(CARGO→판지/원지 탭 등)로 인해, 과거에 서로 다른 CONST_TYPE 으로
+   저장됐던 '같은 제약조건(동일 TARGET + CONST_KEY)' 이 동일 탭에 2개 이상 중복
+   표시될 수 있다. 이를 제거한다. (자동배차 엔진은 CONST_KEY 기준으로만 값을 읽으므로
+   표시 중복은 혼란만 유발 → 하나만 남겨 UI/저장 정합성 확보.)
+   유지 우선순위:
+     ① 값(_pval/CONST_VALUE)이 설정된(비어있지 않은) 행 우선
+     ② 그다음 먼저 등장한 행 유지
+   병합 키: (TARGET_ID|TARGET_NM) + CONST_KEY  (CONST_TYPE 은 이미 정규화됨)
+   ※ VEHICLE/CARTYPE 은 차종(TARGET)별 다중 행이 정상이므로 CONST_KEY 중복을 막지 않도록
+     TARGET 를 키에 포함(동일 TARGET+KEY 만 중복으로 간주). */
+function _dconDedupRows(rows) {
+  if (!Array.isArray(rows)) return rows;
+  const _hasVal = (r) => {
+    const v = (r && (r._pval != null ? r._pval : r.CONST_VALUE));
+    return v !== undefined && v !== null && String(v).trim() !== '';
+  };
+  // 교체 우선순위 점수: ① 세트 포함(IN_SET) ② 값 보유 ③ CONST_ID 보유(DB 저장행)
+  const _score = (r) => (r && r.IN_SET ? 4 : 0) + (_hasVal(r) ? 2 : 0) + (r && r.CONST_ID ? 1 : 0);
+  const seen = new Map();          // key → 유지 중인 행의 결과배열 인덱스
+  const out  = [];
+  rows.forEach(r => {
+    if (!r || !r.CONST_KEY) { out.push(r); return; }
+    const tgt = (r.TARGET_ID || r.TARGET_NM || '');
+    const key = tgt + '\u0001' + r.CONST_KEY;
+    if (!seen.has(key)) { seen.set(key, out.length); out.push(r); return; }
+    // 이미 동일 (TARGET+KEY) 행이 있음 → 점수가 더 높은 행을 유지(IN_SET>값>DB행)
+    const idx  = seen.get(key);
+    const prev = out[idx];
+    if (_score(r) > _score(prev)) out[idx] = r;   // 신규가 더 우선 → 교체
+    // 그 외는 먼저 등장한 prev 유지 → 중복 제거
+  });
+  return out;
 }
 
 function _dconTabMgrRender() {
