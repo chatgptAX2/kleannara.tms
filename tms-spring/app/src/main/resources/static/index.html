@@ -128,41 +128,63 @@ input,select,textarea,button{font-family:'Pretendard Variable','Pretendard','App
   --pastel-gray-bg:#f1f5f9;--pastel-gray-fg:#475569;
 }
 
-/* ── DARK 테마 ── */
+/* ── DARK 테마 — 엔터프라이즈 다크 (레이어드 블루-그레이) ──────────────
+   설계 원칙:
+   · 순흑(#000) 대신 딥 네이비-슬레이트 3단 레이어(bg<surface<surface2)로
+     표면 위계를 명확히 분리 → '떠 있는 카드' 깊이감, 평평함 제거.
+   · 보더는 저채도로 은은하게(과대비 제거) → 장시간 사용 눈피로 완화.
+   · 텍스트는 순백 대신 톤다운 고명도(#e8edf5)로 눈부심↓, 본문 대비 WCAG AA 확보.
+   · primary(스카이블루)를 다크 배경에서 더 밝고 선명하게(#38bdf8) → 액션 가시성↑.
+   · 상태색(성공/경고/위험)도 다크 배경 대비 밝은 톤으로 보정.
+   · 그림자는 더 깊고 부드럽게 + 보더 하이라이트로 입체감 보강. */
 [data-theme="dark"] {
-  --bg:#0a0f1e;--surface:#111827;--surface2:#1a2236;--border:#1e2d45;
-  --primary:#0ea5e9;--primary-dark:#0284c7;--primary-navy:#1e3a5f;
-  --accent:#e2e8f0;
-  --success:#10b981;--warning:#f59e0b;--danger:#ef4444;
-  --text:#f1f5f9;--text2:#b0bdce;--text3:#64748b;
-  /* 테이블 전용 */
-  --th-bg:#111827;--tr-hover:#0f2035;--tr-border:#1a2a3e;
-  --tr-selected:#0c2340;--tr-selected-vhc:#0c1f3a;
-  --td-num:#38bdf8;--empty-fg:#475569;
+  /* 배경/서피스 — 딥 네이비 3단 레이어(미묘한 색온도 차이로 표면 분리) */
+  --bg:#0b1120;--surface:#141c2e;--surface2:#1d2740;--border:#2a3852;
+  /* 메인/포인트 컬러 — 다크 배경에서 더 밝고 선명한 스카이블루 */
+  --primary:#38bdf8;--primary-dark:#0ea5e9;--primary-navy:#1e3a5f;
+  --accent:#e8edf5;
+  /* 상태색 — 다크 대비 밝은 톤 보정 */
+  --success:#34d399;--warning:#fbbf24;--danger:#f87171;
+  /* ── 텍스트 명도 3단계 — 순백 대신 톤다운 고명도(눈부심↓·AA 대비) ── */
+  --text:#e8edf5;--text2:#9fb0c7;--text3:#5f7085;
+  /* 테이블 전용 — 헤더/호버/선택을 표면 레이어와 조화롭게 */
+  --th-bg:#1a2338;--tr-hover:#1b2942;--tr-border:#243149;
+  --tr-selected:#123050;--tr-selected-vhc:#0f2947;
+  --td-num:#56c7fa;--empty-fg:#54637a;
   /* 배지 */
-  --badge-blue-bg:#0c2340;--badge-blue-fg:#38bdf8;
+  --badge-blue-bg:#102a47;--badge-blue-fg:#56c7fa;
   /* 드래그 복사 배지 */
-  --dc-badge-bg:#0369a1;--dc-badge-fg:#bae6fd;--dc-badge-border:#0ea5e9;
-  /* 툴팁 */
-  --tooltip-bg:#0f172a;--tooltip-fg:#e2e8f0;
+  --dc-badge-bg:#0ea5e9;--dc-badge-fg:#e0f2fe;--dc-badge-border:#38bdf8;
+  /* 툴팁 — 라이트 톤으로 띄워 가독성↑ */
+  --tooltip-bg:#e8edf5;--tooltip-fg:#0b1120;
   /* input focus */
-  --input-focus-bg:#0c2340;
+  --input-focus-bg:#132945;
   /* 테마 버튼 */
   --theme-btn-icon:"☀️";
-  /* 카드 그림자 */
-  --shadow-sm:0 1px 3px rgba(0,0,0,.3);
-  --shadow-md:0 4px 12px rgba(0,0,0,.4);
-  --shadow-lg:0 8px 24px rgba(0,0,0,.5);
-  /* 파스텔 상태 배지용 (다크) */
-  --pastel-green-bg:#052e16;--pastel-green-fg:#6ee7b7;
-  --pastel-red-bg:#450a0a;--pastel-red-fg:#fca5a5;
-  --pastel-yellow-bg:#292524;--pastel-yellow-fg:#fde68a;
-  --pastel-blue-bg:#0c2340;--pastel-blue-fg:#93c5fd;
-  --pastel-sky-bg:#082f49;--pastel-sky-fg:#7dd3fc;
-  --pastel-purple-bg:#2e1065;--pastel-purple-fg:#c4b5fd;
-  --pastel-orange-bg:#431407;--pastel-orange-fg:#fdba74;
-  --pastel-gray-bg:#1e293b;--pastel-gray-fg:#94a3b8;
+  /* 카드 그림자 — 더 깊고 부드럽게(엘리베이션 표현) */
+  --shadow-sm:0 1px 2px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3);
+  --shadow-md:0 4px 14px rgba(0,0,0,.5),0 2px 6px rgba(0,0,0,.35);
+  --shadow-lg:0 12px 32px rgba(0,0,0,.6),0 6px 12px rgba(0,0,0,.4);
+  /* 파스텔 상태 배지용 (다크) — 배경은 저명도 톤, 전경은 선명한 밝은 톤 */
+  --pastel-green-bg:#0b3a2a;--pastel-green-fg:#6ee7b7;
+  --pastel-red-bg:#4a1620;--pastel-red-fg:#fca5a5;
+  --pastel-yellow-bg:#3a2e12;--pastel-yellow-fg:#fcd34d;
+  --pastel-blue-bg:#102a47;--pastel-blue-fg:#93c5fd;
+  --pastel-sky-bg:#0b3350;--pastel-sky-fg:#7dd3fc;
+  --pastel-purple-bg:#2a1b52;--pastel-purple-fg:#c4b5fd;
+  --pastel-orange-bg:#3d2010;--pastel-orange-fg:#fdba74;
+  --pastel-gray-bg:#232f45;--pastel-gray-fg:#9fb0c7;
 }
+/* ── 다크모드 세부 보강 (라이트모드 영향 없음) ────────────────────────
+   CSS 변수로 커버되지 않는 스크롤바·포커스링 등 미세 요소를 다크에 맞춤. */
+[data-theme="dark"] ::-webkit-scrollbar{width:11px;height:11px}
+[data-theme="dark"] ::-webkit-scrollbar-track{background:var(--bg)}
+[data-theme="dark"] ::-webkit-scrollbar-thumb{background:#2f3f5a;border-radius:6px;border:2px solid var(--bg)}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover{background:#3d5075}
+[data-theme="dark"] ::-webkit-scrollbar-corner{background:var(--bg)}
+[data-theme="dark"]{scrollbar-color:#2f3f5a var(--bg);scrollbar-width:thin}
+/* 선택 영역 하이라이트 */
+[data-theme="dark"] ::selection{background:rgba(56,189,248,.28);color:#e8edf5}
 body{
   background:var(--bg);color:var(--text);
   /* Primary Font: Pretendard (+한글/시스템 폴백) */
@@ -634,9 +656,9 @@ body.dc-dragging{user-select:none !important;-webkit-user-select:none !important
 .db-kpi-badge.up{background:#d1fae5;color:#065f46}
 .db-kpi-badge.down{background:#fee2e2;color:#991b1b}
 .db-kpi-badge.flat{background:#f1f5f9;color:#475569}
-[data-theme="dark"] .db-kpi-badge.up{background:#052e16;color:#6ee7b7}
-[data-theme="dark"] .db-kpi-badge.down{background:#450a0a;color:#fca5a5}
-[data-theme="dark"] .db-kpi-badge.flat{background:#1e293b;color:#94a3b8}
+[data-theme="dark"] .db-kpi-badge.up{background:#0b3a2a;color:#6ee7b7}
+[data-theme="dark"] .db-kpi-badge.down{background:#4a1620;color:#fca5a5}
+[data-theme="dark"] .db-kpi-badge.flat{background:#232f45;color:#9fb0c7}
 
 /* 섹션 타이틀 */
 .db-section-hdr{
