@@ -683,6 +683,33 @@ body.dc-dragging{user-select:none !important;-webkit-user-select:none !important
 [data-theme="dark"] .db-kpi-badge.down{background:#4a1620;color:#fca5a5}
 [data-theme="dark"] .db-kpi-badge.flat{background:#232f45;color:#9fb0c7}
 
+/* ══════════════════════════════════════════════════════════════════
+   출고실적 분석 (shipAnalysis) — 테마 변수 기반(다크/라이트 자동)
+   ══════════════════════════════════════════════════════════════════ */
+.sa-quick{padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer}
+.sa-quick:hover{border-color:var(--primary);color:var(--primary)}
+.sa-kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+@media (max-width:1100px){.sa-kpi-row{grid-template-columns:repeat(2,1fr)}}
+.sa-kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow-sm);position:relative;overflow:hidden}
+.sa-kpi::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--primary),var(--primary-dark))}
+.sa-kpi-label{font-size:11px;color:var(--text3);font-weight:600;margin-bottom:6px}
+.sa-kpi-value{font-size:21px;font-weight:800;color:var(--text);line-height:1.1;font-feature-settings:"tnum";font-variant-numeric:tabular-nums}
+.sa-grid{display:grid;gap:16px}
+.sa-grid-3{grid-template-columns:repeat(3,1fr)}
+.sa-grid-2{grid-template-columns:repeat(2,1fr)}
+@media (max-width:1280px){.sa-grid-3{grid-template-columns:1fr 1fr}}
+@media (max-width:900px){.sa-grid-3,.sa-grid-2{grid-template-columns:1fr}}
+.sa-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow-sm);display:flex;flex-direction:column;min-width:0}
+.sa-card-hdr{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.sa-card-title{font-size:13px;font-weight:700;color:var(--text)}
+.sa-card-sub{font-size:10px;color:var(--text3);font-weight:600;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:1px 7px;white-space:nowrap}
+.sa-chart-wrap{position:relative;height:240px}
+.sa-chart-wrap.tall{height:300px}
+.sa-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.sa-tbl th{padding:7px 10px;background:var(--th-bg);color:var(--text2);font-size:11px;font-weight:700;border-bottom:1px solid var(--border);text-align:center;white-space:nowrap}
+.sa-tbl td{padding:6px 10px;border-bottom:1px solid var(--tr-border);color:var(--text);text-align:center;white-space:nowrap}
+.sa-tbl tbody tr:hover td{background:var(--tr-hover)}
+
 /* 섹션 타이틀 */
 .db-section-hdr{
   display:flex;align-items:center;gap:8px;
@@ -3630,6 +3657,9 @@ thead th:hover .th-drag-handle{opacity:.8}
   <div class="nav-item" onclick="showPage('hlDispatchConstraint')" id="nav-hlDispatchConstraint">
     <span class="icon">🎯</span> HL제약조건관리
   </div>
+  <div class="nav-item" onclick="showPage('shipAnalysis')" id="nav-shipAnalysis">
+    <span class="icon">📈</span> 출고실적 분석
+  </div>
   <div class="nav-section">기준정보 관리</div>
   <div class="nav-item" onclick="showPage('psDispatch')" id="nav-psDispatch">
     <span class="icon">🚚</span> PS 배차
@@ -4053,6 +4083,7 @@ const PAGE_META = {
   dispatchStrategy:   { title:'차량유형관리',   badge:'⚙️ Strategy',    crumb:['홈','기준정보 관리','차량유형관리'] },
   dispatchConstraint: { title:'PS제약조건관리', badge:'🎯 PS제약조건관리', crumb:['홈','배차관리','PS제약조건관리'] },
   hlDispatchConstraint: { title:'HL제약조건관리', badge:'🎯 HL제약조건관리', crumb:['홈','배차관리','HL제약조건관리'] },
+  shipAnalysis:       { title:'출고실적 분석',   badge:'📈 출고실적 분석',   crumb:['홈','배차관리','출고실적 분석'] },
   psDispatch:         { title:'PS 배차',       badge:'🚚 PS 배차',      crumb:['홈','기준정보 관리','PS 배차'] },
   psDispatchOpt:      { title:'PS 배차(최적화)', badge:'🚀 PS 배차(최적화)', crumb:['홈','배차관리','PS 배차(최적화)'] },
   hlDispatch:         { title:'HL배차', badge:'🚀 HL배차', crumb:['홈','배차관리','HL배차'] },
@@ -4177,6 +4208,7 @@ const PAGE_ICON = {
   psDispatchOpt:'🚀',
   hlDispatch:'🚀',
   returnOut:'↩️',
+  shipAnalysis:'📈',
   dispatchConstraint:'🎯',
   hlDispatchConstraint:'🎯',
   dispatchStrategy:'⚙️',
@@ -4539,6 +4571,9 @@ function _doShowPage(p) {
   } else if (p === 'returnOut') {
     srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderReturnOut();
+  } else if (p === 'shipAnalysis') {
+    srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
+    renderShipAnalysis();
   } else {
     state.table = p;
     srch.style.display = 'flex'; psize.style.display = 'flex'; toolbar.style.display = 'none';
@@ -22219,7 +22254,7 @@ async function wahmaSave() {
 ═══════════════════════════════════════════════════════════ */
 const MMGR_STORE_KEY = 'wms_menu_config';
 const MMGR_VER_KEY   = 'wms_menu_ver';
-const MMGR_VER_CUR   = '20260930_hldispatch';  // HL배차 메뉴 추가 시 버전 업 (기존 localStorage 자동 리셋)
+const MMGR_VER_CUR   = '20261022_shipanalysis';  // 출고실적 분석 메뉴 추가 시 버전 업 (기존 localStorage 자동 리셋)
 
 // 기본 메뉴 구조 (sidebar HTML 기반)
 function mmgrDefaultConfig() {
@@ -22231,6 +22266,7 @@ function mmgrDefaultConfig() {
     { type:'item',    id:'nav-returnOut',  label:'반품출고',        icon:'↩️', page:'returnOut',     cnt:false },
     { type:'item',    id:'nav-dispatchConstraint', label:'PS제약조건관리', icon:'🎯', page:'dispatchConstraint', cnt:false },
     { type:'item',    id:'nav-hlDispatchConstraint', label:'HL제약조건관리', icon:'🎯', page:'hlDispatchConstraint', cnt:false },
+    { type:'item',    id:'nav-shipAnalysis', label:'출고실적 분석', icon:'📈', page:'shipAnalysis', cnt:false },
     { type:'section', id:'sec-base',      label:'기준정보 관리' },
     { type:'item',    id:'nav-psDispatch',    label:'PS 배차',     icon:'🚚', page:'psDispatch',    cnt:false },
     { type:'item',    id:'nav-delivery',  label:'납품처 관리',     icon:'📍', page:'delivery',      cnt:true },
@@ -28611,6 +28647,262 @@ const DM = {
   files:        [],   // 현재 폴더 파일 목록
   pendingFiles: [],   // 업로드 대기 파일 목록
 };
+
+/* ═══════════════════════════════════════════════════════════════════
+   출고실적 분석 (shipAnalysis)
+   · PS배차(최적화) 배차확정(SAP선적)에서 SAP 전송 완료된 출고(납품) 결과를
+     지역/톤수/일자/출하유형별로 집계하고, 차량·품목 출고 빈도 및 이동평균
+     기반 출고량 예측(디지털 트윈)을 제공한다. (조회 전용 · 기존 기능 무영향)
+   · 백엔드: /api/ship-analysis/{summary,aggregate,forecast}
+   · 차트: Chart.js(이미 전역 로드됨). 테마 변수(var(--*)) 기반으로 다크/라이트 자동.
+   ═══════════════════════════════════════════════════════════════════ */
+const _saState = { dateFrom:null, dateTo:null };
+const _saCharts = {};   // Chart.js 인스턴스 캐시(destroy 용)
+/* 차트/배지 공통 팔레트 */
+const _SA_PALETTE = ['#38bdf8','#34d399','#fbbf24','#f87171','#a78bfa','#f472b6','#2dd4bf','#fb923c','#60a5fa','#4ade80','#facc15','#c084fc'];
+
+function _saCssVar(name, fallback){
+  try { const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return v || fallback; }
+  catch(e){ return fallback; }
+}
+function _saFmt(n){ return (n==null||isNaN(n)) ? '0' : Number(n).toLocaleString(); }
+function _saFmtDate(s){ s=String(s||''); return s.length===8 ? `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}` : s; }
+
+function renderShipAnalysis() {
+  const content = document.getElementById('content');
+  if (!content) return;
+  content.style.display = 'flex';
+  content.style.flexDirection = 'column';
+  content.style.overflow = 'hidden';
+
+  // 날짜 기본값 (최근 30일)
+  const today = new Date();
+  const d30 = new Date(today); d30.setDate(d30.getDate() - 29);
+  const fmt = d => d.toISOString().slice(0,10);
+  if (!_saState.dateFrom) _saState.dateFrom = fmt(d30);
+  if (!_saState.dateTo)   _saState.dateTo   = fmt(today);
+
+  content.innerHTML = `
+<div id="sa-root" style="flex:1;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;background:var(--bg)">
+  <!-- 배너 -->
+  <div style="padding:16px 22px;background:linear-gradient(135deg,var(--surface) 0%,var(--surface2) 100%);border-bottom:1px solid var(--border);flex-shrink:0">
+    <div style="font-size:20px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:9px">📈 출고실적 분석
+      <span style="font-size:11px;font-weight:600;color:var(--text3);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:2px 9px">SAP 전송완료 출고 기준 · 디지털 트윈</span>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-top:3px">배차확정(SAP선적)되어 최종 SAP 전송된 출고(납품) 결과를 지역·톤수·일자·품목별로 집계하고 향후 출고량을 예측합니다.</div>
+  </div>
+
+  <!-- 조회 필터 -->
+  <div style="padding:10px 22px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
+    <label style="font-size:11px;font-weight:700;color:var(--text2)">출고기간(납품일)</label>
+    <input type="date" id="sa-date-from" value="${_saState.dateFrom}" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--input-bg);color:var(--text);font-size:12px">
+    <span style="color:var(--text3);font-size:11px">~</span>
+    <input type="date" id="sa-date-to" value="${_saState.dateTo}" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--input-bg);color:var(--text);font-size:12px">
+    <button onclick="_saRefresh()" style="padding:5px 14px;border:none;border-radius:7px;background:var(--primary);color:#06243a;font-weight:800;font-size:12px;cursor:pointer">🔍 조회</button>
+    <button onclick="_saQuick(7)" class="sa-quick">최근 7일</button>
+    <button onclick="_saQuick(30)" class="sa-quick">최근 30일</button>
+    <button onclick="_saQuick(90)" class="sa-quick">최근 90일</button>
+    <span id="sa-load-status" style="font-size:10px;color:var(--text3);margin-left:4px"></span>
+  </div>
+
+  <div style="padding:16px 22px;display:flex;flex-direction:column;gap:16px">
+    <!-- KPI -->
+    <div id="sa-kpi" class="sa-kpi-row">${_saSkeletonKpi()}</div>
+
+    <!-- 집계: 지역 / 톤수 / 출하유형 (3열) -->
+    <div class="sa-grid sa-grid-3">
+      <div class="sa-card">
+        <div class="sa-card-hdr"><span class="sa-card-title">🗺️ 지역별 출고비율</span><span class="sa-card-sub" id="sa-region-sub">—</span></div>
+        <div class="sa-chart-wrap"><canvas id="sa-chart-region"></canvas></div>
+      </div>
+      <div class="sa-card">
+        <div class="sa-card-hdr"><span class="sa-card-title">🚛 톤수별 출고 비중</span><span class="sa-card-sub" id="sa-cartype-sub">—</span></div>
+        <div class="sa-chart-wrap"><canvas id="sa-chart-cartype"></canvas></div>
+      </div>
+      <div class="sa-card">
+        <div class="sa-card-hdr"><span class="sa-card-title">📦 출하유형별 분포</span><span class="sa-card-sub" id="sa-shpmty-sub">—</span></div>
+        <div class="sa-chart-wrap"><canvas id="sa-chart-shpmty"></canvas></div>
+      </div>
+    </div>
+
+    <!-- 일자별 출고량 + 예측 -->
+    <div class="sa-card">
+      <div class="sa-card-hdr">
+        <span class="sa-card-title">📅 일자별 출고량 & 출고량 예측(이동평균·추세)</span>
+        <span class="sa-card-sub">실적(실선) · 예측(점선, 향후 7일)</span>
+      </div>
+      <div class="sa-chart-wrap tall"><canvas id="sa-chart-daily"></canvas></div>
+    </div>
+
+    <!-- 디지털 트윈: 차량 빈도 / 품목 빈도 / 요일 패턴 -->
+    <div class="sa-grid sa-grid-2">
+      <div class="sa-card">
+        <div class="sa-card-hdr"><span class="sa-card-title">🔁 차량(톤수)별 출고 빈도</span><span class="sa-card-sub">디지털 트윈</span></div>
+        <div class="sa-chart-wrap"><canvas id="sa-chart-vfreq"></canvas></div>
+      </div>
+      <div class="sa-card">
+        <div class="sa-card-hdr"><span class="sa-card-title">📆 요일별 평균 출고량(톤)</span><span class="sa-card-sub">주간 패턴</span></div>
+        <div class="sa-chart-wrap"><canvas id="sa-chart-dow"></canvas></div>
+      </div>
+    </div>
+
+    <!-- 품목별 출고 빈도 테이블 -->
+    <div class="sa-card">
+      <div class="sa-card-hdr"><span class="sa-card-title">🏷️ 품목별 출고 빈도 (상위 15)</span><span class="sa-card-sub">출고 라인수 기준</span></div>
+      <div id="sa-item-table" style="overflow:auto"></div>
+    </div>
+  </div>
+</div>`;
+
+  _saRefresh();
+}
+
+function _saSkeletonKpi(){
+  const items = ['출고 선적건수','납품문서 수','총 출고중량(톤)','납품처 수','일평균 출고(톤)'];
+  return items.map(t=>`<div class="sa-kpi"><div class="sa-kpi-label">${t}</div><div class="sa-kpi-value">—</div></div>`).join('');
+}
+
+function _saQuick(days){
+  const today=new Date(); const from=new Date(today); from.setDate(from.getDate()-(days-1));
+  const fmt=d=>d.toISOString().slice(0,10);
+  _saState.dateFrom=fmt(from); _saState.dateTo=fmt(today);
+  const fe=document.getElementById('sa-date-from'), te=document.getElementById('sa-date-to');
+  if(fe) fe.value=_saState.dateFrom; if(te) te.value=_saState.dateTo;
+  _saRefresh();
+}
+
+function _saRefresh(){
+  const fe=document.getElementById('sa-date-from'), te=document.getElementById('sa-date-to');
+  if(fe) _saState.dateFrom=fe.value; if(te) _saState.dateTo=te.value;
+  const status=document.getElementById('sa-load-status');
+  if (typeof Chart === 'undefined'){ if(status) status.textContent='⚠️ Chart.js 로드 대기 중…'; setTimeout(_saRefresh,300); return; }
+  if(status) status.textContent='⏳ 조회 중…';
+  const qs = `dateFrom=${encodeURIComponent(_saState.dateFrom)}&dateTo=${encodeURIComponent(_saState.dateTo)}`;
+  Promise.all([
+    fetch(`/api/ship-analysis/summary?${qs}`).then(r=>r.json()).catch(()=>null),
+    fetch(`/api/ship-analysis/aggregate?${qs}`).then(r=>r.json()).catch(()=>null),
+    fetch(`/api/ship-analysis/forecast?${qs}`).then(r=>r.json()).catch(()=>null),
+  ]).then(([sum,agg,fc])=>{
+    const sD=(sum&&(sum.data||sum))||{}, aD=(agg&&(agg.data||agg))||{}, fD=(fc&&(fc.data||fc))||{};
+    _saRenderKpi(sD);
+    _saRenderAgg(aD);
+    _saRenderForecast(fD);
+    if(status) status.textContent = `✓ ${_saFmtDate(_saState.dateFrom.replace(/-/g,''))} ~ ${_saFmtDate(_saState.dateTo.replace(/-/g,''))}`;
+  }).catch(e=>{ if(status) status.textContent='⚠️ 조회 실패: '+e.message; });
+}
+
+function _saRenderKpi(d){
+  const el=document.getElementById('sa-kpi'); if(!el) return;
+  const cards=[
+    {label:'출고 선적건수', value:_saFmt(d.shipmentCnt)+' 건'},
+    {label:'납품문서 수',   value:_saFmt(d.deliveryCnt)+' 건'},
+    {label:'총 출고중량',   value:_saFmt(d.totalTon)+' 톤'},
+    {label:'납품처 수',     value:_saFmt(d.partnerCnt)+' 곳'},
+    {label:'일평균 출고',   value:_saFmt(d.avgTonPerDay)+' 톤'},
+  ];
+  el.innerHTML=cards.map(c=>`<div class="sa-kpi"><div class="sa-kpi-label">${c.label}</div><div class="sa-kpi-value">${c.value}</div></div>`).join('');
+}
+
+function _saDestroy(id){ if(_saCharts[id]){ try{_saCharts[id].destroy();}catch(e){} delete _saCharts[id]; } }
+function _saTick(){ return _saCssVar('--text2','#9fb0c7'); }
+function _saGrid(){ return _saCssVar('--border','#2a3852'); }
+
+function _saRenderAgg(d){
+  const region=d.region||[], cartype=d.cartype||[], shpmty=d.shpmty||[];
+  const rSub=document.getElementById('sa-region-sub'); if(rSub) rSub.textContent=`${region.length}개 지역`;
+  const cSub=document.getElementById('sa-cartype-sub'); if(cSub) cSub.textContent=`${cartype.length}개 톤수`;
+  const sSub=document.getElementById('sa-shpmty-sub'); if(sSub) sSub.textContent=`${shpmty.length}개 유형`;
+
+  // 지역별 — 도넛(톤 기준 비율)
+  _saDonut('sa-chart-region', region.map(x=>x.REGION), region.map(x=>Number(x.TON)||0), '톤');
+  // 톤수별 — 가로 막대(톤)
+  _saBar('sa-chart-cartype', cartype.map(x=>x.CARTYPE), cartype.map(x=>Number(x.TON)||0), '출고중량(톤)', true);
+  // 출하유형별 — 도넛
+  _saDonut('sa-chart-shpmty', shpmty.map(x=>x.SHPMTY), shpmty.map(x=>Number(x.TON)||0), '톤');
+}
+
+function _saRenderForecast(d){
+  const daily=d.daily||[], fcast=d.forecast||[], vfreq=d.vehicleFreq||[], dow=d.dowAvg||[], items=d.itemFreq||[];
+
+  // 일자별 실적 + 예측(점선) — 하나의 라인 차트에 두 데이터셋
+  _saDaily('sa-chart-daily', daily, fcast);
+
+  // 차량(톤수)별 출고 빈도 — 막대(선적건수)
+  _saBar('sa-chart-vfreq', vfreq.map(x=>x.CARTYPE), vfreq.map(x=>Number(x.SHIP_CNT)||0), '선적건수', false);
+
+  // 요일별 평균 출고량 — 막대 (DOW: 1=일..7=토)
+  const dowNames={'1':'일','2':'월','3':'화','4':'수','5':'목','6':'금','7':'토'};
+  const dowMap={}; dow.forEach(x=>dowMap[String(x.DOW)]=Number(x.AVG_TON)||0);
+  const dowLabels=['1','2','3','4','5','6','7'].map(k=>dowNames[k]);
+  const dowData=['1','2','3','4','5','6','7'].map(k=>dowMap[k]||0);
+  _saBar('sa-chart-dow', dowLabels, dowData, '평균 출고(톤)', false);
+
+  // 품목 빈도 테이블
+  const tbl=document.getElementById('sa-item-table');
+  if(tbl){
+    if(!items.length){ tbl.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">표시할 품목 출고 데이터가 없습니다.</div>'; }
+    else {
+      tbl.innerHTML=`<table class="sa-tbl"><thead><tr>
+        <th>#</th><th>품목코드</th><th>품명</th><th>출고 라인수</th><th>총 수량</th><th>총 중량(톤)</th></tr></thead>
+        <tbody>${items.map((it,i)=>`<tr>
+          <td style="color:var(--text3)">${i+1}</td>
+          <td style="font-family:monospace;color:var(--primary)">${it.SKUKEY||''}</td>
+          <td style="text-align:left">${it.DESC01||it.SKUKEY||''}</td>
+          <td style="font-weight:700">${_saFmt(it.LINE_CNT)}</td>
+          <td>${_saFmt(it.QTY)}</td>
+          <td style="font-weight:700;color:#fbbf24">${_saFmt(it.TON)}</td>
+        </tr>`).join('')}</tbody></table>`;
+    }
+  }
+}
+
+/* 공통 차트 빌더 */
+function _saDonut(id, labels, data, unit){
+  _saDestroy(id); const cv=document.getElementById(id); if(!cv) return;
+  if(!labels.length){ _saEmpty(cv); return; }
+  _saCharts[id]=new Chart(cv,{type:'doughnut',
+    data:{labels,datasets:[{data,backgroundColor:labels.map((_,i)=>_SA_PALETTE[i%_SA_PALETTE.length]),borderColor:_saCssVar('--surface','#141c2e'),borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'58%',
+      plugins:{legend:{position:'right',labels:{color:_saTick(),font:{size:11},boxWidth:12}},
+        tooltip:{callbacks:{label:c=>` ${c.label}: ${_saFmt(c.parsed)} ${unit||''}`}}}}});
+}
+function _saBar(id, labels, data, label, horizontal){
+  _saDestroy(id); const cv=document.getElementById(id); if(!cv) return;
+  if(!labels.length){ _saEmpty(cv); return; }
+  _saCharts[id]=new Chart(cv,{type:'bar',
+    data:{labels,datasets:[{label,data,backgroundColor:labels.map((_,i)=>_SA_PALETTE[i%_SA_PALETTE.length]),borderRadius:5,maxBarThickness:38}]},
+    options:{responsive:true,maintainAspectRatio:false,indexAxis:horizontal?'y':'x',
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${label}: ${_saFmt(horizontal?c.parsed.x:c.parsed.y)}`}}},
+      scales:{x:{ticks:{color:_saTick(),font:{size:10}},grid:{color:_saGrid()}},
+              y:{ticks:{color:_saTick(),font:{size:10}},grid:{color:_saGrid()},beginAtZero:true}}}});
+}
+function _saDaily(id, daily, fcast){
+  _saDestroy(id); const cv=document.getElementById(id); if(!cv) return;
+  if(!daily.length){ _saEmpty(cv); return; }
+  // 실적 + 예측을 한 X축에 연결: 실적 labels + 예측 labels
+  const actLabels=daily.map(x=>_saFmtDate(x.RQSHPD).slice(5));
+  const fcLabels=fcast.map(x=>_saFmtDate(x.RQSHPD).slice(5));
+  const labels=actLabels.concat(fcLabels);
+  const actData=daily.map(x=>Number(x.TON)||0).concat(fcast.map(()=>null));
+  // 예측선: 실적 마지막 점에서 이어지도록 마지막 실적값을 예측 시작에 연결
+  const fcData=daily.map(()=>null); 
+  if(daily.length) fcData[daily.length-1]=Number(daily[daily.length-1].TON)||0;
+  fcast.forEach(x=>fcData.push(Number(x.TON)||0));
+  _saCharts[id]=new Chart(cv,{type:'line',
+    data:{labels,datasets:[
+      {label:'실적 출고량(톤)',data:actData,borderColor:'#38bdf8',backgroundColor:'rgba(56,189,248,.15)',fill:true,tension:.3,pointRadius:2,spanGaps:false},
+      {label:'예측 출고량(톤)',data:fcData,borderColor:'#fbbf24',borderDash:[6,4],backgroundColor:'rgba(251,191,36,.08)',fill:false,tension:.3,pointRadius:3,pointStyle:'triangle'},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:_saTick(),font:{size:11},boxWidth:14}},
+        tooltip:{callbacks:{label:c=>c.parsed.y==null?'':` ${c.dataset.label}: ${_saFmt(c.parsed.y)} 톤`}}},
+      scales:{x:{ticks:{color:_saTick(),font:{size:9},maxRotation:60,minRotation:0},grid:{color:_saGrid()}},
+              y:{ticks:{color:_saTick(),font:{size:10}},grid:{color:_saGrid()},beginAtZero:true}}}});
+}
+function _saEmpty(cv){
+  const ctx=cv.getContext('2d'); ctx.clearRect(0,0,cv.width,cv.height);
+  const p=cv.parentElement; if(p){ p.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:12px">데이터 없음</div>'; }
+}
 
 /* ── 진입점 ── */
 async function renderDocMgmt() {
