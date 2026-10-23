@@ -73,6 +73,8 @@ input,select,textarea,button{font-family:'Pretendard Variable','Pretendard','App
   --lnb-bg:#0f172a;--lnb-surface2:#1e293b;--lnb-border:#1e3a5f;
   --lnb-text:#f1f5f9;--lnb-text2:#cbd5e1;--lnb-text3:#64748b;
   --lnb-active-bg:#1d4ed8;
+  /* LNB 배경 그라데이션: 좌(기존 딥네이비) → 우(살짝 밝은 네이비) */
+  --lnb-grad:linear-gradient(90deg,#0f172a 0%,#13203c 55%,#1a2a4a 100%);
   /* GNB: 슬레이트 네이비 (#3D425A) */
   --gnb-bg:#3d425a;--gnb-border:#2e3247;
   --gnb-tab-active-bg:#f8fafc;--gnb-tab-active-text:#3d425a;
@@ -247,7 +249,7 @@ input,select,textarea,button,table,th,td{
 .ty-num{text-align:right;font-weight:500;font-feature-settings:"tnum";font-variant-numeric:tabular-nums;color:var(--td-num)}
 
 /* ── SIDEBAR (LNB) — 딥 네이비 ── */
-#sidebar{width:216px;min-width:216px;background:var(--lnb-bg);border-right:1px solid var(--lnb-border);display:flex;flex-direction:column;overflow:hidden;
+#sidebar{width:216px;min-width:216px;background:var(--lnb-grad);border-right:1px solid var(--lnb-border);display:flex;flex-direction:column;overflow:hidden;
   transition:width .22s ease,min-width .22s ease}
 /* ── LNB 접힘 상태: 폭 0 → #main(flex:1)이 자동으로 전체 폭 차지(화면 비율 자동 조정) ── */
 #sidebar.collapsed{width:0;min-width:0;border-right:0}
@@ -326,6 +328,38 @@ body.lnb-edge-show #lnb-edge-btn{opacity:1;pointer-events:auto;transform:transla
 .nav-item.active .icon{opacity:1}
 .nav-item .cnt{margin-left:auto;background:rgba(255,255,255,.08);border-radius:10px;padding:1px 7px;font-size:10.5px;color:var(--lnb-text3);white-space:nowrap}
 .nav-item.active .cnt{background:rgba(255,255,255,.2);color:#ffffff}
+
+/* ── LNB 트리(폴더) 구조 ── */
+/* 폴더 헤더(섹션) — 클릭 시 접기/펼치기 */
+.nav-folder{
+  display:flex;align-items:center;gap:7px;cursor:pointer;
+  margin:6px 8px 2px;padding:7px 10px;border-radius:7px;
+  transition:background .15s,color .15s;user-select:none;
+}
+.nav-folder:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.75)}
+.nav-caret{
+  font-size:10px;width:12px;text-align:center;flex-shrink:0;
+  color:rgba(255,255,255,.42);transition:transform .2s ease;
+  transform:rotate(90deg);        /* 펼침: 아래 방향 */
+}
+.nav-folder.collapsed .nav-caret{transform:rotate(0deg)}  /* 접힘: 오른쪽 */
+.nav-sec-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 자식 컨테이너 — 접힘 애니메이션 */
+.nav-group{
+  overflow:hidden;max-height:1600px;opacity:1;
+  transition:max-height .25s ease,opacity .2s ease;
+}
+.nav-group.collapsed{max-height:0;opacity:0;pointer-events:none}
+/* 폴더 하위 아이템 들여쓰기 + 좌측 가이드 라인 */
+.nav-group .nav-item{
+  margin:1px 8px 1px 18px;padding-left:16px;font-size:13px;
+  border-left:2px solid rgba(255,255,255,.07);border-radius:0 8px 8px 0;
+}
+.nav-group .nav-item:hover{border-left-color:rgba(56,189,248,.5)}
+.nav-group .nav-item.active{
+  border-left:2px solid #38bdf8;margin-left:18px;padding-left:16px;
+  background:#1d4ed8;color:#fff;
+}
 
 /* ── MAIN ── */
 #main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
@@ -4364,6 +4398,8 @@ function _doShowPage(p) {
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   const navEl = document.getElementById(`nav-${p}`);
   if (navEl) navEl.classList.add('active');
+  // 활성 메뉴가 접힌 폴더 안에 있으면 자동 펼침
+  if (typeof mmgrExpandActiveSection === 'function') mmgrExpandActiveSection(p);
 
   const srch    = document.getElementById('search-wrap');
   const psize   = document.getElementById('page-size-sel');
@@ -22254,7 +22290,7 @@ async function wahmaSave() {
 ═══════════════════════════════════════════════════════════ */
 const MMGR_STORE_KEY = 'wms_menu_config';
 const MMGR_VER_KEY   = 'wms_menu_ver';
-const MMGR_VER_CUR   = '20261022_shipanalysis';  // 출고실적 분석 메뉴 추가 시 버전 업 (기존 localStorage 자동 리셋)
+const MMGR_VER_CUR   = '20261023_tree';  // LNB 트리구조 전환 시 버전 업 (기존 localStorage 자동 리셋)
 
 // 기본 메뉴 구조 (sidebar HTML 기반)
 function mmgrDefaultConfig() {
@@ -22329,27 +22365,76 @@ function mmgrSaveConfig(cfg) {
   localStorage.setItem(MMGR_VER_KEY, MMGR_VER_CUR);
 }
 
-// 사이드바를 저장된 설정으로 재구성
+/* ── 트리(폴더) 접힘 상태 저장소 ── */
+const MMGR_TREE_KEY = 'wms_menu_tree_collapsed';
+function mmgrLoadCollapsed() {
+  try { const s = localStorage.getItem(MMGR_TREE_KEY); return s ? JSON.parse(s) : {}; }
+  catch(e){ return {}; }
+}
+function mmgrSaveCollapsed(map) {
+  try { localStorage.setItem(MMGR_TREE_KEY, JSON.stringify(map)); } catch(e){}
+}
+/* 섹션(폴더) 토글 — 헤더 클릭 시 하위 메뉴 접기/펼치기 */
+function mmgrToggleSection(secId) {
+  const grp = document.getElementById('navgrp-' + secId);
+  if (!grp) return;
+  const collapsed = mmgrLoadCollapsed();
+  const nowCollapsed = !grp.classList.contains('collapsed');
+  grp.classList.toggle('collapsed', nowCollapsed);
+  const hdr = document.getElementById('navsec-' + secId);
+  if (hdr) hdr.classList.toggle('collapsed', nowCollapsed);
+  collapsed[secId] = nowCollapsed;
+  mmgrSaveCollapsed(collapsed);
+}
+
+/* 현재 활성 페이지가 속한 폴더를 자동 펼침 (openTab에서 호출) */
+function mmgrExpandActiveSection(page) {
+  const navEl = document.getElementById('nav-' + page);
+  if (!navEl) return;
+  const grp = navEl.closest('.nav-group');
+  if (grp && grp.classList.contains('collapsed')) {
+    const secId = grp.id.replace('navgrp-', '');
+    mmgrToggleSection(secId);
+  }
+}
+
+// 사이드바를 저장된 설정으로 재구성 (트리/폴더 구조)
 function mmgrApplySidebar() {
   const cfg = mmgrLoadConfig();
   const nav = document.getElementById('sidebar-nav');
   // sidebar-nav 내용 전체 초기화 후 재빌드
   nav.innerHTML = '';
 
+  const collapsed = mmgrLoadCollapsed();
+  let curGroup = null;   // 현재 섹션의 자식 컨테이너(.nav-group)
+
+  const makeItemEl = (item) => {
+    const el = document.createElement('div');
+    el.className = 'nav-item';
+    el.id = item.id;
+    el.onclick = () => showPage(item.page);
+    el.innerHTML = `<span class="icon">${item.icon || '▪'}</span> <span class="nav-label">${item.label}</span>${item.cnt ? `<span class="cnt" id="cnt-${item.page}">-</span>` : ''}`;
+    return el;
+  };
+
   cfg.forEach(item => {
     if (item.type === 'section') {
-      const el = document.createElement('div');
-      el.className = 'nav-section';
-      el.id = item.id;
-      el.textContent = item.label;
-      nav.appendChild(el);
+      // 폴더 헤더
+      const isCollapsed = !!collapsed[item.id];
+      const hdr = document.createElement('div');
+      hdr.className = 'nav-section nav-folder' + (isCollapsed ? ' collapsed' : '');
+      hdr.id = 'navsec-' + item.id;
+      hdr.onclick = () => mmgrToggleSection(item.id);
+      hdr.innerHTML = `<span class="nav-caret">▸</span><span class="nav-sec-label">${item.label}</span>`;
+      nav.appendChild(hdr);
+      // 자식 컨테이너
+      curGroup = document.createElement('div');
+      curGroup.className = 'nav-group' + (isCollapsed ? ' collapsed' : '');
+      curGroup.id = 'navgrp-' + item.id;
+      nav.appendChild(curGroup);
     } else {
-      const el = document.createElement('div');
-      el.className = 'nav-item';
-      el.id = item.id;
-      el.onclick = () => showPage(item.page);
-      el.innerHTML = `<span class="icon">${item.icon || '▪'}</span> ${item.label}${item.cnt ? `<span class="cnt" id="cnt-${item.page}">-</span>` : ''}`;
-      nav.appendChild(el);
+      // 섹션 이전(대시보드 등)은 최상위, 이후는 현재 폴더 자식
+      (curGroup || nav).appendChild(makeItemEl(item));
     }
   });
 }
