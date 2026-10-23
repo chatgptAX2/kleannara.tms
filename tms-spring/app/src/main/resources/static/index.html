@@ -74,7 +74,7 @@ input,select,textarea,button{font-family:'Pretendard Variable','Pretendard','App
   --lnb-text:#f1f5f9;--lnb-text2:#cbd5e1;--lnb-text3:#64748b;
   --lnb-active-bg:#1d4ed8;
   /* LNB 배경 그라데이션: 좌(기존 딥네이비) → 우(살짝 밝은 네이비) */
-  --lnb-grad:linear-gradient(90deg,#0f172a 0%,#13203c 55%,#1a2a4a 100%);
+  --lnb-grad:linear-gradient(90deg,#0f172a 0%,#1a2b4d 55%,#2b4374 100%);
   /* GNB: 슬레이트 네이비 (#3D425A) */
   --gnb-bg:#3d425a;--gnb-border:#2e3247;
   --gnb-tab-active-bg:#f8fafc;--gnb-tab-active-text:#3d425a;
@@ -329,37 +329,80 @@ body.lnb-edge-show #lnb-edge-btn{opacity:1;pointer-events:auto;transform:transla
 .nav-item .cnt{margin-left:auto;background:rgba(255,255,255,.08);border-radius:10px;padding:1px 7px;font-size:10.5px;color:var(--lnb-text3);white-space:nowrap}
 .nav-item.active .cnt{background:rgba(255,255,255,.2);color:#ffffff}
 
+/* ── LNB 메뉴 검색 + 전체 토글 바 ── */
+#lnb-search-bar{
+  flex-shrink:0;display:flex;align-items:center;gap:6px;
+  padding:8px 12px 8px;border-bottom:1px solid rgba(255,255,255,.06);
+}
+#lnb-search-box{
+  flex:1;display:flex;align-items:center;gap:6px;
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
+  border-radius:8px;padding:5px 9px;transition:border-color .15s,background .15s;
+}
+#lnb-search-box:focus-within{border-color:rgba(56,189,248,.55);background:rgba(255,255,255,.09)}
+.lnb-search-ico{font-size:12px;opacity:.65;flex-shrink:0}
+#lnb-search-input{
+  flex:1;min-width:0;border:none;outline:none;background:transparent;
+  color:var(--lnb-text);font-size:12.5px;font-weight:500;
+}
+#lnb-search-input::placeholder{color:rgba(255,255,255,.38)}
+#lnb-search-clear{
+  flex-shrink:0;border:none;background:transparent;color:rgba(255,255,255,.4);
+  cursor:pointer;font-size:11px;padding:0 2px;display:none;line-height:1;
+}
+#lnb-search-box.has-text #lnb-search-clear{display:block}
+#lnb-search-clear:hover{color:#fff}
+.lnb-tool-btn{
+  flex-shrink:0;width:30px;height:30px;display:flex;align-items:center;justify-content:center;
+  border:1px solid rgba(255,255,255,.1);border-radius:8px;
+  background:rgba(255,255,255,.06);color:rgba(255,255,255,.7);
+  cursor:pointer;font-size:14px;transition:background .15s,color .15s,border-color .15s;
+}
+.lnb-tool-btn:hover{background:rgba(56,189,248,.18);border-color:rgba(56,189,248,.4);color:#fff}
+
 /* ── LNB 트리(폴더) 구조 ── */
 /* 폴더 헤더(섹션) — 클릭 시 접기/펼치기 */
 .nav-folder{
   display:flex;align-items:center;gap:7px;cursor:pointer;
   margin:6px 8px 2px;padding:7px 10px;border-radius:7px;
-  transition:background .15s,color .15s;user-select:none;
+  transition:background .15s,color .15s;user-select:none;position:relative;
 }
 .nav-folder:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.75)}
+/* ★ 펼침 상태(=collapsed 아님): 하위 메뉴와 구분되도록 기존 LNB 계통의 밝은 네이비 톤 + 좌측 포인트 바 */
+.nav-folder.expanded{
+  background:rgba(255,255,255,.07);
+  color:rgba(255,255,255,.9);
+  box-shadow:inset 3px 0 0 0 rgba(56,189,248,.55);
+}
+.nav-folder.expanded:hover{background:rgba(255,255,255,.1)}
 .nav-caret{
   font-size:10px;width:12px;text-align:center;flex-shrink:0;
   color:rgba(255,255,255,.42);transition:transform .2s ease;
   transform:rotate(90deg);        /* 펼침: 아래 방향 */
 }
+.nav-folder.expanded .nav-caret{color:rgba(56,189,248,.9)}
 .nav-folder.collapsed .nav-caret{transform:rotate(0deg)}  /* 접힘: 오른쪽 */
 .nav-sec-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 자식 컨테이너 — 접힘 애니메이션 */
+/* 자식 컨테이너 — 접힘 애니메이션 + 펼침 시 살짝 어두운 배경으로 폴더와 대비 */
 .nav-group{
   overflow:hidden;max-height:1600px;opacity:1;
   transition:max-height .25s ease,opacity .2s ease;
+  background:rgba(0,0,0,.14);
+  border-radius:0 0 8px 8px;margin:0 8px 4px;padding:3px 0;
 }
-.nav-group.collapsed{max-height:0;opacity:0;pointer-events:none}
+.nav-group.collapsed{max-height:0;opacity:0;pointer-events:none;padding:0;margin-bottom:0}
 /* 폴더 하위 아이템 들여쓰기 + 좌측 가이드 라인 */
 .nav-group .nav-item{
-  margin:1px 8px 1px 18px;padding-left:16px;font-size:13px;
+  margin:1px 6px 1px 10px;padding-left:16px;font-size:13px;
   border-left:2px solid rgba(255,255,255,.07);border-radius:0 8px 8px 0;
 }
 .nav-group .nav-item:hover{border-left-color:rgba(56,189,248,.5)}
 .nav-group .nav-item.active{
-  border-left:2px solid #38bdf8;margin-left:18px;padding-left:16px;
+  border-left:2px solid #38bdf8;margin-left:10px;padding-left:16px;
   background:#1d4ed8;color:#fff;
 }
+/* 검색 필터로 숨김 처리 */
+.nav-item.lnb-hidden,.nav-folder.lnb-hidden,.nav-group.lnb-hidden{display:none !important}
 
 /* ── MAIN ── */
 #main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
@@ -3670,6 +3713,18 @@ thead th:hover .th-drag-handle{opacity:.8}
       </div>
       <div class="logo-sub">Transportation Management</div>
     </div>
+  </div>
+  <!-- LNB 메뉴 검색 + 전체 펼치기/접기 -->
+  <div id="lnb-search-bar">
+    <div id="lnb-search-box">
+      <span class="lnb-search-ico">🔍</span>
+      <input type="text" id="lnb-search-input" placeholder="메뉴 검색" autocomplete="off"
+             oninput="mmgrFilterMenu(this.value)" onkeydown="if(event.key==='Escape'){this.value='';mmgrFilterMenu('');}">
+      <button id="lnb-search-clear" title="지우기" onclick="document.getElementById('lnb-search-input').value='';mmgrFilterMenu('');">✕</button>
+    </div>
+    <button id="lnb-expand-all" class="lnb-tool-btn" title="전체 펼치기/접기" onclick="mmgrToggleAll()">
+      <span id="lnb-expand-all-ico">⊟</span>
+    </button>
   </div>
   <div id="sidebar-nav">
   <div class="nav-item" onclick="showPage('tmsDashboard')" id="nav-tmsDashboard" style="margin:6px 8px 2px;background:linear-gradient(90deg,rgba(14,165,233,.18) 0%,rgba(99,102,241,.12) 100%);border:1px solid rgba(14,165,233,.25);border-radius:9px">
@@ -22290,7 +22345,7 @@ async function wahmaSave() {
 ═══════════════════════════════════════════════════════════ */
 const MMGR_STORE_KEY = 'wms_menu_config';
 const MMGR_VER_KEY   = 'wms_menu_ver';
-const MMGR_VER_CUR   = '20261023_tree';  // LNB 트리구조 전환 시 버전 업 (기존 localStorage 자동 리셋)
+const MMGR_VER_CUR   = '20261023_tree2';  // LNB 트리 검색/전체토글/색구분 반영 시 버전 업 (기존 localStorage 자동 리셋)
 
 // 기본 메뉴 구조 (sidebar HTML 기반)
 function mmgrDefaultConfig() {
@@ -22382,9 +22437,99 @@ function mmgrToggleSection(secId) {
   const nowCollapsed = !grp.classList.contains('collapsed');
   grp.classList.toggle('collapsed', nowCollapsed);
   const hdr = document.getElementById('navsec-' + secId);
-  if (hdr) hdr.classList.toggle('collapsed', nowCollapsed);
+  if (hdr) { hdr.classList.toggle('collapsed', nowCollapsed); hdr.classList.toggle('expanded', !nowCollapsed); }
   collapsed[secId] = nowCollapsed;
   mmgrSaveCollapsed(collapsed);
+  _mmgrSyncExpandAllIcon();
+}
+
+/* 전체 펼치기/접기 — 하나라도 접혀 있으면 전체 펼침, 모두 펼쳐져 있으면 전체 접힘 */
+function mmgrToggleAll() {
+  const folders = document.querySelectorAll('#sidebar-nav .nav-folder');
+  if (!folders.length) return;
+  // 현재 하나라도 접혀 있으면 → 전체 펼침, 아니면 → 전체 접힘
+  let anyCollapsed = false;
+  folders.forEach(f => { if (f.classList.contains('collapsed')) anyCollapsed = true; });
+  const targetCollapsed = !anyCollapsed;  // 전부 펼쳐져 있으면 접음
+  const collapsed = mmgrLoadCollapsed();
+  folders.forEach(hdr => {
+    const secId = hdr.id.replace('navsec-', '');
+    const grp = document.getElementById('navgrp-' + secId);
+    if (!grp) return;
+    grp.classList.toggle('collapsed', targetCollapsed);
+    hdr.classList.toggle('collapsed', targetCollapsed);
+    hdr.classList.toggle('expanded', !targetCollapsed);
+    collapsed[secId] = targetCollapsed;
+  });
+  mmgrSaveCollapsed(collapsed);
+  _mmgrSyncExpandAllIcon();
+}
+/* 전체 토글 버튼 아이콘 동기화(⊟=접기가능/모두펼침, ⊞=펼치기가능/일부접힘) */
+function _mmgrSyncExpandAllIcon() {
+  const ico = document.getElementById('lnb-expand-all-ico');
+  const btn = document.getElementById('lnb-expand-all');
+  if (!ico || !btn) return;
+  const folders = document.querySelectorAll('#sidebar-nav .nav-folder');
+  let anyCollapsed = false;
+  folders.forEach(f => { if (f.classList.contains('collapsed')) anyCollapsed = true; });
+  ico.textContent = anyCollapsed ? '⊞' : '⊟';
+  btn.title = anyCollapsed ? '전체 펼치기' : '전체 접기';
+}
+
+/* 메뉴 검색 — 라벨에 검색어가 포함된 아이템만 노출, 매칭된 아이템의 상위 폴더는 펼침 */
+function mmgrFilterMenu(q) {
+  const box = document.getElementById('lnb-search-box');
+  const kw = (q || '').trim().toLowerCase();
+  if (box) box.classList.toggle('has-text', kw.length > 0);
+  const nav = document.getElementById('sidebar-nav');
+  if (!nav) return;
+  const folders = nav.querySelectorAll('.nav-folder');
+
+  if (!kw) {
+    // 검색 해제 → 숨김 클래스 제거하고 저장된 접힘 상태 복원
+    nav.querySelectorAll('.lnb-hidden').forEach(el => el.classList.remove('lnb-hidden'));
+    const collapsed = mmgrLoadCollapsed();
+    folders.forEach(hdr => {
+      const secId = hdr.id.replace('navsec-', '');
+      const grp = document.getElementById('navgrp-' + secId);
+      const isCol = !!collapsed[secId];
+      if (grp) grp.classList.toggle('collapsed', isCol);
+      hdr.classList.toggle('collapsed', isCol);
+      hdr.classList.toggle('expanded', !isCol);
+    });
+    _mmgrSyncExpandAllIcon();
+    return;
+  }
+
+  // 최상위 아이템(폴더 밖, 대시보드 등)
+  Array.from(nav.children).forEach(ch => {
+    if (ch.classList.contains('nav-item')) {
+      const hit = ch.textContent.toLowerCase().includes(kw);
+      ch.classList.toggle('lnb-hidden', !hit);
+    }
+  });
+
+  // 폴더별 매칭
+  folders.forEach(hdr => {
+    const secId = hdr.id.replace('navsec-', '');
+    const grp = document.getElementById('navgrp-' + secId);
+    if (!grp) return;
+    const items = grp.querySelectorAll('.nav-item');
+    let groupHit = false;
+    items.forEach(it => {
+      const hit = it.textContent.toLowerCase().includes(kw);
+      it.classList.toggle('lnb-hidden', !hit);
+      if (hit) groupHit = true;
+    });
+    // 매칭된 하위가 있으면 폴더 노출 + 펼침, 없으면 폴더/그룹 숨김
+    hdr.classList.toggle('lnb-hidden', !groupHit);
+    grp.classList.toggle('lnb-hidden', !groupHit);
+    if (groupHit) {
+      grp.classList.remove('collapsed');
+      hdr.classList.remove('collapsed');
+      hdr.classList.add('expanded');
+    }
+  });
 }
 
 /* 현재 활성 페이지가 속한 폴더를 자동 펼침 (openTab에서 호출) */
@@ -22422,7 +22567,7 @@ function mmgrApplySidebar() {
       // 폴더 헤더
       const isCollapsed = !!collapsed[item.id];
       const hdr = document.createElement('div');
-      hdr.className = 'nav-section nav-folder' + (isCollapsed ? ' collapsed' : '');
+      hdr.className = 'nav-section nav-folder' + (isCollapsed ? ' collapsed' : ' expanded');
       hdr.id = 'navsec-' + item.id;
       hdr.onclick = () => mmgrToggleSection(item.id);
       hdr.innerHTML = `<span class="nav-caret">▸</span><span class="nav-sec-label">${item.label}</span>`;
@@ -22437,6 +22582,8 @@ function mmgrApplySidebar() {
       (curGroup || nav).appendChild(makeItemEl(item));
     }
   });
+  // 재빌드 후 전체 토글 아이콘 상태 동기화
+  if (typeof _mmgrSyncExpandAllIcon === 'function') _mmgrSyncExpandAllIcon();
 }
 
 /* ── 메뉴 관리자 모달 열기/닫기 ── */
