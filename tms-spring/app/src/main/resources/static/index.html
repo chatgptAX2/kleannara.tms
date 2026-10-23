@@ -333,11 +333,13 @@ body.lnb-edge-show #lnb-edge-btn{opacity:1;pointer-events:auto;transform:transla
 #lnb-search-bar{
   flex-shrink:0;display:flex;align-items:center;gap:6px;
   padding:8px 12px 8px;border-bottom:1px solid rgba(255,255,255,.06);
+  box-sizing:border-box;width:100%;min-width:0;overflow:hidden;
 }
 #lnb-search-box{
-  flex:1;display:flex;align-items:center;gap:6px;
+  flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:6px;
   background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
   border-radius:8px;padding:5px 9px;transition:border-color .15s,background .15s;
+  box-sizing:border-box;
 }
 #lnb-search-box:focus-within{border-color:rgba(56,189,248,.55);background:rgba(255,255,255,.09)}
 .lnb-search-ico{font-size:12px;opacity:.65;flex-shrink:0}
