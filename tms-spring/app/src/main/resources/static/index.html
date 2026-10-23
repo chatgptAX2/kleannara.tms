@@ -368,6 +368,9 @@ body.lnb-edge-show #lnb-edge-btn{opacity:1;pointer-events:auto;transform:transla
   display:flex;align-items:center;gap:7px;cursor:pointer;
   margin:6px 8px 2px;padding:7px 10px;border-radius:7px;
   transition:background .15s,color .15s;user-select:none;position:relative;
+  /* ★ 폴더 헤더 글자를 하위 메뉴(.nav-group .nav-item) 기준으로 통일 */
+  font-size:13px;font-weight:600;letter-spacing:-.1px;text-transform:none;
+  color:var(--lnb-text);
 }
 .nav-folder:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.75)}
 /* ★ 펼침 상태(=collapsed 아님): 하위 메뉴와 구분되도록 기존 LNB 계통의 밝은 네이비 톤 + 좌측 포인트 바 */
@@ -384,7 +387,8 @@ body.lnb-edge-show #lnb-edge-btn{opacity:1;pointer-events:auto;transform:transla
 }
 .nav-folder.expanded .nav-caret{color:rgba(56,189,248,.9)}
 .nav-folder.collapsed .nav-caret{transform:rotate(0deg)}  /* 접힘: 오른쪽 */
-.nav-sec-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nav-sec-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:13px;font-weight:600;letter-spacing:-.1px;text-transform:none}
 /* 자식 컨테이너 — 접힘 애니메이션 + 펼침 시 살짝 어두운 배경으로 폴더와 대비 */
 .nav-group{
   overflow:hidden;max-height:1600px;opacity:1;
