@@ -272,6 +272,14 @@ public class AutoDispatchService {
             PtnrInfo pi   = ptnrInfoMap.getOrDefault(dptnky, PtnrInfo.EMPTY);
             boolean isDynBlocked = "N".equals(pi.dynamicYn);
 
+            // ── [HL 전용] 자동설정PLT 배차 적용 판정 ─────────────────────
+            //  조건: HL 스코프 + HL_AUTOPLT_YN=Y + 납품처 AUTO_PLT(>0, PLT당 개수) 설정됨.
+            //  AUTO_PLT 미선택(0) 납품처는 미적용(기존 방식). PS 스코프는 항상 미적용(무영향).
+            //  ※ 실제 'PLT당 개수' 기준 수량 분할 배차 로직은 HL PLT개수 확정 후 반영 예정 →
+            //    현재는 적용 대상 판정·플래그·배차노트까지 구성(기반 마련).
+            boolean hlAutoPltApply = "HL".equals(scope) && cp.hlAutoPltYn && pi.autoPlt > 0;
+            int     hlAutoPltQty   = hlAutoPltApply ? pi.autoPlt : 0;
+
             // ── 납품처 제약조건 기반 자동배차 제외 처리 ─────────────────
             //   ① 자동배차여부(AUTO_ALLOC_YN)=N → 자동배차 대상 아님
             //   ② 수작업(HANDWORK_YN)=Y         → 수작업 대상 → 자동배차 제외
@@ -493,6 +501,8 @@ public class AutoDispatchService {
         appliedConstraints.put("MIX_BOARD_BOTTOM_FORCE", cp.mixBoardBottomForce);
         appliedConstraints.put("MIX_BOARD_SINGLE_TIER_YN", cp.mixBoardSingleTier);
         appliedConstraints.put("MIX_CONTIGUOUS_FRONT_YN", cp.mixContiguousFront);
+        // HL 전용: 자동설정PLT 배차 사용유무 (HL 스코프에서만 의미, PS는 항상 false 표기)
+        appliedConstraints.put("HL_AUTOPLT_YN",         "HL".equals(scope) && cp.hlAutoPltYn);
         result.put("applied_constraints", appliedConstraints);
 
         // ── [진단] 통합배차 적용 가능 여부 진단 정보 (UI 배너 표시용) ──────────
@@ -851,6 +861,8 @@ public class AutoDispatchService {
             List<String> notes = new ArrayList<>(splitNotesPre);
             if (isDynBlocked) notes.add("[동적배차불가] DYNAMIC_YN=N → 고정노선 전용 오더");
             else if ("Y".equals(pi.dynamicYn)) notes.add("[동적배차가능] DYNAMIC_YN=Y");
+            // [HL 전용] 자동설정PLT 배차 적용 표시 (HL_AUTOPLT_YN=Y + AUTO_PLT 설정 납품처)
+            if (hlAutoPltApply) notes.add("[HL 자동설정PLT] PLT당 " + hlAutoPltQty + "개 기준 배차");
 
             // ── [보조] 원지 단순 높이검사 (3D 물리검증 전 1차 스크리닝) ──────────────
             //  초과 시 더 큰 차량으로 업그레이드 시도 → 실패하면 rollHeightBlocked=true 로
@@ -1034,6 +1046,7 @@ public class AutoDispatchService {
             vrow.put("mixed_dptnm",   isMixedGroup ? dptnm : "");
             vrow.put("forklift_yn",   pi.forkliftYn);
             vrow.put("dynamic_yn",    pi.dynamicYn);
+            vrow.put("hl_autoplt_qty", hlAutoPltQty);   // HL 자동설정PLT(PLT당 개수), 0=미적용
             vrow.put("deadline_time", pi.deadlineTime);
             vrow.put("max_ton_label", pi.maxTonLabel);
             allVehicles.add(vrow);
@@ -1313,6 +1326,7 @@ public class AutoDispatchService {
             vrow.put("mixed_dptnm",   isMixedGroup ? dptnm : "");
             vrow.put("forklift_yn",   pi.forkliftYn);
             vrow.put("dynamic_yn",    pi.dynamicYn);
+            vrow.put("hl_autoplt_qty", hlAutoPltQty);   // HL 자동설정PLT(PLT당 개수), 0=미적용
             vrow.put("deadline_time", pi.deadlineTime);
             vrow.put("max_ton_label", pi.maxTonLabel);
             allVehicles.add(vrow);
@@ -1619,6 +1633,7 @@ public class AutoDispatchService {
         vrow.put("mixed_dptnm",   isMixedGroup ? dptnm : "");
         vrow.put("forklift_yn",   pi.forkliftYn);
         vrow.put("dynamic_yn",    pi.dynamicYn);
+        vrow.put("hl_autoplt_qty", hlAutoPltQty);   // HL 자동설정PLT(PLT당 개수), 0=미적용
         vrow.put("deadline_time", pi.deadlineTime);
         vrow.put("max_ton_label", pi.maxTonLabel);
         allVehicles.add(vrow);
@@ -1686,6 +1701,7 @@ public class AutoDispatchService {
         vrow.put("mixed_dptnm",   "");
         vrow.put("forklift_yn",   pi.forkliftYn);
         vrow.put("dynamic_yn",    pi.dynamicYn);
+        vrow.put("hl_autoplt_qty", hlAutoPltQty);   // HL 자동설정PLT(PLT당 개수), 0=미적용
         vrow.put("deadline_time", pi.deadlineTime);
         vrow.put("max_ton_label", pi.maxTonLabel);
         allVehicles.add(vrow);
@@ -1961,7 +1977,7 @@ public class AutoDispatchService {
         String ph = dptnkyList.stream().map(x -> "?").collect(Collectors.joining(","));
         List<Map<String, Object>> rows = wmsJdbc.queryForList(
             "SELECT PTNRKY,DEADLINE_TIME,FORKLIFT_YN,MAX_TON,DYNAMIC_YN," +
-            "       HANDWORK_YN,AUTO_ALLOC_YN,DYNAMIC_DIST_M " +
+            "       HANDWORK_YN,AUTO_ALLOC_YN,DYNAMIC_DIST_M,AUTO_PLT " +
             "FROM KNRAWMS.BZPTN_DETAIL WHERE PTNRKY IN (" + ph + ") AND PTNRTY='CT'",
             dptnkyList.toArray()
         );
@@ -1994,6 +2010,11 @@ public class AutoDispatchService {
             pi.autoAllocYn  = str(r.get("AUTO_ALLOC_YN")).toUpperCase();
             try { pi.dynamicDistM = Double.parseDouble(str(r.get("DYNAMIC_DIST_M"))); }
             catch (Exception ignore) { pi.dynamicDistM = 0; }
+            // 자동설정PLT(AUTO_PLT): 코드값 '01'~'24' → PLT당 개수(int). 빈 값/0 = 미선택(미적용).
+            try {
+                String ap = str(r.get("AUTO_PLT")).trim();
+                pi.autoPlt = ap.isEmpty() ? 0 : (int) Math.round(Double.parseDouble(ap));
+            } catch (Exception ignore) { pi.autoPlt = 0; }
             // MAX_TON 미설정(빈 값)이면 기본 18톤을 적용 (요구사항: PS제약조건관리·PS배차 자동배차 공통)
             //  MAX_TON 은 코드값(예: Z180). 코드→라벨(18톤) 변환하여 vehInfo(CARTYPE 라벨 키)와 매칭.
             //  변환/매칭 실패 시 maxLoadKg=0 이 되어 진입제한이 통째로 무시되던 버그 방지:
@@ -2655,6 +2676,11 @@ public class AutoDispatchService {
         // ── 판지 최대높이 차량연동 여부 (기본 Y) ──
         cp.boardHeightVehLink = cbool(C, "BOARD_HEIGHT_VEH_LINK_YN", true);
 
+        // ── HL 전용: 자동설정PLT 배차 사용유무 (HL_AUTOPLT_YN, 기본 N) ──
+        //  Y = HL 자동배차 시 납품처관리 [자동설정PLT](PLT당 개수) 기준으로 납품처별 배차.
+        //      (PS 배차는 이 값을 참조하지 않으므로 PS 무영향)
+        cp.hlAutoPltYn       = cbool(C, "HL_AUTOPLT_YN",           false);
+
         return cp;
     }
 
@@ -2761,6 +2787,9 @@ public class AutoDispatchService {
         String autoAllocYn = "";   // 자동배차 여부 (N=자동배차 제외)
         double dynamicDistM = 0;   // 동적거리(동적 허용 거리, m)
         double maxLoadKg = 0;
+        // ── HL 전용: 자동설정PLT (BZPTN_DETAIL.AUTO_PLT) ──
+        //  납품처별 'PLT당 개수'(코드값 '01'~'24'). 미선택(빈 값/0)이면 HL 자동설정PLT 배차 미적용.
+        int autoPlt = 0;
         static final PtnrInfo EMPTY = new PtnrInfo();
     }
 
@@ -2829,6 +2858,11 @@ public class AutoDispatchService {
         // ── 개별 SKU 최대 중량(kg) (MAX_WEIGHT_KG) ──
         //  0 = 제한없음. >0 = 개별 아이템 중량이 이 값을 초과하면 경고 노트.
         double  maxWeightKg = 0.0;
+        // ── HL 전용: 자동설정PLT 배차 사용유무 (HL_AUTOPLT_YN) ──
+        //  Y = HL 자동배차 시 납품처관리 [자동설정PLT](PLT당 개수) 기준으로 납품처별 배차 적용.
+        //      (AUTO_PLT 미선택 납품처는 미적용 — 기존 방식)
+        //  N(기본) = 미적용. ※HL 스코프에서만 의미. PS 배차는 이 값을 참조하지 않음.
+        boolean hlAutoPltYn = false;
     }
 
     // ════════════════════════════════════════════════════════════════
