@@ -272,13 +272,13 @@ public class AutoDispatchService {
             PtnrInfo pi   = ptnrInfoMap.getOrDefault(dptnky, PtnrInfo.EMPTY);
             boolean isDynBlocked = "N".equals(pi.dynamicYn);
 
-            // ── [HL 전용] 자동설정PLT 배차 적용 판정 ─────────────────────
+            // ── [HL 전용] 자동설정PLT 배차 ─────────────────────────────────
             //  조건: HL 스코프 + HL_AUTOPLT_YN=Y + 납품처 AUTO_PLT(>0, PLT당 개수) 설정됨.
             //  AUTO_PLT 미선택(0) 납품처는 미적용(기존 방식). PS 스코프는 항상 미적용(무영향).
-            //  ※ 실제 'PLT당 개수' 기준 수량 분할 배차 로직은 HL PLT개수 확정 후 반영 예정 →
-            //    현재는 적용 대상 판정·플래그·배차노트까지 구성(기반 마련).
-            boolean hlAutoPltApply = "HL".equals(scope) && cp.hlAutoPltYn && pi.autoPlt > 0;
-            int     hlAutoPltQty   = hlAutoPltApply ? pi.autoPlt : 0;
+            //  ※ 실제 적용(배차노트·vrow.hl_autoplt_qty)은 각 품목 처리 메서드
+            //    (processRollItems/processBoardItems/processOtherItems/tryUnifiedMixedDispatch)
+            //    내부에서 cp.hlAutoPltYn + pi.autoPlt 로 로컬 산출한다(scope 미전달 메서드 대응).
+            //    'PLT당 개수' 기준 실제 수량 분할 배차 로직은 HL PLT개수 확정 후 반영 예정.
 
             // ── 납품처 제약조건 기반 자동배차 제외 처리 ─────────────────
             //   ① 자동배차여부(AUTO_ALLOC_YN)=N → 자동배차 대상 아님
@@ -861,8 +861,10 @@ public class AutoDispatchService {
             List<String> notes = new ArrayList<>(splitNotesPre);
             if (isDynBlocked) notes.add("[동적배차불가] DYNAMIC_YN=N → 고정노선 전용 오더");
             else if ("Y".equals(pi.dynamicYn)) notes.add("[동적배차가능] DYNAMIC_YN=Y");
-            // [HL 전용] 자동설정PLT 배차 적용 표시 (HL_AUTOPLT_YN=Y + AUTO_PLT 설정 납품처)
-            if (hlAutoPltApply) notes.add("[HL 자동설정PLT] PLT당 " + hlAutoPltQty + "개 기준 배차");
+            // [HL 전용] 자동설정PLT 배차 적용 표시 — scope 미전달 메서드: cp.hlAutoPltYn+AUTO_PLT 로 로컬 산출
+            //  (PS 스코프에서는 HL_AUTOPLT_YN 이 항상 false 이므로 미표시 → PS 무영향)
+            if (cp.hlAutoPltYn && pi.autoPlt > 0)
+                notes.add("[HL 자동설정PLT] PLT당 " + pi.autoPlt + "개 기준 배차");
 
             // ── [보조] 원지 단순 높이검사 (3D 물리검증 전 1차 스크리닝) ──────────────
             //  초과 시 더 큰 차량으로 업그레이드 시도 → 실패하면 rollHeightBlocked=true 로
@@ -1046,7 +1048,9 @@ public class AutoDispatchService {
             vrow.put("mixed_dptnm",   isMixedGroup ? dptnm : "");
             vrow.put("forklift_yn",   pi.forkliftYn);
             vrow.put("dynamic_yn",    pi.dynamicYn);
-            vrow.put("hl_autoplt_qty", hlAutoPltQty);   // HL 자동설정PLT(PLT당 개수), 0=미적용
+            // HL 자동설정PLT(PLT당 개수) — scope 미전달 메서드: cp.hlAutoPltYn+AUTO_PLT 로 로컬 산출
+            //  (PS 스코프에서는 HL_AUTOPLT_YN 이 항상 false 이므로 0 → PS 무영향)
+            vrow.put("hl_autoplt_qty", (cp.hlAutoPltYn && pi.autoPlt > 0) ? pi.autoPlt : 0);
             vrow.put("deadline_time", pi.deadlineTime);
             vrow.put("max_ton_label", pi.maxTonLabel);
             allVehicles.add(vrow);
@@ -1326,7 +1330,9 @@ public class AutoDispatchService {
             vrow.put("mixed_dptnm",   isMixedGroup ? dptnm : "");
             vrow.put("forklift_yn",   pi.forkliftYn);
             vrow.put("dynamic_yn",    pi.dynamicYn);
-            vrow.put("hl_autoplt_qty", hlAutoPltQty);   // HL 자동설정PLT(PLT당 개수), 0=미적용
+            // HL 자동설정PLT(PLT당 개수) — scope 미전달 메서드: cp.hlAutoPltYn+AUTO_PLT 로 로컬 산출
+            //  (PS 스코프에서는 HL_AUTOPLT_YN 이 항상 false 이므로 0 → PS 무영향)
+            vrow.put("hl_autoplt_qty", (cp.hlAutoPltYn && pi.autoPlt > 0) ? pi.autoPlt : 0);
             vrow.put("deadline_time", pi.deadlineTime);
             vrow.put("max_ton_label", pi.maxTonLabel);
             allVehicles.add(vrow);
@@ -1633,7 +1639,9 @@ public class AutoDispatchService {
         vrow.put("mixed_dptnm",   isMixedGroup ? dptnm : "");
         vrow.put("forklift_yn",   pi.forkliftYn);
         vrow.put("dynamic_yn",    pi.dynamicYn);
-        vrow.put("hl_autoplt_qty", hlAutoPltQty);   // HL 자동설정PLT(PLT당 개수), 0=미적용
+        // HL 자동설정PLT(PLT당 개수) — 이 메서드는 scope 미전달: cp.hlAutoPltYn+AUTO_PLT 로 로컬 산출
+        //  (PS 스코프에서는 HL_AUTOPLT_YN 이 항상 false 이므로 0 → PS 무영향)
+        vrow.put("hl_autoplt_qty", (cp.hlAutoPltYn && pi.autoPlt > 0) ? pi.autoPlt : 0);
         vrow.put("deadline_time", pi.deadlineTime);
         vrow.put("max_ton_label", pi.maxTonLabel);
         allVehicles.add(vrow);
@@ -1701,7 +1709,9 @@ public class AutoDispatchService {
         vrow.put("mixed_dptnm",   "");
         vrow.put("forklift_yn",   pi.forkliftYn);
         vrow.put("dynamic_yn",    pi.dynamicYn);
-        vrow.put("hl_autoplt_qty", hlAutoPltQty);   // HL 자동설정PLT(PLT당 개수), 0=미적용
+        // HL 자동설정PLT(PLT당 개수) — 이 메서드는 scope 미전달: cp.hlAutoPltYn+AUTO_PLT 로 로컬 산출
+        //  (PS 스코프에서는 HL_AUTOPLT_YN 이 항상 false 이므로 0 → PS 무영향)
+        vrow.put("hl_autoplt_qty", (cp.hlAutoPltYn && pi.autoPlt > 0) ? pi.autoPlt : 0);
         vrow.put("deadline_time", pi.deadlineTime);
         vrow.put("max_ton_label", pi.maxTonLabel);
         allVehicles.add(vrow);
