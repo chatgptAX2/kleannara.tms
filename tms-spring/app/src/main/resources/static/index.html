@@ -25761,7 +25761,14 @@ function _dconSpRenderTabs() {
   const hasForklift = (DCON._forkliftPartners || []).length > 0;
   const hasDynamic  = (DCON._dynamicPartners  || []).length > 0;
   const hasPtnrMulti = (DCON._ptnrMultiPartners || []).length > 0;
-  const hasRegion   = (DCON._regionData && (DCON._regionData.regions||[]).length > 0);
+  /* ★ REGION(우편번호 범위 기준 동일 지역 묶음배차) 탭 — PS에서만 폐지.
+       PS 동적배차는 납품처관리 '동적거리(M)·동적대상(USE_YN)·동적여부(DYNAMIC_YN)' 기반
+       동적 제약(DYNAMIC 탭 + 자동배차 엔진 buildDynamicGroups)으로 대체하므로 REGION 제외.
+       ※ HL에서의 REGION 사용 여부는 미결정 → HL은 기존 동작 유지(제거하지 않음).
+       PS: 기존 REGION 데이터가 있어도 탭을 띄우지 않도록 false 고정 + typeCnt 에서 제거. */
+  const _isPS = (DCON.scope !== 'HL');
+  const hasRegion   = _isPS ? false : (DCON._regionData && (DCON._regionData.regions||[]).length > 0);
+  if (_isPS) delete typeCnt['REGION'];
   if (hasEntryTon) typeCnt['ENTRY_TON'] = typeCnt['ENTRY_TON'] || 0;
   if (hasForklift) typeCnt['FORKLIFT']  = typeCnt['FORKLIFT']  || 0;
   if (hasDynamic)  typeCnt['DYNAMIC']   = typeCnt['DYNAMIC']   || 0;
@@ -25783,7 +25790,8 @@ function _dconSpRenderTabs() {
   // HL: 원지/판지/혼적 데이터가 세트·마스터에 남아 typeCnt 에 집계되어 있더라도 탭을 띄우지 않도록 제거
   if (_isHL) _HL_HIDE_TABS.forEach(t => { delete typeCnt[t]; });
   const tabs = [...tabOrder, ...Object.keys(typeCnt).filter(k=>!tabOrder.includes(k))]
-    .filter(t => !(_isHL && _HL_HIDE_TABS.includes(t)));   // HL: 원지/판지/혼적 탭 완전 제외
+    .filter(t => !(_isHL && _HL_HIDE_TABS.includes(t)))    // HL: 원지/판지/혼적 탭 완전 제외
+    .filter(t => !(_isPS && t === 'REGION'));              // PS: REGION 탭 제외(동적거리로 대체)
   el.innerHTML = tabs.filter(t => {
     if (t === 'CARTYPE')    return hasVehicles;
     if (t === 'ENTRY_TON')  return hasEntryTon;
