@@ -24185,6 +24185,8 @@ const DCON_KEY_META = {
   MIX_BOARD_BOTTOM_FORCE:{ label:'판지 하단 고정 강제', unit:'Y/N', op:'=', type:'MIX_Z_AXIS', hint:'Y=판지도 바닥에 고정 배치(원지와 Y축으로 나란히, 상하 적층 안함) — 판지 압착 파손 방지 / N=원지 하단·판지 상단 적층' },
   MIX_BOARD_SINGLE_TIER_YN:{ label:'판지 1단 적재만', unit:'Y/N', op:'=', type:'MIX_Z_AXIS', hint:'Y=판지는 1단(단일 높이)만 적재 허용(다단 금지) / N=판지 다단 적재 허용' },
   MIX_CONTIGUOUS_FRONT_YN:{ label:'전면부터 순차(연속) 적재', unit:'Y/N', op:'=', type:'MIX_Y_LIFO', hint:'Y(기본)=적재함 앞(진행방향)부터 원지→판지를 간격 없이 연속 배치하여 가운데 빈 공간 제거(하중 전면 집중, 주행 안정성↑) / N=재질별 분리 배치(가운데 공간 허용)' },
+  /* HL_AUTOPLT — HL 전용: 자동설정PLT 기반 배차 사용유무 */
+  HL_AUTOPLT_YN:{ label:'자동설정PLT 배차 사용', unit:'Y/N', op:'=', type:'HL_AUTOPLT', hint:'Y=HL 자동배차 시 납품처관리 [자동설정PLT] 값(PLT당 개수)을 기준으로 납품처별 배차 / N=미적용. ※자동설정PLT 미선택 납품처는 이 제약과 무관하게 미적용(기존 방식)' },
   /* COST */
   PENALTY_RATE:    { label:'초과적재 패널티 배수', unit:'x', op:'=', type:'COST', hint:'MIN_COST 목적식 초과 패널티 (기본 3.0)' },
   COST_PENALTY_OVER:{ label:'초과적재 패널티 배수(대체키)', unit:'x', op:'=', type:'COST', hint:'초과 시 비용 패널티 (기본 1.5)' },
@@ -25468,6 +25470,8 @@ const DCON_GRP_META = {
   MIX_Z_AXIS:     { icon:'⬆️', label:'혼적① Z축 수직 적재 순서',  cls:'g-mix-z',       desc:'원지 하단·판지 상단 강제 고정 — 물리적 압착 파손 방지 핵심 (엑셀§4-1)' },
   MIX_Y_LIFO:     { icon:'↔️', label:'혼적② Y축 LIFO 배치',       cls:'g-mix-y',       desc:'복수 납품처 LIFO: 나중 하차→안쪽, 먼저 하차→문 쪽 / 전후 Zone 분할 (엑셀§4-2)' },
   MIX_DUAL_VERIFY:{ icon:'✅', label:'혼적③ 이중 복합 검증',       cls:'g-mix-dual',    desc:'혼적 총중량+높이+CBM 이중 복합 한계 검증, Dead Space 포함 3D (엑셀§4-3)' },
+  /* ── HL 전용: 자동설정PLT 기반 배차 (HL제약조건관리에서만 표시) ── */
+  HL_AUTOPLT: { icon:'🧱', label:'HL 자동설정PLT 배차',    cls:'g-hl-autoplt', desc:'Y=납품처관리 [자동설정PLT] 값(PLT당 개수) 기준으로 HL 자동배차 적용 / N=미적용. ※자동설정PLT 미선택 납품처는 자동 제외(미적용)' },
   COST:      { icon:'💰', label:'비용 제약',               cls:'g-cost',       desc:'운송비 계산·패널티 규칙' },
 };
 
@@ -25721,6 +25725,7 @@ function _dconSpRenderTabs() {
     'ROLL_UNIT','ROLL_STACK','ROLL_INCH_MIX','ROLL_3D_VERIFY',
     'BOARD_CBM_WEIGHT','BOARD_BULK_SPLIT','BOARD_FLEX_SPLIT','BOARD_3D_VERIFY',
     'MIX_MATERIAL','MIX_Z_AXIS','MIX_Y_LIFO','MIX_DUAL_VERIFY',
+    'HL_AUTOPLT',
     'COST'
   ];
   const typeCnt = {};
@@ -25785,13 +25790,19 @@ function _dconSpRenderTabs() {
   const _ROLL_TABS  = ['ROLL_UNIT','ROLL_STACK','ROLL_INCH_MIX','ROLL_3D_VERIFY'];
   const _BOARD_TABS = ['BOARD_CBM_WEIGHT','BOARD_BULK_SPLIT','BOARD_FLEX_SPLIT','BOARD_3D_VERIFY'];
   const _HL_HIDE_TABS = [..._ROLL_TABS, ..._BOARD_TABS, ..._MIX_TABS];
-  const _ALWAYS_SHOW_TABS = _isHL ? [] : _MIX_TABS;
+  /* ★ HL 전용: 자동설정PLT 배차 탭(HL_AUTOPLT) — HL에서만 항상 표시, PS에서는 숨김.
+       (PS 출고예정정보·배차 무영향: DCON.scope 로만 분기) */
+  const _HL_ONLY_TABS = ['HL_AUTOPLT'];
+  const _ALWAYS_SHOW_TABS = _isHL ? _HL_ONLY_TABS : _MIX_TABS;
   _ALWAYS_SHOW_TABS.forEach(t => { if (typeCnt[t] === undefined) typeCnt[t] = 0; });
   // HL: 원지/판지/혼적 데이터가 세트·마스터에 남아 typeCnt 에 집계되어 있더라도 탭을 띄우지 않도록 제거
   if (_isHL) _HL_HIDE_TABS.forEach(t => { delete typeCnt[t]; });
+  // PS: HL 전용 탭(HL_AUTOPLT) 데이터가 집계되어 있더라도 PS 화면에서는 제거
+  if (_isPS) _HL_ONLY_TABS.forEach(t => { delete typeCnt[t]; });
   const tabs = [...tabOrder, ...Object.keys(typeCnt).filter(k=>!tabOrder.includes(k))]
     .filter(t => !(_isHL && _HL_HIDE_TABS.includes(t)))    // HL: 원지/판지/혼적 탭 완전 제외
-    .filter(t => !(_isPS && t === 'REGION'));              // PS: REGION 탭 제외(동적거리로 대체)
+    .filter(t => !(_isPS && t === 'REGION'))               // PS: REGION 탭 제외(동적거리로 대체)
+    .filter(t => !(_isPS && _HL_ONLY_TABS.includes(t)));   // PS: HL 전용 탭 제외
   el.innerHTML = tabs.filter(t => {
     if (t === 'CARTYPE')    return hasVehicles;
     if (t === 'ENTRY_TON')  return hasEntryTon;
@@ -25829,6 +25840,7 @@ function _dconSpRenderTabs() {
     if (t === 'DYNAMIC')   return hasDynamic;
     if (t === 'PTNR_MULTI') return hasPtnrMulti;
     if (t === 'REGION')    return hasRegion;
+    if (_ALWAYS_SHOW_TABS.includes(t)) return true;   // 혼적(PS)·HL_AUTOPLT(HL) 항상 표시
     return typeCnt[t] !== undefined;
   });
   if (!visibleTabs.includes(DCON._spActiveTab)) {
