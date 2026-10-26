@@ -373,15 +373,14 @@ body.lnb-edge-show #lnb-edge-btn{opacity:1;pointer-events:auto;transform:transla
   color:var(--lnb-text);
 }
 .nav-folder:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.75)}
-/* ★ 펼침 상태(=collapsed 아님): 하위 메뉴와 구분되도록 기존 LNB 계통의 밝은 네이비 톤 + 좌측 포인트 바 */
+/* ★ 펼침 상태(=collapsed 아님): 하위 메뉴와 구분되도록 기존 LNB 계통의 밝은 네이비 톤 (좌측 포인트 바 제거) */
 .nav-folder.expanded{
   background:rgba(255,255,255,.07);
   color:rgba(255,255,255,.9);
-  box-shadow:inset 3px 0 0 0 rgba(56,189,248,.55);
 }
 .nav-folder.expanded:hover{background:rgba(255,255,255,.1)}
 .nav-caret{
-  font-size:10px;width:12px;text-align:center;flex-shrink:0;
+  font-size:15px;width:16px;text-align:center;flex-shrink:0;
   color:rgba(255,255,255,.42);transition:transform .2s ease;
   transform:rotate(90deg);        /* 펼침: 아래 방향 */
 }
