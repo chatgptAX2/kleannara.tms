@@ -25769,17 +25769,21 @@ function _dconSpRenderTabs() {
   if (hasRegion)   typeCnt['REGION']    = typeCnt['REGION']    || 0;
 
   /* 혼적 탭(재질혼적⓪·Z축①·Y축LIFO·이중검증)
-     — PS배차는 원지/판지 품목이 있어 혼적이 유효하므로 항상 표시(핵심 제약).
-     ★ HL배차는 '생활' 제품군만 배차(원지/판지 없음) → HL 화면에서는 혼적 탭 전체 숨김.
-       (PS 영향 없음: DCON.scope 로만 분기, PS는 기존 동작 그대로) */
+     — PS배차는 원지/판지 품목이 있어 혼적이 유효하므로 항상 표시(핵심 제약). */
   const _MIX_TABS = ['MIX_MATERIAL','MIX_Z_AXIS','MIX_Y_LIFO','MIX_DUAL_VERIFY'];
   const _isHL = (DCON.scope === 'HL');
+  /* ★ HL배차는 '생활' 제품군만 배차(원지·판지 품목 없음) →
+       HL 화면에서는 원지(ROLL_*)·판지(BOARD_*)·혼적(MIX_*) 탭 전체 숨김.
+       (PS 영향 없음: DCON.scope 로만 분기, PS는 기존 동작 그대로 유지) */
+  const _ROLL_TABS  = ['ROLL_UNIT','ROLL_STACK','ROLL_INCH_MIX','ROLL_3D_VERIFY'];
+  const _BOARD_TABS = ['BOARD_CBM_WEIGHT','BOARD_BULK_SPLIT','BOARD_FLEX_SPLIT','BOARD_3D_VERIFY'];
+  const _HL_HIDE_TABS = [..._ROLL_TABS, ..._BOARD_TABS, ..._MIX_TABS];
   const _ALWAYS_SHOW_TABS = _isHL ? [] : _MIX_TABS;
   _ALWAYS_SHOW_TABS.forEach(t => { if (typeCnt[t] === undefined) typeCnt[t] = 0; });
-  // HL: 혼적 데이터가 세트/마스터에 남아 typeCnt 에 집계되어 있더라도 탭을 띄우지 않도록 제거
-  if (_isHL) _MIX_TABS.forEach(t => { delete typeCnt[t]; });
+  // HL: 원지/판지/혼적 데이터가 세트·마스터에 남아 typeCnt 에 집계되어 있더라도 탭을 띄우지 않도록 제거
+  if (_isHL) _HL_HIDE_TABS.forEach(t => { delete typeCnt[t]; });
   const tabs = [...tabOrder, ...Object.keys(typeCnt).filter(k=>!tabOrder.includes(k))]
-    .filter(t => !(_isHL && _MIX_TABS.includes(t)));   // HL: 혼적 탭 완전 제외
+    .filter(t => !(_isHL && _HL_HIDE_TABS.includes(t)));   // HL: 원지/판지/혼적 탭 완전 제외
   el.innerHTML = tabs.filter(t => {
     if (t === 'CARTYPE')    return hasVehicles;
     if (t === 'ENTRY_TON')  return hasEntryTon;
@@ -26059,9 +26063,13 @@ function _dconSpRenderTable(rows, ft, tab) {
      MIX_UNIFIED_VEHICLE_YN 처럼 마스터에 행 자체가 없어(진단: 행없음) 화면에 안 보이는
      제약을, 사용자가 신규행을 수동 추가하지 않고도 바로 Y/N 토글·저장할 수 있게 한다.
      (저장 시 const_id=null 신규행 경로 → findOrCreateConstMaster 가 마스터 생성+세트 저장) */
-  // ★ HL배차는 원지/판지 없음 → 혼적 탭(MIX_*) 제약 자동 보충 스킵 (PS는 기존 동작 유지)
-  const _mixTabsSuppress = (DCON.scope === 'HL') && ['MIX_MATERIAL','MIX_Z_AXIS','MIX_Y_LIFO','MIX_DUAL_VERIFY'].includes(tab);
-  if (DCON.selSetId && !_mixTabsSuppress) {
+  // ★ HL배차는 원지/판지 품목 없음 → 원지(ROLL_*)·판지(BOARD_*)·혼적(MIX_*) 탭 제약 자동 보충 스킵 (PS는 기존 동작 유지)
+  const _hlSuppress = (DCON.scope === 'HL') && [
+    'ROLL_UNIT','ROLL_STACK','ROLL_INCH_MIX','ROLL_3D_VERIFY',
+    'BOARD_CBM_WEIGHT','BOARD_BULK_SPLIT','BOARD_FLEX_SPLIT','BOARD_3D_VERIFY',
+    'MIX_MATERIAL','MIX_Z_AXIS','MIX_Y_LIFO','MIX_DUAL_VERIFY'
+  ].includes(tab);
+  if (DCON.selSetId && !_hlSuppress) {
     const existKeys = new Set(rows.map(r => r.CONST_KEY));
     DCON._spNewRows = DCON._spNewRows || [];
     Object.entries(DCON_KEY_META)
