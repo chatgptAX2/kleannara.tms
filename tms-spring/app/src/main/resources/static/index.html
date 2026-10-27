@@ -883,6 +883,36 @@ body.dc-dragging{user-select:none !important;-webkit-user-select:none !important
 #theme-toggle-btn:hover{border-color:#0ea5e9;color:#38bdf8;background:rgba(14,165,233,.08)}
 
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px}
+
+/* ══ 컬럼 레이아웃 설정 모달 (출고예정정보 / PS·HL배차 공통) ══ */
+.collayout-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10100;display:none;align-items:center;justify-content:center;padding:20px}
+.collayout-modal{background:var(--surface);border:1px solid var(--border);border-radius:10px;width:560px;max-width:96vw;box-shadow:0 20px 60px rgba(0,0,0,.35);display:flex;flex-direction:column;max-height:92vh}
+.collayout-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)}
+.collayout-head h3{margin:0;font-size:14px;font-weight:700;color:var(--text)}
+.collayout-body{padding:14px 16px;display:flex;flex-direction:column;gap:10px;overflow:auto}
+.collayout-cols{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:stretch}
+.collayout-colhdr{text-align:center;font-size:12px;font-weight:700;color:var(--text2);margin-bottom:4px}
+.collayout-listbox{border:1px solid var(--border);border-radius:6px;background:var(--surface2);height:260px;overflow:auto}
+.collayout-li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 10px;font-size:12px;color:var(--text);cursor:pointer;border-bottom:1px solid var(--border);user-select:none}
+.collayout-li:last-child{border-bottom:none}
+.collayout-li.sel{background:#fde8e8;color:#b91c1c}
+.collayout-li .cl-w{font-weight:700;color:var(--text2);min-width:40px;text-align:right}
+.collayout-li.sel .cl-w{color:#b91c1c}
+.collayout-midbtns{display:flex;flex-direction:column;justify-content:center;gap:6px}
+.collayout-midbtns button,.collayout-ordbtns button{width:34px;height:28px;border:1px solid var(--border);background:var(--surface);color:var(--text2);border-radius:6px;cursor:pointer;font-size:13px;display:inline-flex;align-items:center;justify-content:center}
+.collayout-midbtns button:hover,.collayout-ordbtns button:hover{background:var(--surface2);color:var(--text)}
+.collayout-midbtns button:disabled,.collayout-ordbtns button:disabled{opacity:.4;cursor:not-allowed}
+.collayout-ordbtns{display:flex;gap:6px;justify-content:center;padding:6px;border:1px solid var(--border);border-top:none;border-radius:0 0 6px 6px;background:var(--surface2)}
+.collayout-showwrap{display:flex;flex-direction:column}
+.collayout-foot{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--border)}
+.collayout-foot .cl-right{display:flex;gap:8px}
+.collayout-foot button{height:30px;padding:0 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text)}
+.collayout-foot button.cl-confirm{background:var(--primary);color:#fff;border-color:var(--primary)}
+.collayout-foot button:hover{filter:brightness(.97)}
+.collayout-wedit{width:48px;height:22px;font-size:11px;text-align:right;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);padding:0 4px}
+.btn-col-layout{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 12px;font-size:11px;font-weight:600;background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;border-radius:6px;cursor:pointer}
+.btn-col-layout:hover{filter:brightness(.97)}
+
 .modal{
   background:var(--surface);border:1px solid var(--border);
   border-radius:16px;width:860px;max-width:95vw;
@@ -3971,6 +4001,50 @@ thead th:hover .th-drag-handle{opacity:.8}
   </div>
 </div>
 
+<!-- ══ 컬럼 레이아웃 설정 모달 (출고예정정보 / PS·HL배차 공통) ══ -->
+<div class="collayout-overlay" id="collayout-overlay" onclick="colLayoutOverlayClick(event)">
+  <div class="collayout-modal">
+    <div class="collayout-head">
+      <h3 id="collayout-title">컬럼 레이아웃</h3>
+      <button class="modal-close" onclick="colLayoutClose()">✕</button>
+    </div>
+    <div class="collayout-body">
+      <div class="collayout-cols">
+        <!-- Show -->
+        <div class="collayout-showwrap">
+          <div class="collayout-colhdr">Show</div>
+          <div class="collayout-listbox" id="collayout-show"></div>
+          <div class="collayout-ordbtns">
+            <button type="button" onclick="colLayoutMove('top')"    title="맨 위로">⯭</button>
+            <button type="button" onclick="colLayoutMove('up')"     title="위로">▲</button>
+            <button type="button" onclick="colLayoutMove('down')"   title="아래로">▼</button>
+            <button type="button" onclick="colLayoutMove('bottom')" title="맨 아래로">⯯</button>
+          </div>
+        </div>
+        <!-- 가운데 이동 버튼 -->
+        <div class="collayout-midbtns">
+          <button type="button" onclick="colLayoutHide('one')"  title="선택 숨김">&gt;</button>
+          <button type="button" onclick="colLayoutHide('all')"  title="전체 숨김">&raquo;</button>
+          <button type="button" onclick="colLayoutShow('one')"  title="선택 표시">&lt;</button>
+          <button type="button" onclick="colLayoutShow('all')"  title="전체 표시">&laquo;</button>
+        </div>
+        <!-- Hidden -->
+        <div class="collayout-showwrap">
+          <div class="collayout-colhdr">Hidden</div>
+          <div class="collayout-listbox" id="collayout-hidden"></div>
+        </div>
+      </div>
+    </div>
+    <div class="collayout-foot">
+      <button type="button" onclick="colLayoutClear()">clear</button>
+      <div class="cl-right">
+        <button type="button" class="cl-confirm" onclick="colLayoutConfirm()">confirm</button>
+        <button type="button" onclick="colLayoutClose()">close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <!-- 전역 단일 로딩 오버레이 (브라우저 뷰포트 정중앙 고정) — 어느 화면이든 .loading 이
@@ -3984,6 +4058,175 @@ thead th:hover .th-drag-handle{opacity:.8}
 </div>
 
 <script>
+/* ═══════════════════════════════════════════════════════════
+   공통 컬럼 레이아웃 설정 모달 (출고예정정보 / PS·HL배차 공통)
+   ───────────────────────────────────────────────────────────
+   adapter 객체로 화면별 컬럼 상태를 주입받아 Show/Hidden 이동, 순서 변경,
+   너비 편집을 처리하고 confirm 시 화면 상태 반영 + localStorage 저장한다.
+   adapter = {
+     title       : 모달 제목(string)
+     storageKey  : localStorage 저장 키(string)
+     getAllCols(): [{key,label,w}] (고정컬럼 제외 — 레이아웃 대상만)
+     getState()  : {order:[key...], hidden:[key...], widths:{key:w}}  (현재 적용 상태)
+     applyState(state): 화면에 반영(+저장은 모달이 localStorage 처리, 화면 재렌더는 adapter 담당)
+     allowWidth  : 너비 편집 허용 여부(bool, 기본 true)
+   }
+=============================================================== */
+let _colLayoutAdapter = null;
+let _colLayoutShow    = [];   // 작업중 Show 순서(key 배열)
+let _colLayoutHidden  = [];   // 작업중 Hidden(key 배열)
+let _colLayoutWidths  = {};   // 작업중 너비 {key:w}
+let _colLayoutSel     = { side:null, key:null };  // 선택된 항목
+
+/* localStorage 저장/로드 — {order, hidden, widths} */
+function colLayoutLoadSaved(storageKey) {
+  try {
+    const s = JSON.parse(localStorage.getItem(storageKey) || 'null');
+    if (s && Array.isArray(s.order)) return s;
+  } catch(_){}
+  return null;
+}
+function colLayoutPersist(storageKey, state) {
+  try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch(_){}
+}
+function colLayoutClearSaved(storageKey) {
+  try { localStorage.removeItem(storageKey); } catch(_){}
+}
+
+/* 모달 열기 */
+function openColLayout(adapter) {
+  _colLayoutAdapter = adapter;
+  const allCols = adapter.getAllCols();                 // [{key,label,w}]
+  const allKeys = allCols.map(c => c.key);
+  const labelMap = {}, defWMap = {};
+  allCols.forEach(c => { labelMap[c.key] = c.label; defWMap[c.key] = c.w; });
+  _colLayoutAdapter._labelMap = labelMap;
+  _colLayoutAdapter._defWMap  = defWMap;
+  _colLayoutAdapter._allKeys  = allKeys;
+
+  const st = adapter.getState() || {};
+  const order  = (Array.isArray(st.order) && st.order.length) ? st.order.filter(k => allKeys.includes(k)) : allKeys.slice();
+  // order 에 없는 신규 컬럼은 뒤에 보충
+  allKeys.forEach(k => { if (!order.includes(k)) order.push(k); });
+  const hidden = (Array.isArray(st.hidden) ? st.hidden : []).filter(k => allKeys.includes(k));
+  _colLayoutShow   = order.filter(k => !hidden.includes(k));
+  _colLayoutHidden = order.filter(k =>  hidden.includes(k));
+  _colLayoutWidths = Object.assign({}, defWMap, st.widths || {});
+  _colLayoutSel = { side:null, key:null };
+
+  document.getElementById('collayout-title').textContent = adapter.title || '컬럼 레이아웃';
+  colLayoutRender();
+  document.getElementById('collayout-overlay').style.display = 'flex';
+}
+
+function colLayoutClose() {
+  document.getElementById('collayout-overlay').style.display = 'none';
+  _colLayoutAdapter = null;
+}
+function colLayoutOverlayClick(e) { if (e.target === e.currentTarget) colLayoutClose(); }
+
+/* 리스트 렌더 */
+function colLayoutRender() {
+  const ad = _colLayoutAdapter; if (!ad) return;
+  const allowW = ad.allowWidth !== false;
+  const lbl = ad._labelMap, wmap = _colLayoutWidths;
+  const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const liHtml = (key, side) => {
+    const sel = (_colLayoutSel.side===side && _colLayoutSel.key===key) ? ' sel' : '';
+    const name = esc(lbl[key] || key) || '(빈 컬럼)';
+    const wCell = (side==='show')
+      ? (allowW
+          ? `<input class="collayout-wedit" type="number" min="20" max="600" value="${parseInt(wmap[key]||0)||''}" onclick="event.stopPropagation()" onchange="colLayoutSetW('${key}',this.value)">`
+          : `<span class="cl-w">${parseInt(wmap[key]||0)||''}</span>`)
+      : '';
+    return `<div class="collayout-li${sel}" onclick="colLayoutSelect('${side}','${key}')">
+        <span class="cl-name">${name}</span>${wCell}</div>`;
+  };
+  document.getElementById('collayout-show').innerHTML   = _colLayoutShow.map(k => liHtml(k,'show')).join('');
+  document.getElementById('collayout-hidden').innerHTML = _colLayoutHidden.map(k => liHtml(k,'hidden')).join('');
+}
+
+function colLayoutSelect(side, key) {
+  _colLayoutSel = { side, key };
+  colLayoutRender();
+}
+function colLayoutSetW(key, val) {
+  const n = parseInt(val);
+  if (!isNaN(n) && n >= 20) _colLayoutWidths[key] = n;
+}
+
+/* Show → Hidden */
+function colLayoutHide(mode) {
+  if (mode === 'all') {
+    _colLayoutHidden = _colLayoutHidden.concat(_colLayoutShow);
+    _colLayoutShow = [];
+  } else {
+    if (_colLayoutSel.side !== 'show' || !_colLayoutSel.key) return;
+    const k = _colLayoutSel.key;
+    _colLayoutShow = _colLayoutShow.filter(x => x !== k);
+    _colLayoutHidden.push(k);
+    _colLayoutSel = { side:null, key:null };
+  }
+  colLayoutRender();
+}
+/* Hidden → Show */
+function colLayoutShow(mode) {
+  if (mode === 'all') {
+    _colLayoutShow = _colLayoutShow.concat(_colLayoutHidden);
+    _colLayoutHidden = [];
+  } else {
+    if (_colLayoutSel.side !== 'hidden' || !_colLayoutSel.key) return;
+    const k = _colLayoutSel.key;
+    _colLayoutHidden = _colLayoutHidden.filter(x => x !== k);
+    _colLayoutShow.push(k);
+    _colLayoutSel = { side:null, key:null };
+  }
+  colLayoutRender();
+}
+/* Show 순서 이동 */
+function colLayoutMove(dir) {
+  if (_colLayoutSel.side !== 'show' || !_colLayoutSel.key) return;
+  const arr = _colLayoutShow;
+  const i = arr.indexOf(_colLayoutSel.key);
+  if (i < 0) return;
+  arr.splice(i, 1);
+  let j;
+  if (dir === 'top')         j = 0;
+  else if (dir === 'bottom') j = arr.length;
+  else if (dir === 'up')     j = Math.max(0, i - 1);
+  else                       j = Math.min(arr.length, i + 1);
+  arr.splice(j, 0, _colLayoutSel.key);
+  colLayoutRender();
+}
+
+/* clear → 기본값(전체 표시, 기본순서, 기본너비) */
+function colLayoutClear() {
+  const ad = _colLayoutAdapter; if (!ad) return;
+  _colLayoutShow   = ad._allKeys.slice();
+  _colLayoutHidden = [];
+  _colLayoutWidths = Object.assign({}, ad._defWMap);
+  _colLayoutSel = { side:null, key:null };
+  colLayoutRender();
+}
+
+/* confirm → 화면 반영 + 저장 */
+function colLayoutConfirm() {
+  const ad = _colLayoutAdapter; if (!ad) return;
+  if (_colLayoutShow.length === 0) {
+    if (typeof showToast === 'function') showToast('⚠️ 표시할 컬럼이 최소 1개 이상 필요합니다');
+    return;
+  }
+  const state = {
+    order:  _colLayoutShow.concat(_colLayoutHidden),
+    hidden: _colLayoutHidden.slice(),
+    widths: Object.assign({}, _colLayoutWidths),
+  };
+  colLayoutPersist(ad.storageKey, state);
+  try { ad.applyState(state); } catch(e){ console.error('[colLayout.applyState]', e); }
+  colLayoutClose();
+  if (typeof showToast === 'function') showToast('✅ 컬럼 레이아웃이 적용되었습니다');
+}
+
 /* ═══════════════════════════════════════════════════════════
    전역 로딩 오버레이 — 여러 .loading 이 떠도 정중앙 1개만 표시
    ───────────────────────────────────────────────────────────
@@ -5453,38 +5696,101 @@ const _psopDocColDefs = [
   { id:'sapstknum', label:'SAP선적번호',  w:120 },
 ];
 
-/* 현재 활성 컬럼 순서(id 배열) — lazy init */
-let _psopDocColOrder = null;
+/* ── 컬럼 레이아웃(순서/숨김/너비) — PS배차/HL배차 scope별 분리 저장 ──
+   PS배차(psDispatchOpt)와 HL배차(hlDispatch)는 동일 DOM·_psopDocColDefs 를 공유하지만
+   레이아웃은 scope('PS'|'HL')별로 독립 저장한다.
+   저장 구조: localStorage[psop_col_layout_<scope>_v1] = {order:[id...], hidden:[id...], widths:{id:w}}
+   하위호환: 구버전 PSOP_DOC_COL_LS_KEY(배열=순서only) 값이 있으면 1회 승계. */
+function _psopScopeNow() { return (typeof psopState !== 'undefined' && psopState.scope === 'HL') ? 'HL' : 'PS'; }
+function _psopLayoutKey(scope) { return 'psop_col_layout_' + (scope || _psopScopeNow()) + '_v1'; }
 
-function _psopGetColOrder() {
-  if (_psopDocColOrder) return _psopDocColOrder;
+/* scope별 현재 레이아웃 메모리 캐시 {PS:{order,hidden}, HL:{order,hidden}} */
+let _psopLayoutCache = {};
+
+function _psopLoadLayout(scope) {
+  scope = scope || _psopScopeNow();
+  if (_psopLayoutCache[scope]) return _psopLayoutCache[scope];
+  const defIds = _psopDocColDefs.map(c => c.id);
+  let order = defIds.slice(), hidden = [];
   try {
-    const saved = JSON.parse(localStorage.getItem(PSOP_DOC_COL_LS_KEY) || 'null');
-    if (Array.isArray(saved) && saved.length > 1) {
-      const defIds  = _psopDocColDefs.map(c => c.id);
-      const valid   = saved.filter(id => defIds.includes(id));
+    const saved = JSON.parse(localStorage.getItem(_psopLayoutKey(scope)) || 'null');
+    if (saved && Array.isArray(saved.order)) {
+      const valid   = saved.order.filter(id => defIds.includes(id));
       const missing = defIds.filter(id => !valid.includes(id));
-      _psopDocColOrder = [...valid, ...missing];
-      return _psopDocColOrder;
+      order  = [...valid, ...missing];
+      hidden = (saved.hidden || []).filter(id => defIds.includes(id));
+      if (saved.widths) Object.keys(saved.widths).forEach(id => { if (defIds.includes(id)) _psopDocColW[id] = saved.widths[id]; });
+    } else {
+      /* 하위호환: 구버전 순서-only 배열 */
+      const legacy = JSON.parse(localStorage.getItem(PSOP_DOC_COL_LS_KEY) || 'null');
+      if (Array.isArray(legacy) && legacy.length > 1) {
+        const valid   = legacy.filter(id => defIds.includes(id));
+        const missing = defIds.filter(id => !valid.includes(id));
+        order = [...valid, ...missing];
+      }
     }
   } catch(_){}
-  _psopDocColOrder = _psopDocColDefs.map(c => c.id);
-  return _psopDocColOrder;
+  // chk(fixed)은 항상 맨 앞, hidden 불가
+  if (order.includes('chk')) { order = ['chk', ...order.filter(id => id !== 'chk')]; }
+  hidden = hidden.filter(id => id !== 'chk');
+  _psopLayoutCache[scope] = { order, hidden };
+  return _psopLayoutCache[scope];
 }
 
-function _psopSaveColOrder() {
-  try { localStorage.setItem(PSOP_DOC_COL_LS_KEY, JSON.stringify(_psopDocColOrder)); } catch(_){}
+function _psopSaveLayout(scope) {
+  scope = scope || _psopScopeNow();
+  const lay = _psopLayoutCache[scope] || _psopLoadLayout(scope);
+  const widths = {};
+  _psopDocColDefs.forEach(c => { if (_psopDocColW[c.id]) widths[c.id] = _psopDocColW[c.id]; });
+  try { localStorage.setItem(_psopLayoutKey(scope), JSON.stringify({ order:lay.order, hidden:lay.hidden, widths })); } catch(_){}
   const btn = document.getElementById('psop-col-order-reset-btn');
   if (btn) btn.style.display = '';
 }
 
+/* 렌더용 컬럼 순서 = (현재 scope order) − hidden */
+function _psopGetColOrder() {
+  const lay = _psopLoadLayout();
+  const hid = new Set(lay.hidden);
+  return lay.order.filter(id => !hid.has(id));
+}
+
 function psopResetColOrder() {
-  _psopDocColOrder = _psopDocColDefs.map(c => c.id);
-  try { localStorage.removeItem(PSOP_DOC_COL_LS_KEY); } catch(_){}
+  const scope = _psopScopeNow();
+  _psopLayoutCache[scope] = { order: _psopDocColDefs.map(c => c.id), hidden: [] };
+  try { localStorage.removeItem(_psopLayoutKey(scope)); } catch(_){}
   const btn = document.getElementById('psop-col-order-reset-btn');
   if (btn) btn.style.display = 'none';
   psopRenderDocTable();
   if (typeof showToast === 'function') showToast('컬럼 순서가 초기화되었습니다');
+}
+
+/* 레이아웃 모달 열기 (PS/HL scope별) */
+function psopOpenColLayout() {
+  const scope = _psopScopeNow();
+  const lay = _psopLoadLayout(scope);
+  openColLayout({
+    title: (scope==='HL' ? 'HL배차' : 'PS 배차(최적화)') + ' — 컬럼 레이아웃',
+    storageKey: _psopLayoutKey(scope),
+    allowWidth: true,
+    /* chk(fixed)은 레이아웃 대상에서 제외 */
+    getAllCols: () => _psopDocColDefs.filter(c => !c.fixed)
+                        .map(c => ({ key:c.id, label:(c.label||c.id).replace(/<br>/gi,' ') || '(빈 컬럼)', w:(_psopDocColW[c.id]||c.w) })),
+    getState: () => ({
+      order:  lay.order.filter(id => id !== 'chk'),
+      hidden: lay.hidden.slice(),
+      widths: Object.assign({}, _psopDocColW),
+    }),
+    applyState: (st) => {
+      /* chk 를 맨 앞에 유지하여 order 재구성 */
+      _psopLayoutCache[scope] = {
+        order:  ['chk', ...st.order.filter(id => id !== 'chk')],
+        hidden: st.hidden.filter(id => id !== 'chk'),
+      };
+      if (st.widths) Object.keys(st.widths).forEach(id => { _psopDocColW[id] = st.widths[id]; });
+      _psopSaveLayout(scope);
+      psopRenderDocTable();
+    },
+  });
 }
 
 /* ── 컬럼 순서 드래그 핸들러 ── */
@@ -5546,9 +5852,16 @@ function psopResetColOrder() {
     ins = Math.max(1, Math.min(ins, order.length));
     order.splice(ins, 0, _src);
 
-    _psopDocColOrder = order;
+    /* 재배열된 '보이는' order 에 현재 scope 의 hidden 을 뒤에 붙여 전체 order 재구성 */
+    const _scope = _psopScopeNow();
+    const _lay   = _psopLoadLayout(_scope);
+    const _hidSet = new Set(_lay.hidden);
+    _psopLayoutCache[_scope] = {
+      order:  [...order.filter(x => !_hidSet.has(x)), ..._lay.hidden],
+      hidden: _lay.hidden.slice(),
+    };
     _clearCls(); _src = null;
-    _psopSaveColOrder();
+    _psopSaveLayout(_scope);
     psopRenderDocTable();
   };
 
@@ -9386,6 +9699,7 @@ const shipScheduleState = {
   sortDir: 'asc',
   currentRows: [],
   colOrder: [],   // 컬럼 표시 순서 (key 배열) — 빈 배열이면 _ssColDefs() 기본 순서 사용
+  hiddenCols: [], // [레이아웃] 숨김 컬럼 key 배열
   thicknessMap: null, // TMS_THICKNESS 코드맵 { '6자리코드': 두께수치 } — 판지 높이 계산용
   selectedKeys: new Set(),  // 체크된 납품문서 행 키(SHPOKY|SHPOIT) — 합계/엑셀용
 };
@@ -16143,6 +16457,8 @@ async function renderPsDispatchOpt(scope) {
   }
   // 현재 스코프 확정(이후 모든 조회/자동배차/차량탭이 이 값으로 분기)
   psopState.scope = _scope;
+  /* [레이아웃] 해당 scope(PS/HL) 저장 레이아웃(순서/숨김/너비) 로드 — 너비(_psopDocColW) 반영 */
+  try { _psopLoadLayout(_scope); } catch(_){}
 
   // 기본 날짜: 오늘 기준 FROM = -3일, TO = +1일 (요청 사양)
   const fmtD  = d => d.toISOString().slice(0,10);
@@ -16379,6 +16695,8 @@ async function renderPsDispatchOpt(scope) {
                 style="display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 12px;font-size:11px;font-weight:600;background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:6px;cursor:pointer;">📥 엑셀 다운로드</button>
               <button onclick="psopShowDocSummary()" title="선택(체크)된 납품문서 합계"
                 style="display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 12px;font-size:11px;font-weight:600;background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc;border-radius:6px;cursor:pointer;">Σ 합계</button>
+              <button onclick="psopOpenColLayout()" title="표시할 컬럼/순서/너비 설정 (PS·HL 각각 사용자별 저장)"
+                style="display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 12px;font-size:11px;font-weight:600;background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;border-radius:6px;cursor:pointer;">⚙ 레이아웃</button>
             </span>
           </div>
         </div>
@@ -20793,6 +21111,8 @@ async function renderShipSchedule() {
 </div>`;
 
   shipScheduleState.initialized = true;
+  /* [레이아웃] 사용자 저장 컬럼 레이아웃(순서/숨김/너비) 로드 */
+  try { ssLoadColLayout(); } catch(_){}
 
   /* Enter 키 조회 */
   ['ss-rqshpd-from','ss-rqshpd-to','ss-skukey','ss-ptnrky'].forEach(id => {
@@ -21081,6 +21401,50 @@ async function loadShipSchedule(pg) {
   }
 }
 
+/* ════════════════════════════════════════════════════════
+   출고예정정보 — 컬럼 레이아웃(순서/숨김/너비) 저장·적용
+════════════════════════════════════════════════════════ */
+const SS_COL_LAYOUT_KEY = 'ss_col_layout_v1';
+
+/* 저장된 레이아웃을 상태(colOrder/hiddenCols/_ssColW)에 로드 */
+function ssLoadColLayout() {
+  const saved = colLayoutLoadSaved(SS_COL_LAYOUT_KEY);
+  if (!saved) return;
+  const defKeys = _ssColDefs().map(c => c.key);
+  shipScheduleState.colOrder   = (saved.order  || []).filter(k => defKeys.includes(k));
+  shipScheduleState.hiddenCols = (saved.hidden || []).filter(k => defKeys.includes(k));
+  if (saved.widths) Object.keys(saved.widths).forEach(k => { if (defKeys.includes(k)) _ssColW[k] = saved.widths[k]; });
+}
+
+/* 레이아웃 모달 열기 */
+function ssOpenColLayout() {
+  openColLayout({
+    title: '출고예정정보 — 컬럼 레이아웃',
+    storageKey: SS_COL_LAYOUT_KEY,
+    allowWidth: true,
+    getAllCols: () => _ssColDefs().map(c => ({ key:c.key, label:c.label, w:(_ssColW[c.key]||c.w) })),
+    getState: () => ({
+      order:  (shipScheduleState.colOrder && shipScheduleState.colOrder.length)
+                ? shipScheduleState.colOrder.slice()
+                : _ssColDefs().map(c => c.key),
+      hidden: (shipScheduleState.hiddenCols || []).slice(),
+      widths: Object.assign({}, _ssColW),
+    }),
+    applyState: (st) => {
+      shipScheduleState.colOrder   = st.order.slice();
+      shipScheduleState.hiddenCols = st.hidden.slice();
+      if (st.widths) Object.keys(st.widths).forEach(k => { _ssColW[k] = st.widths[k]; });
+      /* 현재 조회 결과가 있으면 재렌더 */
+      const area = document.getElementById('ss-result-area');
+      if (area && shipScheduleState.currentRows && shipScheduleState.currentRows.length) {
+        const cols = _ssColDefs();
+        const total = shipScheduleState.total || shipScheduleState.currentRows.length;
+        _ssBuildTable(area, cols, shipScheduleState.currentRows, total, 1, 1, 99999);
+      }
+    },
+  });
+}
+
 /* ── 출고문서아이템 컬럼 정의 (renderShipScheduleResult / ssSort 공용) ── */
 /* colOrder(저장된 컬럼 순서)를 정의 컬럼(defs)에 적용.
    - colOrder 순서대로 배치하되, colOrder 에 없는 신규 정의 컬럼은 defs 순서 유지하며 뒤에 append.
@@ -21364,7 +21728,12 @@ function _ssBuildTable(area, cols, rows, total, page, totalPages, size) {
   /* colOrder 적용: 빈 배열이면 _ssColDefs() 순서 그대로 사용.
      저장된 colOrder 에 없는 신규 정의 컬럼(예: '중량')은 정의 순서대로 뒤에 자동 추가
      → 컬럼을 새로 추가해도 기존 사용자(localStorage colOrder)에게 즉시 노출됨 */
-  const orderedCols = _ssApplyColOrder(cols, s.colOrder);
+  let orderedCols = _ssApplyColOrder(cols, s.colOrder);
+  /* [레이아웃] 숨김 컬럼 제외 */
+  if (s.hiddenCols && s.hiddenCols.length) {
+    const hid = new Set(s.hiddenCols);
+    orderedCols = orderedCols.filter(c => !hid.has(c.key));
+  }
 
   /* thead — 맨 앞에 체크박스(전체선택) 컬럼 고정(정렬/드래그 대상 제외) */
   const allChecked = rows.length > 0 && rows.every(r => s.selectedKeys.has(_ssRowKey(r)));
@@ -21424,6 +21793,10 @@ function _ssBuildTable(area, cols, rows, total, page, totalPages, size) {
       <button onclick="ssSumSelected()" title="체크된 납품문서의 합계 계산"
         style="display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 14px;font-size:12px;font-weight:600;background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc;border-radius:6px;cursor:pointer;">
         <span>Σ</span> 합계
+      </button>
+      <button onclick="ssOpenColLayout()" title="표시할 컬럼/순서/너비 설정 (사용자별 저장)"
+        style="display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 14px;font-size:12px;font-weight:600;background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;border-radius:6px;cursor:pointer;">
+        <span>⚙</span> 레이아웃
       </button>
       <span id="ss-sel-cnt" style="font-size:11px;color:var(--text3);">선택 <b id="ss-sel-cnt-n" style="color:var(--primary)">0</b>건</span>
       <span id="ss-sum-result" style="font-size:12px;color:var(--text2);margin-left:6px;"></span>
