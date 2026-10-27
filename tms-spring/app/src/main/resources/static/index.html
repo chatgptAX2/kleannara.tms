@@ -5436,8 +5436,10 @@ const _psopDocColDefs = [
   { id:'skukey',  label:'품목코드',       w:120 },
   { id:'desc01',  label:'품목명',         w:200 },
   { id:'qtshpo',  label:'납품수량',       w:72  },
-  // [HL 전용] 팔레트수량(PLTBOX) — 제품군 '생활'(SKUG05='20')만 값, 그 외(PS 판지 등)는 빈칸
-  { id:'pltbox',  label:'파렛트수량',     w:72  },
+  // [HL 전용] 주문수량(QTYORG) — 제품군 '생활'(SKUG05='20')만 값, 그 외(PS 판지 등)는 빈칸
+  { id:'qtyorg',   label:'주문수량',       w:72  },
+  // [HL 전용] 납품수량(PLT)(ORD_PLTQTY) — 제품군 '생활'(SKUG05='20')만 값, 그 외(PS 판지 등)는 빈칸
+  { id:'ordpltqty', label:'납품수량(PLT)',  w:84  },
   { id:'uomkey',  label:'단위',           w:44  },
   { id:'kgwt',    label:'중량(KG)',       w:80  },
   { id:'skutyp',  label:'유형',           w:52  },
@@ -16875,8 +16877,10 @@ function psopRenderDocTable(filterText) {
       skukey:  `<td title="${r.SKUKEY||''}">${r.SKUKEY||''}</td>`,
       desc01:  `<td class="col-nm" title="${r.DESC01||''}">${r.DESC01||''}</td>`,
       qtshpo:  `<td style="text-align:right;font-weight:600">${psopFmtNum(r.QTSHPO)}</td>`,
-      // [HL 전용] 팔레트수량: 제품군 '생활'(SKUG05='20')만 표시(백엔드도 20만 반환), 그 외는 빈칸 → PS 무영향
-      pltbox:  `<td style="text-align:right;font-weight:600">${String((r.SKUG05||'')).trim()==='20' ? (r.PLTBOX!=null&&String(r.PLTBOX).trim()!=='' ? psopFmtNum(r.PLTBOX) : '-') : ''}</td>`,
+      // [HL 전용] 주문수량: 제품군 '생활'(SKUG05='20')만 표시(백엔드도 20만 반환), 그 외는 빈칸 → PS 무영향
+      qtyorg:  `<td style="text-align:right;font-weight:600">${String((r.SKUG05||'')).trim()==='20' ? (r.QTYORG!=null&&String(r.QTYORG).trim()!=='' ? psopFmtNum(r.QTYORG) : '-') : ''}</td>`,
+      // [HL 전용] 납품수량(PLT): 제품군 '생활'(SKUG05='20')만 표시(백엔드도 20만 반환), 그 외는 빈칸 → PS 무영향
+      ordpltqty: `<td style="text-align:right;font-weight:600">${String((r.SKUG05||'')).trim()==='20' ? (r.ORD_PLTQTY!=null&&String(r.ORD_PLTQTY).trim()!=='' ? psopFmtNum(r.ORD_PLTQTY) : '-') : ''}</td>`,
       uomkey:  `<td style="text-align:center">${r.UOMKEY||''}</td>`,
       kgwt:    `<td style="text-align:right;font-weight:600;color:${(r.KG_WEIGHT||0)>0?'#d97706':'var(--text3)'}" title="출고예정정보 기준 납품문서별 중량(KG)">${(r.KG_WEIGHT||0)>0?psopFmtNum(Math.round((r.KG_WEIGHT||0)*10)/10):'-'}</td>`,
       skutyp:  `<td style="text-align:center">${skuTypeBadge}</td>`,
@@ -21293,11 +21297,16 @@ function _ssColDefs() {
       }, w:62, align:'right' },
     /* 납품수량 = QTSHPO (주문수량 원 수량). 기존 QTUALO(=QTSHPO−QTALOC) 컬럼은 폐지하고 QTSHPO 로 통일 */
     { key:'QTSHPO',     label:'납품수량',     fmt:fmtN,  w:80,  align:'right' },
-    /* [HL 전용] 팔레트수량(PLTBOX) — 제품군 '생활'(SKUG05='20')만 표시(백엔드도 20만 반환).
+    /* [HL 전용] 주문수량(QTYORG) — 제품군 '생활'(SKUG05='20')만 표시(백엔드도 20만 반환).
        그 외 제품군(판지'10' 등 PS)은 백엔드 NULL + 여기서도 빈칸 → 기존 PS 화면 무영향 */
-    { key:'PLTBOX',     label:'파렛트수량',
+    { key:'QTYORG',     label:'주문수량',
       fmt:(v,r)=>{ const g5=String((r&&r.SKUG05)||'').trim(); if(g5!=='20') return ''; return (v==null||String(v).trim()==='')?'-':fmtN(v); },
       w:80, align:'right' },
+    /* [HL 전용] 납품수량(PLT)(ORD_PLTQTY) — 제품군 '생활'(SKUG05='20')만 표시(백엔드도 20만 반환).
+       그 외 제품군(판지'10' 등 PS)은 백엔드 NULL + 여기서도 빈칸 → 기존 PS 화면 무영향 */
+    { key:'ORD_PLTQTY', label:'납품수량(PLT)',
+      fmt:(v,r)=>{ const g5=String((r&&r.SKUG05)||'').trim(); if(g5!=='20') return ''; return (v==null||String(v).trim()==='')?'-':fmtN(v); },
+      w:92, align:'right' },
     /* 중량(KG) = 백엔드 TOT (원지: QTSHPO 자체=KG / 판지: QTSHPO×KG환산계수). 원지도 동일 컬럼에 표시 */
     { key:'TOT',        label:'중량',         fmt:fmtN,  w:80,  align:'right' },
     /* ── 환산수량 ── */

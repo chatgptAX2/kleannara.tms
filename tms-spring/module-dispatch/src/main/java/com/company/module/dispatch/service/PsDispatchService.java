@@ -221,11 +221,15 @@ public class PsDispatchService {
         "                  WHERE CV.CMCDKY='TMS_THICKNESS'" +
         "                    AND CV.CMCDVL=SUBSTR(i.SKUKEY,3,6)" +
         "                    AND ROWNUM=1), 0) AS THICKNESS," +
-        // [HL 전용] 팔레트수량(PLTBOX): 제품군 '생활'(SKUG05='20')만 SZF_GET_CONVERT_QTY 로 PAL 환산.
+        // [HL 전용] 납품수량(PLT)(ORD_PLTQTY): 제품군 '생활'(SKUG05='20')만 SZF_GET_CONVERT_QTY 로 PAL 환산.
         //   그 외 제품군(판지'10' 등 PS)은 NULL → 기존 PS 배차 조회/데이터 무영향.
         "       CASE WHEN TRIM(COALESCE(i.SKUG05,''))='20'" +
         "            THEN TRIM(KNRAWMS.SZF_GET_CONVERT_QTY(h.WAREKY, i.SKUKEY, i.QTSHPO, i.UOMKEY, 'PAL'))" +
-        "            ELSE NULL END AS PLTBOX" +
+        "            ELSE NULL END AS ORD_PLTQTY," +
+        // [HL 전용] 주문수량(QTYORG): 제품군 '생활'(SKUG05='20')만 노출, 그 외 NULL → PS 무영향.
+        "       CASE WHEN TRIM(COALESCE(i.SKUG05,''))='20'" +
+        "            THEN CAST(COALESCE(i.QTYORG, 0) AS NUMBER(18,4))" +
+        "            ELSE NULL END AS QTYORG" +
         " FROM KNRAWMS.TMS_SHPDI i" +
         " JOIN KNRAWMS.TMS_SHPDH h ON i.SHPOKY = h.SHPOKY" +
         " LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY = h.DPTNKY AND b.PTNRTY = 'CT'" +
@@ -344,8 +348,10 @@ public class PsDispatchService {
             double sokPerR     = toDouble(r[22]);
             double pltPerUnit  = toDouble(r[23]);
             double thickness   = toDouble(r[24]);
-            // [HL 전용] 팔레트수량(PLTBOX, r[25]) — SKUG05='20'(생활)만 값, 그 외 NULL → PS 무영향
-            String pltbox      = str(r[25]);
+            // [HL 전용] 납품수량(PLT)(ORD_PLTQTY, r[25]) / 주문수량(QTYORG, r[26])
+            //   — SKUG05='20'(생활)만 값, 그 외 NULL → PS 무영향
+            String ordPltqty   = str(r[25]);
+            Double qtyorg      = r[26] != null ? toDouble(r[26]) : null;
 
             // 배차완료 정보: 같은 행의 STDLNR(가선적번호)/STKNUM(SAP선적번호)
             String  stdlnrVal = str(r[19]);
@@ -425,7 +431,8 @@ public class PsDispatchService {
                 .sokPerR(sokPerR)
                 .pltPerUnit(pltPerUnit)
                 .thickness(thickness)
-                .pltbox(pltbox)
+                .ordPltqty(ordPltqty)
+                .qtyorg(qtyorg)
                 .rollCount(rollCount)
                 .skug05(str(r[7]))
                 .skuType(skuType)
