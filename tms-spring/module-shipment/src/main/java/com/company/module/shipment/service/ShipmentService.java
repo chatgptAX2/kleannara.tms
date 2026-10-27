@@ -110,7 +110,11 @@ public class ShipmentService {
         "    COALESCE((SELECT ME4.QTAUOM FROM KNRAWMS.MEASI ME4 WHERE ME4.WAREKY=SH.WAREKY AND ME4.MEASKY=SI.MEASKY AND ME4.UOMKEY='BOX' AND ROWNUM=1), 0)    AS BOX_PER_UNIT," +
         "    COALESCE((SELECT ME5.QTAUOM FROM KNRAWMS.MEASI ME5 WHERE ME5.WAREKY=SH.WAREKY AND ME5.MEASKY=SI.MEASKY AND ME5.UOMKEY='PAL' AND ROWNUM=1), 0)    AS PAL_PER_UNIT," +
         "    COALESCE((SELECT ME6.QTAUOM FROM KNRAWMS.MEASI ME6 WHERE ME6.WAREKY=SH.WAREKY AND ME6.MEASKY=SI.MEASKY AND ME6.UOMKEY='EA'  AND ROWNUM=1), 0)    AS EA_PER_UNIT," +
-        // PLT당 개수: 판지(SKUG05='10')만 RECDI 최근 입고 QTYRCV(LOTA01/LOTA02 일치, STATIT='FRV', RECVKY 최신 1건), 그 외 0
+        // PLT당 개수(PLT_PER_UNIT):
+        //  · 판지(SKUG05='10', PS): 기존 유지 — RECDI 최근 입고 QTYRCV(LOTA01/LOTA02 일치, STATIT='FRV', RECVKY 최신 1건)
+        //  · 생활(SKUG05='20', HL): MEASI 환산계수 비율 = QTPUOM('PAL') / QTPUOM('BOX') (1PLT당 BOX 개수)
+        //    - BOX 환산계수가 0/NULL 이면 0 반환(나눗셈 방어)
+        //  · 그 외: 0
         "    CASE WHEN SI.SKUG05='10' THEN" +
         "         COALESCE((SELECT rd.QTYRCV FROM KNRAWMS.RECDI rd" +
         "                    WHERE rd.SKUKEY = SI.SKUKEY" +
@@ -119,7 +123,15 @@ public class ShipmentService {
         "                      AND rd.LOTA02 = SI.LOTA02" +
         "                    ORDER BY rd.RECVKY DESC" +
         "                    FETCH FIRST 1 ROW ONLY), 0)" +
-         "         ELSE 0 END                AS PLT_PER_UNIT," +
+        "         WHEN SI.SKUG05='20' THEN" +
+        "         COALESCE((SELECT CASE WHEN COALESCE(MBX.QTPUOM,0)=0 THEN 0" +
+        "                               ELSE MPA.QTPUOM / MBX.QTPUOM END" +
+        "                     FROM KNRAWMS.MEASI MPA" +
+        "                     JOIN KNRAWMS.MEASI MBX" +
+        "                       ON MBX.WAREKY=MPA.WAREKY AND MBX.MEASKY=MPA.MEASKY AND MBX.UOMKEY='BOX'" +
+        "                    WHERE MPA.WAREKY=SH.WAREKY AND MPA.MEASKY=SI.SKUKEY AND MPA.UOMKEY='PAL'" +
+        "                      AND ROWNUM=1), 0)" +
+        "         ELSE 0 END                AS PLT_PER_UNIT," +
         // [HL 전용] 팔레트수량(PLTBOX): 제품군 '생활'(SKUG05='20')만 SZF_GET_CONVERT_QTY 로 PAL 환산.
         //   그 외 제품군(판지'10' 등 PS)은 NULL → 기존 PS 조회/데이터 무영향.
         "    CASE WHEN TRIM(COALESCE(SI.SKUG05,''))='20'" +
