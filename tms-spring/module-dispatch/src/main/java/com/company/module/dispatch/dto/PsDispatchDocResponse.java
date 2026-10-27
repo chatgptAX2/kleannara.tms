@@ -83,10 +83,6 @@ public class PsDispatchDocResponse {
     @JsonProperty("ORD_PLTQTY")
     private String ordPltqty;      // UOMKEY 단위값에 대한 납품수량(PLT)(HL 전용)
 
-    // [HL 전용] 주문수량 — 제품군 '생활'(SKUG05='20')만 SI.QTYORG 값, 그 외 NULL
-    @JsonProperty("QTYORG")
-    private Double qtyorg;         // UOMKEY 단위값에 대한 주문수량(HL 전용)
-
     @JsonProperty("ROLL_COUNT")
     private Integer rollCount;      // 원지 롤 수
 

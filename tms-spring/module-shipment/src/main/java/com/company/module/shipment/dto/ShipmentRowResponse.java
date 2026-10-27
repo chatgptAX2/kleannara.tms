@@ -85,9 +85,6 @@ public class ShipmentRowResponse {
     @JsonProperty("STKNUM")
     private String stknum;          // SAP 선적번호(선적생성 완료 시 TMS_SHPDI.STKNUM)
 
-    @JsonProperty("QTYORG")
-    private Double qtyorg;          // [HL 전용] 주문수량(SI.QTYORG) — 생활(SKUG05='20')만, 그 외 NULL
-
     @JsonProperty("ORD_PLTQTY")
     private String ordPltqty;       // [HL 전용] 납품수량(PLT) — 생활(SKUG05='20')만 SZF_GET_CONVERT_QTY PAL 환산, 그 외 NULL
 
