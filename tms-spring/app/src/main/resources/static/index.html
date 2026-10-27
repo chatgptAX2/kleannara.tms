@@ -24196,7 +24196,7 @@ const DCON_KEY_META = {
   MIX_BOARD_SINGLE_TIER_YN:{ label:'판지 1단 적재만', unit:'Y/N', op:'=', type:'MIX_Z_AXIS', hint:'Y=판지는 1단(단일 높이)만 적재 허용(다단 금지) / N=판지 다단 적재 허용' },
   MIX_CONTIGUOUS_FRONT_YN:{ label:'전면부터 순차(연속) 적재', unit:'Y/N', op:'=', type:'MIX_Y_LIFO', hint:'Y(기본)=적재함 앞(진행방향)부터 원지→판지를 간격 없이 연속 배치하여 가운데 빈 공간 제거(하중 전면 집중, 주행 안정성↑) / N=재질별 분리 배치(가운데 공간 허용)' },
   /* HL_AUTOPLT — HL 전용: 자동설정PLT 기반 배차 사용유무 */
-  HL_AUTOPLT_YN:{ label:'자동설정PLT 배차 사용', unit:'Y/N', op:'=', type:'HL_AUTOPLT', hint:'Y=HL 자동배차 시 납품처관리 [자동설정PLT] 값(PLT당 개수)을 기준으로 납품처별 배차 / N=미적용. ※자동설정PLT 미선택 납품처는 이 제약과 무관하게 미적용(기존 방식)' },
+  HL_AUTOPLT_YN:{ label:'자동설정PLT 배차 사용', unit:'Y/N', op:'=', type:'HL_AUTOPLT', hint:'Y=HL 자동배차 시 출고예정정보 [납품수량(PLT)] 값(파렛트 개수)을 PLT 개수로 적용하여 배차 / N=미적용. ※HL(생활) 전용 — PS 배차에는 영향 없음' },
   /* COST */
   PENALTY_RATE:    { label:'초과적재 패널티 배수', unit:'x', op:'=', type:'COST', hint:'MIN_COST 목적식 초과 패널티 (기본 3.0)' },
   COST_PENALTY_OVER:{ label:'초과적재 패널티 배수(대체키)', unit:'x', op:'=', type:'COST', hint:'초과 시 비용 패널티 (기본 1.5)' },
@@ -25481,7 +25481,7 @@ const DCON_GRP_META = {
   MIX_Y_LIFO:     { icon:'↔️', label:'혼적② Y축 LIFO 배치',       cls:'g-mix-y',       desc:'복수 납품처 LIFO: 나중 하차→안쪽, 먼저 하차→문 쪽 / 전후 Zone 분할 (엑셀§4-2)' },
   MIX_DUAL_VERIFY:{ icon:'✅', label:'혼적③ 이중 복합 검증',       cls:'g-mix-dual',    desc:'혼적 총중량+높이+CBM 이중 복합 한계 검증, Dead Space 포함 3D (엑셀§4-3)' },
   /* ── HL 전용: 자동설정PLT 기반 배차 (HL제약조건관리에서만 표시) ── */
-  HL_AUTOPLT: { icon:'🧱', label:'HL 자동설정PLT 배차',    cls:'g-hl-autoplt', desc:'Y=납품처관리 [자동설정PLT] 값(PLT당 개수) 기준으로 HL 자동배차 적용 / N=미적용. ※자동설정PLT 미선택 납품처는 자동 제외(미적용)' },
+  HL_AUTOPLT: { icon:'🧱', label:'HL 자동설정PLT 배차',    cls:'g-hl-autoplt', desc:'Y=출고예정정보 [납품수량(PLT)] 값(파렛트 개수) 기준으로 HL 자동배차 적용 / N=미적용. ※HL(생활) 전용 — PS 배차에는 영향 없음' },
   COST:      { icon:'💰', label:'비용 제약',               cls:'g-cost',       desc:'운송비 계산·패널티 규칙' },
 };
 
