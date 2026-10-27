@@ -20769,12 +20769,10 @@ async function renderShipSchedule() {
             style="padding:0 12px;height:28px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;white-space:nowrap;">
             초기화
           </button>
+          <!-- [요청] 페이지 분할 없이 항상 전체 노출 → 페이지크기 선택 UI 비노출(숨김) -->
           <select id="ss-page-size"
-            style="height:28px;padding:0 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text);font-size:12px;cursor:pointer;">
-            <option value="500" selected>500건</option>
-            <option value="1000">1,000건</option>
-            <option value="3000">3,000건</option>
-            <option value="99999">전체</option>
+            style="display:none;height:28px;padding:0 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text);font-size:12px;cursor:pointer;">
+            <option value="99999" selected>전체</option>
           </select>
         </div>
       </div><!-- /우측 플랜트+버튼 -->
@@ -20997,7 +20995,9 @@ async function loadShipSchedule(pg) {
   const rqshpdTo   = el('ss-rqshpd-to')?.value   || '';
   const skug05     = el('ss-skug05')?.value       || '';
   const skukey     = (el('ss-skukey')?.value || '').trim();
-  const size       = parseInt(el('ss-page-size')?.value || '50');
+  /* [요청] 출고예정정보는 페이지 분할 없이 전체 1페이지로 노출.
+     백엔드 size 상한(99999)까지 한 번에 요청 → totalPages=1 → 페이지 UI 미표시(전체 표시). */
+  const size       = 99999;
 
   /* 납품문서(SVBELN): 입력창 직접 입력값 + 팝업/붙여넣기 선택 목록 통합 */
   const svbelnInputVal = (el('ss-svbeln-input')?.value || '').trim();
@@ -21302,9 +21302,7 @@ function _ssColDefs() {
     /* 중량(KG) = 백엔드 TOT (원지: QTSHPO 자체=KG / 판지: QTSHPO×KG환산계수). 원지도 동일 컬럼에 표시 */
     { key:'TOT',        label:'중량',         fmt:fmtN,  w:80,  align:'right' },
     /* ── 환산수량 ── */
-    { key:'BAG',        label:'BAG',          fmt:fmtN,  w:62,  align:'right' },
-    { key:'BOX',        label:'BOX',          fmt:fmtN,  w:62,  align:'right' },
-    { key:'PLT',        label:'PLT',          fmt:fmtN,  w:55,  align:'right' },
+    /* [요청] BAG / BOX / PLT 컬럼 비노출 (백엔드 응답 값은 유지, 화면 컬럼만 제거) */
     /* PLT당 개수: 판지(SKUG05=10) RECDI 최근 입고 QTYRCV. 판지 아님/미조회는 '-' */
     { key:'PLT_PER_UNIT', label:'PLT당개수',
       fmt:(v,r)=>{
