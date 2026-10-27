@@ -79,6 +79,10 @@ public class PsDispatchDocResponse {
     @JsonProperty("THICKNESS")
     private Double thickness;       // TMS_THICKNESS(µm) — 판지 1단(1PLT) 높이 산출
 
+    // [HL 전용] 팔레트수량 — 제품군 '생활'(SKUG05='20')만 SZF_GET_CONVERT_QTY(...,'PAL') 값, 그 외 NULL
+    @JsonProperty("PLTBOX")
+    private String pltbox;         // UOMKEY 단위값에 대한 팔레트수량(HL 전용)
+
     @JsonProperty("ROLL_COUNT")
     private Integer rollCount;      // 원지 롤 수
 
