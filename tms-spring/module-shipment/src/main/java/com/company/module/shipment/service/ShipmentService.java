@@ -141,7 +141,7 @@ public class ShipmentService {
         // 53:ORD_PLTQTY — [HL 전용] 납품수량(PLT). 제품군 '생활'(SKUG05='20')만 SZF_GET_CONVERT_QTY 로 PAL 환산.
         //   그 외 제품군(판지'10' 등 PS)은 NULL → 기존 PS 조회/데이터 무영향.
         "    CASE WHEN TRIM(COALESCE(SI.SKUG05,''))='20'" +
-        "         THEN TRIM(KNRAWMS.SZF_GET_CONVERT_QTY(SH.WAREKY, SI.SKUKEY, SI.QTSHPO, SI.UOMKEY, 'PAL'))" +
+        "         THEN TRIM(KNRAWMS.SZF_GET_CONVERT_QTY(SH.WAREKY, SI.SKUKEY, SI.QTYORG, SI.UOMKEY, 'PAL'))" +
         "         ELSE NULL END             AS ORD_PLTQTY" +
         // [요청] /api/shipment/schedule 조회는 TMS_SHPDI/TMS_SHPDH 사용
         " FROM KNRAWMS.TMS_SHPDI SI" +
