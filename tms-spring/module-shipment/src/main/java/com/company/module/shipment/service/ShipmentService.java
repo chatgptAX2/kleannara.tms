@@ -135,7 +135,7 @@ public class ShipmentService {
         // [HL 전용] 팔레트수량(PLTBOX): 제품군 '생활'(SKUG05='20')만 SZF_GET_CONVERT_QTY 로 PAL 환산.
         //   그 외 제품군(판지'10' 등 PS)은 NULL → 기존 PS 조회/데이터 무영향.
         "    CASE WHEN TRIM(COALESCE(SI.SKUG05,''))='20'" +
-        "         THEN TRIM(SZF_GET_CONVERT_QTY(SH.WAREKY, SI.SKUKEY, SI.QTSHPO, SI.UOMKEY, 'PAL'))" +
+        "         THEN TRIM(KNRAWMS.SZF_GET_CONVERT_QTY(SH.WAREKY, SI.SKUKEY, SI.QTSHPO, SI.UOMKEY, 'PAL'))" +
         "         ELSE NULL END             AS PLTBOX," +
         // 52:STKNUM — SAP 선적번호(선적생성 시 TMS_SHPDI.STKNUM 에 기록). 미생성 시 공백 → 화면 '-'
         "    TRIM(COALESCE(SI.STKNUM,''))   AS STKNUM" +

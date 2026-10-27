@@ -224,7 +224,7 @@ public class PsDispatchService {
         // [HL 전용] 팔레트수량(PLTBOX): 제품군 '생활'(SKUG05='20')만 SZF_GET_CONVERT_QTY 로 PAL 환산.
         //   그 외 제품군(판지'10' 등 PS)은 NULL → 기존 PS 배차 조회/데이터 무영향.
         "       CASE WHEN TRIM(COALESCE(i.SKUG05,''))='20'" +
-        "            THEN TRIM(SZF_GET_CONVERT_QTY(h.WAREKY, i.SKUKEY, i.QTSHPO, i.UOMKEY, 'PAL'))" +
+        "            THEN TRIM(KNRAWMS.SZF_GET_CONVERT_QTY(h.WAREKY, i.SKUKEY, i.QTSHPO, i.UOMKEY, 'PAL'))" +
         "            ELSE NULL END AS PLTBOX" +
         " FROM KNRAWMS.TMS_SHPDI i" +
         " JOIN KNRAWMS.TMS_SHPDH h ON i.SHPOKY = h.SHPOKY" +
