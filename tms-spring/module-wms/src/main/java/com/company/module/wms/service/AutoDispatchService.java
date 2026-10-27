@@ -273,12 +273,13 @@ public class AutoDispatchService {
             boolean isDynBlocked = "N".equals(pi.dynamicYn);
 
             // ── [HL 전용] 자동설정PLT 배차 ─────────────────────────────────
-            //  조건: HL 스코프 + HL_AUTOPLT_YN=Y + 납품처 AUTO_PLT(>0, PLT당 개수) 설정됨.
-            //  AUTO_PLT 미선택(0) 납품처는 미적용(기존 방식). PS 스코프는 항상 미적용(무영향).
+            //  조건: HL 스코프 + '자동설정PLT 배차 사용' 제약(HL_AUTOPLT_YN=Y) ON.
+            //  적용 PLT 개수: 출고예정정보 '납품수량(PLT)'(ORD_PLTQTY = SZF_GET_CONVERT_QTY PAL 환산,
+            //    QTYORG 기준)을 품목 단위로 산출 → 차량별 적재 품목 합계를 vrow.hl_autoplt_qty 에 반영.
+            //  PS 스코프는 HL_AUTOPLT_YN 이 항상 false + 쿼리 ORD_PLTQTY=0 이므로 항상 미적용(무영향).
             //  ※ 실제 적용(배차노트·vrow.hl_autoplt_qty)은 각 품목 처리 메서드
             //    (processRollItems/processBoardItems/processOtherItems/tryUnifiedMixedDispatch)
-            //    내부에서 cp.hlAutoPltYn + pi.autoPlt 로 로컬 산출한다(scope 미전달 메서드 대응).
-            //    'PLT당 개수' 기준 실제 수량 분할 배차 로직은 HL PLT개수 확정 후 반영 예정.
+            //    내부에서 hlAutoPltQtyOf(cp, items) 로 산출한다(scope 미전달 메서드 대응).
 
             // ── 납품처 제약조건 기반 자동배차 제외 처리 ─────────────────
             //   ① 자동배차여부(AUTO_ALLOC_YN)=N → 자동배차 대상 아님
@@ -861,10 +862,10 @@ public class AutoDispatchService {
             List<String> notes = new ArrayList<>(splitNotesPre);
             if (isDynBlocked) notes.add("[동적배차불가] DYNAMIC_YN=N → 고정노선 전용 오더");
             else if ("Y".equals(pi.dynamicYn)) notes.add("[동적배차가능] DYNAMIC_YN=Y");
-            // [HL 전용] 자동설정PLT 배차 적용 표시 — scope 미전달 메서드: cp.hlAutoPltYn+AUTO_PLT 로 로컬 산출
+            // [HL 전용] 자동설정PLT 배차 적용 표시 — 출고예정정보 '납품수량(PLT)'(ORD_PLTQTY) 합계를 PLT 개수로 적용.
             //  (PS 스코프에서는 HL_AUTOPLT_YN 이 항상 false 이므로 미표시 → PS 무영향)
-            if (cp.hlAutoPltYn && pi.autoPlt > 0)
-                notes.add("[HL 자동설정PLT] PLT당 " + pi.autoPlt + "개 기준 배차");
+            if (cp.hlAutoPltYn)
+                notes.add("[HL 자동설정PLT] 납품수량(PLT) 기준 배차 적용");
 
             // ── [보조] 원지 단순 높이검사 (3D 물리검증 전 1차 스크리닝) ──────────────
             //  초과 시 더 큰 차량으로 업그레이드 시도 → 실패하면 rollHeightBlocked=true 로
@@ -1016,6 +1017,8 @@ public class AutoDispatchService {
             vrow.put("overload",      rollOverload);   // 선정차량 한도 초과(과적) 여부
             vrow.put("items",         b.items);
             vrow.put("item_cnt",      b.items.size());
+            // [HL 자동설정PLT] PLT 개수 = 적재 품목들의 납품수량(PLT) 합계 (PS 스코프는 0 → 무영향)
+            vrow.put("hl_autoplt_qty", hlAutoPltQtyOf(cp, b.items));
             vrow.put("material_type", "ROLL");
             vrow.put("roll_count",    totalRc);
             vrow.put("route_cost",    costVal);
@@ -1048,9 +1051,6 @@ public class AutoDispatchService {
             vrow.put("mixed_dptnm",   isMixedGroup ? dptnm : "");
             vrow.put("forklift_yn",   pi.forkliftYn);
             vrow.put("dynamic_yn",    pi.dynamicYn);
-            // HL 자동설정PLT(PLT당 개수) — scope 미전달 메서드: cp.hlAutoPltYn+AUTO_PLT 로 로컬 산출
-            //  (PS 스코프에서는 HL_AUTOPLT_YN 이 항상 false 이므로 0 → PS 무영향)
-            vrow.put("hl_autoplt_qty", (cp.hlAutoPltYn && pi.autoPlt > 0) ? pi.autoPlt : 0);
             vrow.put("deadline_time", pi.deadlineTime);
             vrow.put("max_ton_label", pi.maxTonLabel);
             allVehicles.add(vrow);
@@ -1311,6 +1311,8 @@ public class AutoDispatchService {
             vrow.put("fill_ratio", round2(fill));
             vrow.put("items",      vb.items);
             vrow.put("item_cnt",   vb.items.size());
+            // [HL 자동설정PLT] PLT 개수 = 적재 품목들의 납품수량(PLT) 합계 (PS 스코프는 0 → 무영향)
+            vrow.put("hl_autoplt_qty", hlAutoPltQtyOf(cp, vb.items));
             vrow.put("material_type", "BOARD");
             vrow.put("roll_count",    0);
             vrow.put("total_cbm",     round4(vb.totalCbm));
@@ -1330,9 +1332,6 @@ public class AutoDispatchService {
             vrow.put("mixed_dptnm",   isMixedGroup ? dptnm : "");
             vrow.put("forklift_yn",   pi.forkliftYn);
             vrow.put("dynamic_yn",    pi.dynamicYn);
-            // HL 자동설정PLT(PLT당 개수) — scope 미전달 메서드: cp.hlAutoPltYn+AUTO_PLT 로 로컬 산출
-            //  (PS 스코프에서는 HL_AUTOPLT_YN 이 항상 false 이므로 0 → PS 무영향)
-            vrow.put("hl_autoplt_qty", (cp.hlAutoPltYn && pi.autoPlt > 0) ? pi.autoPlt : 0);
             vrow.put("deadline_time", pi.deadlineTime);
             vrow.put("max_ton_label", pi.maxTonLabel);
             allVehicles.add(vrow);
@@ -1623,6 +1622,8 @@ public class AutoDispatchService {
         vrow.put("fill_ratio",    round2(fill));
         vrow.put("items",         mergedItems);
         vrow.put("item_cnt",      mergedItems.size());
+        // [HL 자동설정PLT] PLT 개수 = 적재 품목들의 납품수량(PLT) 합계 (PS 스코프는 0 → 무영향)
+        vrow.put("hl_autoplt_qty", hlAutoPltQtyOf(cp, mergedItems));
         vrow.put("material_type", "MIXED");          // 원지+판지 통합 혼적 차량
         vrow.put("material_mix_yn", "Y");
         vrow.put("unified_dispatch_yn", "Y");         // 통합배차로 생성됨 표식
@@ -1639,9 +1640,6 @@ public class AutoDispatchService {
         vrow.put("mixed_dptnm",   isMixedGroup ? dptnm : "");
         vrow.put("forklift_yn",   pi.forkliftYn);
         vrow.put("dynamic_yn",    pi.dynamicYn);
-        // HL 자동설정PLT(PLT당 개수) — 이 메서드는 scope 미전달: cp.hlAutoPltYn+AUTO_PLT 로 로컬 산출
-        //  (PS 스코프에서는 HL_AUTOPLT_YN 이 항상 false 이므로 0 → PS 무영향)
-        vrow.put("hl_autoplt_qty", (cp.hlAutoPltYn && pi.autoPlt > 0) ? pi.autoPlt : 0);
         vrow.put("deadline_time", pi.deadlineTime);
         vrow.put("max_ton_label", pi.maxTonLabel);
         allVehicles.add(vrow);
@@ -1694,6 +1692,8 @@ public class AutoDispatchService {
         vrow.put("fill_ratio",    round2(fill));
         vrow.put("items",         otherItems);
         vrow.put("item_cnt",      otherItems.size());
+        // [HL 자동설정PLT] PLT 개수 = 적재 품목들의 납품수량(PLT) 합계 (PS 스코프는 0 → 무영향)
+        vrow.put("hl_autoplt_qty", hlAutoPltQtyOf(cp, otherItems));
         vrow.put("material_type", "OTHER");
         vrow.put("roll_count",    0);
         vrow.put("total_cbm",     0.0);
@@ -1709,9 +1709,6 @@ public class AutoDispatchService {
         vrow.put("mixed_dptnm",   "");
         vrow.put("forklift_yn",   pi.forkliftYn);
         vrow.put("dynamic_yn",    pi.dynamicYn);
-        // HL 자동설정PLT(PLT당 개수) — 이 메서드는 scope 미전달: cp.hlAutoPltYn+AUTO_PLT 로 로컬 산출
-        //  (PS 스코프에서는 HL_AUTOPLT_YN 이 항상 false 이므로 0 → PS 무영향)
-        vrow.put("hl_autoplt_qty", (cp.hlAutoPltYn && pi.autoPlt > 0) ? pi.autoPlt : 0);
         vrow.put("deadline_time", pi.deadlineTime);
         vrow.put("max_ton_label", pi.maxTonLabel);
         allVehicles.add(vrow);
@@ -1844,7 +1841,12 @@ public class AutoDispatchService {
         StringBuilder sql = new StringBuilder(
             "SELECT h.SHPOKY, h.DPTNKY, b.NAME01 AS DPTNM, h.RQSHPD, " +
             "       i.SHPOIT, i.SKUKEY, i.QTSHPO, i.DESC01 AS SKUNM, " +
-            "       i.GRSWGT, i.WGTUNT, i.UOMKEY, i.LENGTH, i.WIDTHW AS WIDTH_MM, i.HEIGHT " +
+            "       i.GRSWGT, i.WGTUNT, i.UOMKEY, i.LENGTH, i.WIDTHW AS WIDTH_MM, i.HEIGHT, " +
+            // [HL 전용] 납품수량(PLT) — 출고예정정보와 동일 산식(생활 SKUG05='20'만 QTYORG 기준 PAL 환산).
+            //   그 외(PS 판지'10' 등)는 0 → 기존 PS 자동배차 데이터/계산 무영향.
+            "       CASE WHEN TRIM(COALESCE(i.SKUG05,''))='20' " +
+            "            THEN NVL(TRIM(KNRAWMS.SZF_GET_CONVERT_QTY(h.WAREKY, i.SKUKEY, i.QTYORG, i.UOMKEY, 'PAL')), 0) " +
+            "            ELSE 0 END AS ORD_PLTQTY " +
             "FROM KNRAWMS.TMS_SHPDH h JOIN KNRAWMS.TMS_SHPDI i ON h.SHPOKY=i.SHPOKY " +
             "LEFT JOIN KNRAWMS.BZPTN b ON h.DPTNKY=b.PTNRKY AND b.PTNRTY='CT' " +
             "WHERE h.RQSHPD=?"
@@ -2757,6 +2759,22 @@ public class AutoDispatchService {
     }
     private static double round2(double v)  { return Math.round(v * 100.0)   / 100.0; }
     private static double round4(double v)  { return Math.round(v * 10000.0) / 10000.0; }
+
+    // ── [HL 전용] 자동설정PLT 배차: 차량 적재 품목들의 '납품수량(PLT)'(ORD_PLTQTY) 합계 ──
+    //   출고예정정보 '납품수량(PLT)'(SZF_GET_CONVERT_QTY PAL 환산, QTYORG 기준)을 품목 단위로 합산.
+    //   PS 품목(SKUG05≠'20')은 쿼리에서 ORD_PLTQTY=0 으로 내려오므로 합계에 영향 없음.
+    private static double sumOrdPltQty(List<Map<String, Object>> items) {
+        if (items == null) return 0.0;
+        return items.stream().mapToDouble(it -> dbl(it.get("ORD_PLTQTY"))).sum();
+    }
+
+    // ── [HL 전용] 자동설정PLT 배차 적용 시 vrow.hl_autoplt_qty 에 넣을 'PLT 개수' 산출 ──
+    //   조건: HL 스코프(cp.hlAutoPltYn=true) + '자동설정PLT 배차 사용' 제약 ON.
+    //   값: 해당 차량 적재 품목들의 납품수량(PLT) 합계(소수 2자리). PS 스코프는 항상 0(무영향).
+    private static double hlAutoPltQtyOf(ConstraintParams cp, List<Map<String, Object>> items) {
+        if (cp == null || !cp.hlAutoPltYn) return 0.0;
+        return round2(sumOrdPltQty(items));
+    }
 
     // ════════════════════════════════════════════════════════════════
     //  내부 VO / 데이터 클래스
