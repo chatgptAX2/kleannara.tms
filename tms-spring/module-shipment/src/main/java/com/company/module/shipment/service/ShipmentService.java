@@ -132,13 +132,18 @@ public class ShipmentService {
         "                    WHERE MPA.WAREKY=SH.WAREKY AND MPA.MEASKY=SI.SKUKEY AND MPA.UOMKEY='PAL'" +
         "                      AND ROWNUM=1), 0)" +
         "         ELSE 0 END                AS PLT_PER_UNIT," +
-        // [HL 전용] 팔레트수량(PLTBOX): 제품군 '생활'(SKUG05='20')만 SZF_GET_CONVERT_QTY 로 PAL 환산.
+        // 52:STKNUM — SAP 선적번호(선적생성 시 TMS_SHPDI.STKNUM 에 기록). 미생성 시 공백 → 화면 '-'
+        "    TRIM(COALESCE(SI.STKNUM,''))   AS STKNUM," +
+        // ── [HL 전용] 신규 컬럼은 기존 인덱스 보존을 위해 SELECT 맨 끝에 추가 ──
+        // 53:QTYORG — [HL 전용] 주문수량. 제품군 '생활'(SKUG05='20')만 노출, 그 외 NULL.
+        "    CASE WHEN TRIM(COALESCE(SI.SKUG05,''))='20'" +
+        "         THEN CAST(COALESCE(SI.QTYORG, 0) AS NUMBER(18,4))" +
+        "         ELSE NULL END             AS QTYORG," +
+        // 54:ORD_PLTQTY — [HL 전용] 납품수량(PLT). 제품군 '생활'(SKUG05='20')만 SZF_GET_CONVERT_QTY 로 PAL 환산.
         //   그 외 제품군(판지'10' 등 PS)은 NULL → 기존 PS 조회/데이터 무영향.
         "    CASE WHEN TRIM(COALESCE(SI.SKUG05,''))='20'" +
         "         THEN TRIM(KNRAWMS.SZF_GET_CONVERT_QTY(SH.WAREKY, SI.SKUKEY, SI.QTSHPO, SI.UOMKEY, 'PAL'))" +
-        "         ELSE NULL END             AS PLTBOX," +
-        // 52:STKNUM — SAP 선적번호(선적생성 시 TMS_SHPDI.STKNUM 에 기록). 미생성 시 공백 → 화면 '-'
-        "    TRIM(COALESCE(SI.STKNUM,''))   AS STKNUM" +
+        "         ELSE NULL END             AS ORD_PLTQTY" +
         // [요청] /api/shipment/schedule 조회는 TMS_SHPDI/TMS_SHPDH 사용
         " FROM KNRAWMS.TMS_SHPDI SI" +
         " INNER JOIN KNRAWMS.TMS_SHPDH SH ON SH.SHPOKY = SI.SHPOKY" +
@@ -423,7 +428,7 @@ public class ShipmentService {
         // 35:RQSHPD 36:DOCDAT 37:STATDO 38:STATDONM 39:SHPMTY 40:SHPMTYNM
         // 41:DOCUTYNM 42:VEHINO 43:MEASKY
         // 44:PLTKG 45:SOK_PER_R 46:KG_PER_UNIT 47:BAG_PER_UNIT 48:BOX_PER_UNIT 49:PAL_PER_UNIT 50:EA_PER_UNIT
-        // 51:PLT_PER_UNIT 52:STKNUM
+        // 51:PLT_PER_UNIT 52:STKNUM 53:QTYORG(HL전용) 54:ORD_PLTQTY(HL전용)
 
         String  skug05  = str(r[4]);
         String  uomkey  = str(r[6]).strip();
@@ -495,6 +500,9 @@ public class ShipmentService {
             .pltCnt(pltCnt).sokPerR(sokPerR)
             .pltPerUnit(pltPerUnit > 0 ? pltPerUnit : null)
             .stknum(str(r[52]))   // SAP 선적번호 (선적생성 완료 시 값 존재)
+            // [HL 전용] 주문수량/납품수량(PLT) — 생활(SKUG05='20')만 값 존재, 그 외 NULL
+            .qtyorg(r[53] != null ? toDouble(r[53]) : null)
+            .ordPltqty(str(r[54]))
             .build();
     }
 
