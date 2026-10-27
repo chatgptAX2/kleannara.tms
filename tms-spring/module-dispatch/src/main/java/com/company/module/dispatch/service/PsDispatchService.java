@@ -206,6 +206,14 @@ public class PsDispatchService {
         "                         AND rd.LOTA02 = i.LOTA02" +
         "                       ORDER BY rd.RECVKY DESC" +
         "                       FETCH FIRST 1 ROW ONLY), 0)" +
+        "            WHEN i.SKUG05='20' THEN" +
+        "            COALESCE((SELECT CASE WHEN COALESCE(MBX.QTPUOM,0)=0 THEN 0" +
+        "                                  ELSE MPA.QTPUOM / MBX.QTPUOM END" +
+        "                        FROM KNRAWMS.MEASI MPA" +
+        "                        JOIN KNRAWMS.MEASI MBX" +
+        "                          ON MBX.WAREKY=MPA.WAREKY AND MBX.MEASKY=MPA.MEASKY AND MBX.UOMKEY='BOX'" +
+        "                       WHERE MPA.WAREKY=h.WAREKY AND MPA.MEASKY=i.SKUKEY AND MPA.UOMKEY='PAL'" +
+        "                         AND ROWNUM=1), 0)" +
         "            ELSE 0 END AS PLT_PER_UNIT," +
         "       COALESCE((SELECT CASE WHEN REGEXP_LIKE(TRIM(CV.CDESC1),'^[0-9]+(\\.[0-9]+)?$')" +
         "                             THEN TO_NUMBER(TRIM(CV.CDESC1)) ELSE 0 END" +
