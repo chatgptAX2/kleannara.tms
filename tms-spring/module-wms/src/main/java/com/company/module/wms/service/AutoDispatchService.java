@@ -1058,7 +1058,8 @@ public class AutoDispatchService {
             vrow.put("is_mixed",      isMixedGroup);
             vrow.put("is_mixed_load", isMixedLoad);
             // [이슈1] 라벨을 그룹 후보 전체가 아닌 "이 차량(b.items)에 실제 적재된 납품처" 기준으로 생성
-            vrow.put("mixed_dptnm",   isMixedGroup ? mixedLabelOf(b.items, isDynGroup) : "");
+            //  (이 메서드에는 isDynGroup 파라미터가 없어, 전달받은 dptnm 접두로 동적 여부 판정)
+            vrow.put("mixed_dptnm",   isMixedGroup ? mixedLabelOf(b.items, dptnm.startsWith("동적(")) : "");
             vrow.put("forklift_yn",   pi.forkliftYn);
             vrow.put("dynamic_yn",    pi.dynamicYn);
             vrow.put("deadline_time", pi.deadlineTime);
@@ -1340,7 +1341,8 @@ public class AutoDispatchService {
             vrow.put("is_mixed",      isMixedGroup);
             vrow.put("is_mixed_load", isMixedLoad);
             // [이슈1] 라벨을 그룹 후보 전체가 아닌 "이 차량(vb.items)에 실제 적재된 납품처" 기준으로 생성
-            vrow.put("mixed_dptnm",   isMixedGroup ? mixedLabelOf(vb.items, isDynGroup) : "");
+            //  (이 메서드에는 isDynGroup 파라미터가 없어, 전달받은 dptnm 접두로 동적 여부 판정)
+            vrow.put("mixed_dptnm",   isMixedGroup ? mixedLabelOf(vb.items, dptnm.startsWith("동적(")) : "");
             vrow.put("forklift_yn",   pi.forkliftYn);
             vrow.put("dynamic_yn",    pi.dynamicYn);
             vrow.put("deadline_time", pi.deadlineTime);
