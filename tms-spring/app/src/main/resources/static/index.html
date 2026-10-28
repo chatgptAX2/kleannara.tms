@@ -5519,6 +5519,7 @@ const _psopVehColDefs = [
 const _psopVdocColDefs = [
   { id:'shpoky', label:'납품문서 ↩', w:88  },
   { id:'dptnm',  label:'납품처명',   w:100 },
+  { id:'skukey', label:'품목코드',   w:110 },
   { id:'desc01', label:'품목명',     w:120 },
   { id:'qtshpo', label:'납품수량',   w:56  },
   { id:'uomkey', label:'단위',       w:40  },
@@ -18044,6 +18045,7 @@ function _psopVehRenderDocs(pid) {
         <span style="color:var(--text3);margin-right:4px;cursor:grab">⠿</span>${it.SVBELN||it.SHPOKY||'-'}
       </td>
       <td style="font-size:10px;max-width:110px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${dptnm}">${dptnm}</td>
+      <td style="font-size:10px;font-family:monospace;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${sk}">${sk||'-'}</td>
       <td style="font-size:10px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${it.DESC01||''}">${it.DESC01||'-'}</td>
       <td class="num" style="font-size:10px">${qty}</td>
       <td class="center" style="font-size:10px">${uom}</td>
