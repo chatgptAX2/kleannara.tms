@@ -849,9 +849,12 @@ public class AutoDispatchService {
                 if ("12인치".equals(inch)) v12r.merge(grm, rc, Integer::sum);
                 else if ("3인치".equals(inch)) v3r.merge(grm, rc, Integer::sum);
             }
+            // [개선] 차량 선정 시 다단 적재(원지 최대 적재단수 cp.maxStack)를 반영 →
+            //   1단정원만으로 과대선정(예: 적재율 낮은데 18톤)되던 문제 해소.
+            final int rollTiers = Math.max(1, cp.maxStack);
             List<String> cands = new ArrayList<>();
-            v12r.forEach((g, rc) -> cands.add(findCar(inchMaps.inch12, g, rc, carOrder, vehInfo)));
-            v3r.forEach( (g, rc) -> cands.add(findCar(inchMaps.inch3,  g, rc, carOrder, vehInfo)));
+            v12r.forEach((g, rc) -> cands.add(findCar(inchMaps.inch12, g, rc, carOrder, vehInfo, rollTiers)));
+            v3r.forEach( (g, rc) -> cands.add(findCar(inchMaps.inch3,  g, rc, carOrder, vehInfo, rollTiers)));
 
             String inchCar   = cands.isEmpty() ? bigCar
                 : cands.stream().min(Comparator.comparingInt(ct -> sortKey(ct, carOrder))).orElse(bigCar);
@@ -982,6 +985,11 @@ public class AutoDispatchService {
             notes.add(String.format("[%s] %s 선정 (적재%.0fkg / 한도%.0fkg / 적재율%.1f%%%s)",
                 objective, vehCar, vehKg, cap, fill,
                 costVal > 0 ? String.format(" / 운송비%,.0f원", costVal) : ""));
+            // [차량선정-다단반영] 인치 기준 차량선정 시 원지 최대 적재단수(MAX_ROLL_STACK_TIER)를
+            //   수용량(1단정원×단수)으로 반영 → 1단정원 초과 물량도 과대차량 선정 없이 작은 차 우선.
+            notes.add(String.format(
+                "[차량선정-다단반영] 원지 최대 적재단수 %d단 기준 수용량으로 차량 선정 (총 %d롤)",
+                Math.max(1, cp.maxStack), totalRc));
             // ── [중량초과 경고] 선정 차량 한도를 적재중량이 초과한 경우 명확히 플래그 ──
             //  selectCar 가 수용 가능한 차가 없을 때 '가장 큰 차'를 폴백 반환하므로,
             //  최대차 한도까지 초과하면 과적 상태로 배차된다(적재율 100% 초과). 이 경우
@@ -2546,26 +2554,43 @@ public class AutoDispatchService {
         return true;
     }
 
+    // (하위호환) 단수 미지정 → 1단(maxTiers=1)
     private String findCar(Map<String, Map<String, Integer>> inchMap,
                             String grm, int count,
                             List<Map<String, Object>> carOrder,
                             Map<String, VehInfo> vehInfo) {
-        // ── 인치 기준수량(DS_INCH MAX_COUNT)으로 '필요 롤수(count)를 1단에 실을 수 있는
+        return findCar(inchMap, grm, count, carOrder, vehInfo, 1);
+    }
+
+    private String findCar(Map<String, Map<String, Integer>> inchMap,
+                            String grm, int count,
+                            List<Map<String, Object>> carOrder,
+                            Map<String, VehInfo> vehInfo,
+                            int maxTiers) {
+        // ── 인치 기준수량(DS_INCH MAX_COUNT)으로 '필요 롤수(count)를 실을 수 있는
         //    가장 작은 차량'을 선정한다. ───────────────────────────────
+        //  [개선] 과거에는 '1단(단층)' 정원만으로 판정하여, 1단 정원보다 롤수가 많으면
+        //    (실제로는 다단 적재로 더 작은 차에 실리는데도) 무조건 최대차로 폴백 →
+        //    적재율이 낮은데 큰 차가 선정되는 과대배차가 발생했다.
+        //    → 차량의 다단 수용량 = 1단정원(MAX_COUNT) × 적용단수(maxTiers) 로 판정한다.
+        //    (실제 단수·높이 적합성은 이후 verifyRolls3D 가 정밀 검증 → 필요 시 업그레이드)
         //  ★ [정렬 주의] carOrder 는 loadCarOrder() 에서 SORT_SEQ DESC 로 로드 →
         //    index 0 이 '가장 큰 차', 마지막이 '가장 작은 차'(sortKey 클수록 작은 차).
         //    따라서 '작은 차부터' 순회하려면 carOrder 를 reverse 해서 돌아야 한다.
         //  (히스토리) PR#372 에서 carOrder 를 ASC(작은차부터)로 착각하여 정순 순회로
         //    바꿨다가, 실제로는 큰 차부터 순회가 되어 3롤짜리가 18톤으로 과대선정됨.
         //    → 원래의 reversed(작은차부터) 순회로 원복(carOrder DESC 전제).
+        int tiers = Math.max(1, maxTiers);
         List<Map<String, Object>> smallFirst = new ArrayList<>(carOrder);
         Collections.reverse(smallFirst);   // DESC → ASC: 작은 차부터
         for (Map<String, Object> car : smallFirst) {
             String ct  = str(car.get("CARTYPE"));
-            int cap = inchMap.getOrDefault(ct, Collections.emptyMap()).getOrDefault(grm, 0);
-            if (cap >= count) return ct;   // 필요수량을 담는 '가장 작은' 차
+            int floorCap = inchMap.getOrDefault(ct, Collections.emptyMap()).getOrDefault(grm, 0);
+            if (floorCap <= 0) continue;             // DS_INCH 미등록 차량은 인치판정 제외
+            int stackCap = floorCap * tiers;         // 다단 수용량 = 1단정원 × 적용단수
+            if (stackCap >= count) return ct;        // 필요수량을 담는 '가장 작은' 차
         }
-        // 어떤 차도 1단에 count 를 못 담음(초과) → LOAD_TON 입력된 가장 큰 차량
+        // 어떤 차도 (다단 포함) count 를 못 담음(초과) → LOAD_TON 입력된 가장 큰 차량
         //   (carOrder 는 큰 차부터이므로 정순 순회의 첫 유효 차량이 가장 큰 차)
         for (Map<String, Object> car : carOrder) {
             String ct = str(car.get("CARTYPE"));
