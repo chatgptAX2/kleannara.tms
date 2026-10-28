@@ -5666,7 +5666,7 @@ function _psopBuildResizableHead(defs, store, colPrefix, tblSel){
 /* ═══════════════════════════════════════════════════════════
    PS배차(최적화) 납품문서 목록 — 컬럼 정의 + 순서 드래그
 ═══════════════════════════════════════════════════════════ */
-const PSOP_DOC_COL_LS_KEY = 'psop_doc_col_order_v2';
+const PSOP_DOC_COL_LS_KEY = 'psop_doc_col_order_v3';
 
 /* 컬럼 정의: id / label(HTML) / w(기본너비px) / fixed(드래그 불가) */
 const _psopDocColDefs = [
@@ -5702,7 +5702,7 @@ const _psopDocColDefs = [
    저장 구조: localStorage[psop_col_layout_<scope>_v1] = {order:[id...], hidden:[id...], widths:{id:w}}
    하위호환: 구버전 PSOP_DOC_COL_LS_KEY(배열=순서only) 값이 있으면 1회 승계. */
 function _psopScopeNow() { return (typeof psopState !== 'undefined' && psopState.scope === 'HL') ? 'HL' : 'PS'; }
-function _psopLayoutKey(scope) { return 'psop_col_layout_' + (scope || _psopScopeNow()) + '_v1'; }
+function _psopLayoutKey(scope) { return 'psop_col_layout_' + (scope || _psopScopeNow()) + '_v2'; }
 
 /* scope별 현재 레이아웃 메모리 캐시 {PS:{order,hidden}, HL:{order,hidden}} */
 let _psopLayoutCache = {};
