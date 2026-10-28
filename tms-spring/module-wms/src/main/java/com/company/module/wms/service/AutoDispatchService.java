@@ -1017,7 +1017,10 @@ public class AutoDispatchService {
             }
 
             Map<String, Object> vrow = new LinkedHashMap<>();
-            vrow.put("dptnky",        dptnky);   vrow.put("dptnm",    dptnm);
+            // [이슈1] 혼적/동적 그룹이면 dptnm 을 "이 차량에 실제 적재된 납품처" 기준으로 확정.
+            //  (프런트 배차목록/시각화/저장이 모두 dptnm 을 쓰므로, 여기서 확정해야 모든 경로가 일치)
+            String dptnmDisp = isMixedGroup ? mixedLabelOf(b.items, dptnm.startsWith("동적(")) : dptnm;
+            vrow.put("dptnky",        dptnky);   vrow.put("dptnm",    dptnmDisp);
             vrow.put("rqshpd",        rqshpd);   vrow.put("cartype",  vehCar);
             vrow.put("total_kg",      round2(vehKg));
             vrow.put("load_cap",      cap);
@@ -1314,7 +1317,9 @@ public class AutoDispatchService {
             // ─────────────────────────────────────────────────────────
 
             Map<String, Object> vrow = new LinkedHashMap<>();
-            vrow.put("dptnky", dptnky); vrow.put("dptnm", dptnm); vrow.put("rqshpd", rqshpd);
+            // [이슈1] 혼적/동적 그룹이면 dptnm 을 "이 차량(vb.items)에 실제 적재된 납품처" 기준으로 확정.
+            String dptnmDisp = isMixedGroup ? mixedLabelOf(vb.items, dptnm.startsWith("동적(")) : dptnm;
+            vrow.put("dptnky", dptnky); vrow.put("dptnm", dptnmDisp); vrow.put("rqshpd", rqshpd);
             vrow.put("cartype", vehCar);
             vrow.put("total_kg",   round2(vehKg));
             vrow.put("load_cap",   cap);
@@ -1627,7 +1632,9 @@ public class AutoDispatchService {
         notes.add(String.format("[통합배차-높이] 필요 %.2fm / 차량가용 %.2fm — OK", neededH, effH));
 
         Map<String, Object> vrow = new LinkedHashMap<>();
-        vrow.put("dptnky",        dptnky);   vrow.put("dptnm",    dptnm);
+        // [이슈1] 혼적/동적 그룹이면 dptnm 을 "이 차량(mergedItems)에 실제 적재된 납품처" 기준으로 확정.
+        String dptnmDisp = isMixedGroup ? mixedLabelOf(mergedItems, dptnm.startsWith("동적(")) : dptnm;
+        vrow.put("dptnky",        dptnky);   vrow.put("dptnm",    dptnmDisp);
         vrow.put("rqshpd",        rqshpd);   vrow.put("cartype",  vehCar);
         vrow.put("total_kg",      round2(unifiedKg));
         vrow.put("load_cap",      cap);
@@ -1699,7 +1706,9 @@ public class AutoDispatchService {
         if (isDynBlocked) notesO.add("[동적배차불가] DYNAMIC_YN=N → 고정노선 전용 오더");
 
         Map<String, Object> vrow = new LinkedHashMap<>();
-        vrow.put("dptnky", dptnky); vrow.put("dptnm", dptnm); vrow.put("rqshpd", rqshpd);
+        // [이슈1] 혼적/동적 그룹이면 dptnm 을 "이 차량(otherItems)에 실제 적재된 납품처" 기준으로 확정.
+        String dptnmDisp = isMixedGroup ? mixedLabelOf(otherItems, dptnm.startsWith("동적(")) : dptnm;
+        vrow.put("dptnky", dptnky); vrow.put("dptnm", dptnmDisp); vrow.put("rqshpd", rqshpd);
         vrow.put("cartype", vehCar);
         vrow.put("total_kg",      round2(totalKg));
         vrow.put("load_cap",      cap);
