@@ -481,6 +481,7 @@ public class AutoDispatchService {
         appliedConstraints.put("ROLL_MAX_HEIGHT_M",     cp.rollMaxHeightM);
         appliedConstraints.put("MAX_BOARD_HEIGHT_M",    cp.maxBoardHeightM);
         appliedConstraints.put("BOARD_HEIGHT_VEH_LINK_YN", cp.boardHeightVehLink);
+        appliedConstraints.put("BOARD_MAX_STACK_TIER",  cp.boardMaxStack);
         appliedConstraints.put("ROLL_3D_CHECK_YN",      cp.roll3dCheck);
         appliedConstraints.put("BOARD_3D_CHECK_YN",     cp.board3dCheck);
         appliedConstraints.put("BOARD_CBM_CHECK_YN",    cp.boardCbmCheck);
@@ -2660,6 +2661,8 @@ public class AutoDispatchService {
         // ── 롤 최대 적재 단수: MAX_ROLL_STACK_TIER 우선, 미설정 시 중복키 ROLL_MAX_TIER 폴백 ──
         double maxStackVal  = cfloatMulti(C, 2.0, "MAX_ROLL_STACK_TIER", "ROLL_MAX_TIER");
         cp.maxStack         = (int) maxStackVal;
+        // ── 판지 최대 적재 단수(BOARD_MAX_STACK_TIER): 0=제한없음(높이 상한까지). >0=단수 제한 ──
+        cp.boardMaxStack    = (int) cfloat(C, "BOARD_MAX_STACK_TIER", 0.0);
         // ── 원지 단수 최소화(바닥 우선 안정 적재): Y=바닥에 다 깔리면 단수를 낮춤 ──
         cp.rollStackMinimize = cbool(C, "ROLL_STACK_MINIMIZE_YN", false);
         // ── 원지(롤) 분할 제약 ──────────────────────────────────────────────
@@ -2908,6 +2911,10 @@ public class AutoDispatchService {
         // ── 판지 최대높이 차량연동 여부 ──
         //  Y = MAX_BOARD_HEIGHT_M/BOARD_HEIGHT_MAX_M 을 차량 톤수별 가용높이와 min() 연동
         boolean boardHeightVehLink = true; // 판지 최대높이 차량연동(기본 Y)
+        // ── 판지 최대 적재 단수 (BOARD_MAX_STACK_TIER) ──
+        //  원지의 MAX_ROLL_STACK_TIER 에 대응. 0 = 제한없음(높이 상한까지 적층).
+        //  >0 = 판지 3D 적층 단수를 이 값 이하로 제한(높이 상한과 함께 min 적용).
+        int boardMaxStack = 0; // 판지 최대 적재 단수(0=제한없음)
         // ── 개별 SKU 최대 중량(kg) (MAX_WEIGHT_KG) ──
         //  0 = 제한없음. >0 = 개별 아이템 중량이 이 값을 초과하면 경고 노트.
         double  maxWeightKg = 0.0;
@@ -3397,7 +3404,10 @@ public class AutoDispatchService {
             int remaining = blk.count;
 
             // ★ Z축 적층 단수: 차량 가용높이/설정최대높이 상한 내에서 stack
+            //   [판지 최대 적재단수] BOARD_MAX_STACK_TIER(cp.boardMaxStack)>0 이면 그 단수 이하로 제한.
+            //   (원지 MAX_ROLL_STACK_TIER 와 동일 취지 — 높이 여유가 있어도 설정 단수까지만 적층)
             int tiers = Math.max(1, (int)(heightCapMm / Math.max(1.0, blk.hMm)));
+            if (cp.boardMaxStack > 0) tiers = Math.min(tiers, cp.boardMaxStack);
             double stackHmm = blk.hMm * tiers;                 // 실제 적층 높이
             maxZ = Math.max(maxZ, stackHmm);
 
