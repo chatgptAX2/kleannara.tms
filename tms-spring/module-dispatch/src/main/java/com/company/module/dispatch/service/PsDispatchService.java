@@ -493,7 +493,7 @@ public class PsDispatchService {
               .setParameter(2,  today)
               .setParameter(3,  dt)
               .setParameter(4,  veh.getDptnky())
-              .setParameter(5,  veh.getDptnm())
+              .setParameter(5,  clipBytes(veh.getDptnm(), 100))   // DPTNM=VARCHAR2(100 BYTE) 초과 방지(ORA-12899)
               .setParameter(6,  veh.getCartype())
               .setParameter(7,  totalKg)
               .setParameter(8,  totalCnt)
@@ -557,7 +557,7 @@ public class PsDispatchService {
                       .setParameter(7,  it.getQtshpo() == null ? 0.0 : it.getQtshpo())
                       .setParameter(8,  it.getUomkey() == null ? "KG" : it.getUomkey())
                       .setParameter(9,  it.getDptnky())
-                      .setParameter(10, it.getDptnm())
+                      .setParameter(10, clipBytes(it.getDptnm(), 100))   // DPTNM=VARCHAR2(100 BYTE) 초과 방지(ORA-12899)
                       .setParameter(11, it.getIsSplit() == null ? 0 : it.getIsSplit())
                       .setParameter(12, it.getOrgShpoky())
                       .setParameter(13, it.getOrgShpoit())
@@ -1205,6 +1205,28 @@ public class PsDispatchService {
             if (!isBlank(v)) return v.strip();
         }
         return null;
+    }
+
+    /**
+     * Oracle VARCHAR2(BYTE) 컬럼 한도 초과 방지용 — 문자열을 최대 maxBytes(UTF-8 기준)로 안전하게 자른다.
+     *  · 한글은 UTF-8 에서 글자당 3바이트이므로 단순 글자수 자르기로는 ORA-12899 를 막지 못한다.
+     *  · 멀티바이트 문자가 중간에서 잘려 깨지지 않도록 '글자 경계'를 지키며 바이트 누적으로 자른다.
+     *  (예: TMS_PS_DISPATCH_H.DPTNM / TMS_PS_DISPATCH_D.DPTNM = VARCHAR2(100 BYTE))
+     */
+    private String clipBytes(String s, int maxBytes) {
+        if (s == null) return null;
+        byte[] b = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (b.length <= maxBytes) return s;
+        int len = 0;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            int cb = String.valueOf(c).getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+            if (len + cb > maxBytes) break;
+            sb.append(c);
+            len += cb;
+        }
+        return sb.toString();
     }
 
     /**
