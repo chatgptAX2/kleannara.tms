@@ -1707,7 +1707,10 @@ public class AutoDispatchService {
 
         Map<String, Object> vrow = new LinkedHashMap<>();
         // [이슈1] 혼적/동적 그룹이면 dptnm 을 "이 차량(otherItems)에 실제 적재된 납품처" 기준으로 확정.
-        String dptnmDisp = isMixedGroup ? mixedLabelOf(otherItems, dptnm.startsWith("동적(")) : dptnm;
+        //  (이 메서드에는 isMixedGroup 파라미터가 없어, 전달받은 dptnm 의 접두로 혼적/동적 여부 판정.
+        //   혼적 그룹이면 호출부에서 dptnm 이 "동적("/"혼적(" 접두로 전달됨)
+        boolean otherIsMixed = dptnm.startsWith("동적(") || dptnm.startsWith("혼적(");
+        String dptnmDisp = otherIsMixed ? mixedLabelOf(otherItems, dptnm.startsWith("동적(")) : dptnm;
         vrow.put("dptnky", dptnky); vrow.put("dptnm", dptnmDisp); vrow.put("rqshpd", rqshpd);
         vrow.put("cartype", vehCar);
         vrow.put("total_kg",      round2(totalKg));
