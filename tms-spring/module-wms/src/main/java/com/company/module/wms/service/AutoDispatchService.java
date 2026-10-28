@@ -1057,7 +1057,8 @@ public class AutoDispatchService {
             vrow.put("mix_contiguous_front", cp.mixContiguousFront);
             vrow.put("is_mixed",      isMixedGroup);
             vrow.put("is_mixed_load", isMixedLoad);
-            vrow.put("mixed_dptnm",   isMixedGroup ? dptnm : "");
+            // [이슈1] 라벨을 그룹 후보 전체가 아닌 "이 차량(b.items)에 실제 적재된 납품처" 기준으로 생성
+            vrow.put("mixed_dptnm",   isMixedGroup ? mixedLabelOf(b.items, isDynGroup) : "");
             vrow.put("forklift_yn",   pi.forkliftYn);
             vrow.put("dynamic_yn",    pi.dynamicYn);
             vrow.put("deadline_time", pi.deadlineTime);
@@ -1338,7 +1339,8 @@ public class AutoDispatchService {
             vrow.put("physics3d_board_vol_m3",      round4(bp3d.usedVolM3));
             vrow.put("is_mixed",      isMixedGroup);
             vrow.put("is_mixed_load", isMixedLoad);
-            vrow.put("mixed_dptnm",   isMixedGroup ? dptnm : "");
+            // [이슈1] 라벨을 그룹 후보 전체가 아닌 "이 차량(vb.items)에 실제 적재된 납품처" 기준으로 생성
+            vrow.put("mixed_dptnm",   isMixedGroup ? mixedLabelOf(vb.items, isDynGroup) : "");
             vrow.put("forklift_yn",   pi.forkliftYn);
             vrow.put("dynamic_yn",    pi.dynamicYn);
             vrow.put("deadline_time", pi.deadlineTime);
@@ -1646,7 +1648,9 @@ public class AutoDispatchService {
         vrow.put("notes",         notes);
         vrow.put("is_mixed",      isMixedGroup);
         vrow.put("is_mixed_load", true);
-        vrow.put("mixed_dptnm",   isMixedGroup ? dptnm : "");
+        // [이슈1] 라벨을 그룹 후보 전체가 아닌 "이 차량(mergedItems)에 실제 적재된 납품처" 기준으로 생성
+        //  (통합배차 메서드에는 isDynGroup 파라미터가 없어, 전달받은 dptnm 접두로 동적 여부 판정)
+        vrow.put("mixed_dptnm",   isMixedGroup ? mixedLabelOf(mergedItems, dptnm.startsWith("동적(")) : "");
         vrow.put("forklift_yn",   pi.forkliftYn);
         vrow.put("dynamic_yn",    pi.dynamicYn);
         vrow.put("deadline_time", pi.deadlineTime);
@@ -2777,6 +2781,37 @@ public class AutoDispatchService {
         try { return Double.parseDouble(v.toString()); } catch (Exception e) { return 0.0; }
     }
     private static String str(Object v) { return v == null ? "" : v.toString().trim(); }
+
+    /**
+     * [이슈1] 선적목록 '납품처' 라벨을 "그 차량에 실제 적재된 품목(vehItems)" 기준으로 생성.
+     *  · 동적/혼적 그룹(_DYN_/_ZIP_)은 여러 납품처가 "묶일 수 있는 후보"로 그룹핑되지만,
+     *    차량 단위로 분할되면 실제 한 대에는 그 후보 중 일부(때론 1곳)만 적재된다.
+     *  · 기존 버그: 라벨(dptnm)을 "그룹 후보 전체"로 만들어, 실제 1곳만 실린 차량에도
+     *    "동적(A/B/C/...)" 처럼 적재되지 않은 납품처까지 표시됨.
+     *  · 개선: 실제 적재 품목의 납품처(DPTNKY) distinct 로 라벨을 재구성.
+     *    - 1곳  → 그 납품처명 단독(예: "성진지업(주)") → 혼적/동적 접두 없음.
+     *    - 2곳+ → "동적(A/B)" 또는 "혼적(A/B)" (isDyn 에 따라 접두).
+     *  @return 라벨 문자열(실제 적재 품목이 없으면 빈 문자열)
+     */
+    private static String mixedLabelOf(List<Map<String, Object>> vehItems, boolean isDyn) {
+        if (vehItems == null || vehItems.isEmpty()) return "";
+        // 실제 적재된 납품처 distinct (등장 순서 유지)
+        java.util.LinkedHashMap<String, String> dkToDm = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> it : vehItems) {
+            String dk = str(it.get("DPTNKY"));
+            if (dk.isEmpty()) continue;
+            dkToDm.putIfAbsent(dk, str(it.get("DPTNM")));
+        }
+        if (dkToDm.isEmpty()) return "";
+        List<String> names = new ArrayList<>();
+        for (Map.Entry<String, String> e : dkToDm.entrySet()) {
+            names.add(e.getValue().isEmpty() ? e.getKey() : e.getValue());
+        }
+        // 실제 적재 납품처가 1곳이면 접두 없이 단독명 → 혼적/동적 오표기 방지
+        if (names.size() == 1) return names.get(0);
+        return (isDyn ? "동적(" : "혼적(") + String.join("/", names) + ")";
+    }
+
     private static long toLong(Object v, long def) {
         if (v == null) return def;
         try { return Long.parseLong(v.toString()); } catch (Exception e) { return def; }
@@ -3338,8 +3373,15 @@ public class AutoDispatchService {
             return BoardPhysics3D.fail("차량 치수 정보 없음 — 3D검증 스킵");
 
         // ── 1. 아이템별 번들 블록 추출 ────────────────────────────────
-        // 번들 1묶음 = GRSWGT 기준 1 연(ream) 또는 1 roll 단위
-        // 총 번들 수 = qty / grswgt 또는 qty (UOM에 따라)
+        //  [이슈3] 적재 단위를 "단(파렛트) + 속(SOK)" 로 통일 (프런트 _lvComputePlacement 동일).
+        //   · 기존 버그: 번들을 GRSWGT(1연 단중) 기준으로 과도하게 잘게(수십~수백 번들) 생성 →
+        //     각 번들 높이가 1연 수준으로 얇아, Shelf 배치에서 X/Y 바닥으로 넓게 펼쳐져
+        //     바닥점유가 비정상적으로 커지고(캡쳐 78%) 속이 적층되지 않는 것처럼 보임.
+        //   · 개선: 출고예정정보 PLT_PER_UNIT(1PLT당 연수)·SOK_PER_R(1R당 속) 기준으로
+        //     '온전 파렛트(단)' 와 '잔여 속(SOK)' 두 종류 블록만 생성 → 번들 수 급감,
+        //     각 블록이 제 높이(1단/1속)를 가져 Z축 적층이 정상 동작(펼침 방지).
+        //   · SKUKEY 끝자리 'A'(속포장)+메타 완비일 때만 단/속 분리, 그 외('B'벌크/메타미비)는
+        //     기존처럼 파렛트(단) 단위로만 적층 → PS 기존 동작 무영향.
         List<BoardBlock> blocks = new ArrayList<>();
         int totalBundles = 0;
         double totalVolMm3 = 0;
@@ -3361,20 +3403,58 @@ public class AutoDispatchService {
             if (wMm <= 0) wMm = 1000.0;
             if (lMm <= 0) lMm = 1000.0;
 
-            // 높이 h: 번들(묶음) 1단위 높이 (mm)
-            double hM  = calcBoardHeight(it, skumaMap);     // 번들 1개 높이(m)
-            double hMm = Math.max(1.0, hM * 1000.0);
-            hMm = Math.min(hMm, cp.maxBoardHeightM * 1000.0); // 상한 clamp
+            double hCapMm = cp.maxBoardHeightM > 0 ? cp.maxBoardHeightM * 1000.0 : Double.MAX_VALUE;
 
-            // 번들 수 = 총 kg / 묶음 단중
-            double totalKg = boardKg(it, skumaMap);
-            double grswgt  = sm.grswgt > 0 ? sm.grswgt : dbl(it.get("GRSWGT"));
-            int    bundles = grswgt > 0 ? Math.max(1, (int) Math.ceil(totalKg / grswgt)) : 1;
+            // ── 적재 단위 산출(프런트 _lvComputePlacement §판지 적재 단위 산출 과 동일) ──
+            String uom       = str(it.get("UOMKEY"));
+            double qtyR      = dbl(it.get("QTSHPO"));                 // 연수(R)
+            double grswgt    = sm.grswgt > 0 ? sm.grswgt : dbl(it.get("GRSWGT"));
+            double totalKg   = boardKg(it, skumaMap);
+            double pltPerUnit = dbl(it.get("PLT_PER_UNIT"));          // 1PLT당 연수
+            double sokPerR    = dbl(it.get("SOK_PER_R"));             // 1R당 속(SOK)
+            String lastCh     = sk.isEmpty() ? "" : sk.substring(sk.length() - 1).toUpperCase();
+            boolean isInner   = "A".equals(lastCh);                   // 속포장(분할 허용)
 
-            totalBundles += bundles;
-            totalVolMm3  += wMm * lMm * hMm * bundles;
+            // fallback 연수: R 이면 qty, 아니면 총kg/단중
+            double reamsFb    = "R".equals(uom) ? Math.round(qtyR)
+                                                : Math.round(totalKg / Math.max(grswgt > 0 ? grswgt : 1.0, 1.0));
+            // PLT(단) 개수 = CEIL(연수 / PLT당개수), 미조회 시 fallback
+            int    pltCnt     = pltPerUnit > 0 ? (int) Math.ceil(qtyR / pltPerUnit)
+                                               : (int) Math.max(1, reamsFb);
+            double danUnitR   = pltPerUnit > 0 ? pltPerUnit : Math.max(1, qtyR);  // 1단당 연수
 
-            blocks.add(new BoardBlock(wMm, lMm, hMm, bundles, sk));
+            // 1단(1PLT) 높이(mm) — calcBoardHeight(1연 높이) × 1단당 연수
+            double oneReamM   = calcBoardHeight(it, skumaMap);        // 1연(묶음) 높이(m)
+            double hDanMm     = Math.max(1.0, oneReamM * 1000.0 * Math.max(1.0, danUnitR));
+            hDanMm            = Math.min(hDanMm, hCapMm);             // 상한 clamp
+
+            // 단(파렛트) / 속(SOK) 개수 분리
+            int danCount, sokCount;
+            double hSokMm = hDanMm;
+            if (isInner && pltPerUnit > 0 && sokPerR > 0) {
+                danCount      = (int) Math.floor(qtyR / pltPerUnit);         // 온전 파렛트
+                double remR   = qtyR - danCount * pltPerUnit;                // 잔여 연수
+                sokCount      = remR > 1e-6 ? Math.max(1, (int) Math.round(remR * sokPerR)) : 0;
+                double rPerSok = 1.0 / sokPerR;                              // 1속당 연수
+                hSokMm        = Math.min(Math.max(1.0, hDanMm * (rPerSok / Math.max(1.0, danUnitR))), hCapMm);
+            } else {
+                // 벌크 / 메타 미비 → 전량 단(파렛트)
+                danCount = Math.max(1, pltCnt);
+                sokCount = 0;
+            }
+
+            // 단(파렛트) 블록
+            if (danCount > 0) {
+                totalBundles += danCount;
+                totalVolMm3  += wMm * lMm * hDanMm * danCount;
+                blocks.add(new BoardBlock(wMm, lMm, hDanMm, danCount, sk));
+            }
+            // 속(SOK) 블록 — 잔여만 별도 높이로 생성(제 높이로 Z축 적층 → 펼침 방지)
+            if (sokCount > 0) {
+                totalBundles += sokCount;
+                totalVolMm3  += wMm * lMm * hSokMm * sokCount;
+                blocks.add(new BoardBlock(wMm, lMm, hSokMm, sokCount, sk));
+            }
         }
 
         if (totalBundles == 0) return BoardPhysics3D.fail("판지 번들 없음");
@@ -3406,6 +3486,8 @@ public class AutoDispatchService {
             // ★ Z축 적층 단수: 차량 가용높이/설정최대높이 상한 내에서 stack
             //   [판지 최대 적재단수] BOARD_MAX_STACK_TIER(cp.boardMaxStack)>0 이면 그 단수 이하로 제한.
             //   (원지 MAX_ROLL_STACK_TIER 와 동일 취지 — 높이 여유가 있어도 설정 단수까지만 적층)
+            //   [이슈3] 속(SOK)은 높이가 작아 상한 내 적층 가능 단수가 큼 → 바닥에 펼치지 말고
+            //           같은 셀 위로 최대한 쌓도록 tiers 를 그대로 활용(아래 Z축 우선 소비 로직).
             int tiers = Math.max(1, (int)(heightCapMm / Math.max(1.0, blk.hMm)));
             if (cp.boardMaxStack > 0) tiers = Math.min(tiers, cp.boardMaxStack);
             double stackHmm = blk.hMm * tiers;                 // 실제 적층 높이
@@ -3452,11 +3534,15 @@ public class AutoDispatchService {
                 }
 
                 // ★ 이 Shelf 행 배치 가능 수량 = 남은 X열 수 × Z축 단수(tiers)
+                //   [이슈3] Z축 우선 소비: 한 X열을 tiers 단까지 가득 쌓고 다음 열로 진행한다.
+                //   colsUsed = ceil(place / tiers) 로 "실제 사용한 열 수"만 바닥으로 집계하므로,
+                //   잔여 속이 적을 때 여러 열에 1단씩 펼쳐지지 않고 한 열에 쌓여 바닥점유가 최소화된다.
+                //   (예: 속 3개 + tiers=10 → colsUsed=1, 한 열에 3단 적층 — 바닥 1칸만 점유)
                 int colsAvail = (int)((carWmm - curX) / bw);
                 if (colsAvail <= 0) colsAvail = colsInShelf;
                 int cellCap  = colsAvail * tiers;
                 int place    = Math.min(cellCap, remaining);
-                int colsUsed = (int) Math.ceil((double) place / tiers); // 소비한 X열 수(올림)
+                int colsUsed = (int) Math.ceil((double) place / tiers); // 소비한 X열 수(올림, Z축 우선)
                 curX += bw * colsUsed;
                 remaining -= place;
 
