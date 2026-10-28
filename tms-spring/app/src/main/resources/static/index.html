@@ -12066,7 +12066,11 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
       // 높이 기준 최대 단수 → [판지 최대 적재단수] boardMaxStack>0 이면 그 단수 이하로 제한
       //  (백엔드 verifyBoards3D 의 BOARD_MAX_STACK_TIER 적용과 동일 취지 → 시각화 일치)
       let tiersCap = Math.max(1, Math.floor(boardCapMm / Math.max(1.0, unitH)));
-      if (boardMaxStack > 0) tiersCap = Math.min(tiersCap, boardMaxStack);
+      // [이슈3] BOARD_MAX_STACK_TIER(판지 최대 적재단수)는 '단(파렛트)' 단위 제약이다.
+      //  '속(SOK)' 은 파렛트보다 훨씬 작은 세부 단위(여러 속이 모여 1파렛트 높이를 이룸)이므로
+      //  단수 제약을 그대로 적용하면 속이 몇 개만 쌓이고 나머지가 바닥으로 펼쳐진다(적재공간 낭비).
+      //  → 속은 단수 제약을 적용하지 않고 '높이 상한(boardCapMm)' 까지 적층하여 세로로 쌓는다.
+      if (boardMaxStack > 0 && kind !== '속') tiersCap = Math.min(tiersCap, boardMaxStack);
       while (remaining > 0) {
         if (curX + bw > carWmm + 0.5) { curY += curShelfL + GAP; curX = 0; curShelfL = bl; }
         if (curShelfL <= 0) curShelfL = bl;
