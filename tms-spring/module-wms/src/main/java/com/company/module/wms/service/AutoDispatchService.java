@@ -3399,6 +3399,7 @@ public class AutoDispatchService {
         List<BoardBlock> blocks = new ArrayList<>();
         int totalBundles = 0;
         double totalVolMm3 = 0;
+        List<String> diagNotes = new ArrayList<>();   // [진단로그-임시] result 생성 전이라 임시 수집 후 뒤에서 합침
 
         for (Map<String, Object> it : items) {
             String sk = str(it.get("SKUKEY"));
@@ -3485,6 +3486,21 @@ public class AutoDispatchService {
                 totalVolMm3  += wMm * lMm * hSokMm * sokCount;
                 blocks.add(new BoardBlock(wMm, lMm, hSokMm, sokCount, sk));
             }
+
+            // ── [진단로그-임시] 판지 적재율 저하 원인 추적용 (운영 배차노트에 실제 입력값 출력) ──
+            //  배포 후 자동배차 1회 → 배차노트에서 아래 값 확인 후 이 블록은 제거 예정.
+            //  확인 포인트: ① isInner(끝자리A) ② pltPerUnit/sokPerR 조회 여부 ③ THICKNESS 조회 여부
+            //              ④ hDanMm 이 차량높이(heightCap)에 비해 과대한지(→ tiers=1 펼침 원인)
+            int diagTiers = Math.max(1, (int)(heightCapMm / Math.max(1.0, hDanMm)));
+            diagNotes.add(String.format(
+                "[진단] %s uom=%s qtyR=%.2f gsw=%.1f | isInner(끝A)=%s pltPerUnit=%.2f sokPerR=%.2f thick=%.1fµm gsm=%d " +
+                "| pltCnt=%d danUnitR=%.2f onePltCm=%.2f hDanMm=%.1f hSokMm=%.1f | 단=%d 속=%d " +
+                "| 치수 %.0f×%.0fmm | heightCap=%.0fmm → tiers(단)=%d %s",
+                sk, uom, qtyR, grswgt,
+                isInner, pltPerUnit, sokPerR, thicknessUm, gsm,
+                pltCnt, danUnitR, onePltCm, hDanMm, hSokMm, danCount, sokCount,
+                wMm, lMm, heightCapMm, diagTiers,
+                diagTiers <= 1 ? "★tiers=1→적층불가(펼침)" : "적층OK"));
         }
 
         if (totalBundles == 0) return BoardPhysics3D.fail("판지 번들 없음");
@@ -3496,6 +3512,7 @@ public class AutoDispatchService {
         BoardPhysics3D result = new BoardPhysics3D();
         result.totalBundles = totalBundles;
         result.usedVolM3    = totalVolMm3 / 1e9;
+        result.shelfNotes.addAll(diagNotes);   // [진단로그-임시] 수집한 품목별 실제 계산값 배차노트에 반영
 
         // ── Shelf(선반) + Z축 다단 적층 배치 시뮬레이션 ──────────────────
         //  * X축(차량 너비): 번들 폭(bw)만큼 열(col) 채움
