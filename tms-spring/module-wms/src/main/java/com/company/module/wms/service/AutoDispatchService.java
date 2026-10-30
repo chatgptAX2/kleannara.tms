@@ -3399,7 +3399,6 @@ public class AutoDispatchService {
         List<BoardBlock> blocks = new ArrayList<>();
         int totalBundles = 0;
         double totalVolMm3 = 0;
-        List<String> diagNotes = new ArrayList<>();   // [진단로그-임시] result 생성 전이라 임시 수집 후 뒤에서 합침
 
         for (Map<String, Object> it : items) {
             String sk = str(it.get("SKUKEY"));
@@ -3474,33 +3473,18 @@ public class AutoDispatchService {
                 sokCount = 0;
             }
 
-            // 단(파렛트) 블록
+            // 단(파렛트/PLT) 블록 — isPlt=true (BOARD_MAX_STACK_TIER 'PLT 단수' 제약 적용 대상)
             if (danCount > 0) {
                 totalBundles += danCount;
                 totalVolMm3  += wMm * lMm * hDanMm * danCount;
-                blocks.add(new BoardBlock(wMm, lMm, hDanMm, danCount, sk));
+                blocks.add(new BoardBlock(wMm, lMm, hDanMm, danCount, sk, true));
             }
-            // 속(SOK) 블록 — 잔여만 별도 높이로 생성(제 높이로 Z축 적층 → 펼침 방지)
+            // 속(SOK) 블록 — isPlt=false (속포장은 PLT 단수 제약 미적용, 높이 상한까지 적층)
             if (sokCount > 0) {
                 totalBundles += sokCount;
                 totalVolMm3  += wMm * lMm * hSokMm * sokCount;
-                blocks.add(new BoardBlock(wMm, lMm, hSokMm, sokCount, sk));
+                blocks.add(new BoardBlock(wMm, lMm, hSokMm, sokCount, sk, false));
             }
-
-            // ── [진단로그-임시] 판지 적재율 저하 원인 추적용 (운영 배차노트에 실제 입력값 출력) ──
-            //  배포 후 자동배차 1회 → 배차노트에서 아래 값 확인 후 이 블록은 제거 예정.
-            //  확인 포인트: ① isInner(끝자리A) ② pltPerUnit/sokPerR 조회 여부 ③ THICKNESS 조회 여부
-            //              ④ hDanMm 이 차량높이(heightCap)에 비해 과대한지(→ tiers=1 펼침 원인)
-            int diagTiers = Math.max(1, (int)(heightCapMm / Math.max(1.0, hDanMm)));
-            diagNotes.add(String.format(
-                "[진단] %s uom=%s qtyR=%.2f gsw=%.1f | isInner(끝A)=%s pltPerUnit=%.2f sokPerR=%.2f thick=%.1fµm gsm=%d " +
-                "| pltCnt=%d danUnitR=%.2f onePltCm=%.2f hDanMm=%.1f hSokMm=%.1f | 단=%d 속=%d " +
-                "| 치수 %.0f×%.0fmm | heightCap=%.0fmm → tiers(단)=%d %s",
-                sk, uom, qtyR, grswgt,
-                isInner, pltPerUnit, sokPerR, thicknessUm, gsm,
-                pltCnt, danUnitR, onePltCm, hDanMm, hSokMm, danCount, sokCount,
-                wMm, lMm, heightCapMm, diagTiers,
-                diagTiers <= 1 ? "★tiers=1→적층불가(펼침)" : "적층OK"));
         }
 
         if (totalBundles == 0) return BoardPhysics3D.fail("판지 번들 없음");
@@ -3512,7 +3496,6 @@ public class AutoDispatchService {
         BoardPhysics3D result = new BoardPhysics3D();
         result.totalBundles = totalBundles;
         result.usedVolM3    = totalVolMm3 / 1e9;
-        result.shelfNotes.addAll(diagNotes);   // [진단로그-임시] 수집한 품목별 실제 계산값 배차노트에 반영
 
         // ── Shelf(선반) + Z축 다단 적층 배치 시뮬레이션 ──────────────────
         //  * X축(차량 너비): 번들 폭(bw)만큼 열(col) 채움
@@ -3531,12 +3514,13 @@ public class AutoDispatchService {
             int remaining = blk.count;
 
             // ★ Z축 적층 단수: 차량 가용높이/설정최대높이 상한 내에서 stack
-            //   [판지 최대 적재단수] BOARD_MAX_STACK_TIER(cp.boardMaxStack)>0 이면 그 단수 이하로 제한.
+            //   [판지 최대 적재단수] BOARD_MAX_STACK_TIER(cp.boardMaxStack)는 'PLT(단) 단수' 제약이다.
+            //     · 단(파렛트, isPlt=true) 블록에만 적용 — PLT 를 최대 그 단수까지만 적층.
+            //     · 속(SOK, isPlt=false) 블록에는 적용하지 않음 — 속포장은 PLT 내부 세부단위라
+            //       PLT 단수 제약과 무관, 차량 높이 상한까지 자유롭게 적층(바닥 펼침 방지).
             //   (원지 MAX_ROLL_STACK_TIER 와 동일 취지 — 높이 여유가 있어도 설정 단수까지만 적층)
-            //   [이슈3] 속(SOK)은 높이가 작아 상한 내 적층 가능 단수가 큼 → 바닥에 펼치지 말고
-            //           같은 셀 위로 최대한 쌓도록 tiers 를 그대로 활용(아래 Z축 우선 소비 로직).
             int tiers = Math.max(1, (int)(heightCapMm / Math.max(1.0, blk.hMm)));
-            if (cp.boardMaxStack > 0) tiers = Math.min(tiers, cp.boardMaxStack);
+            if (cp.boardMaxStack > 0 && blk.isPlt) tiers = Math.min(tiers, cp.boardMaxStack);
             double stackHmm = blk.hMm * tiers;                 // 실제 적층 높이
             maxZ = Math.max(maxZ, stackHmm);
 
@@ -3610,21 +3594,6 @@ public class AutoDispatchService {
         if (maxZ > heightCapMm * boardMargin) overflow = true;
 
         result.fits = !overflow;
-
-        // ── [진단로그-임시2] Shelf 배치 결과 상세 — 번들생성↔배치 괴리 추적용 ──
-        //  blocks 리스트의 각 블록(hMm/count/블록별 tiers)을 그대로 출력하여,
-        //  '[진단] tiers=4 적층OK' 인데 실제 Y축이 과점유되는 모순의 원인을 못박는다.
-        //  (예: blocks 가 단/속 2개가 아니라 18개 개별블록이면 구버전 번들로직 배포 의심)
-        StringBuilder diagShelf = new StringBuilder("[진단2-배치] blocks=" + blocks.size() + " [");
-        for (BoardBlock b : blocks) {
-            int bt = Math.max(1, (int)(heightCapMm / Math.max(1.0, b.hMm)));
-            if (cp.boardMaxStack > 0) bt = Math.min(bt, cp.boardMaxStack);
-            diagShelf.append(String.format("{h=%.1f cnt=%d tiers=%d} ", b.hMm, b.count, bt));
-        }
-        diagShelf.append(String.format("] boardMaxStack=%d maxBoardHeightM=%.2f board3dCheck=%s 최종Y=%.0f overflow=%s",
-            cp.boardMaxStack, cp.maxBoardHeightM, cp.board3dCheck, curY + curShelfL, overflow));
-        result.shelfNotes.add(diagShelf.toString());
-
         result.summary = String.format(
             "[3D-판지검증] %s / 총%d번들 / Y축점유%.0fmm/%.0fmm / 최고높이%.2fm/%.2fm(상한%.2fm) / 바닥점유%.0f%% / %s",
             result.fits ? "적재가능" : "적재불가(차량업그레이드필요)",
@@ -3639,8 +3608,12 @@ public class AutoDispatchService {
         double wMm, lMm, hMm;
         int    count;
         String skukey;
+        boolean isPlt;   // true=단(파렛트/PLT) 블록, false=속(SOK) 블록
         BoardBlock(double w, double l, double h, int cnt, String sk) {
-            wMm = w; lMm = l; hMm = h; count = cnt; skukey = sk;
+            this(w, l, h, cnt, sk, true);
+        }
+        BoardBlock(double w, double l, double h, int cnt, String sk, boolean plt) {
+            wMm = w; lMm = l; hMm = h; count = cnt; skukey = sk; isPlt = plt;
         }
     }
 }
