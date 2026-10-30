@@ -3610,6 +3610,21 @@ public class AutoDispatchService {
         if (maxZ > heightCapMm * boardMargin) overflow = true;
 
         result.fits = !overflow;
+
+        // ── [진단로그-임시2] Shelf 배치 결과 상세 — 번들생성↔배치 괴리 추적용 ──
+        //  blocks 리스트의 각 블록(hMm/count/블록별 tiers)을 그대로 출력하여,
+        //  '[진단] tiers=4 적층OK' 인데 실제 Y축이 과점유되는 모순의 원인을 못박는다.
+        //  (예: blocks 가 단/속 2개가 아니라 18개 개별블록이면 구버전 번들로직 배포 의심)
+        StringBuilder diagShelf = new StringBuilder("[진단2-배치] blocks=" + blocks.size() + " [");
+        for (BoardBlock b : blocks) {
+            int bt = Math.max(1, (int)(heightCapMm / Math.max(1.0, b.hMm)));
+            if (cp.boardMaxStack > 0) bt = Math.min(bt, cp.boardMaxStack);
+            diagShelf.append(String.format("{h=%.1f cnt=%d tiers=%d} ", b.hMm, b.count, bt));
+        }
+        diagShelf.append(String.format("] boardMaxStack=%d maxBoardHeightM=%.2f board3dCheck=%s 최종Y=%.0f overflow=%s",
+            cp.boardMaxStack, cp.maxBoardHeightM, cp.board3dCheck, curY + curShelfL, overflow));
+        result.shelfNotes.add(diagShelf.toString());
+
         result.summary = String.format(
             "[3D-판지검증] %s / 총%d번들 / Y축점유%.0fmm/%.0fmm / 최고높이%.2fm/%.2fm(상한%.2fm) / 바닥점유%.0f%% / %s",
             result.fits ? "적재가능" : "적재불가(차량업그레이드필요)",
