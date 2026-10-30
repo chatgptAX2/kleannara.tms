@@ -2982,12 +2982,19 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 }
 .psd-auto-veh-hdr{
   padding:10px 16px;
-  background:linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%);
-  border-bottom:2px solid #93c5fd;
+  background:var(--surface2);
+  border-bottom:1px solid var(--border);
   display:flex;align-items:center;gap:8px;flex-wrap:wrap;
 }
 .psd-auto-veh-hdr .veh-no{font-weight:700;font-size:12px;color:var(--text)}
 .psd-auto-veh-hdr .veh-kg{font-size:11px;color:var(--text3)}
+/* 납품처명 — 시인성 강조(글자 확대 + 좌측 세로바) */
+.psd-auto-veh-hdr .psd-auto-dptnm{
+  font-size:14px;font-weight:800;color:var(--primary-navy);
+  letter-spacing:-.2px;line-height:1.2;
+  padding-left:9px;border-left:3px solid var(--primary);
+  max-width:260px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+}
 .psd-auto-veh-items{padding:4px 0}
 .psd-auto-item{
   display:flex;align-items:center;gap:6px;
@@ -2996,34 +3003,36 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psd-auto-item:last-child{border-bottom:none}
 /* 원지/판지 구분 배지 */
 .psd-auto-mtype{display:inline-flex;align-items:center;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;letter-spacing:.3px}
-.psd-auto-mtype-roll{background:var(--pastel-sky-bg);color:var(--pastel-sky-fg);border:1px solid var(--primary)}
-.psd-auto-mtype-board{background:var(--pastel-yellow-bg);color:var(--pastel-yellow-fg);border:1px solid #f59e0b}
-.psd-auto-mtype-other{background:var(--pastel-gray-bg);color:var(--pastel-gray-fg);border:1px solid var(--border)}
-.psd-auto-mtype-mixed{background:linear-gradient(90deg,var(--pastel-sky-bg),var(--pastel-yellow-bg));color:#7c3aed;border:1px solid #a78bfa;font-weight:700}
+/* 재질 구분 배지 — TMS 톤 통일(은은한 surface2 배경 + 좌측 컬러 도트 역할은 테두리로) */
+.psd-auto-mtype-roll{background:var(--surface2);color:var(--primary-dark);border:1px solid var(--primary)}
+.psd-auto-mtype-board{background:var(--surface2);color:#b45309;border:1px solid #d97706}
+.psd-auto-mtype-other{background:var(--surface2);color:var(--text2);border:1px solid var(--border)}
+.psd-auto-mtype-mixed{background:var(--surface2);color:var(--primary-navy);border:1px solid var(--primary-navy);font-weight:700}
 /* 적재율 바 */
 .psd-auto-loadbar-wrap{height:4px;background:var(--tr-border);margin:0}
 .psd-auto-loadbar{height:4px;transition:width .3s;border-radius:0}
 /* 추가 배차 배지 */
 .psd-auto-added-badge{
   font-size:10px;font-weight:700;
-  color:var(--pastel-green-fg);background:var(--pastel-green-bg);
-  border:1px solid #10b981;border-radius:5px;padding:2px 7px;
+  color:#15803d;background:var(--surface2);
+  border:1px solid #16a34a;border-radius:5px;padding:2px 7px;
 }
 /* 판지 치수 정보 */
 .psd-auto-dim-info{
-  font-size:10px;color:var(--pastel-purple-fg);
-  background:var(--pastel-purple-bg);border:1px solid #8b5cf6;
+  font-size:10px;color:var(--text2);
+  background:var(--surface2);border:1px solid var(--border);
   border-radius:5px;padding:2px 7px;
 }
 /* 여유 중량 */
-.psd-auto-spare{font-size:10px;color:var(--pastel-green-fg);font-weight:700}
-/* 주의사항 영역 */
+.psd-auto-spare{font-size:10px;color:#15803d;font-weight:700}
+/* 주의사항(제약조건) 영역 — 배경 흰색 + 좌측 강조바(TMS 톤) */
 .psd-auto-notes{
-  padding:5px 14px;
-  background:var(--pastel-yellow-bg);
-  border-bottom:1px solid rgba(245,158,11,.25);
+  padding:7px 14px;
+  background:var(--surface);
+  border-bottom:1px solid var(--border);
+  border-left:3px solid var(--border);
 }
-.psd-auto-note-item{font-size:10px;color:var(--pastel-yellow-fg);padding:2px 0;line-height:1.5}
+.psd-auto-note-item{font-size:11px;color:var(--text2);padding:2px 0;line-height:1.55}
 /* 추가 배차 아이템 강조 */
 .psd-auto-item-new{background:var(--pastel-green-bg);border-left:3px solid #10b981}
 .psd-auto-item-split{background:rgba(251,146,60,.06);border-left:3px solid #f97316}
@@ -3035,26 +3044,27 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 /* 원지 롤 개수 배지 */
 .psd-roll-cnt-badge{
   font-size:10px;font-weight:700;
-  color:var(--pastel-sky-fg);background:var(--pastel-sky-bg);
+  color:var(--primary-dark);background:var(--surface2);
   border:1px solid var(--primary);border-radius:5px;
   padding:2px 7px;margin-left:4px;white-space:nowrap;
 }
-/* 납품처 정보 배지 */
-.psd-ptnr-badge{font-size:10px;font-weight:700;border-radius:5px;padding:2px 8px;white-space:nowrap;display:inline-flex;align-items:center;gap:3px}
-.psd-ptnr-forklift-y{color:var(--pastel-green-fg);background:var(--pastel-green-bg);border:1px solid #10b981}
-.psd-ptnr-forklift-n{color:var(--pastel-red-fg);background:var(--pastel-red-bg);border:1px solid #ef4444}
-.psd-ptnr-deadline-ok{color:var(--pastel-sky-fg);background:var(--pastel-sky-bg);border:1px solid var(--primary)}
-.psd-ptnr-deadline-warn{color:var(--pastel-yellow-fg);background:var(--pastel-yellow-bg);border:1px solid #f59e0b}
-.psd-ptnr-maxton{color:var(--pastel-purple-fg);background:var(--pastel-purple-bg);border:1px solid #8b5cf6}
-/* 납품처 경고 영역 */
+/* 납품처 정보 배지 — 공통 surface2 배경 + 상태별 테두리/글자색만 구분(TMS 톤) */
+.psd-ptnr-badge{font-size:10px;font-weight:700;border-radius:5px;padding:2px 8px;white-space:nowrap;display:inline-flex;align-items:center;gap:3px;background:var(--surface2)}
+.psd-ptnr-forklift-y{color:#15803d;border:1px solid #16a34a}
+.psd-ptnr-forklift-n{color:#b91c1c;border:1px solid #dc2626}
+.psd-ptnr-deadline-ok{color:var(--primary-dark);border:1px solid var(--primary)}
+.psd-ptnr-deadline-warn{color:#b45309;border:1px solid #d97706}
+.psd-ptnr-maxton{color:var(--primary-navy);border:1px solid var(--primary-navy)}
+/* 납품처 경고 영역 — 배경 흰색 + 좌측 적색 강조바 */
 .psd-auto-warns{
-  padding:5px 14px;
-  background:var(--pastel-red-bg);
-  border-bottom:1px solid rgba(239,68,68,.2);
+  padding:7px 14px;
+  background:var(--surface);
+  border-bottom:1px solid var(--border);
+  border-left:3px solid #dc2626;
 }
-.psd-auto-warn-item{font-size:10px;color:var(--pastel-red-fg);padding:2px 0;line-height:1.5;font-weight:600}
+.psd-auto-warn-item{font-size:11px;color:#b91c1c;padding:2px 0;line-height:1.55;font-weight:600}
 /* notes 내 경고 구분 */
-.psd-auto-note-item.is-warn{color:var(--pastel-red-fg)}
+.psd-auto-note-item.is-warn{color:#b91c1c;font-weight:600}
 
 /* ── 배차대상 차량 탭 테이블 ── */
 .psop-vt-wrap{flex:1;display:flex;flex-direction:column;min-height:0;padding:16px}
@@ -19955,7 +19965,7 @@ function psopShowAutoResultModal(vehicles, objNm, selectedCnt, autoMeta) {
         <span class="psd-car-badge ${ccls}">🚛 ${v.cartype||'미정'}</span>
         <span class="veh-no">차량 ${idx+1}</span>
         <span class="veh-kg">${psopFmtDate(v.rqshpd)}</span>
-        <span class="veh-kg" style="font-size:11px;color:var(--text2);font-weight:600">${v.dptnm||v.dptnky||''}</span>
+        <span class="psd-auto-dptnm" title="${v.dptnm||v.dptnky||''}">${v.dptnm||v.dptnky||''}</span>
         ${heightBadge}
         ${ptnrBadges}
         <span style="margin-left:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
