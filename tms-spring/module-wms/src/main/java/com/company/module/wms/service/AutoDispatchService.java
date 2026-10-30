@@ -3437,10 +3437,26 @@ public class AutoDispatchService {
                                                : (int) Math.max(1, reamsFb);
             double danUnitR   = pltPerUnit > 0 ? pltPerUnit : Math.max(1, qtyR);  // 1단당 연수
 
-            // 1단(1PLT) 높이(mm) — calcBoardHeight(1연 높이) × 1단당 연수
-            double oneReamM   = calcBoardHeight(it, skumaMap);        // 1연(묶음) 높이(m)
-            double hDanMm     = Math.max(1.0, oneReamM * 1000.0 * Math.max(1.0, danUnitR));
-            hDanMm            = Math.min(hDanMm, hCapMm);             // 상한 clamp
+            // ── 1단(1PLT) 높이(mm) 산출 — 프런트 _lvComputePlacement 와 동일 산식 ──
+            //  [버그] 기존: calcBoardHeight(이미 'grswgt 1묶음 전체' 높이) × danUnitR(1단당 연수)
+            //         로 높이를 이중으로 부풀려(예: 1묶음높이×4연) hDanMm 이 차량높이를 초과,
+            //         tiers=floor(heightCap/hDanMm)=1 이 되어 Z축 적층이 전혀 안 되고 번들을
+            //         바닥에 전부 펼침 → Y축 과점유로 작은차 길이초과 → 과대차량 선정(적재율↓).
+            //  [수정] 프런트와 동일하게 1PLT(1단) 높이를 TMS_THICKNESS(µm) 기반으로 직접 산출.
+            //    1단높이(cm) = (연수 × 500매 × 두께µm) / PLT개수 / 10,000
+            //    두께 미조회 시 fallback: 1연두께(gsm 기반) × 1단당 연수.
+            double thicknessUm = dbl(it.get("THICKNESS"));           // TMS_THICKNESS(µm)
+            int[]  bdims       = parseSkyueyDims(sk);
+            int    gsm         = (bdims != null && bdims.length > 0 && bdims[0] > 0) ? bdims[0] : 300;
+            double onePltCm;
+            if (thicknessUm > 0 && pltCnt > 0) {
+                onePltCm = (qtyR * 500.0 * thicknessUm) / pltCnt / 10000.0;
+            } else {
+                double oneReamCm = Math.max(gsm / 1_200_000.0 * 500.0, 0.02) * 100.0;  // 1연 두께(cm)
+                onePltCm = Math.max(1.0, danUnitR) * oneReamCm;
+            }
+            double hDanMm     = Math.max(1.0, onePltCm * 10.0);      // 1단 높이(mm)
+            hDanMm            = Math.min(hDanMm, hCapMm);            // 상한 clamp
 
             // 단(파렛트) / 속(SOK) 개수 분리
             int danCount, sokCount;
