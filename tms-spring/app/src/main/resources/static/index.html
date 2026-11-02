@@ -2686,8 +2686,14 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 /* 리사이즈를 위해 table-layout:fixed (col width 최우선) 적용 */
 .psop-rz-tbl{table-layout:fixed !important}
 /* th 우측 여백 확보(리사이즈 핸들 8px 공간) + 텍스트 말줄임 */
+/* [요청] 헤더(컬럼명) 고정(sticky) — 스크롤해도 선적목록/납품문서 항목명 항상 표시.
+   th 인라인 style(position:relative)을 덮어쓰기 위해 !important 로 sticky 강제.
+   (col-rz 리사이즈 핸들은 th 기준 absolute 이므로 sticky(=positioned)로도 그대로 동작) */
 .psop-rz-tbl thead th{
-  position:relative;
+  position:-webkit-sticky !important;
+  position:sticky !important;
+  top:0 !important;
+  z-index:5 !important;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 /* 리사이즈 핸들 — th 우측 끝 col-resize 커서 */
@@ -2940,7 +2946,7 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psd-modal-foot{padding:12px 20px;border-top:1px solid var(--border);background:var(--surface);display:flex;justify-content:flex-end;gap:8px;flex-shrink:0}
 /* 분할 테이블 */
 .psd-split-tbl{width:100%;border-collapse:collapse;font-size:12px}
-.psd-split-tbl thead th{padding:8px 10px;background:var(--th-bg);border-bottom:1px solid var(--border);font-size:11px;font-weight:600;color:var(--text3);text-align:center;white-space:nowrap}
+.psd-split-tbl thead th{position:sticky;top:0;z-index:3;padding:8px 10px;background:var(--th-bg);border-bottom:1px solid var(--border);font-size:11px;font-weight:600;color:var(--text3);text-align:center;white-space:nowrap}
 .psd-split-tbl tbody tr{border-bottom:1px solid var(--tr-border)}
 .psd-split-tbl tbody td{padding:6px 10px;vertical-align:middle;text-align:center}
 .psd-split-tbl tbody td.left{text-align:left}
