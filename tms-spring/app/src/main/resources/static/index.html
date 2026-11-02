@@ -12949,7 +12949,7 @@ function _psdRenderLoadCanvas(v, veh) {
     <table class="psd-load-summary-tbl">
       <thead>
         <tr>
-          <th>#</th><th>납품번호</th><th>납품처명</th><th>품명</th><th>유형</th>
+          <th>#</th><th>납품번호</th><th>납품처명</th><th>품목코드</th><th>품명</th><th>유형</th>
           <th>수량(단위)</th><th>롤수/매수</th><th>직경/높이</th><th>중량(KG)</th>
         </tr>
       </thead>
@@ -12972,6 +12972,7 @@ function _psdRenderLoadCanvas(v, veh) {
             <td style="color:var(--text3)">${i+1}</td>
             <td style="font-family:monospace;color:var(--primary)" title="출하문서키(SHPOKY): ${raw.SHPOKY||''}">${raw.SVBELN||raw.SHPOKY||''}</td>
             <td style="text-align:left;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${dptnm}">${dptnm}</td>
+            <td style="font-family:monospace;text-align:left;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="품목코드(SKUKEY): ${raw.SKUKEY||''}">${raw.SKUKEY||''}</td>
             <td style="text-align:left;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${raw.DESC01||''}">${dot}${raw.DESC01||raw.SKUKEY||''}</td>
             <td>${uomBadge}</td>
             <td>${psdFmtNum(raw.QTSHPO)} ${raw.UOMKEY||'KG'}</td>
