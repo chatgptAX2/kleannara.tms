@@ -11877,6 +11877,26 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
     let placed = 0;
     const nextRoll = () => (qi < queue.length ? queue[qi++] : null);
 
+    // [요청] 직경이 다른 레이어도 "축 기준 제일 튀어나온 곳"부터 맞닿게 배치.
+    //  원통 바닥 footprint 는 원(직경)이므로, 이전 레이어 원통들이 실제로 차지한
+    //  Y 최대 끝(= max(y + 직경))에 다음 레이어 시작 Y 를 맞추면 직경이 달라도
+    //  겹치지 않고 서로 맞닿는다. (이전: rollY 가 '이전 레이어 자기 직경' 기준으로만
+    //  전진 → 작은 직경 뒤 큰 직경 레이어가 올 때 바닥에 빈 틈 발생)
+    //   · 현재 rollY 가 이전 원통 최대끝보다 크면 → 틈 → 최대끝으로 당김.
+    //   · 작으면(이론상 없음) → 겹침 방지 위해 최대끝으로 밀어냄.
+    //  결국 rollY = 이전 배치 원통들의 Y 최대끝 → 항상 밀착 + 무겹침.
+    {
+      let maxRollEnd = 0;
+      for (let bi = 0; bi < blocks.length; bi++) {
+        const bb = blocks[bi];
+        if (bb.type === 'roll') {
+          const end = bb.y + (bb.l || 0);
+          if (end > maxRollEnd) maxRollEnd = end;
+        }
+      }
+      if (maxRollEnd > 0) rollY = maxRollEnd;
+    }
+
     if (tier1Count > 0) {
       // ── DS_INCH 기반 배치 ────────────────────────────────────────────
       //  1단(바닥) 정원 = tier1Count 개. 이를 cols 열로 나눠 연속 Y행에 배치하고,
