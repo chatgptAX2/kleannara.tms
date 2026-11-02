@@ -28,9 +28,10 @@ public class DashboardController {
     @GetMapping("/transport")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getTransportStatus(
             @RequestParam(required = false) String dateFrom,
-            @RequestParam(required = false) String dateTo) {
+            @RequestParam(required = false) String dateTo,
+            @RequestParam(required = false) String productGroup) {
         return ResponseEntity.ok(ApiResponse.success(
-                dashboardService.getTransportStatus(dateFrom, dateTo)));
+                dashboardService.getTransportStatus(dateFrom, dateTo, productGroup)));
     }
 
     /**
@@ -42,9 +43,10 @@ public class DashboardController {
     @GetMapping("/efficiency")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getEfficiency(
             @RequestParam(required = false) String dateFrom,
-            @RequestParam(required = false) String dateTo) {
+            @RequestParam(required = false) String dateTo,
+            @RequestParam(required = false) String productGroup) {
         return ResponseEntity.ok(ApiResponse.success(
-                dashboardService.getEfficiency(dateFrom, dateTo)));
+                dashboardService.getEfficiency(dateFrom, dateTo, productGroup)));
     }
 
     /**
@@ -54,8 +56,9 @@ public class DashboardController {
      * - 전일 대비 증감률
      */
     @GetMapping("/summary")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getSummary() {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getSummary(
+            @RequestParam(required = false) String productGroup) {
         return ResponseEntity.ok(ApiResponse.success(
-                dashboardService.getSummary()));
+                dashboardService.getSummary(productGroup)));
     }
 }
