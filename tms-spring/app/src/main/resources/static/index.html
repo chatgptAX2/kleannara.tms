@@ -12409,6 +12409,10 @@ function _lvRender3D(containerId, placement, opts) {
       const rimGeo = new THREE.EdgesGeometry(new THREE.CylinderGeometry(r, r, len, 24));
       const rim = new THREE.LineSegments(rimGeo, new THREE.LineBasicMaterial({ color: _psdDarken(b.color,.45) }));
       rim.position.set(cxm, cym, czm);
+      // [하이라이트] 테두리도 품목 인덱스 기록 → 선택 시 테두리까지 함께 강조/흐림
+      rim.userData.itemIdx = b.idx;
+      rim.userData.isEdge = true;
+      rim.userData.baseColorHex = _psdDarken(b.color,.45);
       grp.add(rim);
       // ── 단수 라벨 스프라이트 (2단 이상일 때만) ── (원지는 항상 '단')
       if ((b.totalTiers||1) > 1) {
@@ -12429,6 +12433,10 @@ function _lvRender3D(containerId, placement, opts) {
         new THREE.LineBasicMaterial({ color: _psdDarken(b.color,.4) })
       );
       eg.position.copy(mesh.position);
+      // [하이라이트] 판지 테두리도 품목 인덱스 기록 → 선택 시 테두리까지 함께 강조/흐림
+      eg.userData.itemIdx = b.idx;
+      eg.userData.isEdge = true;
+      eg.userData.baseColorHex = _psdDarken(b.color,.4);
       grp.add(eg);
       if ((b.totalTiers||1) > 1) {
         const tl = _lvTierSprite(`${b.tier}${b.unitKind||'단'}`);   // 판지: '단'(벌크·비분할) | '속'(속포장 분할)
@@ -12529,17 +12537,43 @@ function _lvRender3D(containerId, placement, opts) {
   //  idx=특정 품목 인덱스면 그 품목만 선명, 나머지는 반투명(dim). idx=null 이면 전체 복원.
   store.highlight = (idx) => {
     grp.traverse(obj => {
-      if (!obj.isMesh || obj.userData.itemIdx === undefined) return;
-      const on = (idx == null) || (obj.userData.itemIdx === idx);
-      if (obj.material) {
-        obj.material.transparent = !on;
-        obj.material.opacity = on ? 1.0 : 0.18;
-        // 강조 대상은 살짝 발광 느낌(emissive)으로 부각
-        if (obj.material.emissive) {
-          obj.material.emissive.set(on && idx != null ? 0x333333 : 0x000000);
+      // 블록 본체(Mesh)와 테두리(LineSegments) 모두 품목 인덱스가 기록된 대상만 처리
+      const hasIdx = obj.userData && obj.userData.itemIdx !== undefined;
+      if (!hasIdx) return;
+      if (!(obj.isMesh || obj.isLineSegments)) return;
+      const on  = (idx == null) || (obj.userData.itemIdx === idx);
+      const sel = (idx != null) && on;   // 특정 품목이 선택된 상태에서의 '선택 대상'
+      if (!obj.material) return;
+
+      if (obj.userData.isEdge) {
+        // ── 테두리(LineSegments) ──
+        // 판지는 블록이 서로 붙어 있어, 비선택 테두리가 진하게 남으면 선택 품목과 뒤섞여 보임.
+        //  · 선택: 테두리를 밝은 흰색 + 불투명 → 외곽선이 또렷하게 떠오름
+        //  · 비선택(선택 품목 존재): 테두리를 거의 안 보이게 흐림
+        //  · 미선택 상태(idx=null): 원래 테두리 색 복원
+        obj.material.transparent = !(idx == null);
+        if (idx == null) {
+          obj.material.opacity = 1.0;
+          if (obj.userData.baseColorHex != null) obj.material.color.set(obj.userData.baseColorHex);
+        } else if (sel) {
+          obj.material.opacity = 1.0;
+          obj.material.color.set(0xffffff);   // 선택 외곽선 강조
+        } else {
+          obj.material.opacity = 0.06;         // 비선택 외곽선 거의 숨김
+          if (obj.userData.baseColorHex != null) obj.material.color.set(obj.userData.baseColorHex);
         }
         obj.material.needsUpdate = true;
+        return;
       }
+
+      // ── 블록 본체(Mesh) ──
+      obj.material.transparent = !on;
+      obj.material.opacity = on ? 1.0 : 0.06;   // 비선택은 더 과감하게 흐림(0.18→0.06)
+      // 선택 대상은 강한 발광(emissive)으로 부각 → 인접한 판지들 사이에서도 또렷하게 떠오름
+      if (obj.material.emissive) {
+        obj.material.emissive.set(sel ? 0x666655 : 0x000000);
+      }
+      obj.material.needsUpdate = true;
     });
   };
 
