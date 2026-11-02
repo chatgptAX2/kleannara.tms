@@ -870,6 +870,18 @@ body.dc-dragging{user-select:none !important;-webkit-user-select:none !important
   transition:background .15s;
 }
 .db-date-filter button:hover{background:var(--primary-dark)}
+/* 제품군(PS/HL/전체) 세그먼트 버튼 — TMS 톤 통일 */
+.db-pg-seg{display:inline-flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;background:var(--surface)}
+.db-pg-btn{
+  padding:4px 14px;font-size:11px;font-weight:700;cursor:pointer;
+  background:var(--surface);color:var(--text2);border:none;border-right:1px solid var(--border);
+  transition:background .15s,color .15s;display:inline-flex;align-items:center;gap:3px;
+}
+.db-pg-btn:last-child{border-right:none}
+.db-pg-btn:hover{background:var(--surface2)}
+.db-pg-btn.active{background:var(--primary);color:#fff}
+.db-pg-btn .db-pg-sub{font-size:9px;font-weight:600;opacity:.75}
+.db-pg-btn.active .db-pg-sub{opacity:.9}
 
 /* ── MODAL ── */
 /* ── THEME TOGGLE BUTTON ── */
@@ -30445,7 +30457,7 @@ function _dmFmtSize(bytes) {
    /api/dashboard/efficiency → 운송효율성 (적재율 + 권역 + 차종)
 ═══════════════════════════════════════════════════════════ */
 const _dbCharts = {};   // Chart.js 인스턴스 캐시 (destroy용)
-const _dbState  = { dateFrom: '', dateTo: '' };
+const _dbState  = { dateFrom: '', dateTo: '', productGroup: 'ALL' };   // productGroup: ALL | PS | HL
 
 function renderTmsDashboard() {
   const content = document.getElementById('content');
@@ -30472,7 +30484,7 @@ function renderTmsDashboard() {
     <div class="db-banner-date" id="db-today-label">—</div>
   </div>
 
-  <!-- 날짜 필터 -->
+  <!-- 날짜 필터 + 제품군(PS/HL/전체) 필터 -->
   <div class="db-date-filter">
     <label>조회기간</label>
     <input type="date" id="db-date-from" value="${_dbState.dateFrom}">
@@ -30480,6 +30492,13 @@ function renderTmsDashboard() {
     <input type="date" id="db-date-to"   value="${_dbState.dateTo}">
     <button onclick="_dbRefresh()">🔍 조회</button>
     <button onclick="_dbReset()" style="background:var(--surface2);color:var(--text2);border:1px solid var(--border)">↺ 초기화</button>
+    <!-- 제품군 세그먼트: 전체 / PS(판지) / HL(생활) -->
+    <label style="margin-left:14px">제품군</label>
+    <div class="db-pg-seg" id="db-pg-seg" role="group" aria-label="제품군 선택">
+      <button type="button" class="db-pg-btn${_dbState.productGroup==='ALL'?' active':''}" data-pg="ALL" onclick="_dbSetProductGroup('ALL')">전체</button>
+      <button type="button" class="db-pg-btn${_dbState.productGroup==='PS'?' active':''}"  data-pg="PS"  onclick="_dbSetProductGroup('PS')">PS<span class="db-pg-sub">(판지)</span></button>
+      <button type="button" class="db-pg-btn${_dbState.productGroup==='HL'?' active':''}"  data-pg="HL"  onclick="_dbSetProductGroup('HL')">HL<span class="db-pg-sub">(생활)</span></button>
+    </div>
     <span id="db-load-status" style="font-size:10px;color:var(--text3)"></span>
   </div>
 
@@ -30598,6 +30617,17 @@ function _dbRefresh() {
   _dbLoadAll();
 }
 
+/* 제품군(PS/HL/전체) 선택 — 세그먼트 버튼 active 토글 후 재조회 */
+function _dbSetProductGroup(pg) {
+  const g = (pg === 'PS' || pg === 'HL') ? pg : 'ALL';
+  _dbState.productGroup = g;
+  // 버튼 active 상태 갱신
+  document.querySelectorAll('#db-pg-seg .db-pg-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-pg') === g);
+  });
+  _dbLoadAll();
+}
+
 async function _dbLoadAll() {
   const status = document.getElementById('db-load-status');
   if (status) status.textContent = '⏳ 로딩 중...';
@@ -30609,10 +30639,12 @@ async function _dbLoadAll() {
     return;
   }
 
-  const p = `dateFrom=${_dbState.dateFrom}&dateTo=${_dbState.dateTo}`;
+  // 제품군(PS/HL/전체) 파라미터 — ALL 이면 서버에서 필터 없이 기존 동작
+  const pg = _dbState.productGroup || 'ALL';
+  const p = `dateFrom=${_dbState.dateFrom}&dateTo=${_dbState.dateTo}&productGroup=${pg}`;
   try {
     const [sumRes, trnRes, effRes] = await Promise.all([
-      fetch('/api/dashboard/summary').then(r=>r.json()),
+      fetch(`/api/dashboard/summary?productGroup=${pg}`).then(r=>r.json()),
       fetch(`/api/dashboard/transport?${p}`).then(r=>r.json()),
       fetch(`/api/dashboard/efficiency?${p}`).then(r=>r.json()),
     ]);
