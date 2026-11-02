@@ -11955,8 +11955,11 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
         if (rollY > carLmm) break;
       }
     }
-    // 레이어 사이 시각적 간격(다른 규격 원지 그룹 구분)
-    rollY += GAP;
+    // [요청] 원지 직경 그룹(레이어) 간 간격 제거 — 서로 다른 직경 그룹이라도
+    //  시각적으로 떨어져 보이지 않도록 바로 뒤 Y 에 밀착 배치.
+    //  (이전: rollY += GAP 로 그룹 구분용 틈을 둬, 롤 수 적은 레이어가 홀로 떨어져 보였음)
+    //  ※ 배차 결과(적재 가능 판정·차량 선정)에는 영향 없음 — 프런트 시각화 표현만 조정.
+    // rollY += GAP;  // 그룹 구분 간격 제거(밀착)
   });
 
   // ── 판지(직육면체) Shelf + Z축 다단 적층 — 원지 뒤 Y부터 시작 ──
