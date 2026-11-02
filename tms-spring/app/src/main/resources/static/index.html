@@ -870,16 +870,15 @@ body.dc-dragging{user-select:none !important;-webkit-user-select:none !important
   transition:background .15s;
 }
 .db-date-filter button:hover{background:var(--primary-dark)}
-/* 제품군(PS/HL/전체) 세그먼트 버튼 — TMS 톤 통일 */
-.db-pg-seg{display:inline-flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;background:var(--surface)}
+/* 제품군(PS/HL/전체) 선택 버튼 — TMS 톤 통일, 버튼 간 간격 분리 */
+.db-pg-seg{display:inline-flex;align-items:center;gap:6px;background:transparent}
 .db-pg-btn{
   padding:4px 14px;font-size:11px;font-weight:700;cursor:pointer;
-  background:var(--surface);color:var(--text2);border:none;border-right:1px solid var(--border);
-  transition:background .15s,color .15s;display:inline-flex;align-items:center;gap:3px;
+  background:var(--surface);color:var(--text2);border:1px solid var(--border);border-radius:7px;
+  transition:background .15s,color .15s,border-color .15s;display:inline-flex;align-items:center;gap:3px;
 }
-.db-pg-btn:last-child{border-right:none}
 .db-pg-btn:hover{background:var(--surface2)}
-.db-pg-btn.active{background:var(--primary);color:#fff}
+.db-pg-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
 .db-pg-btn .db-pg-sub{font-size:9px;font-weight:600;opacity:.75}
 .db-pg-btn.active .db-pg-sub{opacity:.9}
 
