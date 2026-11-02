@@ -200,7 +200,7 @@ public class AutoDispatchService {
         //  HL 스코프: 동적배차 미적용(별도 설정 예정) → 기존 buildGroups 사용.
         Map<String, List<Map<String, Object>>> groups =
             "PS".equals(scope)
-                ? buildDynamicGroups(items, cp.allowMixedLoad, ptnrInfoMap)
+                ? buildDynamicGroups(items, cp.allowMixedLoad, ptnrInfoMap, cp.dynamicMaxGroupSize)
                 : buildGroups(items, cp.allowMixedLoad);
 
         List<Map<String, Object>> allVehicles = new ArrayList<>();
@@ -474,6 +474,7 @@ public class AutoDispatchService {
         appliedConstraints.put("ENTRY_TON_LIMIT",       cp.entryTonLimit);
         appliedConstraints.put("FIXED_VEH_PRIORITY",    cp.fixedVehPriority);
         appliedConstraints.put("MAX_VEHICLES_PER_GROUP", cp.maxVehPerGroup);
+        appliedConstraints.put("DYNAMIC_MAX_GROUP_SIZE", cp.dynamicMaxGroupSize);
         appliedConstraints.put("MIN_FILL_RATIO",        round2(cp.minFill * 100));
         appliedConstraints.put("MAX_FILL_RATIO",        round2(cp.maxFill * 100));
         appliedConstraints.put("MAX_ROLL_STACK_TIER",   cp.maxStack);
@@ -2130,7 +2131,7 @@ public class AutoDispatchService {
      */
     private Map<String, List<Map<String, Object>>> buildDynamicGroups(
             List<Map<String, Object>> items, boolean allowMixedLoad,
-            Map<String, PtnrInfo> ptnrInfoMap) {
+            Map<String, PtnrInfo> ptnrInfoMap, int dynamicMaxGroupSize) {
 
         // 대상 납품처 집합
         List<String> dks = items.stream()
@@ -2150,6 +2151,10 @@ public class AutoDispatchService {
         // Union-Find 초기화 (동적 후보만)
         Map<String, String> parent = new HashMap<>();
         for (String dk : dks) if (isDynCand.test(dk)) parent.put(dk, dk);
+
+        // 유효 연결(동적거리 조건 통과) 쌍의 거리 보존 — 그룹 최대 납품처 수 분할 시 사용.
+        //  key = "from|to"(정렬) → 거리. 가까운 납품처끼리 우선 묶어 하위그룹 분할.
+        Map<String, Double> edgeDist = new HashMap<>();
 
         // BZPTN_DISTANCE 조회: USE_YN='Y' 이고 양쪽 모두 대상 납품처인 쌍
         //   DISTANCE <= 출발지(FROM) DYNAMIC_DIST_M 인 경우만 연결.
@@ -2182,6 +2187,10 @@ public class AutoDispatchService {
                 double fromLimit = ptnrInfoMap.getOrDefault(from, PtnrInfo.EMPTY).dynamicDistM;
                 if (fromLimit > 0 && dist > fromLimit) continue;
                 ufUnion(parent, from, to);
+                // 유효 연결 거리 보존(양방향 동일 키) — 분할 시 가까운 쌍 우선 병합에 사용
+                String ek = (from.compareTo(to) <= 0) ? (from + "|" + to) : (to + "|" + from);
+                Double prev = edgeDist.get(ek);
+                if (prev == null || dist < prev) edgeDist.put(ek, dist);
             }
         }
 
@@ -2222,6 +2231,81 @@ public class AutoDispatchService {
             }
             finalGroups.computeIfAbsent(k, x -> new ArrayList<>()).addAll(gi);
         }
+
+        // ── [DYNAMIC_MAX_GROUP_SIZE] 동적 그룹 최대 납품처 수 분할 ──────────────
+        //  동적거리로 묶인 그룹의 납품처 수가 상한(dynamicMaxGroupSize)을 넘으면,
+        //  "한 차량에 너무 많은 납품처가 동적 배차"되는 문제가 발생한다.
+        //  → 그룹을 '서로 가까운 납품처끼리' N개 이하 하위그룹으로 분할한다.
+        //  분할 방식(그리디): 아직 미배정 납품처 중 하나를 시드로 하위그룹을 열고,
+        //   남은 납품처 중 '현재 하위그룹 구성원과의 최단 유효거리'가 가장 가까운
+        //   납품처를 차례로 채워 N개를 채운다. 유효거리(edgeDist)가 없으면 멀리 간주.
+        //  거리 정보가 전혀 없으면(테이블 조회 실패 등) 입력 순서대로 N개씩 분할.
+        if (dynamicMaxGroupSize > 0) {
+            Map<String, List<Map<String, Object>>> splitGroups = new LinkedHashMap<>();
+            for (Map.Entry<String, List<Map<String, Object>>> e : finalGroups.entrySet()) {
+                String k = e.getKey();
+                List<Map<String, Object>> gi = e.getValue();
+                if (!k.startsWith("_DYN_")) { splitGroups.put(k, gi); continue; }
+
+                // 이 동적 그룹의 고유 납품처 목록(입력 순서 유지)
+                List<String> dksInGroup = new ArrayList<>();
+                for (Map<String, Object> it : gi) {
+                    String dk = str(it.get("DPTNKY"));
+                    if (!dk.isEmpty() && !dksInGroup.contains(dk)) dksInGroup.add(dk);
+                }
+                if (dksInGroup.size() <= dynamicMaxGroupSize) { splitGroups.put(k, gi); continue; }
+
+                // 그리디 근접 분할 → 각 하위그룹에 납품처 배정
+                List<List<String>> subs = new ArrayList<>();
+                Set<String> remaining = new LinkedHashSet<>(dksInGroup);
+                while (!remaining.isEmpty()) {
+                    List<String> sub = new ArrayList<>();
+                    String seed = remaining.iterator().next();
+                    sub.add(seed); remaining.remove(seed);
+                    while (sub.size() < dynamicMaxGroupSize && !remaining.isEmpty()) {
+                        // 남은 납품처 중 현재 sub 구성원과 최단 유효거리인 것 선택
+                        String best = null; double bestDist = Double.MAX_VALUE;
+                        for (String cand : remaining) {
+                            double near = Double.MAX_VALUE;
+                            for (String m : sub) {
+                                String ek = (cand.compareTo(m) <= 0) ? (cand + "|" + m) : (m + "|" + cand);
+                                Double d = edgeDist.get(ek);
+                                if (d != null && d < near) near = d;
+                            }
+                            if (near < bestDist) { bestDist = near; best = cand; }
+                        }
+                        // 유효거리 연결이 전혀 없으면 남은 것 중 임의(순서상 첫) 선택
+                        if (best == null) best = remaining.iterator().next();
+                        sub.add(best); remaining.remove(best);
+                    }
+                    subs.add(sub);
+                }
+
+                // 납품처 → 하위그룹 인덱스 매핑
+                Map<String, Integer> dkToSub = new HashMap<>();
+                for (int si = 0; si < subs.size(); si++)
+                    for (String dk : subs.get(si)) dkToSub.put(dk, si);
+
+                // 아이템을 하위그룹 키로 재분배. 하위그룹 납품처가 1개로 떨어지면
+                //  단독 배차가 되도록 납품처 단위 키로 환원(혼적 로직 우회).
+                for (Map<String, Object> it : gi) {
+                    String dk = str(it.get("DPTNKY"));
+                    int si = dkToSub.getOrDefault(dk, 0);
+                    List<String> sub = subs.get(si);
+                    String nk;
+                    if (sub.size() <= 1) {
+                        nk = dk + "|" + str(it.get("DPTNM")) + "|" + str(it.get("RQSHPD"));
+                    } else {
+                        nk = k + "|SUB" + si;   // 동적 하위그룹(여전히 _DYN_ 접두 유지 → 혼적 처리)
+                    }
+                    splitGroups.computeIfAbsent(nk, x -> new ArrayList<>()).add(it);
+                }
+                log.info("[AutoDispatch] 동적 그룹 분할(DYNAMIC_MAX_GROUP_SIZE={}): {} 납품처 {}개 → {}개 하위그룹",
+                         dynamicMaxGroupSize, k, dksInGroup.size(), subs.size());
+            }
+            return splitGroups;
+        }
+
         return finalGroups;
     }
 
@@ -2708,6 +2792,10 @@ public class AutoDispatchService {
         // 그룹당 최대 배차 차량 수 (GLOBAL): 0/99 = 제한없음
         cp.maxVehPerGroup   = (int) cfloat(C, "MAX_VEHICLES_PER_GROUP", 99.0);
 
+        // 동적 그룹 최대 납품처 수(DYNAMIC_MAX_GROUP_SIZE): 0/미설정 = 제한없음.
+        //  >0 이면 동적거리로 묶인 그룹이 이 값을 초과할 때 가까운 납품처끼리 분할.
+        cp.dynamicMaxGroupSize = (int) cfloat(C, "DYNAMIC_MAX_GROUP_SIZE", 0.0);
+
         // 3D 물리검증 토글 (ROLL/BOARD/MIX §*-4): N = 3D 검증 스킵
         cp.roll3dCheck      = cbool(C, "ROLL_3D_CHECK_YN",         true);
         cp.board3dCheck     = cbool(C, "BOARD_3D_CHECK_YN",        true);
@@ -2927,6 +3015,13 @@ public class AutoDispatchService {
         double  entryTonLimit    = 0.0;    // 진입 톤수 제한 (0=제한없음)
         boolean fixedVehPriority = false;  // 고정차량 최우선 배차
         int     maxVehPerGroup   = 99;     // 그룹당 최대 배차 차량 수
+        // ── 동적 그룹 최대 납품처 수(DYNAMIC_MAX_GROUP_SIZE) ──
+        //  한 동적(혼적) 그룹(= 한 차량에 함께 싣는 동적 배차 묶음)에 포함될 수 있는
+        //  '납품처(DPTNKY)' 개수 상한. 0/미설정=제한없음(기존 동작).
+        //  >0 이면 buildDynamicGroups 에서 동적거리 기반으로 묶인 컴포넌트가 이 값을
+        //  초과할 경우, 서로 가까운 납품처끼리 N개 이하 하위그룹으로 분할한다.
+        //  → "한 차량에 너무 많은 납품처가 동적 배차되는" 문제를 방지.
+        int     dynamicMaxGroupSize = 0;   // 동적 그룹 최대 납품처 수(0=제한없음)
         boolean roll3dCheck      = true;   // 원지 3D 검증 활성
         boolean board3dCheck     = true;   // 판지 3D 검증 활성
         boolean mix3dCheck       = true;   // 혼적 3D 검증 활성
