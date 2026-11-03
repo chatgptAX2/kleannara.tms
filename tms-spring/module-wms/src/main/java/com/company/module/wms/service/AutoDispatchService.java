@@ -210,10 +210,6 @@ public class AutoDispatchService {
         // ── MAX_WEIGHT_KG(개별 SKU 최대중량) 초과 경고 수집 ──
         List<String> weightWarnings = new ArrayList<>();
 
-        // [PTNR_MAX_VEHICLES] 납품처(DPTNKY)별 누적 배차 차량 수 집계용.
-        //  납품처관리 화면/제약조건의 '납품처당 최대 차량(대)' 상한 검증에 사용.
-        Map<String, Integer> ptnrVehCount = new HashMap<>();
-
         // ── 각 납품처 그룹 처리 ────────────────────────────────────────
         for (Map.Entry<String, List<Map<String, Object>>> entry : groups.entrySet()) {
             String groupKey = entry.getKey();
@@ -440,51 +436,6 @@ public class AutoDispatchService {
                     }
                 }
             }
-
-            // ── [PTNR_MAX_VEHICLES] 납품처당 최대 차량(대) 검증 ────────────────
-            //  이번 그룹에서 새로 배차된 차량을, 그 차량에 실제 적재된 '납품처(DPTNKY)'
-            //  단위로 누적 집계한다. (동적/혼적 그룹은 한 차량에 여러 납품처가 섞이므로
-            //  차량별 적재 납품처를 모두 카운트.) 누적이 해당 납품처의 PTNR_MAX_VEHICLES
-            //  상한을 초과하면 경고 노트를 부착(물량 보존 위해 하드 차단은 하지 않음 —
-            //  MAX_VEHICLES_PER_GROUP 와 동일한 경고 방식).
-            for (int vi = vehCountBefore; vi < allVehicles.size(); vi++) {
-                Map<String, Object> veh = allVehicles.get(vi);
-                // 이 차량에 실제 적재된 납품처 집합 추출
-                Set<String> vehDks = new LinkedHashSet<>();
-                Object itemsObj = veh.get("items");
-                if (itemsObj instanceof List) {
-                    for (Object io : (List<?>) itemsObj) {
-                        if (io instanceof Map) {
-                            String dk = str(((Map<?, ?>) io).get("DPTNKY"));
-                            if (!dk.isEmpty()) vehDks.add(dk);
-                        }
-                    }
-                }
-                if (vehDks.isEmpty() && !dptnky.isEmpty()) vehDks.add(dptnky);
-                for (String dk : vehDks) {
-                    int cnt = ptnrVehCount.merge(dk, 1, Integer::sum);
-                    // 납품처별 상한 조회(PTNR_MAX_VEHICLES, 0/미설정=무제한)
-                    Map<String, Object> cr = Cbt.getOrDefault(dk, Collections.emptyMap())
-                                                .get("PTNR_MAX_VEHICLES");
-                    int ptnrMax = 0;
-                    if (cr != null) {
-                        try { ptnrMax = (int) Double.parseDouble(str(cr.get("CONST_VALUE")).trim()); }
-                        catch (Exception ignore) {}
-                    }
-                    if (ptnrMax > 0 && cnt > ptnrMax) {
-                        String warn = String.format(
-                            "[납품처차량수초과] 납품처 %s: 배차 차량 %d대 > 제한 %d대(PTNR_MAX_VEHICLES) — 수동 검토 필요",
-                            dk, cnt, ptnrMax);
-                        log.warn("[AutoDispatch] {}", warn);
-                        Object notesObj = veh.get("notes");
-                        if (notesObj instanceof List) {
-                            @SuppressWarnings("unchecked")
-                            List<String> nlist = (List<String>) notesObj;
-                            nlist.add(warn);
-                        }
-                    }
-                }
-            }
         }
 
         // 응답 필드 정규화
@@ -524,10 +475,6 @@ public class AutoDispatchService {
         appliedConstraints.put("FIXED_VEH_PRIORITY",    cp.fixedVehPriority);
         appliedConstraints.put("MAX_VEHICLES_PER_GROUP", cp.maxVehPerGroup);
         appliedConstraints.put("DYNAMIC_MAX_GROUP_SIZE", cp.dynamicMaxGroupSize);
-        // PTNR_MAX_VEHICLES: 납품처별(per-partner) 제약이라 전역 단일값이 아님.
-        //  설정된 납품처가 1곳이라도 있으면 활성(납품처관리/제약조건 Cbt 기준) 표시.
-        appliedConstraints.put("PTNR_MAX_VEHICLES",
-            Cbt.values().stream().anyMatch(m -> m.containsKey("PTNR_MAX_VEHICLES")) ? "납품처별적용" : "미설정");
         appliedConstraints.put("MIN_FILL_RATIO",        round2(cp.minFill * 100));
         appliedConstraints.put("MAX_FILL_RATIO",        round2(cp.maxFill * 100));
         appliedConstraints.put("MAX_ROLL_STACK_TIER",   cp.maxStack);
