@@ -24640,6 +24640,9 @@ const DCON_KEY_META = {
   PTNR_MAX_VEHICLES:{ label:'납품처당 최대 차량', unit:'대', op:'<=', type:'PARTNER', hint:'0=무제한' },
   PTNR_PREFER_CAR: { label:'납품처 선호 차종',  unit:'코드',op:'IN', type:'PARTNER', hint:'CSV (예: 5,11)' },
   PTNR_EXCLUDE_CAR:{ label:'납품처 제외 차종',  unit:'코드',op:'IN', type:'PARTNER', hint:'CSV (예: 18)' },
+  /* DYNAMIC_ZONE — 동적 구역(동적배차) 제어 파라미터 (동적 구역 제약 탭에 노출) */
+  DYNAMIC_MAX_GROUP_SIZE:{ label:'동적 그룹 최대 납품처 수', unit:'개', op:'<=', type:'DYNAMIC_ZONE', hint:'0=제한없음. >0=한 동적(혼적) 그룹(=한 차량에 함께 싣는 동적 묶음)에 포함될 납품처 수 상한. 초과 시 가까운 납품처끼리 N개 이하 하위그룹으로 분할 → 한 차량에 너무 많은 납품처가 동적 배차되는 것을 방지' },
+  DYNAMIC_MIN_GROUP_SIZE:{ label:'동적 그룹 최소 납품처 수', unit:'개', op:'>=', type:'DYNAMIC_ZONE', hint:'1=단독 납품처도 동적배차 허용, 2=2개 이상이어야 그룹핑' },
   /* CARGO */
   MAX_WEIGHT_KG:   { label:'화물 최대 중량',   unit:'kg',  op:'<=', type:'CARGO',  hint:'개별 SKU 최대 중량' },
   SPLIT_ALLOWED:   { label:'분할 배차 허용',   unit:'Y/N', op:'=',  type:'CARGO',  hint:'Y=허용, N=한 차량에 모아야 함' },
