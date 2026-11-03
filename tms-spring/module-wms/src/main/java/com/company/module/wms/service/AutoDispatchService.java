@@ -203,6 +203,38 @@ public class AutoDispatchService {
                 ? buildDynamicGroups(items, cp.allowMixedLoad, ptnrInfoMap, cp.dynamicMaxGroupSize)
                 : buildGroups(items, cp.allowMixedLoad);
 
+        // ══ [동적배차 진단 로그 ①] 그룹 형성 결과 — 동적 그룹별 납품처 구성/물량 ══
+        //  "1대로 될 물량이 불필요하게 여러 차로 동적되는지" 진단용.
+        //  각 동적 그룹(_DYN_)이 몇 개 납품처로 묶였고, 납품처별 원지/판지 중량이
+        //  얼마인지(합산 톤수가 한 차량에 실릴 만한지)를 출력한다.
+        try {
+            int dynGrpCnt = 0;
+            for (Map.Entry<String, List<Map<String, Object>>> ge : groups.entrySet()) {
+                if (!ge.getKey().startsWith("_DYN_")) continue;
+                dynGrpCnt++;
+                List<Map<String, Object>> gi = ge.getValue();
+                // 납품처별 중량 집계(원지+판지+기타 합산, kg)
+                Map<String, Double> dkKg = new LinkedHashMap<>();
+                double grpTotKg = 0;
+                for (Map<String, Object> it : gi) {
+                    String dk = str(it.get("DPTNKY"));
+                    double kg = isRollItem(it) ? itemRollKg(it, skumaMap, cp.rollSingleKg)
+                                               : dbl(it.get("KG_WEIGHT")) > 0 ? dbl(it.get("KG_WEIGHT")) : dbl(it.get("GRSWGT"));
+                    dkKg.merge(dk, kg, Double::sum);
+                    grpTotKg += kg;
+                }
+                StringBuilder sb = new StringBuilder();
+                dkKg.forEach((dk, kg) -> sb.append(String.format("%s=%.0fkg ", dk, kg)));
+                log.info("[동적진단①] 동적그룹 {} — 납품처 {}곳 [{}] / 그룹합계 {}kg({}t)",
+                         ge.getKey(), dkKg.size(), sb.toString().trim(),
+                         String.format("%.0f", grpTotKg), String.format("%.2f", grpTotKg / 1000.0));
+            }
+            log.info("[동적진단①] PS 동적그룹 총 {}개 (전체 그룹 {}개), DYNAMIC_MAX_GROUP_SIZE={}",
+                     dynGrpCnt, groups.size(), cp.dynamicMaxGroupSize);
+        } catch (Exception e) {
+            log.warn("[동적진단①] 로그 생성 중 예외(무시): {}", e.getMessage());
+        }
+
         List<Map<String, Object>> allVehicles = new ArrayList<>();
 
         // ── 납품처 제약(자동배차여부=N / 수작업=Y)으로 자동배차에서 제외된 그룹 ──
@@ -435,6 +467,44 @@ public class AutoDispatchService {
                         nlist.add(warn);
                     }
                 }
+            }
+
+            // ══ [동적배차 진단 로그 ②] 그룹 배차 결과 — 차량별 차종/적재율/적재 납품처 ══
+            //  동적 그룹에서 생성된 각 차량의 적재율을 출력한다.
+            //   · 적재율 낮은 차가 여러 대 → '1대로 합칠 수 있는데 불필요하게 쪼개짐' 의심
+            //   · 적재율 높음 → 물량상 불가피한 분할
+            //  (동적 그룹만 상세 출력. 단독 그룹은 간략.)
+            try {
+                if (isDynGroup && vehCountThisGroup > 0) {
+                    double capSumKg = 0, usedSumKg = 0;
+                    StringBuilder vsb = new StringBuilder();
+                    for (int vi = vehCountBefore; vi < allVehicles.size(); vi++) {
+                        Map<String, Object> v = allVehicles.get(vi);
+                        String ct   = str(v.get("cartype"));
+                        double used = dbl(v.get("total_kg"));
+                        double cap  = dbl(v.get("load_cap"));
+                        double fill = dbl(v.get("fill_ratio"));
+                        // 이 차량에 실제 적재된 납품처
+                        Set<String> vdks = new LinkedHashSet<>();
+                        Object io = v.get("items");
+                        if (io instanceof List) for (Object o : (List<?>) io)
+                            if (o instanceof Map) { String d = str(((Map<?,?>) o).get("DPTNKY")); if (!d.isEmpty()) vdks.add(d); }
+                        capSumKg += cap; usedSumKg += used;
+                        vsb.append(String.format("\n    차량#%d: %s 적재%.0fkg/%.0fkg(적재율%.1f%%) 납품처%s",
+                                   vi - vehCountBefore + 1, ct, used, cap, fill, vdks.toString()));
+                    }
+                    double avgFillG = capSumKg > 0 ? usedSumKg / capSumKg * 100.0 : 0;
+                    // 핵심 진단: 그룹 전체 물량이 '가장 큰 단일 차량 1대'에 실릴 수 있었는지
+                    String bigCt = validCars.isEmpty() ? "?" : str(validCars.get(0).get("CARTYPE"));
+                    double bigCap = vehInfo.getOrDefault(bigCt, VehInfo.EMPTY).loadKg;
+                    String hint = (vehCountThisGroup >= 2 && bigCap > 0 && usedSumKg <= bigCap)
+                        ? String.format(" ⚠️의심: 그룹총물량 %.0fkg ≤ 최대차(%s) %.0fkg → 1대로 가능했을 수 있음(불필요 동적분할 의심)", usedSumKg, bigCt, bigCap)
+                        : String.format(" (그룹총물량 %.0fkg > 최대차 %.0fkg 또는 1대 → 분할 불가피)", usedSumKg, bigCap);
+                    log.info("[동적진단②] 동적그룹 {} 배차 {}대 / 그룹평균적재율 {}%{}{}",
+                             groupKey, vehCountThisGroup, String.format("%.1f", avgFillG), hint, vsb.toString());
+                }
+            } catch (Exception ex) {
+                log.warn("[동적진단②] 로그 생성 중 예외(무시): {}", ex.getMessage());
             }
         }
 
