@@ -18169,12 +18169,46 @@ function _psopVehRenderDocs(pid) {
     </tr>`;
   }).join('');
 
+  // [요청] 항목 컬럼 바로 밑에 '각 납품문서별 아이템의 합계 수량' 표시.
+  //  헤더(thead) 바로 아래에 합계행을 추가 — 숫자 컬럼(납품수량/중량/원지개수/CBM) 합계.
+  //  · 납품수량(qtshpo): 단위가 섞일 수 있어 합산값만 표기(참고용 총수량)
+  //  · 중량(wgt): kg 합계, 원지개수(rollcnt): 롤 합계, CBM: 부피 합계
+  let _sumQty = 0, _sumKg = 0, _sumRoll = 0, _sumCbm = 0;
+  items.forEach(it => {
+    _sumQty += parseFloat(it.QTSHPO || 0) || 0;
+    const _kg = parseFloat(it.KG_WEIGHT || 0);
+    _sumKg += _kg > 0 ? _kg : (Number(it.GRSWGT) > 0 ? Number(it.GRSWGT) : 0);
+    const _isRoll = _psopIsRoll((it.SKUKEY||'').trim()) || it.SKU_TYPE === 'roll';
+    if (_isRoll) {
+      const _rc = (it.ROLL_COUNT || 0) > 0 ? Number(it.ROLL_COUNT)
+                : ((it.UOMKEY||'').trim() === 'R' ? Math.round(parseFloat(it.QTSHPO||0)) : 0);
+      _sumRoll += _rc || 0;
+    }
+    const _c = it.ROLL_CBM != null ? Number(it.ROLL_CBM)
+             : (it.BOARD_CBM != null ? Number(it.BOARD_CBM) : 0);
+    _sumCbm += _c || 0;
+  });
+  const _fmt = n => (Math.round(n * 100) / 100).toLocaleString();
+  // 합계행: 납품문서/납품처명/품목코드/품목명(4열)은 '합계(N건)' 안내, 나머지는 각 합계.
+  const _sumRow = `<tr class="psop-vdoc-sum-row">
+      <td colspan="4" style="font-size:10px;font-weight:700;color:var(--text2);text-align:center">합계 (${items.length}건)</td>
+      <td class="num" style="font-size:10px;font-weight:700;color:var(--primary-navy)">${_fmt(_sumQty)}</td>
+      <td class="center" style="font-size:10px;color:var(--text3)">-</td>
+      <td class="center" style="font-size:10px;color:var(--text3)">-</td>
+      <td class="center" style="font-size:10px;color:var(--text3)">-</td>
+      <td class="num" style="font-size:10px;font-weight:700;color:var(--primary-navy)">${_fmt(_sumKg)}kg</td>
+      <td class="num" style="font-size:10px;font-weight:700;color:var(--primary)">${_sumRoll > 0 ? _fmt(_sumRoll) : '-'}</td>
+      <td class="num" style="font-size:10px;font-weight:700;color:var(--primary-navy)">${_sumCbm > 0 ? _sumCbm.toFixed(3) : '-'}</td>
+      <td class="center" style="font-size:10px;color:var(--text3)">-</td>
+      <td class="center" style="font-size:10px;color:var(--text3)">-</td>
+    </tr>`;
+
   const _vd = _psopBuildResizableHead(_psopVdocColDefs, _psopVdocColW, 'psop-vdoccol', '#psop-vdoc-tbl');
   area.innerHTML = `
     <table class="psd-sap-tbl psop-rz-tbl" id="psop-vdoc-tbl">
       ${_vd.colgroup}
       ${_vd.thead}
-      <tbody>${tbody}</tbody>
+      <tbody>${_sumRow}${tbody}</tbody>
     </table>`;
 }
 
