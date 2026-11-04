@@ -18146,13 +18146,16 @@ function _psopVehRenderDocs(pid) {
     const shpokyEsc = (it.SHPOKY||'').replace(/'/g,'&#39;');
     const shpoitEsc = (it.SHPOIT||'').replace(/'/g,'&#39;');
 
-    return `<tr draggable="true" style="cursor:grab"
+    return `<tr class="psop-vdoc-row" style="user-select:text"
       data-pid="${pid}" data-shpoky="${shpokyEsc}" data-shpoit="${shpoitEsc}"
-      title="드래그하거나 더블클릭하여 납품문서 목록으로 환원"
+      title="맨 앞 ⠿ 핸들을 드래그하면 납품문서 목록으로 환원 · 더블클릭으로도 환원 · 셀 내용은 마우스로 드래그하여 복사 가능"
       ondragstart="psopDragStartVehDocRow(event,'${pid}','${shpokyEsc}','${shpoitEsc}')"
       ondblclick="psopRemoveItemFromVehicleConfirm('${pid}','${shpokyEsc}','${shpoitEsc}')">
-      <td style="font-family:monospace;font-size:10px;white-space:nowrap" title="출하문서키(SHPOKY): ${it.SHPOKY||''}">
-        <span style="color:var(--text3);margin-right:4px;cursor:grab">⠿</span>${it.SVBELN||it.SHPOKY||'-'}
+      <td style="font-family:monospace;font-size:10px;white-space:nowrap;user-select:text" title="출하문서키(SHPOKY): ${it.SHPOKY||''}">
+        <span class="psop-vdoc-drag-handle" draggable="true"
+              style="color:var(--text3);margin-right:4px;cursor:grab;user-select:none;display:inline-block"
+              title="드래그하여 납품문서 목록으로 환원"
+              ondragstart="psopDragStartVehDocRow(event,'${pid}','${shpokyEsc}','${shpoitEsc}')">⠿</span>${it.SVBELN||it.SHPOKY||'-'}
       </td>
       <td style="font-size:10px;max-width:110px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${dptnm}">${dptnm}</td>
       <td style="font-size:10px;font-family:monospace;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${sk}">${sk||'-'}</td>
