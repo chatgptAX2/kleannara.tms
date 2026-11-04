@@ -265,22 +265,35 @@ input,select,textarea,button,table,th,td{
 body.lnb-collapsed{--lnb-edge:0px}
 
 /* 경계 화살표 버튼 — 평소 숨김(no pointer-events). body.lnb-edge-show 일 때만 등장.
-   경계선 '오른쪽 바깥'에 밀착 배치 → 스크롤바(경계 왼편)와 분리. */
+   ★[간섭방지 개선] 펼침 상태에서는 버튼을 경계선 '왼쪽 안쪽'(사이드바 끝단 안)으로
+     배치해 우측 콘텐츠(납품문서 목록 테이블의 체크박스 컬럼)와 물리적으로 겹치지
+     않게 한다. 접힘 상태에서만 화면 좌단 바깥(오른쪽)으로 돌출시킨다. */
 #lnb-edge-btn{
   position:fixed;top:50%;z-index:1191;
-  left:var(--lnb-edge);                        /* 경계선에 왼쪽 모서리 밀착 */
-  width:20px;height:48px;transform:translateY(-50%) translateX(-6px) scale(.7);
-  transform-origin:left center;
+  left:var(--lnb-edge);                        /* 경계선 X좌표 기준 */
+  width:20px;height:48px;
+  /* 펼침: 버튼 폭(20px)만큼 왼쪽으로 당겨 사이드바 안쪽에 밀착(콘텐츠 비침범) */
+  transform:translateY(-50%) translateX(calc(-100% - 6px)) scale(.7);
+  transform-origin:right center;
   display:flex;align-items:center;justify-content:center;
-  border:1px solid var(--lnb-border);border-radius:0 8px 8px 0;
-  border-left:none;
+  border:1px solid var(--lnb-border);border-radius:8px 0 0 8px;
+  border-right:none;
   background:var(--lnb-bg);color:var(--lnb-text);cursor:pointer;
-  font-size:12px;line-height:1;box-shadow:2px 2px 10px rgba(0,0,0,.35);
+  font-size:12px;line-height:1;box-shadow:-2px 2px 10px rgba(0,0,0,.35);
   opacity:0;pointer-events:none;
   transition:opacity .16s ease,transform .16s ease,left .22s ease,background .15s;
 }
+/* 접힘 상태(edge=0): 화면 좌단엔 사이드바가 없으므로 버튼을 '오른쪽 바깥'으로 돌출 */
+body.lnb-collapsed #lnb-edge-btn{
+  transform:translateY(-50%) translateX(6px) scale(.7);
+  transform-origin:left center;
+  border-radius:0 8px 8px 0;
+  border-right:1px solid var(--lnb-border);border-left:none;
+  box-shadow:2px 2px 10px rgba(0,0,0,.35);
+}
 /* JS 가 경계 근처 hover 를 감지하면 body.lnb-edge-show 부여 → 버튼 등장 */
-body.lnb-edge-show #lnb-edge-btn{opacity:1;pointer-events:auto;transform:translateY(-50%) translateX(0) scale(1)}
+body.lnb-edge-show #lnb-edge-btn{opacity:1;pointer-events:auto;transform:translateY(-50%) translateX(-100%) scale(1)}
+body.lnb-edge-show.lnb-collapsed #lnb-edge-btn{opacity:1;pointer-events:auto;transform:translateY(-50%) translateX(0) scale(1)}
 #lnb-edge-btn:hover{background:var(--lnb-active-bg);color:#fff}
 #sidebar-nav{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0;padding:6px 0}
 #sidebar-nav::-webkit-scrollbar{width:3px}
@@ -4524,12 +4537,13 @@ function toggleLnb() {
   });
 
   /* ── 경계 근처 hover 감지(pointermove) ──────────────────────────
-     hover 감지용 DOM 오버레이를 두지 않고, 마우스 X좌표가 경계선(edgeX)에서
-     콘텐츠(오른쪽) 방향으로 EDGE_HOT(14px) 이내일 때만 body.lnb-edge-show 부여.
-     · 콘텐츠 첫 열(체크박스)은 경계선에서 충분히 떨어져 있어 클릭 간섭 없음.
-     · 세로 위치 무관하게 감지하되, 버튼 자체 hover 는 CSS 로 유지.
-     · 접힘 상태(edgeX=0)는 화면 좌단 14px 로 펼치기 hotzone 제공. */
-  const EDGE_HOT = 14;
+     hover 감지용 DOM 오버레이를 두지 않고, 마우스 X좌표가 경계선(edgeX) 근처일
+     때만 body.lnb-edge-show 부여.
+     · ★[간섭방지 개선] 펼침 상태: 버튼이 경계선 '왼쪽 안쪽'(사이드바 내부)에
+       있으므로 감지 범위도 경계선 왼쪽 위주로 둔다 → 우측 콘텐츠(체크박스 컬럼)
+       위에서는 버튼이 뜨지 않아 클릭 간섭이 사라진다.
+     · 접힘 상태(edgeX=0): 화면 좌단 오른쪽 EDGE_HOT 로 펼치기 hotzone 제공. */
+  const EDGE_HOT = 20;   // 버튼 폭(20px) 기준 hotzone
   let _edgeHideTimer = null;
   document.addEventListener('pointermove', (e) => {
     const sb = document.getElementById('sidebar');
@@ -4538,9 +4552,11 @@ function toggleLnb() {
     const collapsed = sb.classList.contains('collapsed');
     const edgeX = collapsed ? 0 : sb.getBoundingClientRect().right;
     const x = e.clientX;
-    // 경계선 기준 [edgeX-2, edgeX+EDGE_HOT] 범위(오른쪽 위주)면 표시.
-    // 버튼 위(edgeX ~ edgeX+20)도 포함되어 버튼으로 자연스럽게 이동 가능.
-    const near = x >= (edgeX - 2) && x <= (edgeX + Math.max(EDGE_HOT, 20));
+    // 펼침: 경계선 왼쪽(사이드바 안쪽) [edgeX-EDGE_HOT, edgeX+2] 범위 → 콘텐츠 비침범.
+    // 접힘: 화면 좌단 오른쪽 [edgeX-2, edgeX+EDGE_HOT] 범위 → 펼치기 유도.
+    const near = collapsed
+      ? (x >= (edgeX - 2) && x <= (edgeX + EDGE_HOT))
+      : (x >= (edgeX - EDGE_HOT) && x <= (edgeX + 2));
     if (near) {
       if (_edgeHideTimer) { clearTimeout(_edgeHideTimer); _edgeHideTimer = null; }
       document.body.classList.add('lnb-edge-show');
