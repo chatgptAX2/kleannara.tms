@@ -17150,6 +17150,31 @@ async function psopSearch() {
     psopLoadVehicles();
     psopRenderDocTable();
     psopUpdateToolbar();
+
+    // ★ [배차상태 유지] 조회 결과 중 이미 '배차저장 완료'(DB에 STDLNR 부여)된
+    //   납품문서의 가선적번호를 수집해, 현재 선적목록에 없는 것은 서버에서 복원한다.
+    //   → 새로고침/창 닫고 재조회해도 배차저장~SAP선적 단계 배차가 유지됨.
+    //   (PS/HL 공통 — scope 무관하게 동일 동작. 사용자가 해제/삭제하지 않는 한 유지)
+    try {
+      const existNos = new Set(
+        psopState.vehicles.map(v => (v.STDLNR || v._origDispatchNo || '') + '').filter(Boolean)
+      );
+      const savedNos = [...new Set(
+        psopState.searchRows
+          .filter(r => r.IS_SAVED && r.STDLNR)
+          .map(r => String(r.STDLNR).trim())
+          .filter(Boolean)
+      )].filter(no => !existNos.has(no));
+      if (savedNos.length) {
+        // markAutoBySel=false → '저장 완료' 상태의 정식 배차로 복원(선택 해제 시에도 보존)
+        await psopReloadSavedVehicles(savedNos, /*markAutoBySel=*/false);
+        psopLoadVehicles();
+        psopRenderDocTable();
+        psopUpdateToolbar();
+      }
+    } catch (reErr) {
+      console.error('[psopSearch] 저장배차 자동 복원 실패(무시):', reErr);
+    }
   } catch(e) {
     const _cc2 = _psopGetColOrder().length;
     tbody.innerHTML = `<tr><td colspan="${_cc2}" style="color:var(--danger);text-align:center;padding:20px">❌ 조회 실패: ${e.message}</td></tr>`;
