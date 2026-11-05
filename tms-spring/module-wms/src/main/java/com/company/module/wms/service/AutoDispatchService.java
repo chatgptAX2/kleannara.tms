@@ -909,6 +909,70 @@ public class AutoDispatchService {
             }
         }
 
+        // ══════════════════════════════════════════════════════════════
+        //  [원지진단] 왜 N대로 쪼개졌는가? — 고정노선/단일납품처 원지 배차도
+        //  진단 가능하도록 빈패킹 결과를 로그로 남긴다(동적배차 외 케이스 포함).
+        //  · 소형차 다수 배차(예: 운지지류포장 1.4톤×5+3.5톤×2)의 원인이
+        //    '인치×평량별 차량 정원(DS_INCH MAX_COUNT)'인지, '중량 한도'인지,
+        //    '물량 자체 과다'인지를 수치로 확인할 수 있게 한다.
+        //  · bins.size()>=2 (분할 발생) 일 때만 출력하여 로그 과다 방지.
+        // ══════════════════════════════════════════════════════════════
+        try {
+            if (bins.size() >= 2 && log.isInfoEnabled()) {
+                String dptForLog = splitItems.isEmpty() ? "?" :
+                    (str(splitItems.get(0).get("DPTNM")).isEmpty()
+                        ? str(splitItems.get(0).get("DPTNKY"))
+                        : str(splitItems.get(0).get("DPTNM")));
+                // 전체 롤수/중량 합계
+                int    totalRollsAll = 0;
+                double totalKgAll    = 0.0;
+                // 인치×평량별 총 롤수 집계 (정원 대비 몇 대 필요한지 설명용)
+                Map<String, Integer> rollsByInchGrm = new LinkedHashMap<>();
+                for (Map<String, Object> it : splitItems) {
+                    String sk  = str(it.get("SKUKEY"));
+                    String ic  = getInch(sk);
+                    String gr  = getGrm(sk);
+                    int    rcx = itemRollCount(it, skumaMap, cp.rollSingleKg);
+                    totalRollsAll += rcx;
+                    totalKgAll    += itemRollKg(it, skumaMap, cp.rollSingleKg);
+                    rollsByInchGrm.merge(ic + "/" + gr + "평량", rcx, Integer::sum);
+                }
+                log.info("[원지진단①] 납품처 '{}' — 원지 총 {}롤 / 총중량 {}kg({}t) → 빈패킹 결과 차량 {}대로 분할",
+                        dptForLog, totalRollsAll, Math.round(totalKgAll),
+                        String.format("%.1f", totalKgAll / 1000.0), bins.size());
+                // 최대차(bigCar) 기준 인치×평량별 1대 정원(MAX_COUNT) 및 필요대수(정원기준)
+                final int rollTiersDiag = Math.max(1, cp.maxStack);
+                rollsByInchGrm.forEach((ig, rolls) -> {
+                    String inchKey = ig.startsWith("12") ? "12인치" : (ig.startsWith("3") ? "3인치" : "");
+                    String grmKey  = ig.replace("12인치/", "").replace("3인치/", "").replace("평량", "");
+                    int floorCap = "12인치".equals(inchKey) ? bI12.getOrDefault(grmKey, 0)
+                                 : "3인치".equals(inchKey)  ? bI3.getOrDefault(grmKey, 0) : 0;
+                    int stackCap = floorCap * rollTiersDiag;   // 다단 수용량 = 1단정원×단수
+                    String needTxt = stackCap > 0
+                        ? String.format("최대차 1대 정원 %d롤(1단%d롤×%d단) → 이 조합만으로 최소 %d대 필요",
+                                stackCap, floorCap, rollTiersDiag, (int)Math.ceil((double)rolls / stackCap))
+                        : "DS_INCH 정원 미등록(인치제약 없음, 중량/3D 기준 분할)";
+                    log.info("[원지진단②]   · {} : {}롤 — {}", ig, rolls, needTxt);
+                });
+                // 빈(차량)별 적재 현황
+                for (int bi = 0; bi < bins.size(); bi++) {
+                    RollBin bb = bins.get(bi);
+                    int bRolls = bb.items.stream()
+                        .filter(x -> isRoll(str(x.get("SKUKEY"))))
+                        .mapToInt(x -> itemRollCount(x, skumaMap, cp.rollSingleKg)).sum();
+                    double fillPct = bigCap > 0 ? bb.totalKg / bigCap * 100 : 0;
+                    log.info("[원지진단③]   빈#{} : {}롤 / {}kg (최대차대비 {}%) — 12인치{} 3인치{}",
+                            bi + 1, bRolls, Math.round(bb.totalKg),
+                            String.format("%.0f", fillPct), bb.v12, bb.v3);
+                }
+                log.info("[원지진단④] 판정 가이드 — 위 ②에서 '정원기준 필요대수'의 합이 실제 분할대수와 같으면 "
+                        + "인치×평량 정원(DS_INCH MAX_COUNT) 제약에 의한 불가피한 분할, "
+                        + "정원 미등록인데 분할됐다면 중량/3D(높이·바닥) 제약이 원인");
+            }
+        } catch (Exception diagEx) {
+            log.warn("[원지진단] 진단 로그 생성 중 예외(무시): {}", diagEx.getMessage());
+        }
+
         for (RollBin b : bins) {
             double vehKg = b.totalKg;
 
