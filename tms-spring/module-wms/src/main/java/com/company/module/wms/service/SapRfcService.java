@@ -1187,13 +1187,11 @@ public class SapRfcService {
                     //   와 동일 패턴(RECDI 최근입고 1건, LOTA 일치, STATIT='FRV')으로 정정.
                     //   로트 불일치 시 최신 입고 1건 폴백(없으면 0 → 프론트 fallback).
                     "  COALESCE(" +
-                    "    (SELECT rd.QTYRCV FROM KNRAWMS.RECDI rd " +
+                    "    (SELECT MAX(rd.QTYRCV) FROM KNRAWMS.RECDI rd " +
                     "      WHERE rd.SKUKEY = SI.SKUKEY AND rd.STATIT = 'FRV' " +
-                    "        AND rd.LOTA01 = SI.LOTA01 AND rd.LOTA02 = SI.LOTA02 " +
-                    "      ORDER BY rd.RECVKY DESC FETCH FIRST 1 ROW ONLY), " +
-                    "    (SELECT rd.QTYRCV FROM KNRAWMS.RECDI rd " +
-                    "      WHERE rd.SKUKEY = SI.SKUKEY AND rd.STATIT = 'FRV' " +
-                    "      ORDER BY rd.RECVKY DESC FETCH FIRST 1 ROW ONLY), " +
+                    "        AND rd.LOTA01 = SI.LOTA01 AND rd.LOTA02 = SI.LOTA02), " +
+                    "    (SELECT MAX(rd.QTYRCV) FROM KNRAWMS.RECDI rd " +
+                    "      WHERE rd.SKUKEY = SI.SKUKEY AND rd.STATIT = 'FRV'), " +
                     "    0) AS UNIT_WEIGHT, " +
                     "  SH.DPTNKY, COALESCE(CT.NAME01, SH.DPTNKY) AS DPTNM, " +
                     // ── 적재뷰(3D) 판지 단수 산출용 추가 필드 (출고예정정보 ShipmentService 동일 산식) ──
@@ -1204,13 +1202,11 @@ public class SapRfcService {
                     "             WHERE ME.WAREKY=SH.WAREKY AND ME.MEASKY=SI.MEASKY " +
                     "               AND ME.UOMKEY='SOK' AND ROWNUM=1), 0) AS SOK_PER_R, " +
                     "  CASE WHEN SI.SKUG05='10' THEN " +
-                    "       COALESCE((SELECT rd.QTYRCV FROM KNRAWMS.RECDI rd " +
+                    "       COALESCE((SELECT MAX(rd.QTYRCV) FROM KNRAWMS.RECDI rd " +
                     "                  WHERE rd.SKUKEY = SI.SKUKEY " +
                     "                    AND rd.STATIT = 'FRV' " +
                     "                    AND rd.LOTA01 = SI.LOTA01 " +
-                    "                    AND rd.LOTA02 = SI.LOTA02 " +
-                    "                  ORDER BY rd.RECVKY DESC " +
-                    "                  FETCH FIRST 1 ROW ONLY), 0) " +
+                    "                    AND rd.LOTA02 = SI.LOTA02), 0) " +
                     "       ELSE 0 END AS PLT_PER_UNIT, " +
                     // ── 적재뷰(3D) 판지 1단(1PLT) 높이 산출용 두께 (출고예정정보 '높이(cm)' 산식 동일) ──
                     //  · THICKNESS : TMS_THICKNESS 공통코드(CMCDV) CDESC1(µm).

@@ -174,13 +174,11 @@ public class PsDispatchService {
         //   RECDI 최근 입고 1건(LOTA01/LOTA02 일치, STATIT='FRV', RECVKY 최신).
         //   로트 불일치 시 최신 입고 1건으로 폴백(그래도 없으면 0 → 프론트 fallback).
         "       COALESCE(" +
-        "         (SELECT rd.QTYRCV FROM KNRAWMS.RECDI rd" +
+        "         (SELECT MAX(rd.QTYRCV) FROM KNRAWMS.RECDI rd" +
         "           WHERE rd.SKUKEY = i.SKUKEY AND rd.STATIT = 'FRV'" +
-        "             AND rd.LOTA01 = i.LOTA01 AND rd.LOTA02 = i.LOTA02" +
-        "           ORDER BY rd.RECVKY DESC FETCH FIRST 1 ROW ONLY)," +
-        "         (SELECT rd.QTYRCV FROM KNRAWMS.RECDI rd" +
-        "           WHERE rd.SKUKEY = i.SKUKEY AND rd.STATIT = 'FRV'" +
-        "           ORDER BY rd.RECVKY DESC FETCH FIRST 1 ROW ONLY)," +
+        "             AND rd.LOTA01 = i.LOTA01 AND rd.LOTA02 = i.LOTA02)," +
+        "         (SELECT MAX(rd.QTYRCV) FROM KNRAWMS.RECDI rd" +
+        "           WHERE rd.SKUKEY = i.SKUKEY AND rd.STATIT = 'FRV')," +
         "         0) AS UNIT_WEIGHT," +
         "       TRIM(COALESCE(i.SPOSNR,'')) AS SPOSNR," +
         // 연동구분: DESC02='OFFLINE'=미연동(테스트), 'ONLINE'=연동, 그 외/공백=기존
@@ -203,13 +201,11 @@ public class PsDispatchService {
         "                  WHERE ME.WAREKY=h.WAREKY AND ME.MEASKY=i.MEASKY" +
         "                    AND ME.UOMKEY='SOK' AND ROWNUM=1), 0) AS SOK_PER_R," +
         "       CASE WHEN i.SKUG05='10' THEN" +
-        "            COALESCE((SELECT rd.QTYRCV FROM KNRAWMS.RECDI rd" +
+        "            COALESCE((SELECT MAX(rd.QTYRCV) FROM KNRAWMS.RECDI rd" +
         "                       WHERE rd.SKUKEY = i.SKUKEY" +
         "                         AND rd.STATIT = 'FRV'" +
         "                         AND rd.LOTA01 = i.LOTA01" +
-        "                         AND rd.LOTA02 = i.LOTA02" +
-        "                       ORDER BY rd.RECVKY DESC" +
-        "                       FETCH FIRST 1 ROW ONLY), 0)" +
+        "                         AND rd.LOTA02 = i.LOTA02), 0)" +
         "            WHEN i.SKUG05='20' THEN" +
         "            COALESCE((SELECT CASE WHEN COALESCE(MBX.QTPUOM,0)=0 THEN 0" +
         "                                  ELSE MPA.QTPUOM / MBX.QTPUOM END" +
@@ -997,13 +993,13 @@ public class PsDispatchService {
                         //   배차확정 D(TMS_PS_DISPATCH_D)에는 LOTA 가 저장되지 않으므로
                         //   여기선 STATIT='FRV' 최신 입고(RECVKY DESC) 1건으로 결정적 선택
                         //   (searchDocs/sapItems 의 A안 로트조회와 동일 취지: 여러 롤 합산분 MAX 회피).
+                        // [자투리재고 과소평가 방지] 최신 입고 1건(RECVKY DESC, RN=1)은 자투리(잔여)
+                        //   입고 수량을 1롤 단중으로 오판할 수 있어 SKU별 MAX(QTYRCV)로 변경.
                         var recdiQ = em.createNativeQuery(
-                            "SELECT SKUKEY, QTYRCV FROM (" +
-                            "  SELECT rd.SKUKEY, COALESCE(rd.QTYRCV,0) AS QTYRCV," +
-                            "         ROW_NUMBER() OVER (PARTITION BY rd.SKUKEY ORDER BY rd.RECVKY DESC) AS RN" +
+                            "SELECT rd.SKUKEY, MAX(COALESCE(rd.QTYRCV,0)) AS QTYRCV" +
                             "  FROM KNRAWMS.RECDI rd" +
                             "  WHERE rd.STATIT='FRV' AND rd.SKUKEY IN (" + skPh + ")" +
-                            ") WHERE RN = 1"
+                            "  GROUP BY rd.SKUKEY"
                         );
                         int pi = 1;
                         for (String sk : chunk) recdiQ.setParameter(pi++, sk);
