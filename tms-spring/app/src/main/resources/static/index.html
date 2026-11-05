@@ -269,31 +269,28 @@ body.lnb-collapsed{--lnb-edge:0px}
      배치해 우측 콘텐츠(납품문서 목록 테이블의 체크박스 컬럼)와 물리적으로 겹치지
      않게 한다. 접힘 상태에서만 화면 좌단 바깥(오른쪽)으로 돌출시킨다. */
 #lnb-edge-btn{
-  position:fixed;top:50%;z-index:1191;
+  position:fixed;top:190px;z-index:1191;      /* ★ 데이터 행과 겹치지 않게 상단(검색조건 바 높이)으로 */
   left:var(--lnb-edge);                        /* 경계선 X좌표 기준 */
-  width:20px;height:48px;
-  /* 펼침: 버튼 폭(20px)만큼 왼쪽으로 당겨 사이드바 안쪽에 밀착(콘텐츠 비침범) */
-  transform:translateY(-50%) translateX(calc(-100% - 6px)) scale(.7);
-  transform-origin:right center;
+  width:18px;height:44px;
+  /* 펼침: 버튼 폭만큼 왼쪽으로 당겨 사이드바 안쪽에 밀착(콘텐츠 비침범) */
+  transform:translateX(-100%);
   display:flex;align-items:center;justify-content:center;
   border:1px solid var(--lnb-border);border-radius:8px 0 0 8px;
   border-right:none;
   background:var(--lnb-bg);color:var(--lnb-text);cursor:pointer;
-  font-size:12px;line-height:1;box-shadow:-2px 2px 10px rgba(0,0,0,.35);
+  font-size:11px;line-height:1;box-shadow:-2px 2px 10px rgba(0,0,0,.35);
   opacity:0;pointer-events:none;
   transition:opacity .16s ease,transform .16s ease,left .22s ease,background .15s;
 }
 /* 접힘 상태(edge=0): 화면 좌단엔 사이드바가 없으므로 버튼을 '오른쪽 바깥'으로 돌출 */
 body.lnb-collapsed #lnb-edge-btn{
-  transform:translateY(-50%) translateX(6px) scale(.7);
-  transform-origin:left center;
+  transform:translateX(0);
   border-radius:0 8px 8px 0;
   border-right:1px solid var(--lnb-border);border-left:none;
   box-shadow:2px 2px 10px rgba(0,0,0,.35);
 }
-/* JS 가 경계 근처 hover 를 감지하면 body.lnb-edge-show 부여 → 버튼 등장 */
-body.lnb-edge-show #lnb-edge-btn{opacity:1;pointer-events:auto;transform:translateY(-50%) translateX(-100%) scale(1)}
-body.lnb-edge-show.lnb-collapsed #lnb-edge-btn{opacity:1;pointer-events:auto;transform:translateY(-50%) translateX(0) scale(1)}
+/* JS 가 경계 근처 hover 를 감지하면 body.lnb-edge-show 부여 → 버튼 등장(위치는 그대로) */
+body.lnb-edge-show #lnb-edge-btn{opacity:1;pointer-events:auto}
 #lnb-edge-btn:hover{background:var(--lnb-active-bg);color:#fff}
 #sidebar-nav{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0;padding:6px 0}
 #sidebar-nav::-webkit-scrollbar{width:3px}
