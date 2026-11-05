@@ -17367,6 +17367,8 @@ function psopRenderDocTable(filterText) {
       draggable="true"
       ondragstart="psopDragStartDoc(event,'${r.SHPOKY}','${r.SHPOIT}')"
       ondragend="psopDragEndDoc(event)"
+      onmousedown="psopRowDragSelDown('${key}',event)"
+      onmouseenter="psopDragSelEnter('${key}',event)"
       onclick="psopToggleDocSel('${key}',event)"
       ondblclick="psopOpenSplitForRow('${r.SHPOKY}','${r.SHPOIT}')">${tds}</tr>`;
   }).join('');
@@ -17619,6 +17621,24 @@ function psopDragSelStart(key, ev) {
   t.pending  = true;                             // '대기' — 이동하면 드래그로 승격
   t.startKey = key;
   t.mode     = !psopState.selectedDocs.has(key); // 시작행 반전값으로 모드 예약
+  t.touched  = null;
+}
+/* ★ 행(tr) 어디서든 mousedown → 드래그선택 '대기' 시작.
+   요청: 체크박스뿐 아니라 행 전체를 드래그하여 선택/해제할 수 있게 한다.
+   단, 아래 요소에서 시작한 경우는 제외(기존 기능 보존):
+   · 링크/버튼/입력(체크박스 등): 각자 동작 유지
+   · 컬럼 리사이저(.col-rz), 링크 배지(.psop-split-badge 등)
+   체크박스 셀의 onmousedown(psopDragSelStart)과 중복 호출돼도
+   동일 key 로 pending 재설정만 되어 무해하다. */
+function psopRowDragSelDown(key, ev) {
+  if (ev.button !== 0) return;                   // 좌클릭만
+  const tg = ev.target;
+  if (tg.closest('a,button,input,select,textarea,.col-rz,.col-resizer')) return;
+  const t = psopState._dragSel;
+  t.active   = false;
+  t.pending  = true;
+  t.startKey = key;
+  t.mode     = !psopState.selectedDocs.has(key);
   t.touched  = null;
 }
 /* 드래그 진행: 다른 행 체크박스 셀 진입 시 */
@@ -19100,6 +19120,11 @@ function psopRefreshVehicleSelection() {
 ═══════════════════════════════════════════════════ */
 /* 우측 납품문서 → 드래그 시작 */
 function psopDragStartDoc(ev, shpoky, shpoit) {
+  // ★ [체크 드래그선택 우선] 체크/해제용 드래그선택이 대기/활성 중이면
+  //   브라우저 네이티브 행-드래그(차량 이동)를 막아 드래그 체크/해제가 동작하게 한다.
+  if (psopState._dragSel && (psopState._dragSel.pending || psopState._dragSel.active)) {
+    ev.preventDefault(); return;
+  }
   // 텍스트를 드래그 선택 중이면 항목 드래그 취소 (Ctrl+C 복사 목적)
   const sel = window.getSelection ? window.getSelection().toString() : '';
   if (sel && sel.length > 0) { ev.preventDefault(); return; }
