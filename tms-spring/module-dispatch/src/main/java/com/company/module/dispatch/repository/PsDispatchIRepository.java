@@ -37,12 +37,12 @@ public interface PsDispatchIRepository extends JpaRepository<PsDispatchI, Long> 
                COALESCE(rd.QTYRCV,  0) AS UNIT_WEIGHT
         FROM KNRAWMS.TMS_PS_DISPATCH_D d
         LEFT JOIN (
-            SELECT SKUKEY, QTYRCV FROM (
-                SELECT r.SKUKEY, r.QTYRCV,
-                       ROW_NUMBER() OVER (PARTITION BY r.SKUKEY ORDER BY r.RECVKY DESC) AS RN
-                FROM KNRAWMS.RECDI r
-                WHERE r.STATIT = 'FRV'
-            ) WHERE RN = 1
+            -- [자투리재고 과소평가 방지] 최신 입고 1건(RECVKY DESC, RN=1)은 자투리(잔여)
+            --   입고 수량을 1롤 단중으로 오판할 수 있어 SKU별 MAX(QTYRCV)로 변경.
+            SELECT r.SKUKEY, MAX(r.QTYRCV) AS QTYRCV
+            FROM KNRAWMS.RECDI r
+            WHERE r.STATIT = 'FRV'
+            GROUP BY r.SKUKEY
         ) rd ON rd.SKUKEY = d.SKUKEY
         WHERE d.DISPATCH_NO = :dispatchNo
         ORDER BY d.SEQ
