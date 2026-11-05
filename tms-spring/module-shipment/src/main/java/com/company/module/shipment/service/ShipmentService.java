@@ -119,13 +119,11 @@ public class ShipmentService {
         //    - BOX 환산계수가 0/NULL 이면 0 반환(나눗셈 방어)
         //  · 그 외: 0
         "    CASE WHEN SI.SKUG05='10' THEN" +
-        "         COALESCE((SELECT rd.QTYRCV FROM KNRAWMS.RECDI rd" +
+        "         COALESCE((SELECT MAX(rd.QTYRCV) FROM KNRAWMS.RECDI rd" +
         "                    WHERE rd.SKUKEY = SI.SKUKEY" +
         "                      AND rd.STATIT = 'FRV'" +
         "                      AND rd.LOTA01 = SI.LOTA01" +
-        "                      AND rd.LOTA02 = SI.LOTA02" +
-        "                    ORDER BY rd.RECVKY DESC" +
-        "                    FETCH FIRST 1 ROW ONLY), 0)" +
+        "                      AND rd.LOTA02 = SI.LOTA02), 0)" +
         "         WHEN SI.SKUG05='20' THEN" +
         "         COALESCE((SELECT CASE WHEN COALESCE(MBX.QTPUOM,0)=0 THEN 0" +
         "                               ELSE MPA.QTPUOM / MBX.QTPUOM END" +
