@@ -940,6 +940,12 @@ public class AutoDispatchService {
                 log.info("[원지진단①] 납품처 '{}' — 원지 총 {}롤 / 총중량 {}kg({}t) → 빈패킹 결과 차량 {}대로 분할",
                         dptForLog, totalRollsAll, Math.round(totalKgAll),
                         String.format("%.1f", totalKgAll / 1000.0), bins.size());
+                // 납품처 최대톤수(MAX_TON) 제약 적용 현황 — 한도 초과 배차 발생 여부 추적용
+                log.info("[원지진단①-MAX_TON] 납품처 최대톤수 라벨='{}' 한도={}kg / 최대차(bigCar)='{}' {}kg{}",
+                        pi.maxTonLabel, Math.round(pi.maxLoadKg), bigCar, Math.round(bigCap),
+                        (pi.maxLoadKg > 0 && bigCap > pi.maxLoadKg)
+                            ? " ⚠️ 후보필터 폴백 가능성(한도 이하 차량 미존재 시 상한 무시)"
+                            : "");
                 // 최대차(bigCar) 기준 인치×평량별 1대 정원(MAX_COUNT) 및 필요대수(정원기준)
                 final int rollTiersDiag = Math.max(1, cp.maxStack);
                 rollsByInchGrm.forEach((ig, rolls) -> {
@@ -1043,6 +1049,10 @@ public class AutoDispatchService {
                     for (Map<String, Object> c : carOrder) {
                         String ct = str(c.get("CARTYPE"));
                         if (sortKey(ct, carOrder) >= sortKey(vehCar, carOrder)) continue;
+                        // ★ [납품처 최대톤수 준수] 업그레이드 후보가 납품처 MAX_TON(maxLoadKg)
+                        //   한도를 초과하면 제외 — 한도 초과 차량으로 업그레이드되던 버그 수정.
+                        if (pi.maxLoadKg > 0
+                            && vehInfo.getOrDefault(ct, VehInfo.EMPTY).loadKg > pi.maxLoadKg) continue;
                         if (rollEffH(ct, pi.forkliftYn, vehInfo, cp) >= stackH) {
                             notes.add("[높이업그레이드] " + vehCar + "→" + ct);
                             vehCar = ct; upgraded = true; break;
@@ -1076,6 +1086,10 @@ public class AutoDispatchService {
                 for (Map<String, Object> c : carOrder) {
                     String ct = str(c.get("CARTYPE"));
                     if (sortKey(ct, carOrder) >= sortKey(vehCar, carOrder)) continue;
+                    // ★ [납품처 최대톤수 준수] MAX_TON(maxLoadKg) 한도 초과 차량으로
+                    //   3D 업그레이드되던 버그 수정 — 한도 초과 후보 제외.
+                    if (pi.maxLoadKg > 0
+                        && vehInfo.getOrDefault(ct, VehInfo.EMPTY).loadKg > pi.maxLoadKg) continue;
                     VehInfo cvi = vehInfo.getOrDefault(ct, VehInfo.EMPTY);
                     RollPhysics3D rp3dUp = verifyRolls3D(b.items, skumaMap, cvi, cp, inchMaps, ct);
                     if (rp3dUp.fits) {
@@ -1378,6 +1392,10 @@ public class AutoDispatchService {
                 for (Map<String, Object> c : carOrder) {
                     String ct = str(c.get("CARTYPE"));
                     if (sortKey(ct, carOrder) >= sortKey(vehCar, carOrder)) continue;
+                    // ★ [납품처 최대톤수 준수] MAX_TON(maxLoadKg) 한도 초과 차량으로
+                    //   3D 업그레이드되던 버그 수정 — 한도 초과 후보 제외.
+                    if (pi.maxLoadKg > 0
+                        && vehInfo.getOrDefault(ct, VehInfo.EMPTY).loadKg > pi.maxLoadKg) continue;
                     VehInfo cvi = vehInfo.getOrDefault(ct, VehInfo.EMPTY);
                     BoardPhysics3D bp3dUp = verifyBoards3D(vb.items, skumaMap, cvi, cp);
                     if (bp3dUp.fits) {
