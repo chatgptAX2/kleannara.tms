@@ -979,6 +979,64 @@ public class AutoDispatchService {
             log.warn("[원지진단] 진단 로그 생성 중 예외(무시): {}", diagEx.getMessage());
         }
 
+        // ══════════════════════════════════════════════════════════════
+        //  [A안] 빈(차량) 통합 후처리 — 같은 동적그룹/납품처 내 원지끼리도 통합 시도
+        //  ──────────────────────────────────────────────────────────────
+        //  문제: FFD 빈패킹은 각 빈을 독립적으로 채워, 소량 원지가 별도 빈(→ 소형차)
+        //    으로 남는 경우가 있다(예: 동적그룹 _DYN_470299 의 1.4톤 단독 배차).
+        //  개선: 빈패킹 결과를 돌며 '작은 빈'을 '다른 빈'에 통째로 합칠 수 있으면
+        //    (= 합친 뒤에도 중량 한도 bigCap + 인치×평량 정원 MAX_COUNT 를 모두 만족)
+        //    병합한다. 이는 기존 canFitRollBin 과 동일한 물리 제약만 사용하므로
+        //    과적/정원초과를 유발하지 않는다(3D 높이·바닥 검증은 이후 기존 차량선정
+        //    루프가 빈별로 그대로 수행 → 불가 시 업그레이드/차단, 안전성 유지).
+        //  ※ 기존 고정노선 단일납품처도 동일하게 '합칠 수 있으면 합치는' 방향이라
+        //    적재율이 오르거나 그대로이며, 분할대수가 늘지는 않는다(PS 무영향).
+        // ══════════════════════════════════════════════════════════════
+        try {
+            if (bins.size() >= 2) {
+                int mergedCount = 0;
+                // 작은 빈(뒤쪽, 적재량 적음)부터 다른 빈에 흡수 시도 → 소형차 잔여빈 제거
+                bins.sort(Comparator.comparingDouble((RollBin b) -> b.totalKg)); // 적은 것부터
+                for (int si = 0; si < bins.size(); si++) {
+                    RollBin small = bins.get(si);
+                    if (small == null || small.items.isEmpty()) continue;
+                    // 흡수 대상(target): 자기 자신 제외, 적재량 큰 빈부터 시도(큰 빈에 합쳐 잔여빈 소멸)
+                    RollBin target = null;
+                    double bestTargetKg = -1;
+                    for (int ti = 0; ti < bins.size(); ti++) {
+                        if (ti == si) continue;
+                        RollBin cand = bins.get(ti);
+                        if (cand == null || cand.items.isEmpty()) continue;
+                        // small 의 '모든 롤'을 cand 에 넣을 수 있는지(중량+인치×평량 정원) 검사
+                        if (canAbsorbRollBin(cand, small, bigCap, bI12, bI3)) {
+                            if (cand.totalKg > bestTargetKg) { bestTargetKg = cand.totalKg; target = cand; }
+                        }
+                    }
+                    if (target != null) {
+                        // 병합: small 의 롤을 target 으로 이동
+                        for (Map<String, Object> it : small.items) {
+                            String sk = str(it.get("SKUKEY"));
+                            String inch = getInch(sk), grm = getGrm(sk);
+                            int rc = itemRollCount(it, skumaMap, cp.rollSingleKg);
+                            target.items.add(it);
+                            target.totalKg += itemRollKg(it, skumaMap, cp.rollSingleKg);
+                            if ("12인치".equals(inch)) target.v12.merge(grm, rc, Integer::sum);
+                            else if ("3인치".equals(inch)) target.v3.merge(grm, rc, Integer::sum);
+                        }
+                        small.items.clear(); small.totalKg = 0;
+                        mergedCount++;
+                    }
+                }
+                if (mergedCount > 0) {
+                    bins.removeIf(b -> b == null || b.items.isEmpty());
+                    log.info("[원지통합] {}개 빈을 더 큰 차량으로 통합 → 최종 차량 {}대 (소형차 과분할 완화, 중량/인치×평량 정원 내 안전 통합)",
+                             mergedCount, bins.size());
+                }
+            }
+        } catch (Exception mgEx) {
+            log.warn("[원지통합] 빈 통합 후처리 중 예외(무시, 기존 분할 유지): {}", mgEx.getMessage());
+        }
+
         for (RollBin b : bins) {
             double vehKg = b.totalKg;
 
@@ -2805,6 +2863,30 @@ public class AutoDispatchService {
         } else if ("3인치".equals(inch)) {
             int mc = bI3.getOrDefault(grm, 0);
             if (mc > 0 && b.v3.getOrDefault(grm, 0) + rc > mc) return false;
+        }
+        return true;
+    }
+
+    /**
+     * [A안 빈 통합용] 작은 빈(src)의 '모든 롤'을 대상 빈(dst)에 통째로 흡수할 수 있는지 검사.
+     *  canFitRollBin 과 동일한 물리 제약만 사용한다:
+     *   ① 합산중량(dst.totalKg + src.totalKg) ≤ 최대차 한도(bigCap)
+     *   ② 인치×평량별 정원(MAX_COUNT): dst + src 의 각 (인치,평량) 롤수 합이 1대 정원 이내
+     *  → 과적/정원초과를 유발하지 않음(3D 높이·바닥 검증은 이후 차량선정 루프가 수행).
+     */
+    private boolean canAbsorbRollBin(RollBin dst, RollBin src, double bigCap,
+                                     Map<String, Integer> bI12, Map<String, Integer> bI3) {
+        // ① 중량
+        if (dst.totalKg + src.totalKg > bigCap) return false;
+        // ② 12인치 평량별 정원
+        for (Map.Entry<String, Integer> e : src.v12.entrySet()) {
+            int mc = bI12.getOrDefault(e.getKey(), 0);
+            if (mc > 0 && dst.v12.getOrDefault(e.getKey(), 0) + e.getValue() > mc) return false;
+        }
+        // ② 3인치 평량별 정원
+        for (Map.Entry<String, Integer> e : src.v3.entrySet()) {
+            int mc = bI3.getOrDefault(e.getKey(), 0);
+            if (mc > 0 && dst.v3.getOrDefault(e.getKey(), 0) + e.getValue() > mc) return false;
         }
         return true;
     }
