@@ -521,6 +521,23 @@ public class AutoDispatchService {
             v.computeIfAbsent("cbm_fill",    k -> 0.0);
         }
 
+        // ══════════════════════════════════════════════════════════════
+        //  [고정차량 매칭] 자동배차 "결과"에 고정차량(VHCMA.FIX_YN='Y')을 후처리로 배정.
+        //  ──────────────────────────────────────────────────────────────
+        //  ★ 자동배차 엔진/제약조건은 전혀 수정하지 않는다(배차 대수·톤수·적재율 불변).
+        //    결과로 선정된 각 차량의 톤수(cartype)에 맞는 고정차량 차량번호를 '라벨링'만 한다.
+        //  · 대상: VHCMA FIX_YN='Y' AND USE_YN='Y' AND DEL_YN<>'Y' AND 제품군(scope) 일치
+        //  · 매칭 기준: 차종(CARTYPE=톤수) 동일.
+        //  · 우선순위: (같은 톤수 후보가 여러 대면) 제품군 일치 → 출하지점 일치 → 등록순.
+        //  · 1:1 소진(한 차량번호는 한 결과차량에만) → 중복 배정 방지.
+        //  · 매칭 실패 시 vehicle_no 공란(기존과 동일, 무영향).
+        // ══════════════════════════════════════════════════════════════
+        try {
+            applyFixedVehicles(allVehicles, scope);
+        } catch (Exception fvEx) {
+            log.warn("[고정차량매칭] 후처리 중 예외(무시, 배차결과 영향 없음): {}", fvEx.getMessage());
+        }
+
         // 요약 통계
         double totalCost = allVehicles.stream()
             .mapToDouble(v -> dbl(v.get("route_cost"))).sum();
@@ -2316,6 +2333,97 @@ public class AutoDispatchService {
         // 최종 폴백: 기본 최대톤수(18톤) 한도 — 0으로 두면 진입제한이 전면 무시되므로 방지
         double def = vehInfo.getOrDefault(DEFAULT_MAX_TON_LABEL, VehInfo.EMPTY).loadKg;
         return def;   // vehInfo에 18톤도 없으면 0 (이 경우만 제한 미적용)
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  [고정차량 매칭] 자동배차 결과 후처리 — 엔진/제약조건 무수정
+    // ════════════════════════════════════════════════════════════════
+    /**
+     * 자동배차 결과 차량목록(allVehicles)에, 차량관리(VHCMA)에서 고정차량(FIX_YN='Y')으로
+     * 등록된 차량의 차량번호를 '톤수(CARTYPE) 매칭'으로 1:1 배정한다.
+     *
+     * <p>★ 배차 엔진/제약조건은 전혀 변경하지 않는다. 이미 확정된 결과 차량의
+     *   선정 톤수(cartype)에 맞는 고정차량 번호를 라벨링(vehicle_no/fix_yn)만 추가한다.
+     *   → 배차 대수·톤수·적재율 등 배차 결과 자체는 불변(PS/HL 무영향).</p>
+     *
+     * <p>매칭 우선순위(같은 톤수 후보가 여러 대일 때):
+     *   ① 제품군(scope: PS=10 / HL=20) 일치 → ② 출하지점(SHIP_POINT) 일치 → ③ 등록순.
+     *   한 차량번호는 한 결과차량에만 배정(소진). 매칭 실패 시 vehicle_no 공란.</p>
+     */
+    private void applyFixedVehicles(List<Map<String, Object>> allVehicles, String scope) {
+        if (allVehicles == null || allVehicles.isEmpty()) return;
+
+        // 제품군 코드: HL='20', PS(기본)='10'
+        String pgCode = "HL".equalsIgnoreCase(scope) ? "20" : "10";
+
+        // ── VHCMA 고정차량 조회 (FIX_YN='Y', 사용중, 미삭제, 제품군 일치) ──
+        //   CARTYPE(톤수 라벨) 기준으로 매칭. 등록순(CREDAT/CRETIM) 정렬 → 우선순위 ③.
+        List<Map<String, Object>> fixedCars;
+        try {
+            fixedCars = wmsJdbc.queryForList(
+                "SELECT VEHICLE_NO, CARTYPE, SHIP_POINT, PRODUCT_GROUP " +
+                "FROM KNRAWMS.VHCMA " +
+                "WHERE NVL(FIX_YN,'N')='Y' AND NVL(USE_YN,'Y')='Y' AND NVL(DEL_YN,'N')<>'Y' " +
+                "  AND TRIM(COALESCE(PRODUCT_GROUP,'')) = ? " +
+                "  AND TRIM(COALESCE(CARTYPE,'')) <> '' " +
+                "ORDER BY NVL(CREDAT,'99999999'), NVL(CRETIM,'999999'), VEHICLE_NO",
+                pgCode);
+        } catch (Exception e) {
+            log.warn("[고정차량매칭] VHCMA 조회 실패(무시): {}", e.getMessage());
+            return;
+        }
+        if (fixedCars.isEmpty()) {
+            log.info("[고정차량매칭] 제품군 {} 고정차량(FIX_YN=Y) 없음 — 매칭 생략", pgCode);
+            return;
+        }
+
+        // 톤수(CARTYPE) → 후보 차량번호 큐 (등록순). 소진 방식으로 1:1 배정.
+        //   value: [ {VEHICLE_NO, SHIP_POINT} ... ]
+        Map<String, Deque<Map<String, String>>> byCartype = new HashMap<>();
+        for (Map<String, Object> fc : fixedCars) {
+            String ct = str(fc.get("CARTYPE")).trim();
+            if (ct.isEmpty()) continue;
+            Map<String, String> info = new HashMap<>();
+            info.put("VEHICLE_NO", str(fc.get("VEHICLE_NO")).trim());
+            info.put("SHIP_POINT", str(fc.get("SHIP_POINT")).trim());
+            byCartype.computeIfAbsent(ct, k -> new ArrayDeque<>()).addLast(info);
+        }
+
+        // 결과 차량에 톤수 일치 고정차량 배정 (우선순위 ②: 출하지점 일치 먼저 소진)
+        int matched = 0;
+        for (Map<String, Object> v : allVehicles) {
+            // 기본값(미배정) 세팅 — 프론트 컬럼 표시용
+            v.putIfAbsent("vehicle_no", "");
+            v.putIfAbsent("fix_yn", "N");
+
+            String ct = str(v.get("cartype")).trim();
+            if (ct.isEmpty()) continue;
+            Deque<Map<String, String>> q = byCartype.get(ct);
+            if (q == null || q.isEmpty()) continue;
+
+            // 결과 차량의 출하지점(있으면) — 현재 결과 vrow에는 출하지점이 없을 수 있어
+            //   wareky 계열 키를 방어적으로 조회(없으면 "").
+            String vWareky = str(v.getOrDefault("wareky",
+                             v.getOrDefault("ship_point", v.getOrDefault("WAREKY", "")))).trim();
+
+            // 우선순위 ②: 출하지점 일치 후보를 먼저 찾고, 없으면 큐 선두(등록순) 사용.
+            Map<String, String> pick = null;
+            if (!vWareky.isEmpty()) {
+                for (Iterator<Map<String, String>> it = q.iterator(); it.hasNext(); ) {
+                    Map<String, String> cand = it.next();
+                    if (vWareky.equals(cand.get("SHIP_POINT"))) { pick = cand; it.remove(); break; }
+                }
+            }
+            if (pick == null) pick = q.pollFirst();   // 등록순 선두
+
+            if (pick != null) {
+                v.put("vehicle_no", pick.get("VEHICLE_NO"));
+                v.put("fix_yn", "Y");
+                matched++;
+            }
+        }
+        log.info("[고정차량매칭] 제품군 {} — 고정차량 {}대 중 결과차량 {}대에 배정 완료",
+                 pgCode, fixedCars.size(), matched);
     }
 
     // ════════════════════════════════════════════════════════════════
