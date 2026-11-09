@@ -53,13 +53,28 @@ public class ShipAnalysisService {
         "WHERE SI.STKNUM IS NOT NULL AND TRIM(SI.STKNUM) <> '' " +
         "  AND SH.RQSHPD >= ? AND SH.RQSHPD <= ? ";
 
+    /**
+     * 제품군(scope) 필터 SQL 조각 — SAP_DONE_WHERE 뒤에 덧붙인다.
+     *  · "PS"/"10" → 판지(SKUG05='10'), "HL"/"20" → 생활(SKUG05='20'),
+     *    그 외("ALL"/빈값/미지원) → 전체(필터 없음).
+     *  FROM 절이 TMS_SHPDI(SI) 를 포함하므로 SI.SKUG05 를 직접 조건에 사용(바인딩 없음).
+     */
+    private static String scopeFilter(String scope) {
+        String s = scope == null ? "" : scope.trim().toUpperCase();
+        switch (s) {
+            case "PS": case "10": return "  AND TRIM(COALESCE(SI.SKUG05,'')) = '10' ";
+            case "HL": case "20": return "  AND TRIM(COALESCE(SI.SKUG05,'')) = '20' ";
+            default:              return "";   // ALL/빈값/미지원 → 전체
+        }
+    }
+
     /** 라인 중량(KG) 식 — QTSHPO × NETWGT(단중). */
     private static final String LINE_KG = "SI.QTSHPO * COALESCE(M.NETWGT, 0)";
 
     // ══════════════════════════════════════════════════════════════
     //  1. 요약 KPI (SAP 전송완료 출고 기준)
     // ══════════════════════════════════════════════════════════════
-    public Map<String, Object> getSummary(String dateFrom, String dateTo) {
+    public Map<String, Object> getSummary(String dateFrom, String dateTo, String scope) {
         String[] r = resolveRange(dateFrom, dateTo, 30);
         String sql =
             "SELECT " +
@@ -69,7 +84,7 @@ public class ShipAnalysisService {
             "  COUNT(DISTINCT SH.RQSHPD) AS DAY_CNT, " +           // 출고 일수
             "  ROUND(SUM(" + LINE_KG + ")/1000, 1) AS TOTAL_TON, " + // 총 출고중량(톤)
             "  ROUND(SUM(SI.QTSHPO), 0) AS TOTAL_QTY " +           // 총 출고수량
-            BASE_FROM + SAP_DONE_WHERE;
+            BASE_FROM + SAP_DONE_WHERE + scopeFilter(scope);
         Map<String, Object> row = safeQueryForMap(sql, r[0], r[1]);
 
         long shipmentCnt = toLong(row.get("SHIPMENT_CNT"));
@@ -93,8 +108,9 @@ public class ShipAnalysisService {
     // ══════════════════════════════════════════════════════════════
     //  2. 집계 — 지역별 / 톤수별 / 일자별 / 출하유형별
     // ══════════════════════════════════════════════════════════════
-    public Map<String, Object> getAggregates(String dateFrom, String dateTo) {
+    public Map<String, Object> getAggregates(String dateFrom, String dateTo, String scope) {
         String[] r = resolveRange(dateFrom, dateTo, 30);
+        String scopeF = scopeFilter(scope);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("rangeFrom", r[0]);
         out.put("rangeTo",   r[1]);
@@ -104,7 +120,7 @@ public class ShipAnalysisService {
             "SELECT NVL(SUBSTR(SH.DPTNKY,1,2),'기타') AS REGION, " +
             "  COUNT(DISTINCT SI.STKNUM) AS SHIP_CNT, " +
             "  ROUND(SUM(" + LINE_KG + ")/1000, 1) AS TON " +
-            BASE_FROM + SAP_DONE_WHERE +
+            BASE_FROM + SAP_DONE_WHERE + scopeF +
             "GROUP BY NVL(SUBSTR(SH.DPTNKY,1,2),'기타') ORDER BY TON DESC";
         out.put("region", safeQueryList(regionSql, r[0], r[1]));
 
@@ -113,7 +129,7 @@ public class ShipAnalysisService {
             "SELECT NVL(PH.CARTYPE,'미지정') AS CARTYPE, " +
             "  COUNT(DISTINCT SI.STKNUM) AS SHIP_CNT, " +
             "  ROUND(SUM(" + LINE_KG + ")/1000, 1) AS TON " +
-            BASE_FROM + SAP_DONE_WHERE +
+            BASE_FROM + SAP_DONE_WHERE + scopeF +
             "GROUP BY NVL(PH.CARTYPE,'미지정') ORDER BY TON DESC";
         out.put("cartype", safeQueryList(cartypeSql, r[0], r[1]));
 
@@ -122,7 +138,7 @@ public class ShipAnalysisService {
             "SELECT SH.RQSHPD AS RQSHPD, " +
             "  COUNT(DISTINCT SI.STKNUM) AS SHIP_CNT, " +
             "  ROUND(SUM(" + LINE_KG + ")/1000, 1) AS TON " +
-            BASE_FROM + SAP_DONE_WHERE +
+            BASE_FROM + SAP_DONE_WHERE + scopeF +
             "GROUP BY SH.RQSHPD ORDER BY SH.RQSHPD";
         out.put("daily", normalizeDaily(safeQueryList(dailySql, r[0], r[1]), r[0], r[1]));
 
@@ -131,7 +147,7 @@ public class ShipAnalysisService {
             "SELECT NVL(SH.SHPMTY,'기타') AS SHPMTY, " +
             "  COUNT(DISTINCT SI.STKNUM) AS SHIP_CNT, " +
             "  ROUND(SUM(" + LINE_KG + ")/1000, 1) AS TON " +
-            BASE_FROM + SAP_DONE_WHERE +
+            BASE_FROM + SAP_DONE_WHERE + scopeF +
             "GROUP BY NVL(SH.SHPMTY,'기타') ORDER BY TON DESC";
         out.put("shpmty", safeQueryList(shpmtySql, r[0], r[1]));
 
@@ -141,8 +157,9 @@ public class ShipAnalysisService {
     // ══════════════════════════════════════════════════════════════
     //  3. 예측(디지털 트윈) — 빈도 분석 + 이동평균 기반 다음날 출고량 예측
     // ══════════════════════════════════════════════════════════════
-    public Map<String, Object> getForecast(String dateFrom, String dateTo) {
+    public Map<String, Object> getForecast(String dateFrom, String dateTo, String scope) {
         String[] r = resolveRange(dateFrom, dateTo, 30);
+        String scopeF = scopeFilter(scope);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("rangeFrom", r[0]);
         out.put("rangeTo",   r[1]);
@@ -152,7 +169,7 @@ public class ShipAnalysisService {
             "SELECT NVL(PH.CARTYPE,'미지정') AS CARTYPE, " +
             "  COUNT(DISTINCT SI.STKNUM) AS SHIP_CNT, " +
             "  ROUND(SUM(" + LINE_KG + ")/1000, 1) AS TON " +
-            BASE_FROM + SAP_DONE_WHERE +
+            BASE_FROM + SAP_DONE_WHERE + scopeF +
             "GROUP BY NVL(PH.CARTYPE,'미지정') ORDER BY SHIP_CNT DESC";
         out.put("vehicleFreq", safeQueryList(carFreqSql, r[0], r[1]));
 
@@ -162,7 +179,7 @@ public class ShipAnalysisService {
             "  SELECT SI.SKUKEY AS SKUKEY, MAX(SI.DESC01) AS DESC01, " +
             "    COUNT(*) AS LINE_CNT, ROUND(SUM(SI.QTSHPO),0) AS QTY, " +
             "    ROUND(SUM(" + LINE_KG + ")/1000, 1) AS TON " +
-            BASE_FROM + SAP_DONE_WHERE +
+            BASE_FROM + SAP_DONE_WHERE + scopeF +
             "  GROUP BY SI.SKUKEY ORDER BY LINE_CNT DESC " +
             ") WHERE ROWNUM <= 15";
         out.put("itemFreq", safeQueryList(itemFreqSql, r[0], r[1]));
@@ -174,7 +191,7 @@ public class ShipAnalysisService {
             "  SELECT SH.RQSHPD AS RQSHPD, " +
             "    TO_CHAR(TO_DATE(SH.RQSHPD,'YYYYMMDD'),'D') AS DOW, " +
             "    SUM(" + LINE_KG + ")/1000 AS TON " +
-            BASE_FROM + SAP_DONE_WHERE +
+            BASE_FROM + SAP_DONE_WHERE + scopeF +
             "  GROUP BY SH.RQSHPD, TO_CHAR(TO_DATE(SH.RQSHPD,'YYYYMMDD'),'D') " +
             ") GROUP BY DOW ORDER BY DOW";
         out.put("dowAvg", safeQueryList(dowSql, r[0], r[1]));
@@ -182,7 +199,7 @@ public class ShipAnalysisService {
         // ── 일자별 출고량(톤) 시계열 → 이동평균 예측 ──
         String dailySql =
             "SELECT SH.RQSHPD AS RQSHPD, ROUND(SUM(" + LINE_KG + ")/1000,1) AS TON " +
-            BASE_FROM + SAP_DONE_WHERE +
+            BASE_FROM + SAP_DONE_WHERE + scopeF +
             "GROUP BY SH.RQSHPD ORDER BY SH.RQSHPD";
         List<Map<String, Object>> daily = normalizeDaily(safeQueryList(dailySql, r[0], r[1]), r[0], r[1]);
         out.put("daily", daily);
