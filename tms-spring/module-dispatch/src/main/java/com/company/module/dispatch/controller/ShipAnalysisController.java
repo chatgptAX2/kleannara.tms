@@ -31,24 +31,27 @@ public class ShipAnalysisController {
     @GetMapping("/summary")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getSummary(
             @RequestParam(required = false) String dateFrom,
-            @RequestParam(required = false) String dateTo) {
+            @RequestParam(required = false) String dateTo,
+            @RequestParam(required = false) String scope) {
         return ResponseEntity.ok(ApiResponse.success(
-                shipAnalysisService.getSummary(dateFrom, dateTo)));
+                shipAnalysisService.getSummary(dateFrom, dateTo, scope)));
     }
 
     @GetMapping("/aggregate")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getAggregate(
             @RequestParam(required = false) String dateFrom,
-            @RequestParam(required = false) String dateTo) {
+            @RequestParam(required = false) String dateTo,
+            @RequestParam(required = false) String scope) {
         return ResponseEntity.ok(ApiResponse.success(
-                shipAnalysisService.getAggregates(dateFrom, dateTo)));
+                shipAnalysisService.getAggregates(dateFrom, dateTo, scope)));
     }
 
     @GetMapping("/forecast")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getForecast(
             @RequestParam(required = false) String dateFrom,
-            @RequestParam(required = false) String dateTo) {
+            @RequestParam(required = false) String dateTo,
+            @RequestParam(required = false) String scope) {
         return ResponseEntity.ok(ApiResponse.success(
-                shipAnalysisService.getForecast(dateFrom, dateTo)));
+                shipAnalysisService.getForecast(dateFrom, dateTo, scope)));
     }
 }

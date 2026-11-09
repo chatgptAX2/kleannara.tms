@@ -780,6 +780,11 @@ body.dc-dragging{user-select:none !important;-webkit-user-select:none !important
    ══════════════════════════════════════════════════════════════════ */
 .sa-quick{padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer}
 .sa-quick:hover{border-color:var(--primary);color:var(--primary)}
+/* 제품군(PS/HL/전체) 세그먼트 토글 */
+.sa-scope-btn{padding:4px 12px;border:none;background:var(--surface2);color:var(--text2);font-size:11px;font-weight:700;cursor:pointer;border-right:1px solid var(--border)}
+.sa-scope-btn:last-child{border-right:none}
+.sa-scope-btn:hover{color:var(--primary)}
+.sa-scope-btn.active{background:var(--primary);color:#06243a}
 .sa-kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
 @media (max-width:1100px){.sa-kpi-row{grid-template-columns:repeat(2,1fr)}}
 .sa-kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow-sm);position:relative;overflow:hidden}
@@ -29566,7 +29571,7 @@ const DM = {
    · 백엔드: /api/ship-analysis/{summary,aggregate,forecast}
    · 차트: Chart.js(이미 전역 로드됨). 테마 변수(var(--*)) 기반으로 다크/라이트 자동.
    ═══════════════════════════════════════════════════════════════════ */
-const _saState = { dateFrom:null, dateTo:null };
+const _saState = { dateFrom:null, dateTo:null, scope:'ALL' };   // scope: ALL|PS|HL
 const _saCharts = {};   // Chart.js 인스턴스 캐시(destroy 용)
 /* 차트/배지 공통 팔레트 */
 const _SA_PALETTE = ['#38bdf8','#34d399','#fbbf24','#f87171','#a78bfa','#f472b6','#2dd4bf','#fb923c','#60a5fa','#4ade80','#facc15','#c084fc'];
@@ -29608,6 +29613,14 @@ function renderShipAnalysis() {
     <input type="date" id="sa-date-from" value="${_saState.dateFrom}" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--input-bg);color:var(--text);font-size:12px">
     <span style="color:var(--text3);font-size:11px">~</span>
     <input type="date" id="sa-date-to" value="${_saState.dateTo}" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--input-bg);color:var(--text);font-size:12px">
+    <!-- 제품군(PS/HL/전체) 구분 토글 -->
+    <span style="width:1px;height:18px;background:var(--border);margin:0 4px"></span>
+    <label style="font-size:11px;font-weight:700;color:var(--text2)">제품군</label>
+    <div id="sa-scope-toggle" style="display:inline-flex;border:1px solid var(--border);border-radius:7px;overflow:hidden">
+      <button type="button" class="sa-scope-btn" data-scope="ALL" onclick="_saSetScope('ALL')">전체</button>
+      <button type="button" class="sa-scope-btn" data-scope="PS" onclick="_saSetScope('PS')">PS(판지)</button>
+      <button type="button" class="sa-scope-btn" data-scope="HL" onclick="_saSetScope('HL')">HL(생활)</button>
+    </div>
     <button onclick="_saRefresh()" style="padding:5px 14px;border:none;border-radius:7px;background:var(--primary);color:#06243a;font-weight:800;font-size:12px;cursor:pointer">🔍 조회</button>
     <button onclick="_saQuick(7)" class="sa-quick">최근 7일</button>
     <button onclick="_saQuick(30)" class="sa-quick">최근 30일</button>
@@ -29681,13 +29694,29 @@ function _saQuick(days){
   _saRefresh();
 }
 
+/* 제품군(PS/HL/전체) 토글 — 버튼 활성표시 갱신 후 재조회 */
+function _saSetScope(scope){
+  _saState.scope = scope || 'ALL';
+  _saSyncScopeBtns();
+  _saRefresh();
+}
+/* 스코프 버튼 활성 스타일 동기화 */
+function _saSyncScopeBtns(){
+  document.querySelectorAll('#sa-scope-toggle .sa-scope-btn').forEach(b => {
+    const on = (b.dataset.scope === (_saState.scope || 'ALL'));
+    b.classList.toggle('active', on);
+  });
+}
+
 function _saRefresh(){
   const fe=document.getElementById('sa-date-from'), te=document.getElementById('sa-date-to');
   if(fe) _saState.dateFrom=fe.value; if(te) _saState.dateTo=te.value;
+  _saSyncScopeBtns();
   const status=document.getElementById('sa-load-status');
   if (typeof Chart === 'undefined'){ if(status) status.textContent='⚠️ Chart.js 로드 대기 중…'; setTimeout(_saRefresh,300); return; }
   if(status) status.textContent='⏳ 조회 중…';
-  const qs = `dateFrom=${encodeURIComponent(_saState.dateFrom)}&dateTo=${encodeURIComponent(_saState.dateTo)}`;
+  const scopeParam = (_saState.scope && _saState.scope !== 'ALL') ? `&scope=${encodeURIComponent(_saState.scope)}` : '';
+  const qs = `dateFrom=${encodeURIComponent(_saState.dateFrom)}&dateTo=${encodeURIComponent(_saState.dateTo)}${scopeParam}`;
   Promise.all([
     fetch(`/api/ship-analysis/summary?${qs}`).then(r=>r.json()).catch(()=>null),
     fetch(`/api/ship-analysis/aggregate?${qs}`).then(r=>r.json()).catch(()=>null),
