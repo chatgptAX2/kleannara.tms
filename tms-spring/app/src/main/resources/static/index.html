@@ -6882,11 +6882,36 @@ const dlvState = {
   mode: 'new',
   sortCol: 'PTNRKY', sortDir: 'ASC',
   colOrder: null,   // null = 기본순서, 드래그 변경 시 배열로 저장
+  initialized: false,   // ★ 최초 1회 조회 완료 여부 (탭 재진입 시 재조회 방지)
+  cachedRows: null,     // ★ 직전 조회 결과 캐시(행 배열) — 재진입 시 재렌더용
 };
 
 async function renderDelivery() {
   const c = document.getElementById('content');
   c.style.overflowY = 'hidden';
+
+  // ★ [조회 유지] 이미 1회 조회를 마쳤고(= initialized) 캐시된 결과가 있으면,
+  //   공통코드 재로드·서버 재조회(searchDelivery) 없이 UI 를 다시 그린 뒤
+  //   캐시된 행으로 재렌더한다. (화면탭 이동 후 재진입 시 기존 조회 유지)
+  //   ※ 공통코드(dlvState.codes)는 최초 로드분을 그대로 재사용.
+  if (dlvState.initialized && Array.isArray(dlvState.cachedRows)) {
+    buildDeliveryUI();
+    // 검색조건 입력값 복원(저장돼 있으면) — UI 재생성 후 값만 되돌림
+    try {
+      const sv = dlvState.searchInputs || {};
+      const elV = document.getElementById('dlv-s-vstel');   if (elV && sv.vstel  != null) elV.value = sv.vstel;
+      const elS = document.getElementById('dlv-s-skug05');  if (elS && sv.skug05 != null) elS.value = sv.skug05;
+      const elP = document.getElementById('dlv-s-ptnrky');  if (elP && sv.ptnrky != null) elP.value = sv.ptnrky;
+    } catch (e) {}
+    const normalized = {
+      total: dlvState.total, page: dlvState.page, size: dlvState.size,
+      pages: 1, rows: dlvState.cachedRows
+    };
+    renderDeliveryList(normalized);
+    renderDlvPagination(normalized);
+    return;
+  }
+
   c.innerHTML = `<div class="loading"><div class="spinner"></div>공통코드 로딩 중...</div>`;
 
   // 공통코드 병렬 로드
@@ -7549,6 +7574,15 @@ async function searchDelivery(page) {
   const normalized = { total, page: pgNum, size: pgSz, pages, rows };
   renderDeliveryList(normalized);
   renderDlvPagination(normalized);
+
+  // ★ [조회 유지] 조회 완료 결과/검색조건을 캐시 → 탭 재진입 시 재조회 없이 복원
+  dlvState.initialized = true;
+  dlvState.cachedRows  = rows;
+  dlvState.searchInputs = {
+    vstel:  document.getElementById('dlv-s-vstel')?.value  ?? '',
+    skug05: document.getElementById('dlv-s-skug05')?.value ?? '',
+    ptnrky: document.getElementById('dlv-s-ptnrky')?.value ?? '',
+  };
 }
 
 function renderDeliveryList(data) {
