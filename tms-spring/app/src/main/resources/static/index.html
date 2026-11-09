@@ -5556,6 +5556,8 @@ const _psopVehColDefs = [
   { id:'stdlnr', label:'가선적번호', w:118 },
   { id:'method', label:'배차방법',   w:78  },
   { id:'cartype',label:'차량유형',   w:72  },
+  { id:'carno',  label:'차량번호',   w:90  },   // 고정차량 매칭 결과(VHCMA FIX_YN=Y)
+  { id:'fixyn',  label:'고정차량',   w:62  },   // 고정차량 여부(Y/N)
   { id:'dptnm',  label:'납품처',     w:100 },
   { id:'rqshpd', label:'납품일',     w:68  },
   { id:'loadkg', label:'적재가능',   w:72  },
@@ -5929,6 +5931,7 @@ const _sapLeftColDefs = [
   { id:'dptnky',  label:'납품처',        w:120 },
   { id:'cartype', label:'차량유형',      w:58  },
   { id:'carno',   label:'차량번호',      w:88  },
+  { id:'fixyn',   label:'고정차량',      w:62  },
   { id:'driver',  label:'기사명',        w:66  },
   { id:'drivercel',label:'연락처',       w:96  },
   { id:'qtshpo',  label:'납품수량',      w:78  },
@@ -14931,6 +14934,9 @@ async function _sapRenderLeft() {
       dptnky:   `<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dptnCell}</td>`,
       cartype:  `<td class="center"><span class="psd-car-badge" title="${carclassCd}">${carDisp}</span></td>`,
       carno:    `<td class="center">${carnoCell}</td>`,
+      fixyn:    `<td class="center">${String(r.FIX_YN||'').toUpperCase()==='Y'
+                  ? '<span style="display:inline-block;font-size:9px;font-weight:700;color:#b45309;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;padding:1px 6px">고정</span>'
+                  : '<span style="color:var(--text3);font-size:10px">-</span>'}</td>`,
       driver:   `<td style="white-space:nowrap">${driver}</td>`,
       drivercel:`<td style="white-space:nowrap">${drvcel}</td>`,
       qtshpo:   `<td class="num" style="white-space:nowrap">${qtyTxt}</td>`,
@@ -18109,6 +18115,16 @@ function psopRenderVehicleArea() {
         </div>
       </div>`;
 
+    // 고정차량 매칭 결과 (자동배차 후처리로 부여된 vehicle_no/fix_yn)
+    const _carno  = v.vehicle_no || v.VEHICLE_NO || v.carno || v.CARNO || '';
+    const _isFix  = String(v.fix_yn || v.FIX_YN || 'N').toUpperCase() === 'Y';
+    const carnoCell = _carno
+      ? `<span style="font-size:10px;font-weight:600;color:var(--text)">${_carno}</span>`
+      : `<span style="color:var(--text3);font-size:10px">-</span>`;
+    const fixCell = _isFix
+      ? `<span style="display:inline-block;font-size:9px;font-weight:700;color:#b45309;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;padding:1px 6px">고정</span>`
+      : `<span style="color:var(--text3);font-size:10px">-</span>`;
+
     return `<tr class="${selCls}" data-pid="${pid}" onclick="_psopVehSelectRow('${pid}',event)"
               ondragover="psopVehicleCardDragOver(event,'${pid}')"
               ondragleave="psopVehicleCardDragLeave(event,'${pid}')"
@@ -18121,6 +18137,8 @@ function psopRenderVehicleArea() {
       <td style="padding:4px 4px">
         <span class="psd-car-badge ${ccls}" style="font-size:10px">🚛 ${cartype}</span>
       </td>
+      <td style="padding:4px 4px;text-align:center;white-space:nowrap">${carnoCell}</td>
+      <td style="padding:4px 4px;text-align:center;white-space:nowrap">${fixCell}</td>
       <td style="padding:4px 6px;font-size:10px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:120px" title="${dptnm}">${dptnm}</td>
       <td style="padding:4px 4px;text-align:center;font-size:10px;white-space:nowrap;color:var(--primary);font-weight:600">${psopFmtDate(v.rqshpd||v.RQSHPD)||'-'}</td>
       <td class="num" style="padding:4px 4px;font-size:10px;white-space:nowrap">${loadTxt}</td>
