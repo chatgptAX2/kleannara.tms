@@ -20461,6 +20461,11 @@ function psopSaveAutoResult(vehicles, autoMeta) {
   if (dispStatEl && dispStatEl.value === 'undispatched') {
     dispStatEl.value = 'all';
   }
+  // ★[문제3 수정] 미리보기 '저장'으로 배차탭에 올라온 미저장(pending) 배차를
+  //   localStorage 에 즉시 영속화한다. 이게 없으면 새로고침 시 pending 배차가
+  //   복원할 데이터가 없어 전부 미배차로 초기화되는 문제가 있었다.
+  //   (STDLNR=null 인 pending 만 저장 — _psopSavePendingState 내부 필터)
+  _psopSavePendingState();
   psopLoadVehicles();
   psopRenderDocTable();
   psopUpdateToolbar();
