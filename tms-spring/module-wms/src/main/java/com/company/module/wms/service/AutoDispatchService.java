@@ -2373,7 +2373,27 @@ public class AutoDispatchService {
             return;
         }
         if (fixedCars.isEmpty()) {
-            log.info("[고정차량매칭] 제품군 {} 고정차량(FIX_YN=Y) 없음 — 매칭 생략", pgCode);
+            // [고정차량진단①] 제품군(PRODUCT_GROUP) 조건에서 0건 → PRODUCT_GROUP 값이 '10'/'20'이
+            //   아닐 가능성(예: 'PS','판지',공백). 제품군 무시 전체 고정차량을 추가 조회해 실제
+            //   PRODUCT_GROUP/CARTYPE 저장값을 로그로 노출(원인 특정용). ★ 매칭 로직엔 영향 없음.
+            try {
+                List<Map<String, Object>> anyFixed = wmsJdbc.queryForList(
+                    "SELECT VEHICLE_NO, CARTYPE, SHIP_POINT, PRODUCT_GROUP, FIX_YN, USE_YN, DEL_YN " +
+                    "FROM KNRAWMS.VHCMA WHERE NVL(FIX_YN,'N')='Y'");
+                StringBuilder sb = new StringBuilder();
+                for (Map<String, Object> fc : anyFixed) {
+                    sb.append(String.format("{차량=%s, 톤수='%s', 제품군='%s', 출하지='%s', USE=%s, DEL=%s} ",
+                        str(fc.get("VEHICLE_NO")), str(fc.get("CARTYPE")), str(fc.get("PRODUCT_GROUP")),
+                        str(fc.get("SHIP_POINT")), str(fc.get("USE_YN")), str(fc.get("DEL_YN"))));
+                }
+                log.warn("[고정차량진단①] 제품군='{}'(PS=10/HL=20) 조건으로 조회된 고정차량 0건. "
+                       + "FIX_YN='Y' 전체 고정차량(제품군무시) {}대 실제값 → {} "
+                       + "(제품군 코드가 10/20 이 아니면 매칭 불가)",
+                       pgCode, anyFixed.size(), sb.length() == 0 ? "(없음)" : sb.toString());
+            } catch (Exception diagEx) {
+                log.info("[고정차량매칭] 제품군 {} 고정차량(FIX_YN=Y) 없음 — 매칭 생략 (진단조회 실패: {})",
+                         pgCode, diagEx.getMessage());
+            }
             return;
         }
 
@@ -2388,9 +2408,17 @@ public class AutoDispatchService {
             info.put("SHIP_POINT", str(fc.get("SHIP_POINT")).trim());
             byCartype.computeIfAbsent(ct, k -> new ArrayDeque<>()).addLast(info);
         }
+        // [고정차량진단②] 고정차량 톤수(CARTYPE) 분포 — 결과차량 톤수와 문자열 정확히 일치해야 매칭됨.
+        log.info("[고정차량진단②] 제품군 {} 고정차량 {}대 톤수(CARTYPE)별 후보: {}",
+                 pgCode, fixedCars.size(),
+                 byCartype.entrySet().stream()
+                     .map(e -> "'" + e.getKey() + "'×" + e.getValue().size())
+                     .collect(Collectors.joining(", ")));
 
         // 결과 차량에 톤수 일치 고정차량 배정 (우선순위 ②: 출하지점 일치 먼저 소진)
         int matched = 0;
+        Set<String> resultCartypes = new LinkedHashSet<>();   // [진단③] 결과차량 톤수 분포
+        Set<String> noMatchCartypes = new LinkedHashSet<>();  // [진단③] 고정차량 후보가 없던 톤수
         for (Map<String, Object> v : allVehicles) {
             // 기본값(미배정) 세팅 — 프론트 컬럼 표시용
             v.putIfAbsent("vehicle_no", "");
@@ -2398,8 +2426,9 @@ public class AutoDispatchService {
 
             String ct = str(v.get("cartype")).trim();
             if (ct.isEmpty()) continue;
+            resultCartypes.add(ct);
             Deque<Map<String, String>> q = byCartype.get(ct);
-            if (q == null || q.isEmpty()) continue;
+            if (q == null || q.isEmpty()) { noMatchCartypes.add(ct); continue; }
 
             // 결과 차량의 출하지점(있으면) — 현재 결과 vrow에는 출하지점이 없을 수 있어
             //   wareky 계열 키를 방어적으로 조회(없으면 "").
@@ -2424,6 +2453,17 @@ public class AutoDispatchService {
         }
         log.info("[고정차량매칭] 제품군 {} — 고정차량 {}대 중 결과차량 {}대에 배정 완료",
                  pgCode, fixedCars.size(), matched);
+        // [고정차량진단③] 배정 0건인데 고정차량은 있었다면 → 톤수(CARTYPE) 문자열 불일치가 원인.
+        //   결과차량 톤수 vs 고정차량 톤수를 나란히 로그로 노출(예: 결과 '18톤' vs 고정 '18톤 ' 공백차이).
+        if (matched == 0 && !fixedCars.isEmpty()) {
+            log.warn("[고정차량진단③] 제품군 {} 고정차량 {}대 존재하나 배정 0건 → 톤수(CARTYPE) 불일치 의심. "
+                   + "결과차량 톤수={}, 고정차량 톤수={}, 매칭실패 결과톤수={} "
+                   + "(양쪽 톤수 문자열이 정확히 같아야 매칭됨)",
+                   pgCode, fixedCars.size(),
+                   resultCartypes.stream().map(s -> "'" + s + "'").collect(Collectors.joining(",")),
+                   byCartype.keySet().stream().map(s -> "'" + s + "'").collect(Collectors.joining(",")),
+                   noMatchCartypes.stream().map(s -> "'" + s + "'").collect(Collectors.joining(",")));
+        }
     }
 
     // ════════════════════════════════════════════════════════════════
