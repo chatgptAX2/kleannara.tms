@@ -17145,45 +17145,18 @@ async function renderPsDispatchOpt(scope) {
   psopState.initialized = true;
 
   // localStorage에서 pending vehicles 복원 (새로고침/재접속 후에도 유지)
+  //   ※ 복원만 하고 화면에는 즉시 반영하지 않는다. (조회 전에는 선적목록/납품문서를
+  //     띄우지 않는 것이 원칙 — 조회 시 psopSearch 에서 '조회한 날짜에 해당하는'
+  //     pending 만 필터링해 함께 표시한다.)
   const _restoredCnt = _psopRestorePendingState();
-
-  // 기존 배차 목록 로드 (+ 복원된 pending vehicles 포함 렌더)
-  await psopLoadVehicles();
-  // thead 초기 생성 (조회 전에도 컬럼 헤더가 보이도록)
-  psopRenderDocTable();
-
-  // ★[문제3 수정] 새로고침 후 pending(미저장) 배차가 복원됐는데도 좌측 납품문서 목록이
-  //   비어 '미배차로 초기화된 것처럼' 보이던 문제 해결.
-  //   원인: 진입 시 자동 조회를 하지 않아 searchRows 가 비어, 복원된 pending 배차의
-  //   items 가 납품문서 목록에 매칭·표시될 기준 데이터(searchRows)가 없었음.
-  //   → 복원된 pending 배차가 있으면, 그 배차의 납품요청일(rqshpd)을 검색조건에 세팅하고
-  //     자동으로 1회 조회하여 납품문서 목록 + 배차내역이 함께 복원되게 한다.
-  //   (복원분이 없으면 기존처럼 자동 조회하지 않음 — 조회 버튼 클릭 시에만 실행)
   if (_restoredCnt > 0) {
-    try {
-      // 복원된 pending 배차 중 납품요청일(rqshpd)을 검색 날짜 범위로 세팅
-      const _rqshpds = (psopState.vehicles || [])
-        .filter(v => !v.STDLNR && v.rqshpd)
-        .map(v => String(v.rqshpd).replace(/-/g, '').trim())
-        .filter(Boolean)
-        .sort();
-      if (_rqshpds.length) {
-        const _toYmd = s => (s && s.length === 8)
-          ? `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}` : s;
-        const fromEl = document.getElementById('psop-date-from');
-        const toEl   = document.getElementById('psop-date-to');
-        if (fromEl) fromEl.value = _toYmd(_rqshpds[0]);
-        if (toEl)   toEl.value   = _toYmd(_rqshpds[_rqshpds.length - 1]);
-      }
-      showToast(`📦 이전 배차 작업 ${_restoredCnt}건 복원 — 납품문서 목록을 자동 조회합니다.`);
-      // 자동 조회 1회 실행 → searchRows 채우고 pending 배차 items 를 배차완료로 재동기화
-      await psopSearch();
-    } catch (reErr) {
-      console.warn('[psopInit] pending 복원 후 자동조회 실패(무시):', reErr);
-      showToast(`📦 이전 배차 작업 ${_restoredCnt}건이 복원되었습니다. 조회 후 확인하세요.`);
-    }
+    showToast(`📦 이전 배차 작업 ${_restoredCnt}건이 복원되었습니다. 해당 납품일로 조회하세요.`);
   }
-  // 복원분 없음 → 자동 조회 제거(기존 동작): 조회 버튼 클릭 시에만 실행
+
+  // thead 초기 생성 (조회 전에도 컬럼 헤더가 보이도록) — 조회 전에는 목록 비움
+  psopRenderDocTable();
+  // ※ 자동 조회하지 않음 — 조회 버튼 클릭 시에만 실행(조회 전 화면은 비어 있어야 함).
+  //   조회 시 psopSearch 가 날짜조건에 맞는 pending 배차만 선적목록에 반영한다.
 }
 
 /* ── 조회 ─────────────────────────────────────────── */
@@ -17221,9 +17194,29 @@ async function psopSearch() {
     /* ApiResponse 래퍼 처리: { success, code, message, data: [...] } */
     const rows = (json && json.data != null) ? json.data : (json.rows || json);
     psopState.searchRows = Array.isArray(rows) ? rows : [];
+
+    // ★[문제3 수정] 조회한 '납품일 범위' 밖의 pending(미저장) 배차는 이번 조회 화면에서 제외한다.
+    //   원인: pending 배차는 psopState.vehicles 에 전역 유지되는데, 날짜를 바꿔 조회해도
+    //   이전 날짜의 pending 배차가 선적목록/납품문서에 계속 섞여 보이던 문제가 있었다.
+    //   → 조회 날짜(dateFrom~dateTo)에 해당하는 pending 배차만 남기고, 범위 밖 pending 은
+    //     psopState.vehicles 에서 제거한다. (STDLNR 이 있는 저장완료 배차는 보존 — 저장분은 유지)
+    //   ※ localStorage(pending 원본)는 건드리지 않으므로, 해당 날짜로 다시 조회하면 복원된다.
+    const _ymd = s => String(s || '').replace(/-/g, '').trim();
+    const _df = _ymd(dateFrom), _dt = _ymd(dateTo);
+    if (_df || _dt) {
+      psopState.vehicles = psopState.vehicles.filter(v => {
+        if (v.STDLNR) return true;                     // 저장완료 배차는 항상 보존
+        const vr = _ymd(v.rqshpd);
+        if (!vr) return true;                          // 날짜 없는 pending 은 보존(판단 불가)
+        if (_df && vr < _df) return false;             // 조회 시작일 이전 → 제외
+        if (_dt && vr > _dt) return false;             // 조회 종료일 이후 → 제외
+        return true;                                   // 조회 범위 내 pending → 유지
+      });
+    }
+
     // 인메모리 vehicles의 items → DISPATCHED 강제 true 재설정
     // (서버는 TMS_SHPDI.STDLNR='' 인 미저장/pending 배차를 항상 DISPATCHED=false 로 반환하기 때문)
-    // ★ localStorage에서 복원된 pending vehicles도 포함
+    // ★ localStorage에서 복원된 pending vehicles도 포함 (단, 위에서 날짜 범위로 필터링됨)
     // ★ IS_SAVED=true인 row는 서버 값 우선 — pending vehicle만 DISPATCHED=true 처리
     psopState.vehicles.forEach(v => {
       const isPending = !v.STDLNR; // STDLNR 없으면 미저장(pending) 배차
