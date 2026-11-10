@@ -91,6 +91,11 @@ public class PsDispatchSaveRequest {
         private String cartype;       // 차종명 (예: 5톤, 18톤)
         @JsonAlias({"carclass_cd", "CARCLASS_CD", "CARCLASSCD"})
         private String carclassCd;    // 차종코드 (예: Z010)
+        // [PR-B 고정차량 저장] 자동배차 후처리(applyFixedVehicles)로 매칭된 차량번호(VHCMA.VEHICLE_NO).
+        //   배차저장 시 TMS_SHPDH.CARNO 에 기록 → 배차확정탭에서 이 CARNO 로 VHCMA 를 조인해
+        //   고정차량 여부(FIX_YN)를 조회한다. 값이 없으면(수기배차 등) 기존처럼 공백 저장(무영향).
+        @JsonAlias({"vehicle_no", "VEHICLE_NO", "carno", "CARNO"})
+        private String vehicleNo;     // 차량번호 (고정차량 매칭 결과)
 
         private Double totalKg;
         @JsonSetter("totalKg")

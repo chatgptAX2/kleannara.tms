@@ -225,12 +225,21 @@ public class PsDispatchService {
         //   그 외 제품군(판지'10' 등 PS)은 NULL → 기존 PS 배차 조회/데이터 무영향.
         "       CASE WHEN TRIM(COALESCE(i.SKUG05,''))='20'" +
         "            THEN TRIM(KNRAWMS.SZF_GET_CONVERT_QTY(h.WAREKY, i.SKUKEY, i.QTYORG, i.UOMKEY, 'PAL'))" +
-        "            ELSE NULL END AS ORD_PLTQTY" +
+        "            ELSE NULL END AS ORD_PLTQTY," +
+        // ── [PR-B 고정차량 조회] 차량번호(TMS_SHPDH.CARNO) 및 고정차량 여부(VHCMA.FIX_YN) ──
+        //   배차저장 시 TMS_SHPDH.CARNO 에 기록한 차량번호로 VHCMA 를 LEFT JOIN 하여
+        //   고정차량 여부(FIX_YN)를 함께 가져온다. CARNO 가 공백(수기배차 등)이면 조인 대상이
+        //   없어 FIX_YN 은 공백 → 기존 동작과 동일(무영향). ★ SELECT 맨 끝 배치(인덱스 밀림 방지)
+        //     · r[26]=CARNO, r[27]=FIX_YN
+        "       TRIM(COALESCE(h.CARNO,'')) AS CARNO," +
+        "       TRIM(COALESCE(vh.FIX_YN,'')) AS FIX_YN" +
         " FROM KNRAWMS.TMS_SHPDI i" +
         " JOIN KNRAWMS.TMS_SHPDH h ON i.SHPOKY = h.SHPOKY" +
         " LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY = h.DPTNKY AND b.PTNRTY = 'CT'" +
         " LEFT JOIN KNRAWMS.CMCDV c ON c.CMCDKY = 'TASOTY' AND c.CMCDVL = h.SHPMTY" +
-        " LEFT JOIN KNRAWMS.SKUMA m ON m.SKUKEY = i.SKUKEY";
+        " LEFT JOIN KNRAWMS.SKUMA m ON m.SKUKEY = i.SKUKEY" +
+        " LEFT JOIN KNRAWMS.VHCMA vh ON TRIM(vh.VEHICLE_NO) = TRIM(h.CARNO)" +
+        "       AND TRIM(COALESCE(h.CARNO,'')) <> ''";
 
     private static final String SEARCH_DOCS_ORDER_BY =
         " ORDER BY h.RQSHPD, h.DPTNKY, i.SHPOKY, i.SHPOIT";
@@ -444,6 +453,8 @@ public class PsDispatchService {
                 .lota03(str(r[15]))
                 .isSplit(str(r[0]).contains("-S"))   // 분할문서 여부
                 .linkYn(str(r[18]))                  // 연동구분(DESC02): 'OFFLINE'=미연동, 'ONLINE'=연동
+                .carno(str(r[26]))                   // [PR-B] 차량번호(TMS_SHPDH.CARNO)
+                .fixYn(str(r[27]))                   // [PR-B] 고정차량 여부(VHCMA.FIX_YN)
                 .build());
         }
         return result;
@@ -709,15 +720,22 @@ public class PsDispatchService {
             //   걸려 있어 NULL 을 세팅하면 ORA-01407 이 발생한다.
             //   → NVL(?, ' ') / 리터럴 ' ' 로 NULL 을 공백 1칸으로 치환하여 제약 위반을 방지한다.
             if (!shpokySet.isEmpty()) {
+                // [PR-B 고정차량 저장] CARNO 에 자동배차 후처리로 매칭된 차량번호(VHCMA.VEHICLE_NO)를 기록.
+                //   · payload 에 vehicle_no 가 있으면 그 값을, 없으면(수기배차 등) 기존처럼 공백(' ') 저장.
+                //   · CARNO 는 Oracle NOT NULL 이므로 NVL(?, ' ') 로 공백 치환(기존 동작 호환).
+                //   → 배차확정탭 조회 시 h.CARNO 로 VHCMA 를 조인해 FIX_YN(고정차량 여부)을 가져온다.
+                String vehNo = veh.getVehicleNo();
+                vehNo = (vehNo == null || vehNo.isBlank()) ? null : vehNo.strip();
                 String ph = shpokySet.stream().map(x -> "?").collect(Collectors.joining(","));
                 var q = tmsEm.createNativeQuery(
                     "UPDATE KNRAWMS.TMS_SHPDH SET VEHINO=NVL(?, ' '), CARTON=NVL(?, ' ')," +
-                    " CARNO=' ', DRIVER=' ', DRIVERCEL=' '," +
+                    " CARNO=NVL(?, ' '), DRIVER=' ', DRIVERCEL=' '," +
                     " LMODAT=TO_CHAR(SYSDATE,'YYYYMMDD'), LMOUSR='WEB' WHERE SHPOKY IN (" + ph + ")"
                 );
                 q.setParameter(1, carclassCd.isEmpty() ? null : carclassCd);
                 q.setParameter(2, carclassCd.isEmpty() ? null : carclassCd);
-                int idx = 3;
+                q.setParameter(3, vehNo);
+                int idx = 4;
                 for (String sk : shpokySet) { q.setParameter(idx++, sk); }
                 q.executeUpdate();
             }
