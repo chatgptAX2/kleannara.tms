@@ -533,7 +533,7 @@ public class AutoDispatchService {
         //  · 매칭 실패 시 vehicle_no 공란(기존과 동일, 무영향).
         // ══════════════════════════════════════════════════════════════
         try {
-            applyFixedVehicles(allVehicles, scope);
+            applyFixedVehicles(allVehicles, scope, vehInfo);
         } catch (Exception fvEx) {
             log.warn("[고정차량매칭] 후처리 중 예외(무시, 배차결과 영향 없음): {}", fvEx.getMessage());
         }
@@ -2350,22 +2350,40 @@ public class AutoDispatchService {
      *   ① 제품군(scope: PS=10 / HL=20) 일치 → ② 출하지점(SHIP_POINT) 일치 → ③ 등록순.
      *   한 차량번호는 한 결과차량에만 배정(소진). 매칭 실패 시 vehicle_no 공란.</p>
      */
-    private void applyFixedVehicles(List<Map<String, Object>> allVehicles, String scope) {
+    private void applyFixedVehicles(List<Map<String, Object>> allVehicles, String scope,
+                                    Map<String, VehInfo> vehInfo) {
         if (allVehicles == null || allVehicles.isEmpty()) return;
 
         // 제품군 코드: HL='20', PS(기본)='10'
         String pgCode = "HL".equalsIgnoreCase(scope) ? "20" : "10";
 
+        // ★ [핵심 정정] VHCMA 에는 CARTYPE(톤수 라벨) 컬럼이 물리적으로 없다(ORA-00904).
+        //   실제 톤수(차형)는 VEHICLE_CLASS(= TMS_DS_VEHICLE 의 CARCLASS_CD 코드)로 저장된다.
+        //   (VehicleService.saveVhcma / VhcmaRepositoryImpl.COLS 주석과 동일 — CARTYPE/CARCLASS_CD 미존재)
+        //   따라서 조회·매칭 모두 '코드(VEHICLE_CLASS = carclass_cd)' 기준으로 수행한다.
+        //   결과차량(vrow)의 톤수 라벨(cartype, 예 '18톤')은 vehInfo map 으로 carclass_cd 코드로 변환해 비교.
+
+        // 라벨(cartype) → carclass_cd 역매핑 (vehInfo: 라벨 → VehInfo{classCode})
+        Map<String, String> labelToCode = new HashMap<>();
+        if (vehInfo != null) {
+            for (Map.Entry<String, VehInfo> e : vehInfo.entrySet()) {
+                String label = e.getKey() == null ? "" : e.getKey().trim();
+                String code  = (e.getValue() == null || e.getValue().classCode == null)
+                             ? "" : e.getValue().classCode.trim();
+                if (!label.isEmpty() && !code.isEmpty()) labelToCode.put(label, code);
+            }
+        }
+
         // ── VHCMA 고정차량 조회 (FIX_YN='Y', 사용중, 미삭제, 제품군 일치) ──
-        //   CARTYPE(톤수 라벨) 기준으로 매칭. 등록순(CREDAT/CRETIM) 정렬 → 우선순위 ③.
+        //   VEHICLE_CLASS(차형 코드) 기준. 등록순(CREDAT/CRETIM) 정렬 → 우선순위 ③.
         List<Map<String, Object>> fixedCars;
         try {
             fixedCars = wmsJdbc.queryForList(
-                "SELECT VEHICLE_NO, CARTYPE, SHIP_POINT, PRODUCT_GROUP " +
+                "SELECT VEHICLE_NO, VEHICLE_CLASS, SHIP_POINT, PRODUCT_GROUP " +
                 "FROM KNRAWMS.VHCMA " +
                 "WHERE NVL(FIX_YN,'N')='Y' AND NVL(USE_YN,'Y')='Y' AND NVL(DEL_YN,'N')<>'Y' " +
                 "  AND TRIM(COALESCE(PRODUCT_GROUP,'')) = ? " +
-                "  AND TRIM(COALESCE(CARTYPE,'')) <> '' " +
+                "  AND TRIM(COALESCE(VEHICLE_CLASS,'')) <> '' " +
                 "ORDER BY NVL(CREDAT,'99999999'), NVL(CRETIM,'999999'), VEHICLE_NO",
                 pgCode);
         } catch (Exception e) {
@@ -2375,15 +2393,15 @@ public class AutoDispatchService {
         if (fixedCars.isEmpty()) {
             // [고정차량진단①] 제품군(PRODUCT_GROUP) 조건에서 0건 → PRODUCT_GROUP 값이 '10'/'20'이
             //   아닐 가능성(예: 'PS','판지',공백). 제품군 무시 전체 고정차량을 추가 조회해 실제
-            //   PRODUCT_GROUP/CARTYPE 저장값을 로그로 노출(원인 특정용). ★ 매칭 로직엔 영향 없음.
+            //   PRODUCT_GROUP/VEHICLE_CLASS 저장값을 로그로 노출(원인 특정용). ★ 매칭 로직엔 영향 없음.
             try {
                 List<Map<String, Object>> anyFixed = wmsJdbc.queryForList(
-                    "SELECT VEHICLE_NO, CARTYPE, SHIP_POINT, PRODUCT_GROUP, FIX_YN, USE_YN, DEL_YN " +
+                    "SELECT VEHICLE_NO, VEHICLE_CLASS, SHIP_POINT, PRODUCT_GROUP, FIX_YN, USE_YN, DEL_YN " +
                     "FROM KNRAWMS.VHCMA WHERE NVL(FIX_YN,'N')='Y'");
                 StringBuilder sb = new StringBuilder();
                 for (Map<String, Object> fc : anyFixed) {
-                    sb.append(String.format("{차량=%s, 톤수='%s', 제품군='%s', 출하지='%s', USE=%s, DEL=%s} ",
-                        str(fc.get("VEHICLE_NO")), str(fc.get("CARTYPE")), str(fc.get("PRODUCT_GROUP")),
+                    sb.append(String.format("{차량=%s, 차형코드='%s', 제품군='%s', 출하지='%s', USE=%s, DEL=%s} ",
+                        str(fc.get("VEHICLE_NO")), str(fc.get("VEHICLE_CLASS")), str(fc.get("PRODUCT_GROUP")),
                         str(fc.get("SHIP_POINT")), str(fc.get("USE_YN")), str(fc.get("DEL_YN"))));
                 }
                 log.warn("[고정차량진단①] 제품군='{}'(PS=10/HL=20) 조건으로 조회된 고정차량 0건. "
@@ -2397,38 +2415,42 @@ public class AutoDispatchService {
             return;
         }
 
-        // 톤수(CARTYPE) → 후보 차량번호 큐 (등록순). 소진 방식으로 1:1 배정.
+        // 차형코드(VEHICLE_CLASS = carclass_cd) → 후보 차량번호 큐 (등록순). 소진 방식으로 1:1 배정.
         //   value: [ {VEHICLE_NO, SHIP_POINT} ... ]
-        Map<String, Deque<Map<String, String>>> byCartype = new HashMap<>();
+        Map<String, Deque<Map<String, String>>> byCode = new HashMap<>();
         for (Map<String, Object> fc : fixedCars) {
-            String ct = str(fc.get("CARTYPE")).trim();
-            if (ct.isEmpty()) continue;
+            String code = str(fc.get("VEHICLE_CLASS")).trim();
+            if (code.isEmpty()) continue;
             Map<String, String> info = new HashMap<>();
             info.put("VEHICLE_NO", str(fc.get("VEHICLE_NO")).trim());
             info.put("SHIP_POINT", str(fc.get("SHIP_POINT")).trim());
-            byCartype.computeIfAbsent(ct, k -> new ArrayDeque<>()).addLast(info);
+            byCode.computeIfAbsent(code, k -> new ArrayDeque<>()).addLast(info);
         }
-        // [고정차량진단②] 고정차량 톤수(CARTYPE) 분포 — 결과차량 톤수와 문자열 정확히 일치해야 매칭됨.
-        log.info("[고정차량진단②] 제품군 {} 고정차량 {}대 톤수(CARTYPE)별 후보: {}",
+        // [고정차량진단②] 고정차량 차형코드(VEHICLE_CLASS) 분포 — 결과차량 carclass_cd 와 일치해야 매칭됨.
+        log.info("[고정차량진단②] 제품군 {} 고정차량 {}대 차형코드(VEHICLE_CLASS)별 후보: {}",
                  pgCode, fixedCars.size(),
-                 byCartype.entrySet().stream()
+                 byCode.entrySet().stream()
                      .map(e -> "'" + e.getKey() + "'×" + e.getValue().size())
                      .collect(Collectors.joining(", ")));
 
-        // 결과 차량에 톤수 일치 고정차량 배정 (우선순위 ②: 출하지점 일치 먼저 소진)
+        // 결과 차량에 차형코드 일치 고정차량 배정 (우선순위 ②: 출하지점 일치 먼저 소진)
         int matched = 0;
-        Set<String> resultCartypes = new LinkedHashSet<>();   // [진단③] 결과차량 톤수 분포
-        Set<String> noMatchCartypes = new LinkedHashSet<>();  // [진단③] 고정차량 후보가 없던 톤수
+        Set<String> resultCodes = new LinkedHashSet<>();   // [진단③] 결과차량 차형코드 분포
+        Set<String> noMatchCodes = new LinkedHashSet<>();  // [진단③] 고정차량 후보가 없던 차형코드
         for (Map<String, Object> v : allVehicles) {
             // 기본값(미배정) 세팅 — 프론트 컬럼 표시용
             v.putIfAbsent("vehicle_no", "");
             v.putIfAbsent("fix_yn", "N");
 
-            String ct = str(v.get("cartype")).trim();
-            if (ct.isEmpty()) continue;
-            resultCartypes.add(ct);
-            Deque<Map<String, String>> q = byCartype.get(ct);
-            if (q == null || q.isEmpty()) { noMatchCartypes.add(ct); continue; }
+            // 결과차량 톤수 라벨(cartype) → 차형코드(carclass_cd) 변환.
+            //   vrow 에 carclass_cd 가 이미 있으면 그대로, 없으면 vehInfo(라벨→코드)로 변환.
+            String label = str(v.get("cartype")).trim();
+            String code  = str(v.getOrDefault("carclass_cd", v.getOrDefault("CARCLASS_CD", ""))).trim();
+            if (code.isEmpty() && !label.isEmpty()) code = labelToCode.getOrDefault(label, "");
+            if (code.isEmpty()) continue;
+            resultCodes.add(code);
+            Deque<Map<String, String>> q = byCode.get(code);
+            if (q == null || q.isEmpty()) { noMatchCodes.add(code); continue; }
 
             // 결과 차량의 출하지점(있으면) — 현재 결과 vrow에는 출하지점이 없을 수 있어
             //   wareky 계열 키를 방어적으로 조회(없으면 "").
@@ -2453,16 +2475,16 @@ public class AutoDispatchService {
         }
         log.info("[고정차량매칭] 제품군 {} — 고정차량 {}대 중 결과차량 {}대에 배정 완료",
                  pgCode, fixedCars.size(), matched);
-        // [고정차량진단③] 배정 0건인데 고정차량은 있었다면 → 톤수(CARTYPE) 문자열 불일치가 원인.
-        //   결과차량 톤수 vs 고정차량 톤수를 나란히 로그로 노출(예: 결과 '18톤' vs 고정 '18톤 ' 공백차이).
+        // [고정차량진단③] 배정 0건인데 고정차량은 있었다면 → 차형코드(VEHICLE_CLASS) 불일치가 원인.
+        //   결과차량 차형코드 vs 고정차량 차형코드를 나란히 로그로 노출.
         if (matched == 0 && !fixedCars.isEmpty()) {
-            log.warn("[고정차량진단③] 제품군 {} 고정차량 {}대 존재하나 배정 0건 → 톤수(CARTYPE) 불일치 의심. "
-                   + "결과차량 톤수={}, 고정차량 톤수={}, 매칭실패 결과톤수={} "
-                   + "(양쪽 톤수 문자열이 정확히 같아야 매칭됨)",
+            log.warn("[고정차량진단③] 제품군 {} 고정차량 {}대 존재하나 배정 0건 → 차형코드(VEHICLE_CLASS) 불일치 의심. "
+                   + "결과차량 차형코드={}, 고정차량 차형코드={}, 매칭실패 결과코드={} "
+                   + "(양쪽 차형코드가 정확히 같아야 매칭됨)",
                    pgCode, fixedCars.size(),
-                   resultCartypes.stream().map(s -> "'" + s + "'").collect(Collectors.joining(",")),
-                   byCartype.keySet().stream().map(s -> "'" + s + "'").collect(Collectors.joining(",")),
-                   noMatchCartypes.stream().map(s -> "'" + s + "'").collect(Collectors.joining(",")));
+                   resultCodes.stream().map(s -> "'" + s + "'").collect(Collectors.joining(",")),
+                   byCode.keySet().stream().map(s -> "'" + s + "'").collect(Collectors.joining(",")),
+                   noMatchCodes.stream().map(s -> "'" + s + "'").collect(Collectors.joining(",")));
         }
     }
 
