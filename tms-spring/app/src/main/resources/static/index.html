@@ -17146,19 +17146,44 @@ async function renderPsDispatchOpt(scope) {
 
   // localStorage에서 pending vehicles 복원 (새로고침/재접속 후에도 유지)
   const _restoredCnt = _psopRestorePendingState();
-  if (_restoredCnt > 0) {
-    showToast(`📦 이전 배차 작업 ${_restoredCnt}건이 복원되었습니다. 조회 후 확인하세요.`);
-  }
 
   // 기존 배차 목록 로드 (+ 복원된 pending vehicles 포함 렌더)
   await psopLoadVehicles();
-  // ※ 진입 시 저장된 DRAFT 전체 자동 로드는 제거함.
-  //   선적목록은 '납품문서 목록에서 배차된 문서를 선택'할 때만 해당 가선적번호를
-  //   조회하도록 개선(요청). 미선택 상태에서는 선적목록을 비워둔다.
-  //   (배차저장 직후에는 psopSaveDispatch 에서 방금 저장분을 재조회해 표시)
   // thead 초기 생성 (조회 전에도 컬럼 헤더가 보이도록)
   psopRenderDocTable();
-  // 자동 조회 제거 — 조회 버튼 클릭 시에만 실행
+
+  // ★[문제3 수정] 새로고침 후 pending(미저장) 배차가 복원됐는데도 좌측 납품문서 목록이
+  //   비어 '미배차로 초기화된 것처럼' 보이던 문제 해결.
+  //   원인: 진입 시 자동 조회를 하지 않아 searchRows 가 비어, 복원된 pending 배차의
+  //   items 가 납품문서 목록에 매칭·표시될 기준 데이터(searchRows)가 없었음.
+  //   → 복원된 pending 배차가 있으면, 그 배차의 납품요청일(rqshpd)을 검색조건에 세팅하고
+  //     자동으로 1회 조회하여 납품문서 목록 + 배차내역이 함께 복원되게 한다.
+  //   (복원분이 없으면 기존처럼 자동 조회하지 않음 — 조회 버튼 클릭 시에만 실행)
+  if (_restoredCnt > 0) {
+    try {
+      // 복원된 pending 배차 중 납품요청일(rqshpd)을 검색 날짜 범위로 세팅
+      const _rqshpds = (psopState.vehicles || [])
+        .filter(v => !v.STDLNR && v.rqshpd)
+        .map(v => String(v.rqshpd).replace(/-/g, '').trim())
+        .filter(Boolean)
+        .sort();
+      if (_rqshpds.length) {
+        const _toYmd = s => (s && s.length === 8)
+          ? `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}` : s;
+        const fromEl = document.getElementById('psop-date-from');
+        const toEl   = document.getElementById('psop-date-to');
+        if (fromEl) fromEl.value = _toYmd(_rqshpds[0]);
+        if (toEl)   toEl.value   = _toYmd(_rqshpds[_rqshpds.length - 1]);
+      }
+      showToast(`📦 이전 배차 작업 ${_restoredCnt}건 복원 — 납품문서 목록을 자동 조회합니다.`);
+      // 자동 조회 1회 실행 → searchRows 채우고 pending 배차 items 를 배차완료로 재동기화
+      await psopSearch();
+    } catch (reErr) {
+      console.warn('[psopInit] pending 복원 후 자동조회 실패(무시):', reErr);
+      showToast(`📦 이전 배차 작업 ${_restoredCnt}건이 복원되었습니다. 조회 후 확인하세요.`);
+    }
+  }
+  // 복원분 없음 → 자동 조회 제거(기존 동작): 조회 버튼 클릭 시에만 실행
 }
 
 /* ── 조회 ─────────────────────────────────────────── */
