@@ -2385,19 +2385,24 @@ public class AutoDispatchService {
         //     DEL_YN 도 동일 관용(명시적 Y 만 삭제)으로 유지.
         List<Map<String, Object>> fixedCars;
         try {
-            // ★ [핵심 정정] PRODUCT_GROUP 비교: 단순 문자열 '='(TRIM) 은 보이지 않는 문자
-            //   (선행 0, 전각공백, NBSP, 제어문자, CHAR 공백패딩 등)가 섞이면 실패한다.
-            //   제품군 코드는 숫자('10'/'20')이므로, 숫자가 아닌 모든 문자를 제거(REGEXP_REPLACE)한 뒤
-            //   숫자 비교(TO_NUMBER)로 매칭 → '10','010',' 10 ','１０' 등 어떤 표기여도 10 으로 일치.
-            //   비숫자/빈값이면 매칭 대상에서 제외(NULL 비교로 자연 탈락).
+            // ★★ [최종 근본원인] Oracle 에서 TRIM(' ') / TRIM('') 은 빈문자열이 아니라 NULL 을 반환한다.
+            //   기존 조건 TRIM(COALESCE(USE_YN,'')) <> 'N' 은 USE_YN 이 공백이면
+            //   TRIM → NULL → (NULL <> 'N') = UNKNOWN → 행 제외(= 메인조회 0건의 진짜 원인).
+            //   진단① 로그에서 USE[]=FAIL, VC=FAIL 로 확정됨(제품군 PG=PASS, DEL=PASS).
+            //   → TRIM 부등호 비교를 제거하고, NULL/공백을 명시적으로 치환한 뒤 비교한다:
+            //     · USE_YN : NVL 로 공백치환 후 TRIM → 'N' 이 아닌 것(공백/NULL/Y)만 사용으로 간주.
+            //                NVL(TRIM(USE_YN),'Y') 로 'TRIM 결과 NULL=공백=사용' 을 보장.
+            //     · DEL_YN : NVL(TRIM(DEL_YN),'N') <> 'Y' (TRIM NULL → 'N' = 미삭제).
+            //     · VEHICLE_CLASS : NVL(TRIM(...),'') 로 치환 후 길이 비교(LENGTH>0).
+            //   PRODUCT_GROUP 은 숫자만 추출 비교 유지('10','010',' 10 ' 등 모두 10 일치).
             fixedCars = wmsJdbc.queryForList(
                 "SELECT VEHICLE_NO, VEHICLE_CLASS, SHIP_POINT, PRODUCT_GROUP " +
                 "FROM KNRAWMS.VHCMA " +
                 "WHERE NVL(FIX_YN,'N')='Y' " +
-                "  AND TRIM(COALESCE(USE_YN,'')) <> 'N' " +
-                "  AND TRIM(COALESCE(DEL_YN,'')) <> 'Y' " +
+                "  AND NVL(TRIM(USE_YN),'Y') <> 'N' " +
+                "  AND NVL(TRIM(DEL_YN),'N') <> 'Y' " +
                 "  AND REGEXP_REPLACE(COALESCE(PRODUCT_GROUP,''), '[^0-9]', '') = ? " +
-                "  AND TRIM(COALESCE(VEHICLE_CLASS,'')) <> '' " +
+                "  AND LENGTH(NVL(TRIM(VEHICLE_CLASS),'')) > 0 " +
                 "ORDER BY NVL(CREDAT,'99999999'), NVL(CRETIM,'999999'), VEHICLE_NO",
                 pgCode);
         } catch (Exception e) {
