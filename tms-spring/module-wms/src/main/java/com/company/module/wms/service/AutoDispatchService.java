@@ -2506,6 +2506,10 @@ public class AutoDispatchService {
                 v.put("vehicle_no", pick.get("VEHICLE_NO"));
                 v.put("fix_yn", "Y");
                 matched++;
+                // [고정차량진단④] 어느 결과차량(톤수라벨/차형코드)에 어떤 차량번호가 배정됐는지 추적.
+                //   1.4톤 등 엉뚱한 톤수에 18톤 차량번호가 붙는 증상(번짐)의 근원을 특정한다.
+                log.info("[고정차량진단④] 배정 → cartype='{}', carclass_cd(code)='{}', vehicle_no='{}'",
+                         label, code, pick.get("VEHICLE_NO"));
             }
         }
         log.info("[고정차량매칭] 제품군 {} — 고정차량 {}대 중 결과차량 {}대에 배정 완료",
