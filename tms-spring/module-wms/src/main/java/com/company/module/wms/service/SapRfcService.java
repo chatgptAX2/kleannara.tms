@@ -1047,7 +1047,13 @@ public class SapRfcService {
                 "  MIN(SH.RQSHPD) AS RQSHPD_FROM, " +
                 "  MAX(SH.RQSHPD) AS RQSHPD_TO, " +
                 "  MAX(NULLIF(TRIM(SH.CARTON),'')) AS CARTON, " +
-                "  MAX(NULLIF(TRIM(SH.CARNO),''))  AS CARNO, " +
+                // ★[PR-B 고정차량] 차량번호는 '배차(STDLNR) 단위'인 TMS_PS_DISPATCH_H.NOTE 에서 가져온다.
+                //   기존 MAX(SH.CARNO)(=SHPOKY 단위)는 같은 납품처가 여러 배차(예:1.4톤+18톤)로
+                //   나뉘면 GROUP BY STDLNR 집계 시 CARNO 가 번져(양쪽 그룹 모두 같은 번호) 중복 표시됐다.
+                //   PH 는 STDLNR 단위(DISPATCH_NO) 1행이라 MAX(PH.NOTE)=그 배차의 고유 차량번호.
+                "  MAX(NULLIF(TRIM(PH.NOTE),''))  AS CARNO, " +
+                // ★[PR-B 고정차량] 고정차량여부(VHCMA.FIX_YN) — 위 PH.NOTE(차량번호)로 VHCMA 조인.
+                "  MAX(NULLIF(TRIM(VH.FIX_YN),'')) AS FIX_YN, " +
                 "  MAX(NULLIF(TRIM(SH.VEHINO),'')) AS VEHINO, " +
                 "  MAX(NULLIF(TRIM(SH.DRIVER),'')) AS DRIVER, " +
                 "  MAX(NULLIF(TRIM(SH.DRIVERCEL),'')) AS DRIVERCEL, " +
@@ -1066,6 +1072,10 @@ public class SapRfcService {
                 "LEFT JOIN KNRAWMS.SKUMA M  ON M.SKUKEY  = SI.SKUKEY " +
                 "LEFT JOIN KNRAWMS.BZPTN CT ON CT.PTNRKY = SH.DPTNKY AND CT.PTNRTY = 'CT' " +
                 "LEFT JOIN KNRAWMS.TMS_PS_DISPATCH_H PH ON PH.DISPATCH_NO = SI.STDLNR " +
+                // ★[PR-B 고정차량] 배차단위 차량번호(PH.NOTE)로 VHCMA 조인 → 고정차량여부(FIX_YN).
+                //   NOTE 가 공백이면 조인 대상 없음 → FIX_YN 공백(무영향).
+                "LEFT JOIN KNRAWMS.VHCMA VH ON TRIM(VH.VEHICLE_NO) = TRIM(PH.NOTE) " +
+                "     AND TRIM(COALESCE(PH.NOTE,'')) <> '' " +
                 "WHERE " + whereSql + " " +
                 "GROUP BY SI.STDLNR " +
                 // STDLNR 이 실제 채번된(공백/NULL 아님) 그룹만.
