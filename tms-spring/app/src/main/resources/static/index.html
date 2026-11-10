@@ -17195,13 +17195,20 @@ async function psopSearch() {
     const rows = (json && json.data != null) ? json.data : (json.rows || json);
     psopState.searchRows = Array.isArray(rows) ? rows : [];
 
+    // ★[문제3 수정] 조회 시 localStorage 의 pending(미저장) 배차를 먼저 복원한다.
+    //   원인: 날짜를 바꿔 조회하면(아래 날짜필터) 조회범위 밖 pending 이 psopState.vehicles
+    //   에서 제거되는데, 다시 해당 날짜로 조회해도 복원 호출이 없어 '배차상태→미배차'로
+    //   돌아가던 문제가 있었다(14일→12일→14일 재조회 시 유실).
+    //   → 매 조회마다 localStorage 원본에서 pending 을 다시 병합(중복은 _pendingId 로 스킵)한 뒤,
+    //     아래 날짜필터로 '이번 조회 날짜에 해당하는' pending 만 화면에 남긴다.
+    //   (localStorage 원본은 배차저장/삭제 전까지 보존되므로 날짜 왕복해도 유실되지 않음)
+    _psopRestorePendingState();
+
     // ★[문제3 수정] 조회한 '납품일 범위' 밖의 배차(pending/저장완료 공통)는 이번 조회 화면에서 제외한다.
-    //   원인: psopState.vehicles 는 전역 유지되는데, 날짜를 바꿔 조회해도 이전 날짜의
-    //   배차(선적목록)가 계속 섞여 보이던 문제가 있었다(예: 8/14 배차가 8/12 조회에 잔존).
-    //   → 조회 날짜(dateFrom~dateTo) 밖의 배차는 pending/저장완료 모두 psopState.vehicles 에서 제거.
-    //     · pending(STDLNR 없음): localStorage 원본은 유지 → 해당 날짜로 조회하면 복원됨.
-    //     · 저장완료(STDLNR 있음): 이번 조회의 뒤쪽 '저장배차 자동복원'에서 조회 날짜 기준으로
-    //       다시 올라오므로, 여기서 범위 밖을 비워도 해당 날짜 조회 시 정상 복원된다.
+    //   psopState.vehicles 는 전역 유지되므로, 날짜를 바꿔 조회해도 이전 날짜의 배차가
+    //   섞여 보이던 문제 방지(예: 8/14 배차가 8/12 조회에 잔존).
+    //     · pending(STDLNR 없음): localStorage 원본 유지 + 위에서 매 조회 복원 → 날짜 왕복해도 유지.
+    //     · 저장완료(STDLNR 있음): 이번 조회 뒤쪽 '저장배차 자동복원'이 조회 날짜 기준으로 다시 올림.
     //   ※ rqshpd 없는 배차는 판단 불가 → 보존(안전).
     const _ymd = s => String(s || '').replace(/-/g, '').trim();
     const _df = _ymd(dateFrom), _dt = _ymd(dateTo);
