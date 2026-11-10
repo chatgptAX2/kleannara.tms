@@ -1177,6 +1177,35 @@ public class PsDispatchService {
                 }
             }
 
+            // ── [PR-B 고정차량 복원] 이 배차의 차량번호(CARNO)·고정차량여부(FIX_YN) 조회 ──
+            //   새로고침/재조회 시 getList(TMS_PS_DISPATCH_H)에는 CARNO/FIX_YN 이 없어
+            //   고정차량 표시가 유실된다. 배차저장(PR-B) 시 TMS_SHPDH.CARNO 에 기록한
+            //   차량번호를 이 배차의 납품문서(TMS_PS_DISPATCH_D→SHPOKY→TMS_SHPDH)에서 찾고,
+            //   그 CARNO 로 VHCMA.FIX_YN 을 조인해 복원한다. (조회 전용 — 저장/엔진 무영향)
+            String carnoVal = "";
+            String fixYnVal  = "";
+            try {
+                @SuppressWarnings("unchecked")
+                List<Object[]> cf = tmsEm.createNativeQuery(
+                    "SELECT TRIM(COALESCE(sh.CARNO,'')) AS CARNO, " +
+                    "       TRIM(COALESCE(vh.FIX_YN,'')) AS FIX_YN " +
+                    "FROM KNRAWMS.TMS_PS_DISPATCH_D d " +
+                    "JOIN KNRAWMS.TMS_SHPDH sh ON sh.SHPOKY = d.SHPOKY " +
+                    "LEFT JOIN KNRAWMS.VHCMA vh ON TRIM(vh.VEHICLE_NO) = TRIM(sh.CARNO) " +
+                    "     AND TRIM(COALESCE(sh.CARNO,'')) <> '' " +
+                    "WHERE d.DISPATCH_NO = ? AND TRIM(COALESCE(sh.CARNO,'')) <> '' " +
+                    "ORDER BY d.SEQ")
+                    .setParameter(1, no.strip())
+                    .getResultList();
+                if (cf != null && !cf.isEmpty()) {
+                    carnoVal = str(cf.get(0)[0]);
+                    fixYnVal = str(cf.get(0)[1]);
+                }
+            } catch (Exception cfEx) {
+                log.warn("[PsDispatch] loadForEdit CARNO/FIX_YN 조회 실패(무시) dispatchNo={} : {}",
+                         no, cfEx.getMessage());
+            }
+
             // ── vehicle 헤더 → UPPERCASE 키 Map ──
             Map<String, Object> v = new LinkedHashMap<>();
             v.put("DISPATCH_NO", h.getDispatchNo());
@@ -1189,6 +1218,9 @@ public class PsDispatchService {
             v.put("total_cnt",   h.getTotalCnt());
             v.put("load_kg",     h.getLoadKg());
             v.put("status",      h.getStatus());
+            // [PR-B] 고정차량 복원 — 프론트가 v.vehicle_no / v.fix_yn 로 읽음
+            v.put("vehicle_no",  carnoVal);
+            v.put("fix_yn",      fixYnVal.isEmpty() ? "N" : fixYnVal);
             v.put("items",       items);
             vehicles.add(v);
         }
