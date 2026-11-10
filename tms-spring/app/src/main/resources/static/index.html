@@ -3334,11 +3334,18 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
      행 사이 틈이 벌어진다 → border 대신 box-shadow 로 하단 구분선을 그려 틈 제거.
      top 도 29px 로 1px 겹쳐 헤더와의 틈을 없앤다. */
 #psop-panel-sap .sap-left-tbl thead tr.sap-sum-row td{
-  position:sticky !important;top:29px !important;z-index:2 !important;
+  position:sticky !important;top:28px !important;z-index:2 !important;   /* 헤더(30px)와 2px 겹쳐 틈 제거 */
   padding:4px 8px !important;
   background:var(--surface2) !important;font-weight:700;
   border:0 !important;
-  box-shadow:inset 0 -2px 0 var(--primary) !important;
+  /* 위 2px: 헤더와 겹치는 영역을 같은 배경으로 덮어 흰 틈 제거 / 아래 2px: 본문 구분선 */
+  box-shadow:0 -2px 0 0 var(--surface2), inset 0 -2px 0 var(--primary) !important;
+  background-clip:padding-box !important;
+}
+/* [틈 방지] 헤더 th 도 배경 불투명 보장 + 아래 1px 겹침으로 합계행과의 틈 제거 */
+#psop-panel-sap .sap-left-tbl thead th{
+  background:var(--th-bg) !important;
+  background-clip:padding-box !important;
 }
 /* ── 행 높이 축소 → 한 화면에 더 많은 정보 조회 ── */
 #psop-panel-sap .sap-left-tbl tbody td,
@@ -14970,21 +14977,25 @@ async function _sapRenderLeft() {
   const sumItems   = rows.reduce((s, r) => s + (Number(r.ITEM_CNT) || 0), 0);
   const sumSvbeln  = rows.reduce((s, r) => s + (Number(r.SVBELN_CNT) || 0), 0);
   const sumQty     = rows.reduce((s, r) => s + (Number(r.QTSHPO_SUM) || 0), 0);
+  // ★ [틈 방지] 합계행 각 td 에 배경색을 인라인으로 직접 지정한다.
+  //   sticky 셀은 배경이 불투명해야 스크롤 시 뒤 본문이 비치지 않는다(틈처럼 보임 방지).
+  const _sumBg = 'background:var(--surface2)';
   const tfootMap = {
-    chk:      `<td class="center">-</td>`,
-    stdlnr:   `<td style="font-weight:700">합계</td>`,
-    sapstknum:`<td>-</td>`,
-    rqshpd:   `<td>-</td>`,
-    dptnky:   `<td style="font-weight:700">${rows.length}건</td>`,
-    cartype:  `<td>-</td>`,
-    carno:    `<td>-</td>`,
-    driver:   `<td>-</td>`,
-    drivercel:`<td>-</td>`,
-    qtshpo:   `<td class="num" style="font-weight:700">${sumQty.toLocaleString(undefined,{maximumFractionDigits:3})}</td>`,
-    uomkey:   `<td class="center">-</td>`,
-    totalkg:  `<td class="num">${sumKg.toLocaleString(undefined,{maximumFractionDigits:1})} kg</td>`,
-    svbeln:   `<td class="center" style="font-weight:700">${sumSvbeln}건</td>`,
-    loadview: `<td>-</td>`,
+    chk:      `<td class="center" style="${_sumBg}">-</td>`,
+    stdlnr:   `<td style="font-weight:700;${_sumBg}">합계</td>`,
+    sapstknum:`<td style="${_sumBg}">-</td>`,
+    rqshpd:   `<td style="${_sumBg}">-</td>`,
+    dptnky:   `<td style="font-weight:700;${_sumBg}">${rows.length}건</td>`,
+    cartype:  `<td style="${_sumBg}">-</td>`,
+    carno:    `<td style="${_sumBg}">-</td>`,
+    fixyn:    `<td style="${_sumBg}">-</td>`,
+    driver:   `<td style="${_sumBg}">-</td>`,
+    drivercel:`<td style="${_sumBg}">-</td>`,
+    qtshpo:   `<td class="num" style="font-weight:700;${_sumBg}">${sumQty.toLocaleString(undefined,{maximumFractionDigits:3})}</td>`,
+    uomkey:   `<td class="center" style="${_sumBg}">-</td>`,
+    totalkg:  `<td class="num" style="${_sumBg}">${sumKg.toLocaleString(undefined,{maximumFractionDigits:1})} kg</td>`,
+    svbeln:   `<td class="center" style="font-weight:700;${_sumBg}">${sumSvbeln}건</td>`,
+    loadview: `<td style="${_sumBg}">-</td>`,
   };
   // ★ [합계 상단 고정] 합계행을 thead 2번째 행(sap-sum-row)으로 이동 → 헤더 바로 아래
   //   최상단에 위치하고 스크롤해도 sticky 고정된다(아래 CSS top:헤더높이 적용).
