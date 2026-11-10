@@ -524,6 +524,12 @@ public class PsDispatchService {
               .setParameter(12, vehNoForNote)     // [PR-B] 배차단위 차량번호(없으면 NULL)
               .executeUpdate();
 
+            // [고정차량저장진단] 각 배차(가선적번호/톤수)에 실제로 저장되는 차량번호(NOTE) 추적.
+            //   서버 매칭(진단④)은 18톤에만 배정이지만 1.4톤 배차에도 차량번호가 저장된다면,
+            //   프론트 저장 payload(vehicle_no)가 엉뚱한 톤수 배차에 섞여 들어온 것으로 특정된다.
+            log.info("[고정차량저장진단] 배차저장 dispatchNo={}, cartype='{}', dptnm='{}', NOTE(차량번호)='{}'",
+                     dispatchNo, veh.getCartype(), veh.getDptnm(), vehNoForNote == null ? "(없음)" : vehNoForNote);
+
             List<PsDispatchSaveRequest.ItemBlock> items = veh.getItems();
             Set<String> shpokySet   = new LinkedHashSet<>();
             List<String[]> shpdiKeys = new ArrayList<>();
