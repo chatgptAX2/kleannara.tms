@@ -2417,15 +2417,22 @@ public class AutoDispatchService {
                     "       CASE WHEN TRIM(COALESCE(PRODUCT_GROUP,'')) = ? THEN 'PASS' ELSE 'FAIL' END AS PG_CHK, " +
                     "       CASE WHEN TRIM(COALESCE(VEHICLE_CLASS,'')) <> '' THEN 'PASS' ELSE 'FAIL' END AS VC_CHK " +
                     "FROM KNRAWMS.VHCMA WHERE NVL(FIX_YN,'N')='Y'", pgCode);
+                // ★ String.format 금지: DUMP() 출력 등 값에 '%' 가 섞이면 '%s' 포맷 예외 발생.
+                //   순수 문자열 연결(concat)로 안전하게 구성한다.
                 StringBuilder sb = new StringBuilder();
                 for (Map<String, Object> fc : anyFixed) {
-                    sb.append(String.format(
-                        "{차량=%s, 차형코드='%s', 제품군='%s'(len=%s,%s), USE[%s]=%s, DEL[%s]=%s, PG[%s]=%s, VC=%s} ",
-                        str(fc.get("VEHICLE_NO")), str(fc.get("VEHICLE_CLASS")),
-                        str(fc.get("PRODUCT_GROUP")), str(fc.get("PG_LEN")), str(fc.get("PG_DUMP")),
-                        str(fc.get("USE_YN")), str(fc.get("USE_CHK")),
-                        str(fc.get("DEL_YN")), str(fc.get("DEL_CHK")),
-                        str(fc.get("PG_CHK")), str(fc.get("VC_CHK"))));
+                    sb.append("{차량=").append(str(fc.get("VEHICLE_NO")))
+                      .append(", 차형코드='").append(str(fc.get("VEHICLE_CLASS")))
+                      .append("', 제품군='").append(str(fc.get("PRODUCT_GROUP")))
+                      .append("'(len=").append(str(fc.get("PG_LEN")))
+                      .append(", DUMP=").append(str(fc.get("PG_DUMP")))
+                      .append("), USE[").append(str(fc.get("USE_YN")))
+                      .append("]=").append(str(fc.get("USE_CHK")))
+                      .append(", DEL[").append(str(fc.get("DEL_YN")))
+                      .append("]=").append(str(fc.get("DEL_CHK")))
+                      .append(", PG=").append(str(fc.get("PG_CHK")))
+                      .append(", VC=").append(str(fc.get("VC_CHK")))
+                      .append("} ");
                 }
                 log.warn("[고정차량진단①] 제품군='{}'(PS=10/HL=20) 메인조회 0건. "
                        + "FIX_YN='Y' 전체 {}대 조건별 판정 → {} "
