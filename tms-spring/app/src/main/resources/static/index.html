@@ -20421,6 +20421,12 @@ function psopSaveAutoResult(vehicles, autoMeta) {
       _pendingId:   pid,
       cartype:      v.cartype,
       carclass_cd:  v.carclass_cd || '',
+      // ★[PR-B 고정차량] 서버 자동배차 후처리(applyFixedVehicles)로 매칭된 차량번호/고정여부를
+      //   pending vehicle 에 보존한다. 이 값이 누락되면 배차저장 payload 의 vehicle_no 가 비어
+      //   TMS_SHPDH.CARNO 가 공백으로 저장되고, 배차확정탭/재조회에서 고정차량이 사라진다.
+      //   (이것이 서버 매칭은 성공(진단②)인데 화면에 안 보이던 최종 원인)
+      vehicle_no:   v.vehicle_no || v.VEHICLE_NO || v.carno || v.CARNO || '',
+      fix_yn:       v.fix_yn || v.FIX_YN || 'N',
       rqshpd:       v.rqshpd,
       dptnky:       v.dptnky,
       dptnm:        v.dptnm,
