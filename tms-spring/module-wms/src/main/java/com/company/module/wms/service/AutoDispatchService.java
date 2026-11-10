@@ -2385,13 +2385,18 @@ public class AutoDispatchService {
         //     DEL_YN 도 동일 관용(명시적 Y 만 삭제)으로 유지.
         List<Map<String, Object>> fixedCars;
         try {
+            // ★ [핵심 정정] PRODUCT_GROUP 비교: 단순 문자열 '='(TRIM) 은 보이지 않는 문자
+            //   (선행 0, 전각공백, NBSP, 제어문자, CHAR 공백패딩 등)가 섞이면 실패한다.
+            //   제품군 코드는 숫자('10'/'20')이므로, 숫자가 아닌 모든 문자를 제거(REGEXP_REPLACE)한 뒤
+            //   숫자 비교(TO_NUMBER)로 매칭 → '10','010',' 10 ','１０' 등 어떤 표기여도 10 으로 일치.
+            //   비숫자/빈값이면 매칭 대상에서 제외(NULL 비교로 자연 탈락).
             fixedCars = wmsJdbc.queryForList(
                 "SELECT VEHICLE_NO, VEHICLE_CLASS, SHIP_POINT, PRODUCT_GROUP " +
                 "FROM KNRAWMS.VHCMA " +
                 "WHERE NVL(FIX_YN,'N')='Y' " +
                 "  AND TRIM(COALESCE(USE_YN,'')) <> 'N' " +
                 "  AND TRIM(COALESCE(DEL_YN,'')) <> 'Y' " +
-                "  AND TRIM(COALESCE(PRODUCT_GROUP,'')) = ? " +
+                "  AND REGEXP_REPLACE(COALESCE(PRODUCT_GROUP,''), '[^0-9]', '') = ? " +
                 "  AND TRIM(COALESCE(VEHICLE_CLASS,'')) <> '' " +
                 "ORDER BY NVL(CREDAT,'99999999'), NVL(CRETIM,'999999'), VEHICLE_NO",
                 pgCode);
@@ -2400,22 +2405,31 @@ public class AutoDispatchService {
             return;
         }
         if (fixedCars.isEmpty()) {
-            // [고정차량진단①] 제품군(PRODUCT_GROUP) 조건에서 0건 → PRODUCT_GROUP 값이 '10'/'20'이
-            //   아닐 가능성(예: 'PS','판지',공백). 제품군 무시 전체 고정차량을 추가 조회해 실제
-            //   PRODUCT_GROUP/VEHICLE_CLASS 저장값을 로그로 노출(원인 특정용). ★ 매칭 로직엔 영향 없음.
+            // [고정차량진단①] 메인조회 0건 → 어느 조건에서 탈락하는지 조건별로 분해하여 특정.
+            //   PRODUCT_GROUP 에 보이지 않는 문자(선행0/전각공백/NBSP/제어문자)가 있으면 '10'
+            //   비교가 실패할 수 있으므로, Oracle DUMP() 로 원시 바이트/길이까지 노출한다.
             try {
                 List<Map<String, Object>> anyFixed = wmsJdbc.queryForList(
-                    "SELECT VEHICLE_NO, VEHICLE_CLASS, SHIP_POINT, PRODUCT_GROUP, FIX_YN, USE_YN, DEL_YN " +
-                    "FROM KNRAWMS.VHCMA WHERE NVL(FIX_YN,'N')='Y'");
+                    "SELECT VEHICLE_NO, VEHICLE_CLASS, SHIP_POINT, PRODUCT_GROUP, FIX_YN, USE_YN, DEL_YN, " +
+                    "       LENGTH(PRODUCT_GROUP) AS PG_LEN, DUMP(PRODUCT_GROUP) AS PG_DUMP, " +
+                    "       CASE WHEN TRIM(COALESCE(USE_YN,'')) <> 'N' THEN 'PASS' ELSE 'FAIL' END AS USE_CHK, " +
+                    "       CASE WHEN TRIM(COALESCE(DEL_YN,'')) <> 'Y' THEN 'PASS' ELSE 'FAIL' END AS DEL_CHK, " +
+                    "       CASE WHEN TRIM(COALESCE(PRODUCT_GROUP,'')) = ? THEN 'PASS' ELSE 'FAIL' END AS PG_CHK, " +
+                    "       CASE WHEN TRIM(COALESCE(VEHICLE_CLASS,'')) <> '' THEN 'PASS' ELSE 'FAIL' END AS VC_CHK " +
+                    "FROM KNRAWMS.VHCMA WHERE NVL(FIX_YN,'N')='Y'", pgCode);
                 StringBuilder sb = new StringBuilder();
                 for (Map<String, Object> fc : anyFixed) {
-                    sb.append(String.format("{차량=%s, 차형코드='%s', 제품군='%s', 출하지='%s', USE=%s, DEL=%s} ",
-                        str(fc.get("VEHICLE_NO")), str(fc.get("VEHICLE_CLASS")), str(fc.get("PRODUCT_GROUP")),
-                        str(fc.get("SHIP_POINT")), str(fc.get("USE_YN")), str(fc.get("DEL_YN"))));
+                    sb.append(String.format(
+                        "{차량=%s, 차형코드='%s', 제품군='%s'(len=%s,%s), USE[%s]=%s, DEL[%s]=%s, PG[%s]=%s, VC=%s} ",
+                        str(fc.get("VEHICLE_NO")), str(fc.get("VEHICLE_CLASS")),
+                        str(fc.get("PRODUCT_GROUP")), str(fc.get("PG_LEN")), str(fc.get("PG_DUMP")),
+                        str(fc.get("USE_YN")), str(fc.get("USE_CHK")),
+                        str(fc.get("DEL_YN")), str(fc.get("DEL_CHK")),
+                        str(fc.get("PG_CHK")), str(fc.get("VC_CHK"))));
                 }
-                log.warn("[고정차량진단①] 제품군='{}'(PS=10/HL=20) 조건으로 조회된 고정차량 0건. "
-                       + "FIX_YN='Y' 전체 고정차량(제품군무시) {}대 실제값 → {} "
-                       + "(제품군 코드가 10/20 이 아니면 매칭 불가)",
+                log.warn("[고정차량진단①] 제품군='{}'(PS=10/HL=20) 메인조회 0건. "
+                       + "FIX_YN='Y' 전체 {}대 조건별 판정 → {} "
+                       + "(FAIL 인 조건이 탈락 원인. PG FAIL 이면 제품군값/숨은문자, len/DUMP 확인)",
                        pgCode, anyFixed.size(), sb.length() == 0 ? "(없음)" : sb.toString());
             } catch (Exception diagEx) {
                 log.info("[고정차량매칭] 제품군 {} 고정차량(FIX_YN=Y) 없음 — 매칭 생략 (진단조회 실패: {})",
