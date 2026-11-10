@@ -2376,12 +2376,21 @@ public class AutoDispatchService {
 
         // ── VHCMA 고정차량 조회 (FIX_YN='Y', 사용중, 미삭제, 제품군 일치) ──
         //   VEHICLE_CLASS(차형 코드) 기준. 등록순(CREDAT/CRETIM) 정렬 → 우선순위 ③.
+        //
+        //   ★ [핵심 정정] USE_YN 조건: 기존 NVL(USE_YN,'Y')='Y' 는 USE_YN 이 공백(' ')일 때
+        //     탈락한다(Oracle NVL 은 NULL 만 치환, 공백은 그대로 → ' '='Y' = false).
+        //     실제 운영 데이터는 USE_YN 이 공백인 고정차량이 존재(진단① 로그: USE= 빈값)하므로,
+        //     VhcmaRepositoryImpl 의 사용여부 판정과 동일하게 '명시적 N(미사용)만 제외' 방식으로
+        //     변경한다 → TRIM(COALESCE(USE_YN,'')) <> 'N' (공백/NULL/Y = 사용).
+        //     DEL_YN 도 동일 관용(명시적 Y 만 삭제)으로 유지.
         List<Map<String, Object>> fixedCars;
         try {
             fixedCars = wmsJdbc.queryForList(
                 "SELECT VEHICLE_NO, VEHICLE_CLASS, SHIP_POINT, PRODUCT_GROUP " +
                 "FROM KNRAWMS.VHCMA " +
-                "WHERE NVL(FIX_YN,'N')='Y' AND NVL(USE_YN,'Y')='Y' AND NVL(DEL_YN,'N')<>'Y' " +
+                "WHERE NVL(FIX_YN,'N')='Y' " +
+                "  AND TRIM(COALESCE(USE_YN,'')) <> 'N' " +
+                "  AND TRIM(COALESCE(DEL_YN,'')) <> 'Y' " +
                 "  AND TRIM(COALESCE(PRODUCT_GROUP,'')) = ? " +
                 "  AND TRIM(COALESCE(VEHICLE_CLASS,'')) <> '' " +
                 "ORDER BY NVL(CREDAT,'99999999'), NVL(CRETIM,'999999'), VEHICLE_NO",
