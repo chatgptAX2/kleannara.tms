@@ -226,20 +226,24 @@ public class PsDispatchService {
         "       CASE WHEN TRIM(COALESCE(i.SKUG05,''))='20'" +
         "            THEN TRIM(KNRAWMS.SZF_GET_CONVERT_QTY(h.WAREKY, i.SKUKEY, i.QTYORG, i.UOMKEY, 'PAL'))" +
         "            ELSE NULL END AS ORD_PLTQTY," +
-        // ── [PR-B 고정차량 조회] 차량번호(TMS_SHPDH.CARNO) 및 고정차량 여부(VHCMA.FIX_YN) ──
-        //   배차저장 시 TMS_SHPDH.CARNO 에 기록한 차량번호로 VHCMA 를 LEFT JOIN 하여
-        //   고정차량 여부(FIX_YN)를 함께 가져온다. CARNO 가 공백(수기배차 등)이면 조인 대상이
-        //   없어 FIX_YN 은 공백 → 기존 동작과 동일(무영향). ★ SELECT 맨 끝 배치(인덱스 밀림 방지)
+        // ── [PR-B 고정차량 조회 — 배차단위] 차량번호 및 고정차량 여부(VHCMA.FIX_YN) ──
+        //   ★ 차량번호는 '배차(STDLNR) 단위'로 저장된 TMS_PS_DISPATCH_H.NOTE 에서 가져온다.
+        //     (기존 TMS_SHPDH.CARNO=SHPOKY 단위는 같은 납품처가 여러 배차로 나뉠 때 번져서,
+        //      1.4톤 배차에 18톤 고정차량번호가 조회되는 버그가 있었음 → 배차단위로 교체)
+        //   · pd.NOTE(차량번호)를 이 납품문서의 가선적번호(i.STDLNR)로 조인해 가져오고,
+        //     그 차량번호로 VHCMA 를 조인해 FIX_YN 을 얻는다. 매칭 없으면 공백(무영향).
         //     · r[26]=CARNO, r[27]=FIX_YN
-        "       TRIM(COALESCE(h.CARNO,'')) AS CARNO," +
+        "       TRIM(COALESCE(pd.NOTE,'')) AS CARNO," +
         "       TRIM(COALESCE(vh.FIX_YN,'')) AS FIX_YN" +
         " FROM KNRAWMS.TMS_SHPDI i" +
         " JOIN KNRAWMS.TMS_SHPDH h ON i.SHPOKY = h.SHPOKY" +
         " LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY = h.DPTNKY AND b.PTNRTY = 'CT'" +
         " LEFT JOIN KNRAWMS.CMCDV c ON c.CMCDKY = 'TASOTY' AND c.CMCDVL = h.SHPMTY" +
         " LEFT JOIN KNRAWMS.SKUMA m ON m.SKUKEY = i.SKUKEY" +
-        " LEFT JOIN KNRAWMS.VHCMA vh ON TRIM(vh.VEHICLE_NO) = TRIM(h.CARNO)" +
-        "       AND TRIM(COALESCE(h.CARNO,'')) <> ''";
+        " LEFT JOIN KNRAWMS.TMS_PS_DISPATCH_H pd ON pd.DISPATCH_NO = i.STDLNR" +
+        "       AND TRIM(COALESCE(i.STDLNR,'')) <> ''" +
+        " LEFT JOIN KNRAWMS.VHCMA vh ON TRIM(vh.VEHICLE_NO) = TRIM(pd.NOTE)" +
+        "       AND TRIM(COALESCE(pd.NOTE,'')) <> ''";
 
     private static final String SEARCH_DOCS_ORDER_BY =
         " ORDER BY h.RQSHPD, h.DPTNKY, i.SHPOKY, i.SHPOIT";
@@ -490,11 +494,21 @@ public class PsDispatchService {
             //   미전송/빈값이면 NULL 로 저장(Oracle 은 ''=NULL 이므로 CLOB 에 null 바인딩).
             String loadLayoutJson = veh.getLoadLayout();
             if (loadLayoutJson != null && loadLayoutJson.isBlank()) loadLayoutJson = null;
+
+            // ★ [PR-B 고정차량 — 배차단위 저장] 차량번호를 '배차(DISPATCH_NO=STDLNR) 단위'로
+            //   TMS_PS_DISPATCH_H.NOTE 에 저장한다.
+            //   ■ 왜 NOTE 인가: 기존엔 TMS_SHPDH.CARNO(=SHPOKY/납품문서 단위)에만 저장했는데,
+            //     같은 납품처의 문서가 여러 배차(예: 1.4톤+18톤)로 나뉘면 CARNO 가 SHPOKY 교차로
+            //     '번져' 1.4톤 배차에도 18톤 고정차량번호가 조회되는 버그가 있었다(문제1).
+            //     NOTE 는 배차 1건당 1행(TMS_PS_DISPATCH_H)이라 번짐이 원천 차단된다.
+            //   ■ NOTE 는 현재 실데이터 미사용(INSERT 시 공란) 컬럼이라 재활용해도 무영향.
+            String vehNoForNote = veh.getVehicleNo();
+            vehNoForNote = (vehNoForNote == null || vehNoForNote.isBlank()) ? null : vehNoForNote.strip();
             tmsEm.createNativeQuery("""
                 INSERT INTO KNRAWMS.TMS_PS_DISPATCH_H
                   (DISPATCH_NO, DISPATCH_DT, RQSHPD, DPTNKY, DPTNM,
-                   CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR, DISPATCH_TYPE, LOAD_LAYOUT)
-                VALUES (?,?,?,?,?,?,'DRAFT',?,?,?,?,'GI',?)
+                   CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR, DISPATCH_TYPE, LOAD_LAYOUT, NOTE)
+                VALUES (?,?,?,?,?,?,'DRAFT',?,?,?,?,'GI',?,?)
                 """)
               .setParameter(1,  dispatchNo)
               .setParameter(2,  today)
@@ -507,6 +521,7 @@ public class PsDispatchService {
               .setParameter(9,  today)
               .setParameter(10, "SYSTEM")
               .setParameter(11, loadLayoutJson)   // null 이면 CLOB NULL 저장
+              .setParameter(12, vehNoForNote)     // [PR-B] 배차단위 차량번호(없으면 NULL)
               .executeUpdate();
 
             List<PsDispatchSaveRequest.ItemBlock> items = veh.getItems();
@@ -1178,23 +1193,21 @@ public class PsDispatchService {
             }
 
             // ── [PR-B 고정차량 복원] 이 배차의 차량번호(CARNO)·고정차량여부(FIX_YN) 조회 ──
-            //   새로고침/재조회 시 getList(TMS_PS_DISPATCH_H)에는 CARNO/FIX_YN 이 없어
-            //   고정차량 표시가 유실된다. 배차저장(PR-B) 시 TMS_SHPDH.CARNO 에 기록한
-            //   차량번호를 이 배차의 납품문서(TMS_PS_DISPATCH_D→SHPOKY→TMS_SHPDH)에서 찾고,
-            //   그 CARNO 로 VHCMA.FIX_YN 을 조인해 복원한다. (조회 전용 — 저장/엔진 무영향)
+            //   ★ 차량번호는 '배차(DISPATCH_NO) 단위'로 저장된 TMS_PS_DISPATCH_H.NOTE 에서
+            //     직접 가져온다(저장과 동일 단위). 기존 TMS_SHPDH.CARNO(=SHPOKY 단위)는
+            //     같은 납품처가 여러 배차로 나뉠 때 차량번호가 번지는 버그가 있어 교체.
+            //   · NOTE(차량번호)로 VHCMA.FIX_YN 을 조인해 고정여부 복원. (조회 전용 — 저장/엔진 무영향)
             String carnoVal = "";
             String fixYnVal  = "";
             try {
                 @SuppressWarnings("unchecked")
                 List<Object[]> cf = tmsEm.createNativeQuery(
-                    "SELECT TRIM(COALESCE(sh.CARNO,'')) AS CARNO, " +
+                    "SELECT TRIM(COALESCE(pd.NOTE,'')) AS CARNO, " +
                     "       TRIM(COALESCE(vh.FIX_YN,'')) AS FIX_YN " +
-                    "FROM KNRAWMS.TMS_PS_DISPATCH_D d " +
-                    "JOIN KNRAWMS.TMS_SHPDH sh ON sh.SHPOKY = d.SHPOKY " +
-                    "LEFT JOIN KNRAWMS.VHCMA vh ON TRIM(vh.VEHICLE_NO) = TRIM(sh.CARNO) " +
-                    "     AND TRIM(COALESCE(sh.CARNO,'')) <> '' " +
-                    "WHERE d.DISPATCH_NO = ? AND TRIM(COALESCE(sh.CARNO,'')) <> '' " +
-                    "ORDER BY d.SEQ")
+                    "FROM KNRAWMS.TMS_PS_DISPATCH_H pd " +
+                    "LEFT JOIN KNRAWMS.VHCMA vh ON TRIM(vh.VEHICLE_NO) = TRIM(pd.NOTE) " +
+                    "     AND TRIM(COALESCE(pd.NOTE,'')) <> '' " +
+                    "WHERE pd.DISPATCH_NO = ?")
                     .setParameter(1, no.strip())
                     .getResultList();
                 if (cf != null && !cf.isEmpty()) {
