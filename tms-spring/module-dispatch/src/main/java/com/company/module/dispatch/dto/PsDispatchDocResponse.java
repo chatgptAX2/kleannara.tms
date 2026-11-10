@@ -132,4 +132,12 @@ public class PsDispatchDocResponse {
     //   프론트 호환 위해 JSON 키는 TMS_LINK_YN 유지.
     @JsonProperty("TMS_LINK_YN")
     private String linkYn;
+
+    // [PR-B 고정차량 조회] 차량번호(TMS_SHPDH.CARNO) — 배차저장 시 기록한 매칭 차량번호.
+    @JsonProperty("CARNO")
+    private String carno;
+
+    // [PR-B 고정차량 조회] 고정차량 여부(VHCMA.FIX_YN, 'Y'/'N'/공백) — CARNO 로 VHCMA 조인 결과.
+    @JsonProperty("FIX_YN")
+    private String fixYn;
 }
