@@ -3328,6 +3328,14 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
   position:sticky !important;bottom:0 !important;z-index:3 !important;
   padding:4px 8px !important;
 }
+/* ★ [합계 상단 고정] 배차확정탭 합계행을 헤더(top:0,height:30px) 바로 아래(top:30px)에
+   sticky 고정 → 조회 시 최상단에 위치하고 마우스 스크롤해도 계속 보인다. */
+#psop-panel-sap .sap-left-tbl thead tr.sap-sum-row td{
+  position:sticky !important;top:30px !important;z-index:2 !important;
+  padding:4px 8px !important;
+  background:var(--surface2) !important;font-weight:700;
+  border-bottom:2px solid var(--primary) !important;
+}
 /* ── 행 높이 축소 → 한 화면에 더 많은 정보 조회 ── */
 #psop-panel-sap .sap-left-tbl tbody td,
 #psop-panel-sap .sap-doc-tbl tbody td{
@@ -14974,7 +14982,9 @@ async function _sapRenderLeft() {
     svbeln:   `<td class="center" style="font-weight:700">${sumSvbeln}건</td>`,
     loadview: `<td>-</td>`,
   };
-  const tfootRow = `<tr>${order.map(id => tfootMap[id] || '<td>-</td>').join('')}</tr>`;
+  // ★ [합계 상단 고정] 합계행을 thead 2번째 행(sap-sum-row)으로 이동 → 헤더 바로 아래
+  //   최상단에 위치하고 스크롤해도 sticky 고정된다(아래 CSS top:헤더높이 적용).
+  const sumRow = `<tr class="sap-sum-row">${order.map(id => tfootMap[id] || '<td>-</td>').join('')}</tr>`;
 
   // 컨테이너 너비 측정 → 컬럼 합계보다 크면 100% 채움, 작으면 최소폭 유지(가로스크롤)
   const wrapW = wrap.getBoundingClientRect().width || 0;
@@ -14983,9 +14993,8 @@ async function _sapRenderLeft() {
   wrap.innerHTML = `
     <table class="sap-left-tbl" style="width:${tblW};min-width:${totalW}px">
       <colgroup>${cgHtml}</colgroup>
-      <thead>${theadHtml}</thead>
+      <thead>${theadHtml}${sumRow}</thead>
       <tbody>${tbodyRows}</tbody>
-      <tfoot>${tfootRow}</tfoot>
     </table>`;
 }
 
