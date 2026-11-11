@@ -1047,14 +1047,14 @@ public class SapRfcService {
                 "  MIN(SH.RQSHPD) AS RQSHPD_FROM, " +
                 "  MAX(SH.RQSHPD) AS RQSHPD_TO, " +
                 "  MAX(NULLIF(TRIM(SH.CARTON),'')) AS CARTON, " +
-                // ★[PR-B 고정차량] 차량번호는 '배차(STDLNR) 단위'인 TMS_PS_DISPATCH_H.NOTE 를 우선 사용.
+                // ★[PR-B 고정차량] 차량번호는 '배차(STDLNR) 단위'인 TMS_PS_DISPATCH_H.NOTE 만 사용한다.
                 //   PH 는 STDLNR 단위(DISPATCH_NO) 1행이라 MAX(PH.NOTE)=그 배차의 고유 차량번호 →
                 //   같은 납품처가 여러 배차(예:1.4톤+18톤)로 나뉘어도 번지지(bleed) 않는다.
-                //   [PR-B19 폴백] 단, PR#524 이전 저장된 '레거시 배차'는 PH.NOTE 가 비어 있어
-                //   차량번호/고정차량이 전부 '-' 로 사라진다. → NOTE 가 비면 기존 SH.CARNO(SHPOKY단위)로 폴백.
-                //   폴백은 신규(NOTE 보유) 배차에는 전혀 영향 없음(NOTE 우선). 레거시 데이터 한정 복구용.
-                "  COALESCE(MAX(NULLIF(TRIM(PH.NOTE),'')), MAX(NULLIF(TRIM(SH.CARNO),''))) AS CARNO, " +
-                // ★[PR-B 고정차량] 고정차량여부(VHCMA.FIX_YN) — PH.NOTE 또는(폴백) SH.CARNO 로 VHCMA 조인.
+                //   [PR-B22] SH.CARNO 폴백 완전 제거 — SH.CARNO 는 SHPOKY 단위라 폴백 시 1.4톤 배차에
+                //   18톤 차량번호가 번져(bleed) 중복 표시되는 부작용이 재발했다(PR#524/#525 폴백 롤백).
+                //   레거시(NOTE 공백) 배차는 재배차 시 PH.NOTE 가 채워지며 정상화된다.
+                "  MAX(NULLIF(TRIM(PH.NOTE),'')) AS CARNO, " +
+                // ★[PR-B 고정차량] 고정차량여부(VHCMA.FIX_YN) — PH.NOTE(배차단위)로만 VHCMA 조인.
                 "  MAX(NULLIF(TRIM(VH.FIX_YN),'')) AS FIX_YN, " +
                 "  MAX(NULLIF(TRIM(SH.VEHINO),'')) AS VEHINO, " +
                 "  MAX(NULLIF(TRIM(SH.DRIVER),'')) AS DRIVER, " +
@@ -1074,12 +1074,11 @@ public class SapRfcService {
                 "LEFT JOIN KNRAWMS.SKUMA M  ON M.SKUKEY  = SI.SKUKEY " +
                 "LEFT JOIN KNRAWMS.BZPTN CT ON CT.PTNRKY = SH.DPTNKY AND CT.PTNRTY = 'CT' " +
                 "LEFT JOIN KNRAWMS.TMS_PS_DISPATCH_H PH ON PH.DISPATCH_NO = SI.STDLNR " +
-                // ★[PR-B 고정차량] 배차단위 차량번호(PH.NOTE) 우선, 비면(레거시) SH.CARNO 로 VHCMA 조인 → 고정차량여부(FIX_YN).
-                //   [PR-B19 폴백] CARNO SELECT 와 동일한 '배차단위 NOTE → SHPOKY CARNO' 우선순위로 매칭하여
-                //   레거시 배차도 고정차량 배지가 복구되도록 한다. 둘 다 공백이면 조인대상 없음 → FIX_YN 공백(무영향).
-                "LEFT JOIN KNRAWMS.VHCMA VH " +
-                "  ON TRIM(VH.VEHICLE_NO) = TRIM(COALESCE(NULLIF(TRIM(PH.NOTE),''), NULLIF(TRIM(SH.CARNO),''))) " +
-                " AND LENGTH(TRIM(COALESCE(NULLIF(TRIM(PH.NOTE),''), NULLIF(TRIM(SH.CARNO),''),''))) > 0 " +
+                // ★[PR-B 고정차량] 배차단위 차량번호(PH.NOTE)로만 VHCMA 조인 → 고정차량여부(FIX_YN).
+                //   [PR-B22] SH.CARNO 폴백 제거 — SHPOKY 단위 폴백이 bleed(중복 표시)를 유발해 롤백.
+                //   PH.NOTE 가 공백이면 조인 대상 없음 → FIX_YN 공백(무영향).
+                "LEFT JOIN KNRAWMS.VHCMA VH ON TRIM(VH.VEHICLE_NO) = TRIM(PH.NOTE) " +
+                "     AND TRIM(COALESCE(PH.NOTE,'')) <> '' " +
                 "WHERE " + whereSql + " " +
                 "GROUP BY SI.STDLNR " +
                 // STDLNR 이 실제 채번된(공백/NULL 아님) 그룹만.
