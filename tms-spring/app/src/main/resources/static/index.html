@@ -21142,8 +21142,11 @@ async function psopSaveDispatch() {
       body: JSON.stringify({ offline: _offline, vehicles: saveTargets.map(v => ({
         cartype:     v.cartype,
         carclass_cd: v.carclass_cd || '',
-        // [PR-B 고정차량 저장] 자동배차 후처리로 매칭된 차량번호(없으면 공백). 서버가 TMS_SHPDH.CARNO 에 저장.
+        // [PR-B 고정차량 저장] 자동배차 후처리로 매칭된 차량번호(없으면 공백). 서버가 TMS_PS_DISPATCH_H.NOTE 에 저장.
         vehicle_no:  v.vehicle_no || v.VEHICLE_NO || v.carno || v.CARNO || '',
+        // ★[PR-D 고정차량 영구저장] 고정여부(Y/N)를 함께 전송 → 서버가 TMS_PS_DISPATCH_H.FIX_YN 에 저장.
+        //   자동배차 매칭 결과 또는 사용자가 선적목록에서 직접 체크한 값. (VHCMA 미등록 수기차량도 유지)
+        fix_yn:      String(v.fix_yn || v.FIX_YN || 'N').toUpperCase() === 'Y' ? 'Y' : 'N',
         rqshpd:      v.rqshpd,
         dptnky:      v.dptnky,
         dptnm:       v.dptnm,

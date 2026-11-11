@@ -1054,8 +1054,12 @@ public class SapRfcService {
                 //   18톤 차량번호가 번져(bleed) 중복 표시되는 부작용이 재발했다(PR#524/#525 폴백 롤백).
                 //   레거시(NOTE 공백) 배차는 재배차 시 PH.NOTE 가 채워지며 정상화된다.
                 "  MAX(NULLIF(TRIM(PH.NOTE),'')) AS CARNO, " +
-                // ★[PR-B 고정차량] 고정차량여부(VHCMA.FIX_YN) — PH.NOTE(배차단위)로만 VHCMA 조인.
-                "  MAX(NULLIF(TRIM(VH.FIX_YN),'')) AS FIX_YN, " +
+                // ★[PR-D 고정차량 영구저장] 고정여부는 '저장값(PH.FIX_YN)' 우선 사용.
+                //   · 배차저장 시 TMS_PS_DISPATCH_H.FIX_YN 에 기록된 Y/N 이 1차 소스(수기 고정차량도 유지).
+                //   · 저장값이 Y/N 이 아닌(레거시) 경우만 기존 VHCMA 조인값(VH.FIX_YN)으로 폴백.
+                "  CASE WHEN MAX(CASE WHEN TRIM(COALESCE(PH.FIX_YN,'')) IN ('Y','N') THEN 1 ELSE 0 END) = 1 " +
+                "       THEN MAX(CASE WHEN TRIM(COALESCE(PH.FIX_YN,'')) = 'Y' THEN 'Y' ELSE 'N' END) " +
+                "       ELSE MAX(NULLIF(TRIM(VH.FIX_YN),'')) END AS FIX_YN, " +
                 "  MAX(NULLIF(TRIM(SH.VEHINO),'')) AS VEHINO, " +
                 "  MAX(NULLIF(TRIM(SH.DRIVER),'')) AS DRIVER, " +
                 "  MAX(NULLIF(TRIM(SH.DRIVERCEL),'')) AS DRIVERCEL, " +

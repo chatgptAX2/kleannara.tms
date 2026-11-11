@@ -97,6 +97,12 @@ public class PsDispatchSaveRequest {
         @JsonAlias({"vehicle_no", "VEHICLE_NO", "carno", "CARNO"})
         private String vehicleNo;     // 차량번호 (고정차량 매칭 결과)
 
+        // [PR-D 고정차량 영구저장] 이 배차의 고정차량 여부(Y/N) — 배차단위로 TMS_PS_DISPATCH_H.FIX_YN 에 저장.
+        //   자동배차 매칭 결과 또는 사용자가 선적목록에서 직접 체크한 값. 조회 시 이 저장값을 우선 사용하고,
+        //   값이 없을(레거시) 때만 기존 VHCMA 조인 폴백. VHCMA 에 없는 수기 차량도 고정 배지가 유지된다.
+        @JsonAlias({"fix_yn", "FIX_YN", "fixYn"})
+        private String fixYn;         // 고정차량 여부 (Y/N)
+
         private Double totalKg;
         @JsonSetter("totalKg")
         @JsonAlias({"total_kg", "TOTAL_KG", "TOTALKG"})
