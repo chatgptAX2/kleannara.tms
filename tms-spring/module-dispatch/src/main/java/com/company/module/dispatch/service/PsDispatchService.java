@@ -239,7 +239,11 @@ public class PsDispatchService {
         //     번져(bleed) 중복 표시됐다(PR#525/#526 폴백의 부작용 재발). pd.NOTE 는 배차 1건당
         //     1행이라 번짐이 원천 차단된다. 레거시(NOTE 공백) 배차는 재배차 시 NOTE 가 채워지며 정상화.
         "       TRIM(COALESCE(pd.NOTE,'')) AS CARNO," +
-        "       TRIM(COALESCE(vh.FIX_YN,'')) AS FIX_YN" +
+        // [PR-D 고정차량 영구저장] 고정여부는 '저장값(pd.FIX_YN)' 을 우선 사용한다.
+        //   · 배차저장 시 TMS_PS_DISPATCH_H.FIX_YN 에 기록된 Y/N 이 1차 소스(수기 고정차량도 유지됨).
+        //   · 저장값이 공백/없음(레거시 배차)일 때만 기존 VHCMA 조인값(vh.FIX_YN)으로 폴백.
+        "       CASE WHEN TRIM(COALESCE(pd.FIX_YN,'')) IN ('Y','N') THEN TRIM(pd.FIX_YN)" +
+        "            ELSE TRIM(COALESCE(vh.FIX_YN,'')) END AS FIX_YN" +
         " FROM KNRAWMS.TMS_SHPDI i" +
         " JOIN KNRAWMS.TMS_SHPDH h ON i.SHPOKY = h.SHPOKY" +
         " LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY = h.DPTNKY AND b.PTNRTY = 'CT'" +
@@ -510,11 +514,18 @@ public class PsDispatchService {
             //   ■ NOTE 는 현재 실데이터 미사용(INSERT 시 공란) 컬럼이라 재활용해도 무영향.
             String vehNoForNote = veh.getVehicleNo();
             vehNoForNote = (vehNoForNote == null || vehNoForNote.isBlank()) ? null : vehNoForNote.strip();
+            // ★[PR-D 고정차량 영구저장] 고정차량 여부(Y/N)를 배차단위로 TMS_PS_DISPATCH_H.FIX_YN 에 저장.
+            //   · 프론트가 보낸 fix_yn 을 정규화(대문자 'Y' 만 'Y', 그 외 전부 'N').
+            //   · 차량번호가 없으면 고정일 수 없으므로 강제 'N'(모순 방지).
+            //   · 컬럼은 NOT NULL DEFAULT 'N' 이므로 항상 'Y'/'N' 중 하나를 바인딩한다.
+            String fixYnForSave = "Y".equalsIgnoreCase(
+                    veh.getFixYn() == null ? "" : veh.getFixYn().strip()) ? "Y" : "N";
+            if (vehNoForNote == null) fixYnForSave = "N";
             tmsEm.createNativeQuery("""
                 INSERT INTO KNRAWMS.TMS_PS_DISPATCH_H
                   (DISPATCH_NO, DISPATCH_DT, RQSHPD, DPTNKY, DPTNM,
-                   CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR, DISPATCH_TYPE, LOAD_LAYOUT, NOTE)
-                VALUES (?,?,?,?,?,?,'DRAFT',?,?,?,?,'GI',?,?)
+                   CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR, DISPATCH_TYPE, LOAD_LAYOUT, NOTE, FIX_YN)
+                VALUES (?,?,?,?,?,?,'DRAFT',?,?,?,?,'GI',?,?,?)
                 """)
               .setParameter(1,  dispatchNo)
               .setParameter(2,  today)
@@ -528,6 +539,7 @@ public class PsDispatchService {
               .setParameter(10, "SYSTEM")
               .setParameter(11, loadLayoutJson)   // null 이면 CLOB NULL 저장
               .setParameter(12, vehNoForNote)     // [PR-B] 배차단위 차량번호(없으면 NULL)
+              .setParameter(13, fixYnForSave)     // [PR-D] 배차단위 고정차량 여부('Y'/'N')
               .executeUpdate();
 
             // [고정차량저장진단] 각 배차(가선적번호/톤수)에 실제로 저장되는 차량번호(NOTE) 추적.
@@ -1217,9 +1229,11 @@ public class PsDispatchService {
                 //   이유: sh.CARNO 는 SHPOKY 단위라 같은 납품처가 여러 배차로 나뉠 때 번져(bleed),
                 //   1.4톤 배차(고정 미배정 정상)에도 18톤 차량번호가 복원되어 중복 표시됐다.
                 //   pd.NOTE 는 배차 1건당 1행이라 번짐이 원천 차단된다. 레거시(NOTE 공백)는 재배차 시 정상화.
+                // [PR-D 고정차량 영구저장] 고정여부는 저장값(pd.FIX_YN) 우선, 레거시(공백)만 VHCMA 폴백.
                 List<Object[]> cf = tmsEm.createNativeQuery(
                     "SELECT TRIM(COALESCE(pd.NOTE,'')) AS CARNO, " +
-                    "       TRIM(COALESCE(vh.FIX_YN,'')) AS FIX_YN " +
+                    "       CASE WHEN TRIM(COALESCE(pd.FIX_YN,'')) IN ('Y','N') THEN TRIM(pd.FIX_YN) " +
+                    "            ELSE TRIM(COALESCE(vh.FIX_YN,'')) END AS FIX_YN " +
                     "FROM KNRAWMS.TMS_PS_DISPATCH_H pd " +
                     "LEFT JOIN KNRAWMS.VHCMA vh ON TRIM(vh.VEHICLE_NO) = TRIM(pd.NOTE) " +
                     "     AND TRIM(COALESCE(pd.NOTE,'')) <> '' " +
