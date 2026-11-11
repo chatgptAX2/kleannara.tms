@@ -19751,6 +19751,11 @@ function _psopSavePendingState() {
         total_kg:        v.total_kg     || 0,
         total_cnt:       v.total_cnt    || 0,
         load_kg:         v.load_kg      || null,
+        // ★[PR-B21] 고정차량 차량번호/고정여부도 영속화한다.
+        //   미포함 시: 자동배차(pending) → 날짜변경 → 재조회(localStorage 복원) 왕복에서
+        //   vehicle_no/fix_yn 이 유실되어 차량번호/고정차량 표시가 사라졌다(이번 증상의 근본원인).
+        vehicle_no:      v.vehicle_no || v.VEHICLE_NO || v.carno || v.CARNO || '',
+        fix_yn:          v.fix_yn || v.FIX_YN || 'N',
         items:           v.items        || [],
       }));
     if (toSave.length > 0) {
@@ -19805,6 +19810,10 @@ function _psopRestorePendingState() {
         total_kg:        v.total_kg     || 0,
         total_cnt:       v.total_cnt    || 0,
         load_kg:         v.load_kg      || null,
+        // ★[PR-B21] 고정차량 차량번호/고정여부 복원 — 저장 시 담은 값을 그대로 되살린다.
+        //   이게 없으면 pending 배차가 localStorage 왕복 후 차량번호/고정차량이 공백으로 복원됨.
+        vehicle_no:      v.vehicle_no || v.VEHICLE_NO || v.carno || v.CARNO || '',
+        fix_yn:          v.fix_yn || v.FIX_YN || 'N',
         items:           v.items        || [],
       });
       restoredCount++;
