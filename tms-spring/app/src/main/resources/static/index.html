@@ -18177,12 +18177,34 @@ function psopRenderVehicleArea() {
     // 고정차량 매칭 결과 (자동배차 후처리로 부여된 vehicle_no/fix_yn)
     const _carno  = v.vehicle_no || v.VEHICLE_NO || v.carno || v.CARNO || '';
     const _isFix  = String(v.fix_yn || v.FIX_YN || 'N').toUpperCase() === 'Y';
-    const carnoCell = _carno
-      ? `<span style="font-size:10px;font-weight:600;color:var(--text)">${_carno}</span>`
-      : `<span style="color:var(--text3);font-size:10px">-</span>`;
-    const fixCell = _isFix
-      ? `<span style="display:inline-block;font-size:9px;font-weight:700;color:#b45309;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;padding:1px 6px">고정</span>`
-      : `<span style="color:var(--text3);font-size:10px">-</span>`;
+    // ★[요청2] '배차상태'(저장 전 = STDLNR 없음) 배차는 차량번호/고정차량을 사용자가
+    //   직접 수정/삭제할 수 있도록 인라인 편집 UI 로 노출한다.
+    //   저장완료(STDLNR 보유) 배차는 기존처럼 읽기전용(수정하려면 '배차불러오기'로 편집).
+    const _editable = !v.STDLNR;
+    let carnoCell, fixCell;
+    if (_editable) {
+      // 차량번호: 인라인 input (blur/Enter 시 반영). 고정차량: 체크박스 토글.
+      carnoCell = `<input type="text" value="${_carno.replace(/"/g,'&quot;')}" placeholder="차량번호"
+          title="차량번호 입력/수정 (비우면 삭제)"
+          style="width:82px;font-size:10px;padding:2px 4px;border:1px solid var(--border,#d1d5db);border-radius:4px"
+          onclick="event.stopPropagation()"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+          onchange="psopEditCarno('${pid}',this.value)">`;
+      fixCell = `<label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;font-size:9px"
+          title="고정차량 여부 체크/해제" onclick="event.stopPropagation()">
+          <input type="checkbox" ${_isFix ? 'checked' : ''}
+             onclick="event.stopPropagation()"
+             onchange="psopEditFixYn('${pid}',this.checked)">
+          <span style="font-weight:700;color:${_isFix ? '#b45309' : 'var(--text3)'}">고정</span>
+        </label>`;
+    } else {
+      carnoCell = _carno
+        ? `<span style="font-size:10px;font-weight:600;color:var(--text)">${_carno}</span>`
+        : `<span style="color:var(--text3);font-size:10px">-</span>`;
+      fixCell = _isFix
+        ? `<span style="display:inline-block;font-size:9px;font-weight:700;color:#b45309;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;padding:1px 6px">고정</span>`
+        : `<span style="color:var(--text3);font-size:10px">-</span>`;
+    }
 
     return `<tr class="${selCls}" data-pid="${pid}" onclick="_psopVehSelectRow('${pid}',event)"
               ondragover="psopVehicleCardDragOver(event,'${pid}')"
@@ -19175,6 +19197,42 @@ function psopToggleVehicle(pid, checked) {
   if (checked) psopState.selectedVehicles.add(pid);
   else         psopState.selectedVehicles.delete(pid);
   psopRefreshVehicleSelection();
+}
+
+/* ★[요청2] 저장 전(배차상태) 선적목록 — 차량번호 인라인 수정/삭제.
+   - value 를 비우면 차량번호 삭제(공백) + 고정여부도 자동 해제(차량번호 없는데 고정은 모순).
+   - 저장완료(STDLNR) 배차는 편집 UI 가 렌더되지 않으므로 호출되지 않음(이중 방어로 가드). */
+function psopEditCarno(pid, value) {
+  const v = psopState.vehicles.find(x => x._pendingId === pid);
+  if (!v || v.STDLNR) return;                 // 저장완료 건은 편집 불가(가드)
+  const carno = String(value || '').trim();
+  v.vehicle_no = carno;
+  v.VEHICLE_NO = carno;
+  v.carno = carno;      v.CARNO = carno;
+  if (!carno) {                               // 차량번호 삭제 시 고정여부도 해제
+    v.fix_yn = 'N'; v.FIX_YN = 'N';
+  }
+  _psopSavePendingState();                     // 미저장(pending) 상태 localStorage 반영
+  psopLoadVehicles();                          // 재렌더(입력 포커스 잃음 — onchange 이므로 자연스러움)
+}
+
+/* ★[요청2] 저장 전(배차상태) 선적목록 — 고정차량 여부 체크/해제.
+   - 고정 체크 시 차량번호가 비어 있으면 경고(차량번호 없이 고정만 둘 수 없음). */
+function psopEditFixYn(pid, checked) {
+  const v = psopState.vehicles.find(x => x._pendingId === pid);
+  if (!v || v.STDLNR) return;                 // 저장완료 건은 편집 불가(가드)
+  if (checked) {
+    const carno = String(v.vehicle_no || v.VEHICLE_NO || v.carno || v.CARNO || '').trim();
+    if (!carno) {
+      showToast('고정차량으로 지정하려면 먼저 차량번호를 입력하세요.');
+      psopLoadVehicles();                      // 체크 되돌림(재렌더)
+      return;
+    }
+  }
+  v.fix_yn = checked ? 'Y' : 'N';
+  v.FIX_YN = v.fix_yn;
+  _psopSavePendingState();
+  psopLoadVehicles();
 }
 
 function psopSelectAllVehicles(checked) {
@@ -21057,12 +21115,27 @@ async function psopSaveDispatch() {
       carclass_cd: v.carclass_cd || '',
       // [PR-B 고정차량 저장] 자동배차 후처리로 매칭된 차량번호(없으면 공백). 서버가 TMS_SHPDH.CARNO 에 저장.
       vehicle_no:  v.vehicle_no || v.VEHICLE_NO || v.carno || v.CARNO || '',
+      fix_yn:      v.fix_yn || v.FIX_YN || 'N',
       rqshpd:      v.rqshpd,
       dptnky:      v.dptnky,
       dptnm:       v.dptnm,
       total_kg:    v.total_kg,
       items:       (v.items || []).map(it => ({ SHPOKY: it.SHPOKY, SHPOIT: it.SHPOIT })),
     }));
+    // ★[요청1] 저장 전 '차량번호/고정여부'를 배차단위(DISPATCH_NO 미정이므로 items 키)로 스냅샷.
+    //   저장 후 psopReloadSavedVehicles(DB 재조회)가 선적목록을 덮어쓸 때, 서버 VHCMA 조인이
+    //   어떤 이유로든 비어 와도(고정여부 유실) 이 스냅샷으로 복원하여 '고정' 배지를 유지한다.
+    //   키: 각 배차의 첫 아이템 'SHPOKY|SHPOIT' → { vehicle_no, fix_yn }
+    const _fixSnapshot = {};
+    saveTargets.forEach(v => {
+      const it0 = (v.items || [])[0];
+      if (!it0) return;
+      const k = `${it0.SHPOKY}|${it0.SHPOIT}`;
+      _fixSnapshot[k] = {
+        vehicle_no: v.vehicle_no || v.VEHICLE_NO || v.carno || v.CARNO || '',
+        fix_yn:     String(v.fix_yn || v.FIX_YN || 'N').toUpperCase(),
+      };
+    });
     const _offline = !!psopState._offlineMode;   // 미연동 자동배차에서 설정된 모드
     const res = await fetch('/api/ps-dispatch/save', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -21132,6 +21205,25 @@ async function psopSaveDispatch() {
     // ★ 방금 저장한 배차를 DB 에서 재조회하여 선적목록에 '저장 완료' 상태로 표시
     //   (기존에는 인메모리만 비워 선적목록이 빈 채로 남았음)
     await psopReloadSavedVehicles(dispNos);
+    // ★[요청1] 저장 후 재조회가 끝난 뒤, 서버 VHCMA 조인이 비어 와서 고정여부가 사라진 경우
+    //   저장 전 스냅샷(_fixSnapshot)으로 vehicle_no/fix_yn 을 복원해 '고정' 배지를 유지한다.
+    //   (각 복원 배차의 items 중 스냅샷 키와 일치하는 것이 있으면 그 값으로 보정)
+    try {
+      psopState.vehicles.forEach(v => {
+        if (!v.STDLNR) return;                       // 저장완료 배차만 대상
+        for (const it of (v.items || [])) {
+          const snap = _fixSnapshot[`${it.SHPOKY ?? it.shpoky}|${it.SHPOIT ?? it.shpoit}`];
+          if (snap) {
+            // 서버값이 비어있을 때만 스냅샷으로 보완(서버가 정상 반환하면 서버값 우선)
+            if (!(v.vehicle_no || v.VEHICLE_NO) && snap.vehicle_no) v.vehicle_no = snap.vehicle_no;
+            const curFix = String(v.fix_yn || v.FIX_YN || '').toUpperCase();
+            if (curFix !== 'Y' && snap.fix_yn === 'Y') v.fix_yn = 'Y';
+            break;
+          }
+        }
+      });
+      psopLoadVehicles();
+    } catch(snapErr) { console.warn('[psopSaveDispatch] 고정여부 스냅샷 보정 실패(무시):', snapErr); }
     await psopSearch();
   } catch(e) {
     console.error('[psopSaveDispatch] 저장 실패:', e);
