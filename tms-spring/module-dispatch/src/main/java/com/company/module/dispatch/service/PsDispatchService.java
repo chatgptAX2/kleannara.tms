@@ -233,7 +233,10 @@ public class PsDispatchService {
         //   · pd.NOTE(차량번호)를 이 납품문서의 가선적번호(i.STDLNR)로 조인해 가져오고,
         //     그 차량번호로 VHCMA 를 조인해 FIX_YN 을 얻는다. 매칭 없으면 공백(무영향).
         //     · r[26]=CARNO, r[27]=FIX_YN
-        "       TRIM(COALESCE(pd.NOTE,'')) AS CARNO," +
+        //   [PR-B20 폴백] NOTE 저장 로직(배차단위) 이전에 저장된 '레거시 배차'는 pd.NOTE 가 비어
+        //     차량번호/고정차량이 전부 사라진다. → NOTE 가 비면 기존 h.CARNO(SHPOKY단위)로 폴백.
+        //     신규 배차는 NOTE 우선이라 폴백을 타지 않음(bleed 재발 없음). 레거시 복구 전용.
+        "       TRIM(COALESCE(NULLIF(TRIM(pd.NOTE),''), NULLIF(TRIM(h.CARNO),''))) AS CARNO," +
         "       TRIM(COALESCE(vh.FIX_YN,'')) AS FIX_YN" +
         " FROM KNRAWMS.TMS_SHPDI i" +
         " JOIN KNRAWMS.TMS_SHPDH h ON i.SHPOKY = h.SHPOKY" +
@@ -242,8 +245,9 @@ public class PsDispatchService {
         " LEFT JOIN KNRAWMS.SKUMA m ON m.SKUKEY = i.SKUKEY" +
         " LEFT JOIN KNRAWMS.TMS_PS_DISPATCH_H pd ON pd.DISPATCH_NO = i.STDLNR" +
         "       AND TRIM(COALESCE(i.STDLNR,'')) <> ''" +
-        " LEFT JOIN KNRAWMS.VHCMA vh ON TRIM(vh.VEHICLE_NO) = TRIM(pd.NOTE)" +
-        "       AND TRIM(COALESCE(pd.NOTE,'')) <> ''";
+        // [PR-B20 폴백] VHCMA 조인도 'pd.NOTE 우선 → h.CARNO 폴백' 동일 우선순위로 매칭 → 레거시 고정차량 배지 복구.
+        " LEFT JOIN KNRAWMS.VHCMA vh ON TRIM(vh.VEHICLE_NO) = TRIM(COALESCE(NULLIF(TRIM(pd.NOTE),''), NULLIF(TRIM(h.CARNO),'')))" +
+        "       AND LENGTH(TRIM(COALESCE(NULLIF(TRIM(pd.NOTE),''), NULLIF(TRIM(h.CARNO),''),''))) > 0";
 
     private static final String SEARCH_DOCS_ORDER_BY =
         " ORDER BY h.RQSHPD, h.DPTNKY, i.SHPOKY, i.SHPOIT";
@@ -1207,13 +1211,21 @@ public class PsDispatchService {
             String fixYnVal  = "";
             try {
                 @SuppressWarnings("unchecked")
+                // [PR-B20 폴백] pd.NOTE(배차단위) 우선, 비면(레거시) h.CARNO(SHPOKY단위)로 폴백.
+                //   loadForEdit 는 날짜변경 후 재조회 시 '저장배차 자동복원' 경로로 호출되어
+                //   화면 차량번호/고정차량을 덮어쓴다. NOTE 폴백이 없으면 레거시 배차가 '-' 로 유실됨.
+                //   같은 DISPATCH_NO 의 SHPDH 가 여러 SHPOKY 로 나뉘어도 MAX 로 하나의 번호를 취함(신규는 NOTE 우선이라 무영향).
                 List<Object[]> cf = tmsEm.createNativeQuery(
-                    "SELECT TRIM(COALESCE(pd.NOTE,'')) AS CARNO, " +
-                    "       TRIM(COALESCE(vh.FIX_YN,'')) AS FIX_YN " +
+                    "SELECT TRIM(COALESCE(MAX(NULLIF(TRIM(pd.NOTE),'')), MAX(NULLIF(TRIM(sh.CARNO),'')))) AS CARNO, " +
+                    "       TRIM(COALESCE(MAX(NULLIF(TRIM(vh.FIX_YN),'')),'')) AS FIX_YN " +
                     "FROM KNRAWMS.TMS_PS_DISPATCH_H pd " +
-                    "LEFT JOIN KNRAWMS.VHCMA vh ON TRIM(vh.VEHICLE_NO) = TRIM(pd.NOTE) " +
-                    "     AND TRIM(COALESCE(pd.NOTE,'')) <> '' " +
-                    "WHERE pd.DISPATCH_NO = ?")
+                    "LEFT JOIN KNRAWMS.TMS_SHPDI si ON si.STDLNR = pd.DISPATCH_NO " +
+                    "LEFT JOIN KNRAWMS.TMS_SHPDH sh ON sh.SHPOKY = si.SHPOKY " +
+                    "LEFT JOIN KNRAWMS.VHCMA vh " +
+                    "  ON TRIM(vh.VEHICLE_NO) = TRIM(COALESCE(NULLIF(TRIM(pd.NOTE),''), NULLIF(TRIM(sh.CARNO),''))) " +
+                    " AND LENGTH(TRIM(COALESCE(NULLIF(TRIM(pd.NOTE),''), NULLIF(TRIM(sh.CARNO),''),''))) > 0 " +
+                    "WHERE pd.DISPATCH_NO = ? " +
+                    "GROUP BY pd.DISPATCH_NO")
                     .setParameter(1, no.strip())
                     .getResultList();
                 if (cf != null && !cf.isEmpty()) {
