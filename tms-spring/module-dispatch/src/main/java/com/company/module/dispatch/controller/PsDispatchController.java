@@ -85,6 +85,46 @@ public class PsDispatchController {
     }
 
     /**
+     * [PR-G TEMP공유] 자동배차 결과 '임시저장'(배차저장 전, 다른 사용자와 공유).
+     *   STATUS='TEMP' 헤더/디테일만 저장(STDLNR 미채번). 반환: 발급된 dispatch_nos.
+     */
+    @PostMapping("/save-temp")
+    public ResponseEntity<ApiResponse<Object>> saveTemp(
+            @RequestBody PsDispatchSaveRequest req) {
+        List<String> saved = psDispatchService.saveTempDispatch(req);
+        return ResponseEntity.ok(ApiResponse.created(
+            java.util.Map.of("saved", saved.size(), "dispatch_nos", saved)
+        ));
+    }
+
+    /**
+     * [PR-G TEMP공유] TEMP 배차 삭제(자동배차 취소). body: { dispatch_nos: [...] }
+     */
+    @PostMapping("/delete-temp")
+    public ResponseEntity<java.util.Map<String, Object>> deleteTemp(
+            @RequestBody java.util.Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<String> nos = (List<String>) body.getOrDefault("dispatch_nos", java.util.Collections.emptyList());
+        int deleted = psDispatchService.deleteTempDispatch(nos);
+        return ResponseEntity.ok(java.util.Map.of("ok", true, "deleted", deleted));
+    }
+
+    /**
+     * [PR-G TEMP공유] TEMP(배차저장 전) 배차 목록 조회 — 날짜범위 기준, 공유 열람.
+     *   반환: loadForEdit 와 동일 포맷 { ok, vehicles, search_rows, temp:true }.
+     */
+    @GetMapping("/list-temp")
+    public ResponseEntity<java.util.Map<String, Object>> listTemp(
+            @RequestParam(name = "date_from", required = false) String dateFrom,
+            @RequestParam(name = "dateFrom",  required = false) String dateFromAlt,
+            @RequestParam(name = "date_to",   required = false) String dateTo,
+            @RequestParam(name = "dateTo",    required = false) String dateToAlt) {
+        String df = (dateFrom != null && !dateFrom.isBlank()) ? dateFrom : dateFromAlt;
+        String dt = (dateTo   != null && !dateTo.isBlank())   ? dateTo   : dateToAlt;
+        return ResponseEntity.ok(psDispatchService.listTempDispatch(df, dt));
+    }
+
+    /**
      * 저장된 배차 목록 조회
      * Flask: GET /api/ps-dispatch/list
      */
