@@ -475,6 +475,153 @@ public class PsDispatchService {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
+    // [PR-G TEMP공유] 자동배차 결과 '임시저장'(배차저장 전 공유)
+    //   · TMS_PS_DISPATCH_H(STATUS='TEMP') + TMS_PS_DISPATCH_D 만 INSERT 한다.
+    //   · ★ TMS_SHPDI.STDLNR(가선적번호)는 '채번하지 않는다'(가선적 할당 전 상태 유지).
+    //     → 기존 배차탭/배차확정탭 조회(STDLNR 기반)에 전혀 섞이지 않고, 다른 사용자는
+    //       별도 TEMP 조회 API(listTemp)로 공유 열람한다.
+    //   · 반환: 각 차량에 발급된 DISPATCH_NO 목록(프론트가 보관 → 배차저장 시 DRAFT 전환에 사용).
+    // ──────────────────────────────────────────────────────────────────────────
+    @Transactional(transactionManager = "tmsTransactionManager")
+    public List<String> saveTempDispatch(PsDispatchSaveRequest req) {
+        String today = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
+        List<String> savedNos = new ArrayList<>();
+        if (req.getVehicles() == null) return savedNos;
+
+        for (PsDispatchSaveRequest.VehicleBlock veh : req.getVehicles()) {
+            String dt         = veh.getRqshpd() == null ? today : veh.getRqshpd().replace("-", "");
+            String dispatchNo = nextDispatchNo(dt);
+            double totalKg    = veh.getTotalKg() == null ? 0.0 : veh.getTotalKg();
+            int    totalCnt   = veh.getItems() == null ? 0 : veh.getItems().size();
+
+            String loadLayoutJson = veh.getLoadLayout();
+            if (loadLayoutJson != null && loadLayoutJson.isBlank()) loadLayoutJson = null;
+
+            String vehNoForNote = veh.getVehicleNo();
+            vehNoForNote = (vehNoForNote == null || vehNoForNote.isBlank()) ? null : vehNoForNote.strip();
+            String fixYnForSave = "Y".equalsIgnoreCase(
+                    veh.getFixYn() == null ? "" : veh.getFixYn().strip()) ? "Y" : "N";
+            if (vehNoForNote == null) fixYnForSave = "N";
+
+            // 헤더 INSERT — STATUS='TEMP'
+            tmsEm.createNativeQuery("""
+                INSERT INTO KNRAWMS.TMS_PS_DISPATCH_H
+                  (DISPATCH_NO, DISPATCH_DT, RQSHPD, DPTNKY, DPTNM,
+                   CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR, DISPATCH_TYPE, LOAD_LAYOUT, NOTE, FIX_YN)
+                VALUES (?,?,?,?,?,?,'TEMP',?,?,?,?,'GI',?,?,?)
+                """)
+              .setParameter(1,  dispatchNo)
+              .setParameter(2,  today)
+              .setParameter(3,  dt)
+              .setParameter(4,  veh.getDptnky())
+              .setParameter(5,  clipBytes(veh.getDptnm(), 100))
+              .setParameter(6,  veh.getCartype())
+              .setParameter(7,  totalKg)
+              .setParameter(8,  totalCnt)
+              .setParameter(9,  today)
+              .setParameter(10, "SYSTEM")
+              .setParameter(11, loadLayoutJson)
+              .setParameter(12, vehNoForNote)
+              .setParameter(13, fixYnForSave)
+              .executeUpdate();
+
+            // 디테일 INSERT — ★ TMS_SHPDI.STDLNR 은 건드리지 않는다(분할 선처리도 하지 않음)
+            List<PsDispatchSaveRequest.ItemBlock> items = veh.getItems();
+            if (items != null) {
+                int seq = 1;
+                for (PsDispatchSaveRequest.ItemBlock it : items) {
+                    String shpoky = firstNonBlank(it.getShpoky(), it.getOrgShpoky());
+                    String shpoit = firstNonBlank(it.getShpoit(), it.getOrgShpoit());
+                    if (isBlank(shpoky) || isBlank(shpoit)) {
+                        throw new IllegalArgumentException(
+                            "임시배차 항목에 납품문서번호(SHPOKY)/품목순번(SHPOIT)이 없습니다. [차량=" + dispatchNo + "]");
+                    }
+                    tmsEm.createNativeQuery("""
+                        INSERT INTO KNRAWMS.TMS_PS_DISPATCH_D
+                          (DISPATCH_NO,SEQ,SHPOKY,SHPOIT,SKUKEY,DESC01,
+                           QTSHPO,UOMKEY,DPTNKY,DPTNM,IS_SPLIT,ORG_SHPOKY,ORG_SHPOIT,
+                           GRSWGT,KG_WEIGHT)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        """)
+                      .setParameter(1,  dispatchNo)
+                      .setParameter(2,  seq++)
+                      .setParameter(3,  shpoky)
+                      .setParameter(4,  shpoit)
+                      .setParameter(5,  it.getSkukey())
+                      .setParameter(6,  it.getDesc01())
+                      .setParameter(7,  it.getQtshpo() == null ? 0.0 : it.getQtshpo())
+                      .setParameter(8,  it.getUomkey() == null ? "KG" : it.getUomkey())
+                      .setParameter(9,  it.getDptnky())
+                      .setParameter(10, clipBytes(it.getDptnm(), 100))
+                      .setParameter(11, it.getIsSplit() == null ? 0 : it.getIsSplit())
+                      .setParameter(12, it.getOrgShpoky())
+                      .setParameter(13, it.getOrgShpoit())
+                      .setParameter(14, it.getGrswgt() == null ? 0.0 : it.getGrswgt())
+                      .setParameter(15, it.getKgWeight() == null ? 0.0 : it.getKgWeight())
+                      .executeUpdate();
+                }
+            }
+            log.info("[TEMP저장] dispatchNo={}, cartype='{}', dptnm='{}', items={}, carno='{}', fix={}",
+                     dispatchNo, veh.getCartype(), veh.getDptnm(), totalCnt,
+                     vehNoForNote == null ? "(없음)" : vehNoForNote, fixYnForSave);
+            savedNos.add(dispatchNo);
+        }
+        return savedNos;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // [PR-G TEMP공유] TEMP 배차 삭제(자동배차 취소) — 헤더/디테일만 제거.
+    //   · STDLNR 미채번이므로 TMS_SHPDI 복원 불필요(건드린 적 없음).
+    //   · STATUS='TEMP' 인 행만 삭제(방어 — DRAFT/CONFIRMED 는 보호).
+    // ──────────────────────────────────────────────────────────────────────────
+    @Transactional(transactionManager = "tmsTransactionManager")
+    public int deleteTempDispatch(List<String> dispatchNos) {
+        if (dispatchNos == null || dispatchNos.isEmpty()) return 0;
+        int deleted = 0;
+        for (String no : dispatchNos) {
+            if (no == null || no.isBlank()) continue;
+            String n = no.strip();
+            // 디테일 먼저 삭제(헤더가 TEMP 인 것만)
+            tmsEm.createNativeQuery(
+                "DELETE FROM KNRAWMS.TMS_PS_DISPATCH_D WHERE DISPATCH_NO = ? " +
+                "AND EXISTS (SELECT 1 FROM KNRAWMS.TMS_PS_DISPATCH_H h " +
+                "            WHERE h.DISPATCH_NO = ? AND h.STATUS = 'TEMP')")
+              .setParameter(1, n).setParameter(2, n).executeUpdate();
+            int h = tmsEm.createNativeQuery(
+                "DELETE FROM KNRAWMS.TMS_PS_DISPATCH_H WHERE DISPATCH_NO = ? AND STATUS = 'TEMP'")
+              .setParameter(1, n).executeUpdate();
+            if (h > 0) deleted++;
+        }
+        log.info("[TEMP삭제] 요청 {}건 중 {}건 삭제", dispatchNos.size(), deleted);
+        return deleted;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // [PR-G TEMP공유] TEMP(배차저장 전) 배차 목록 조회 — 다른 사용자도 공유 열람.
+    //   · 날짜범위(rqshpd) 로 STATUS='TEMP' 인 배차를 찾아 loadForEdit 와 동일 형태
+    //     (vehicles + search_rows + 각 vehicle 의 items)로 반환 → 프론트가 선적목록에 복원.
+    //   · getList 는 LIKE/status 필터를 지원하므로 재활용(단, 여기서는 날짜·TEMP 로만 선별).
+    // ──────────────────────────────────────────────────────────────────────────
+    @Transactional(transactionManager = "tmsTransactionManager", readOnly = true)
+    public Map<String, Object> listTempDispatch(String dateFrom, String dateTo) {
+        PsDispatchListRequest req = new PsDispatchListRequest();
+        if (dateFrom != null && !dateFrom.isBlank()) req.setDateFrom(dateFrom.replace("-", "").strip());
+        if (dateTo   != null && !dateTo.isBlank())   req.setDateTo(dateTo.replace("-", "").strip());
+        req.setStatus("TEMP");                       // STATUS='TEMP' 만
+        List<PsDispatchListResponse> found = getList(req);
+
+        List<String> nos = found.stream()
+            .map(PsDispatchListResponse::getDispatchNo)
+            .filter(n -> n != null && !n.isBlank())
+            .distinct().collect(Collectors.toList());
+        // loadForEdit 재활용 — vehicles/search_rows/items 를 동일 포맷으로 구성
+        Map<String, Object> out = loadForEdit(nos);
+        out.put("temp", true);
+        out.put("count", nos.size());
+        return out;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
     // 배차 저장 (Flask api_ps_dispatch_save)
     // TMS_PS_DISPATCH_H/D → MariaDB tmsEm
     // TMS_SHPDI.STDLNR, TMS_SHPDH.VEHINO 업데이트 → Oracle em
@@ -483,6 +630,24 @@ public class PsDispatchService {
     public List<String> saveDispatch(PsDispatchSaveRequest req) {
         String today = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE); // yyyyMMdd
         List<String> saved = new ArrayList<>();
+
+        // ★[PR-G TEMP공유] 이 배차저장이 'TEMP(임시저장) 배차'를 확정하는 것이면,
+        //   payload 의 각 차량에 dispatch_no(TEMP 번호)가 실려 온다. 기존 TEMP 헤더/디테일을
+        //   먼저 삭제한 뒤, 아래의 '검증된 신규 저장(DRAFT INSERT + STDLNR 채번 + 분할/고정차량)'
+        //   로직을 그대로 태운다. (TEMP→DRAFT 전환을 별도 UPDATE 로 짜지 않고 '삭제+재저장'으로
+        //   처리해 기존 저장 흐름을 100% 재사용 → 회귀 위험 최소화. STDLNR 은 여기서 비로소 채번됨.)
+        if (req.getVehicles() != null) {
+            List<String> tempNos = req.getVehicles().stream()
+                .map(PsDispatchSaveRequest.VehicleBlock::getDispatchNo)
+                .filter(n -> n != null && !n.isBlank())
+                .map(String::strip)
+                .distinct()
+                .collect(Collectors.toList());
+            if (!tempNos.isEmpty()) {
+                int cleared = deleteTempDispatch(tempNos);
+                log.info("[배차저장] TEMP 확정 — 선행 TEMP 정리 {}건 (요청 {}건)", cleared, tempNos.size());
+            }
+        }
         // 미연동(테스트) 배차 여부 → TMS_SHPDI.DESC02 에 연동구분 마커 기록.
         //   ※ 공용 컬럼 신규생성 부담 회피를 위해 기존 DESC02 컬럼을 사용.
         //   미연동='OFFLINE'(SAP/WMS RFC 미호출 테스트), 연동='ONLINE'.
@@ -994,6 +1159,12 @@ public class PsDispatchService {
         if (status != null && !status.isEmpty()) {
             where.append(where.length() == 0 ? " WHERE" : " AND").append(" h.STATUS = ?");
             params.add(status);
+        } else if (dispatchNo == null || dispatchNo.isEmpty()) {
+            // ★[PR-G TEMP공유] status 를 명시하지 않은 일반 목록 조회에서는 TEMP(배차저장 전) 를 제외한다.
+            //   → 기존 배차목록/확정 흐름에 TEMP 가 섞이지 않도록 보장(무영향).
+            //   (status='TEMP' 를 명시한 listTempDispatch 는 위 분기로 TEMP 만 조회 / dispatchNo 정확조회는
+            //    loadForEdit 등에서 TEMP 단건 복원이 필요하므로 이 제외를 적용하지 않는다.)
+            where.append(where.length() == 0 ? " WHERE" : " AND").append(" h.STATUS <> 'TEMP'");
         }
         if (dispatchNo != null && !dispatchNo.isEmpty()) {
             where.append(where.length() == 0 ? " WHERE" : " AND").append(" h.DISPATCH_NO LIKE ?");

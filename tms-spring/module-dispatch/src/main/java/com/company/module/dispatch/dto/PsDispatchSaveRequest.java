@@ -81,6 +81,11 @@ public class PsDispatchSaveRequest {
     @Setter
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class VehicleBlock {
+        // [PR-G TEMP공유] TEMP 저장 시 발급된 배차번호. 배차저장(DRAFT 전환) 시 프론트가 되돌려 보내면
+        //   saveDispatch 가 '신규 INSERT' 대신 '이 번호의 TEMP → DRAFT UPDATE + STDLNR 채번' 으로 처리.
+        //   값이 없으면(수기배차 등 TEMP 미경유) 기존처럼 신규 채번 INSERT.
+        @JsonAlias({"dispatch_no", "DISPATCH_NO", "dispatchNo"})
+        private String dispatchNo;
         @JsonAlias({"DPTNKY"})
         private String dptnky;
         @JsonAlias({"DPTNM"})

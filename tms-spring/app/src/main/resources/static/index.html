@@ -17291,6 +17291,53 @@ async function psopSearch() {
       console.error('[psopSearch] 저장배차 자동 복원 실패(무시):', reErr);
     }
 
+    // ★[PR-G TEMP공유] 조회 날짜범위의 'TEMP(배차저장 전)' 배차를 서버에서 가져와 선적목록에 병합한다.
+    //   → 다른 사용자가 자동배차(임시저장)한 건을 공유 열람. STDLNR 미채번이므로 '배차저장 전' 상태로 표시.
+    //   (이미 내 화면 pending 으로 들고 있는 _tempNo 는 중복 병합되지 않도록 스킵)
+    try {
+      const _qs = new URLSearchParams({ date_from: dateFrom || '', date_to: dateTo || '' });
+      const tRes = await fetch(`/api/ps-dispatch/list-temp?${_qs}`);
+      const tData = await tRes.json();
+      const tVehicles = (tData && (tData.vehicles || (tData.data && tData.data.vehicles))) || [];
+      if (tVehicles.length) {
+        const _haveTemp = new Set(psopState.vehicles.map(v => v._tempNo || '').filter(Boolean));
+        tVehicles.forEach(tv => {
+          const no = tv.DISPATCH_NO ?? tv.dispatchNo ?? tv.dispatch_no;
+          if (!no || _haveTemp.has(no)) return;       // 내가 이미 들고 있는 TEMP 는 스킵
+          psopState._pendingSeq = (psopState._pendingSeq || 0) + 1;
+          const items = tv.items || [];
+          psopState.vehicles.push({
+            _pendingId:  `_temp_${psopState._pendingSeq}`,
+            _tempNo:     no,               // 서버 TEMP 번호 — 배차저장 시 DRAFT 전환에 사용
+            STDLNR:      null,             // 가선적 미채번(배차저장 전)
+            cartype:     tv.cartype ?? tv.CARTYPE ?? '',
+            carclass_cd: tv.carclass_cd ?? '',
+            vehicle_no:  tv.vehicle_no ?? tv.VEHICLE_NO ?? '',
+            fix_yn:      tv.fix_yn ?? tv.FIX_YN ?? 'N',
+            rqshpd:      tv.rqshpd ?? tv.RQSHPD ?? '',
+            dptnky:      tv.dptnky ?? tv.DPTNKY ?? '',
+            dptnm:       tv.dptnm ?? tv.DPTNM ?? '',
+            total_kg:    tv.total_kg ?? tv.totalKg ?? 0,
+            total_cnt:   tv.total_cnt ?? tv.totalCnt ?? (items.length || 0),
+            load_kg:     tv.load_kg ?? tv.loadKg ?? null,
+            _dispatchMethod: 'AUTO',
+            _autoMeta:   { method: 'AUTO' },
+            _shared:     true,             // 공유 TEMP(다른 사용자 포함) 표식
+            items:       items,
+          });
+          // 납품문서 행을 '배차'(DISPATCHED) 로 표시(저장 전 공유)
+          items.forEach(it => {
+            const row = psopState.searchRows.find(r =>
+              (r.SHPOKY ?? r.shpoky) === (it.SHPOKY ?? it.shpoky) &&
+              (r.SHPOIT ?? r.shpoit) === (it.SHPOIT ?? it.shpoit));
+            if (row) row.DISPATCHED = true;
+          });
+        });
+      }
+    } catch (tErr) {
+      console.error('[psopSearch] TEMP 공유 배차 병합 실패(무시):', tErr);
+    }
+
     // ★[성능개선] 모든 데이터 보정/복원 완료 후, 선적목록/납품문서/툴바를 '한 번만' 렌더.
     psopLoadVehicles();
     psopRenderDocTable();
@@ -20503,9 +20550,40 @@ function psopShowAutoResultModal(vehicles, objNm, selectedCnt, autoMeta) {
   document.body.appendChild(modal);
 }
 
-function psopSaveAutoResult(vehicles, autoMeta) {
+async function psopSaveAutoResult(vehicles, autoMeta) {
   document.getElementById('psop-auto-modal')?.remove();
-  vehicles.forEach(v => {
+  // ★[PR-G TEMP공유] 자동배차 결과를 '임시저장'(STATUS='TEMP')으로 서버에 저장 → 다른 사용자도 공유 열람.
+  //   · 서버가 발급한 배차번호(dispatch_no)를 각 vehicle 에 _origDispatchNo/STDLNR 없이 _tempNo 로 보관.
+  //   · 배차저장 시 이 _tempNo 를 payload.dispatch_no 로 보내 TEMP→DRAFT 전환(+STDLNR 채번)한다.
+  //   · 서버 저장 실패 시에도 화면 흐름은 유지(로컬 pending 으로 폴백) — 기존 UX 보존.
+  let _tempNos = [];
+  try {
+    const _scope = (psopState.scope === 'HL') ? 'HL' : 'PS';
+    const res = await fetch('/api/ps-dispatch/save-temp', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ scope: _scope, vehicles: vehicles.map(v => ({
+        cartype:     v.cartype,
+        carclass_cd: v.carclass_cd || '',
+        vehicle_no:  v.vehicle_no || v.VEHICLE_NO || v.carno || v.CARNO || '',
+        fix_yn:      String(v.fix_yn || v.FIX_YN || 'N').toUpperCase() === 'Y' ? 'Y' : 'N',
+        rqshpd:      v.rqshpd,
+        dptnky:      v.dptnky,
+        dptnm:       v.dptnm,
+        total_kg:    v.total_kg,
+        items:       (v.items || []).map(it => ({ SHPOKY: it.SHPOKY, SHPOIT: it.SHPOIT,
+                       SKUKEY: it.SKUKEY, DESC01: it.DESC01, QTSHPO: it.QTSHPO, UOMKEY: it.UOMKEY,
+                       DPTNKY: it.DPTNKY, DPTNM: it.DPTNM, KG_WEIGHT: it.KG_WEIGHT })),
+      })) })
+    });
+    const data = await res.json();
+    const payload = data.data || data;
+    _tempNos = payload.dispatch_nos || [];
+  } catch(e) {
+    console.error('[psopSaveAutoResult] TEMP 임시저장 실패(로컬 pending 으로 진행):', e);
+    showToast('⚠️ 임시저장(공유) 실패 — 로컬 목록에만 추가됩니다. 배차저장 시 재시도하세요.');
+  }
+
+  vehicles.forEach((v, _vi) => {
     psopState._pendingSeq++;
     const pid = `_pending_${psopState._pendingSeq}`;
     // ★[이슈2] 배차 당시 3D 물리검증 배치 스냅샷 보관 → 배차저장 시 서버(LOAD_LAYOUT)로 전송,
@@ -20541,6 +20619,9 @@ function psopSaveAutoResult(vehicles, autoMeta) {
       // 배차방법(자동) + 제약조건 메타 (선적목록 배지/제약조건 확인용)
       _dispatchMethod: 'AUTO',
       _autoMeta:       autoMeta || { method: 'AUTO' },
+      // ★[PR-G TEMP공유] 서버 임시저장(TEMP)에서 발급된 배차번호. 배차저장 시 payload.dispatch_no 로
+      //   보내 TEMP→DRAFT 전환에 사용. (STDLNR 은 아직 미채번이므로 STDLNR 로 두지 않는다)
+      _tempNo:         _tempNos[_vi] || null,
       // 3D 배치 스냅샷(원지/판지 물리검증 결과) — 인메모리 3D + 저장 전송용
       roll_layout:     v.roll_layout || [],
       _loadLayout:     JSON.stringify(_loadLayoutObj),
@@ -21065,6 +21146,20 @@ async function psopDeleteDispatch() {
     }
   }
 
+  /* ── 1-b. [PR-G TEMP공유] 미저장 배차 중 TEMP(서버 임시저장) 번호가 있는 건은 서버 TEMP 도 삭제 ──
+     (다른 사용자 공유 목록에서도 사라지도록. 로컬 pending 은 아래에서 제거) */
+  const _tempDelNos = pendingVehs.map(v => v._tempNo).filter(Boolean);
+  if (_tempDelNos.length) {
+    try {
+      await fetch('/api/ps-dispatch/delete-temp', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ dispatch_nos: _tempDelNos })
+      });
+    } catch(e) {
+      console.error('[psopDelete] TEMP 서버 삭제 실패(로컬만 제거):', e);
+    }
+  }
+
   /* ── 2. 삭제된 모든 배차(저장/미저장)의 문서 → 미배차/미연동 상태로 즉시 초기화 ──
      [버그수정] 기존에는 저장 배차를 vehicles 에 남긴 채 STDLNR 만 null 로 바꿔
        "미저장 상태로 유지"했는데, savedKeys/selectedDocs 를 정리하지 않아
@@ -21126,6 +21221,8 @@ async function psopSaveDispatch() {
       // [PR-B 고정차량 저장] 자동배차 후처리로 매칭된 차량번호(없으면 공백). 서버가 TMS_SHPDH.CARNO 에 저장.
       vehicle_no:  v.vehicle_no || v.VEHICLE_NO || v.carno || v.CARNO || '',
       fix_yn:      v.fix_yn || v.FIX_YN || 'N',
+      // ★[PR-G TEMP공유] TEMP 번호가 있으면 함께 전송 → 서버가 TEMP→DRAFT 전환(선행 TEMP 삭제 후 재저장).
+      dispatch_no: v._tempNo || null,
       rqshpd:      v.rqshpd,
       dptnky:      v.dptnky,
       dptnm:       v.dptnm,
@@ -21157,6 +21254,8 @@ async function psopSaveDispatch() {
         // ★[PR-D 고정차량 영구저장] 고정여부(Y/N)를 함께 전송 → 서버가 TMS_PS_DISPATCH_H.FIX_YN 에 저장.
         //   자동배차 매칭 결과 또는 사용자가 선적목록에서 직접 체크한 값. (VHCMA 미등록 수기차량도 유지)
         fix_yn:      String(v.fix_yn || v.FIX_YN || 'N').toUpperCase() === 'Y' ? 'Y' : 'N',
+        // ★[PR-G TEMP공유] TEMP 번호 — 있으면 서버가 TEMP→DRAFT 전환(선행 TEMP 삭제 후 DRAFT 재저장).
+        dispatch_no: v._tempNo || null,
         rqshpd:      v.rqshpd,
         dptnky:      v.dptnky,
         dptnm:       v.dptnm,
