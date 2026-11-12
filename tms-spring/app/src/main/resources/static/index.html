@@ -17391,19 +17391,23 @@ function psopRenderDocTable(filterText) {
     else fStat = '';
   }
 
-  // ★[요청1] 배차(TEMP) 필터용 — TEMP 배차(미저장 공유/임시저장, STDLNR 없음 + _tempNo 보유)에
-  //   속한 납품문서 키 집합. 이 집합에 포함된 searchRows 만 'T' 필터에서 노출한다.
-  let _tempDocKeys = null;
-  if (fStat === 'T') {
-    _tempDocKeys = new Set();
-    (psopState.vehicles || []).forEach(v => {
-      if (!v.STDLNR && v._tempNo) {              // TEMP(배차저장 전) 배차
-        (v.items || []).forEach(it => {
-          _tempDocKeys.add(`${it.SHPOKY ?? it.shpoky}|${it.SHPOIT ?? it.shpoit}`);
-        });
-      }
-    });
-  }
+  // ★[배차상태 정의] TEMP(임시배차) 배차에 속한 납품문서 키 집합을 공통으로 만든다.
+  //   TEMP = 배차저장 전(STDLNR 없음 + _tempNo 보유, 자동/수기배차). 미배차/임시배차/배차완료
+  //   판정 모두에서 '임시배차 문서'를 식별하는 데 사용한다.
+  //     · 미배차 : 미배차 상태(미DISPATCHED) 이면서 임시배차 문서가 아닌 것
+  //     · 임시배차: 임시배차 문서만
+  //     · 배차완료: 배차저장(STDLNR 채번=IS_SAVED) 또는 SAP선적생성(STKNUM) — 임시배차는 제외
+  const _tempDocKeys = new Set();
+  (psopState.vehicles || []).forEach(v => {
+    if (!v.STDLNR && v._tempNo) {                // TEMP(배차저장 전) 배차
+      (v.items || []).forEach(it => {
+        _tempDocKeys.add(`${it.SHPOKY ?? it.shpoky}|${it.SHPOIT ?? it.shpoit}`);
+      });
+    }
+  });
+  // 배차완료 판정: 배차저장(STDLNR/IS_SAVED) 또는 SAP선적생성(STKNUM)
+  const _isDone = (r) => !!(r.IS_SAVED || (r.STDLNR && String(r.STDLNR).trim())
+                         || (r.STKNUM && String(r.STKNUM).trim()));
 
   const rows = psopState.searchRows.filter(r => {
     if (fText && !(
@@ -17415,11 +17419,14 @@ function psopRenderDocTable(filterText) {
       (r.DESC01||'').toLowerCase().includes(fText)
     )) return false;
     if (fInch && r.INCH !== fInch) return false;
-    if (fStat==='N' && r.DISPATCHED) return false;
-    if (fStat==='Y' && !r.DISPATCHED) return false;
+    const _isTemp = _tempDocKeys.has(`${r.SHPOKY}|${r.SHPOIT}`);
+    // ★[미배차] 임시배차/배차완료가 아닌 '순수 미배차'만
+    if (fStat==='N' && (_isDone(r) || _isTemp)) return false;
+    // ★[배차완료] 배차저장/SAP선적생성된 건만 (임시배차 제외)
+    if (fStat==='Y' && (!_isDone(r) || _isTemp)) return false;
     if (fStat==='S' && !r.IS_SAVED) return false;
-    // ★[요청1] 배차(TEMP): TEMP 배차에 속한 납품문서만 노출
-    if (fStat==='T' && !(_tempDocKeys && _tempDocKeys.has(`${r.SHPOKY}|${r.SHPOIT}`))) return false;
+    // ★[임시배차] TEMP 배차에 속한 납품문서만 노출
+    if (fStat==='T' && !_isTemp) return false;
     return true;
   });
 
@@ -18186,13 +18193,17 @@ function psopRenderVehicleArea() {
   const area = document.getElementById('psop-vehicle-area');
   if (!area) return;
 
-  // ★[요청1] 배차상태='배차완료'(dispatched) 조회 시, 우측 선적목록에서 '임시배차(TEMP)'는 제외한다.
-  //   TEMP = 배차저장 전(_tempNo 보유 & STDLNR 없음). '배차완료' 는 저장완료(STDLNR 보유)만 보여야 하므로 숨김.
-  //   그 외 배차상태(전체/미배차/임시배차)에서는 기존대로 전체 노출.
+  // ★[배차상태 정의] 우측 선적목록도 상단 배차상태에 맞춰 필터한다.
+  //   · 배차완료(dispatched): 배차저장(STDLNR 채번) 된 선적만 노출(임시배차 TEMP 제외).
+  //   · 임시배차(temp)      : 배차저장 전(_tempNo 보유 & STDLNR 없음) 선적만 노출.
+  //   · 그 외(전체/미배차)  : 선적목록은 '배차 작업 중' 목록이므로 기존대로 전체 노출.
   const _fStat = document.getElementById('psop-disp-stat')?.value || 'all';
-  const _vehList = (_fStat === 'dispatched')
-    ? psopState.vehicles.filter(v => !(!v.STDLNR && v._tempNo))   // 배차완료: TEMP 제외
-    : psopState.vehicles;
+  let _vehList = psopState.vehicles;
+  if (_fStat === 'dispatched') {
+    _vehList = psopState.vehicles.filter(v => v.STDLNR && String(v.STDLNR).trim());  // 저장완료만
+  } else if (_fStat === 'temp') {
+    _vehList = psopState.vehicles.filter(v => !v.STDLNR && v._tempNo);               // 임시배차만
+  }
 
   let totalKg=0, totalDoc=0;
   _vehList.forEach(v => {
