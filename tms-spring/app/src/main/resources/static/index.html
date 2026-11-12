@@ -16834,12 +16834,12 @@ async function renderPsDispatchOpt(scope) {
         <!-- 배차상태 -->
         <div class="psd-fg">
           <label>배차상태</label>
-          <select id="psop-disp-stat" style="min-width:76px">
+          <select id="psop-disp-stat" style="min-width:76px" onchange="psopFilterDocs(); if(typeof psopRenderVehicleArea==='function') psopRenderVehicleArea();">
             <option value="all">전체</option>
             <option value="undispatched" selected>미배차</option>
+            <!-- ★[요청2] 임시배차(=TEMP, 배차저장 전/공유). 순서: 미배차 다음, 명칭 '임시배차' -->
+            <option value="temp">임시배차</option>
             <option value="dispatched">배차완료</option>
-            <!-- ★[요청1] 배차(TEMP) — 배차저장 전(임시저장/공유) 상태 배차만 조회 -->
-            <option value="temp">배차(TEMP)</option>
           </select>
         </div>
         <!-- 조회 버튼 -->
@@ -18186,21 +18186,29 @@ function psopRenderVehicleArea() {
   const area = document.getElementById('psop-vehicle-area');
   if (!area) return;
 
+  // ★[요청1] 배차상태='배차완료'(dispatched) 조회 시, 우측 선적목록에서 '임시배차(TEMP)'는 제외한다.
+  //   TEMP = 배차저장 전(_tempNo 보유 & STDLNR 없음). '배차완료' 는 저장완료(STDLNR 보유)만 보여야 하므로 숨김.
+  //   그 외 배차상태(전체/미배차/임시배차)에서는 기존대로 전체 노출.
+  const _fStat = document.getElementById('psop-disp-stat')?.value || 'all';
+  const _vehList = (_fStat === 'dispatched')
+    ? psopState.vehicles.filter(v => !(!v.STDLNR && v._tempNo))   // 배차완료: TEMP 제외
+    : psopState.vehicles;
+
   let totalKg=0, totalDoc=0;
-  psopState.vehicles.forEach(v => {
+  _vehList.forEach(v => {
     totalKg  += v.total_kg  || 0;
     totalDoc += v.total_cnt || 0;
   });
   const info = document.getElementById('psop-left-info');
-  if (info) info.textContent = `배차 ${psopState.vehicles.length}건`;
+  if (info) info.textContent = `배차 ${_vehList.length}건`;
   const stVeh = document.getElementById('psop-stat-veh');
   const stKg  = document.getElementById('psop-stat-kg');
   const stDoc = document.getElementById('psop-stat-doc');
-  if (stVeh) stVeh.textContent = psopState.vehicles.length;
+  if (stVeh) stVeh.textContent = _vehList.length;
   if (stKg)  stKg.textContent  = psopFmtNum(totalKg) + ' KG';
   if (stDoc) stDoc.textContent  = totalDoc;
 
-  if (!psopState.vehicles.length) {
+  if (!_vehList.length) {
     area.innerHTML = `
       <div class="psd-empty" id="psop-vehicle-drop-zone"
            ondragover="event.preventDefault()"
@@ -18213,7 +18221,7 @@ function psopRenderVehicleArea() {
     return;
   }
 
-  const tbody = psopState.vehicles.map((v, idx) => {
+  const tbody = _vehList.map((v, idx) => {
     const pid      = v._pendingId;
     const ccls     = psopCarCls(v.cartype);
     const selCls   = psopState.vehSelPid === pid ? 'selected' : '';
