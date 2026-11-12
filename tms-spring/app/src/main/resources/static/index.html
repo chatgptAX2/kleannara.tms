@@ -4445,16 +4445,35 @@ function showToast(msg){
    INIT
 ═══════════════════════════════════════════════════════════ */
 async function init(){
+  // ★[성능개선] 메인 진입을 막지 않도록, 사이드바 테이블 건수(/api/tables, 27개 COUNT)는
+  //   '비차단 백그라운드'로 나중에 채운다. 기존에는 이 무거운 호출을 await 해서 메인 페이지가
+  //   DB 전수 COUNT 가 끝날 때까지 지연됐다. → 대시보드를 즉시 렌더하고 카운트는 뒤따라 채움.
+  _doShowPage('tmsDashboard');          // 메인 즉시 렌더(차단 없음)
+  _loadSidebarTableCounts();            // 사이드바 건수 비동기 로드(실패/지연이 메인에 영향 없음)
+}
+
+/* 사이드바 테이블 건수 배지(cnt-*) 비차단 로드 — /api/tables 응답 { ok, tables:[{name, rows}] } */
+async function _loadSidebarTableCounts(){
   try {
     const res  = await fetch('/api/tables');
     const data = await res.json();
-    Object.entries(data).forEach(([t, info]) => {
-      const el = document.getElementById(`cnt-${t}`);
-      if(el) el.textContent = fmtNum(info.count);
-    });
-  } catch(e){ console.warn(e); }
-  // TMS 대시보드로 시작
-  _doShowPage('tmsDashboard');
+    // 응답 구조 정규화: { tables:[{name, rows}] } (구형 { TBL:{count} } 도 방어적으로 처리)
+    const list = Array.isArray(data?.tables) ? data.tables
+               : Array.isArray(data) ? data : null;
+    if (list) {
+      list.forEach(t => {
+        const nm  = t.name ?? t.NAME;
+        const cnt = (t.rows ?? t.ROWS ?? t.count ?? 0);
+        const el  = nm && document.getElementById(`cnt-${nm}`);
+        if (el) el.textContent = fmtNum(cnt);
+      });
+    } else if (data && typeof data === 'object') {
+      Object.entries(data).forEach(([t, info]) => {
+        const el = document.getElementById(`cnt-${t}`);
+        if (el && info) el.textContent = fmtNum(info.count ?? info.rows ?? info);
+      });
+    }
+  } catch(e){ console.warn('[sidebar] 테이블 건수 로드 실패(무시):', e); }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -16819,6 +16838,8 @@ async function renderPsDispatchOpt(scope) {
             <option value="all">전체</option>
             <option value="undispatched" selected>미배차</option>
             <option value="dispatched">배차완료</option>
+            <!-- ★[요청1] 배차(TEMP) — 배차저장 전(임시저장/공유) 상태 배차만 조회 -->
+            <option value="temp">배차(TEMP)</option>
           </select>
         </div>
         <!-- 조회 버튼 -->
@@ -17361,11 +17382,27 @@ function psopRenderDocTable(filterText) {
   const fStatSearch = document.getElementById('psop-disp-stat')?.value || 'all';
   const fStatInline = document.getElementById('psop-doc-stat-filter')?.value || '';
   // 인라인 필터가 설정돼 있으면 인라인 우선, 아니면 상단 검색조건 적용
+  //   값: '' (전체) | 'N' 미배차 | 'Y' 배차완료(DB) | 'S' 배차저장 | 'T' 배차(TEMP)
   let fStat = fStatInline;
   if (!fStat) {
     if (fStatSearch === 'dispatched')   fStat = 'Y';
     else if (fStatSearch === 'undispatched') fStat = 'N';
+    else if (fStatSearch === 'temp')    fStat = 'T';   // ★[요청1] 배차(TEMP)
     else fStat = '';
+  }
+
+  // ★[요청1] 배차(TEMP) 필터용 — TEMP 배차(미저장 공유/임시저장, STDLNR 없음 + _tempNo 보유)에
+  //   속한 납품문서 키 집합. 이 집합에 포함된 searchRows 만 'T' 필터에서 노출한다.
+  let _tempDocKeys = null;
+  if (fStat === 'T') {
+    _tempDocKeys = new Set();
+    (psopState.vehicles || []).forEach(v => {
+      if (!v.STDLNR && v._tempNo) {              // TEMP(배차저장 전) 배차
+        (v.items || []).forEach(it => {
+          _tempDocKeys.add(`${it.SHPOKY ?? it.shpoky}|${it.SHPOIT ?? it.shpoit}`);
+        });
+      }
+    });
   }
 
   const rows = psopState.searchRows.filter(r => {
@@ -17381,6 +17418,8 @@ function psopRenderDocTable(filterText) {
     if (fStat==='N' && r.DISPATCHED) return false;
     if (fStat==='Y' && !r.DISPATCHED) return false;
     if (fStat==='S' && !r.IS_SAVED) return false;
+    // ★[요청1] 배차(TEMP): TEMP 배차에 속한 납품문서만 노출
+    if (fStat==='T' && !(_tempDocKeys && _tempDocKeys.has(`${r.SHPOKY}|${r.SHPOIT}`))) return false;
     return true;
   });
 
@@ -17450,6 +17489,22 @@ function psopRenderDocTable(filterText) {
   }
 
   const colspan = colCnt;
+
+  // ★[요청2] 우측 납품문서 목록은 'TEMP(배차저장 전) 또는 DRAFT(배차저장 완료) 배차가 있을 때만' 노출한다.
+  //   (기본 조회로 미배차 전체를 늘어놓지 않음 — 배차 작업 대상/진행 건이 있을 때만 목록 표시)
+  //   · DRAFT 존재: 조회결과(searchRows) 중 IS_SAVED 또는 DISPATCHED(STDLNR 채번) 행이 있음
+  //   · TEMP 존재:  선적목록(vehicles) 중 _tempNo 보유(STDLNR 없음) 배차가 있음
+  //   · 단, 배차상태 필터가 '미배차'(fStat==='N')로 명시된 경우는 사용자가 미배차 선택 의도이므로 예외적으로 노출.
+  const _hasDraft = psopState.searchRows.some(r => r.IS_SAVED || r.DISPATCHED ||
+                     (r.STDLNR && String(r.STDLNR).trim()));
+  const _hasTemp  = (psopState.vehicles || []).some(v => !v.STDLNR && v._tempNo);
+  if (!_hasDraft && !_hasTemp && fStat !== 'N') {
+    tbody.innerHTML = `<tr><td colspan="${colspan}" class="psd-empty"><div class="psd-empty-icon" style="font-size:24px">📋</div>`
+      + `<p>배차(TEMP) 또는 배차저장(DRAFT) 내역이 없습니다.</p>`
+      + `<p style="font-size:11px;color:var(--text3);margin-top:4px">미배차 납품문서를 보려면 배차상태를 '미배차'로 선택하세요.</p></td></tr>`;
+    document.getElementById('psop-right-info').textContent = `총 0건`;
+    return;
+  }
 
   if (!rows.length) {
     tbody.innerHTML = `<tr><td colspan="${colspan}" class="psd-empty"><div class="psd-empty-icon" style="font-size:24px">📋</div><p>조회 결과가 없습니다</p></td></tr>`;

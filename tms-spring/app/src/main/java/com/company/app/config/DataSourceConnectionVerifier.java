@@ -101,45 +101,36 @@ public class DataSourceConnectionVerifier {
     }
 
     // ── TMS 핵심 테이블 접근 가능 여부 확인 (Oracle KNRAWMS) ────────────
+    //   [성능개선] 기동 점검은 '접속 가능 여부'만 보면 충분하다. 기존에는 핵심테이블마다
+    //   SELECT COUNT(*) 로 전수 카운트해 대형 테이블에서 기동이 느려졌다(운영 메인 지연 유발).
+    //   → 테이블 '존재/접근 권한'만 가볍게 확인하도록 'SELECT 1 FROM <tbl> WHERE ROWNUM = 1'
+    //     (풀스캔 없이 1행만 판정) 로 교체한다. 행 수 카운트는 하지 않는다.
     private void verifyTmsTableAccess(Connection conn) {
-        // Oracle KNRAWMS 계정 — 모든 테이블 KNRAWMS. prefix 필수
         String[] checkTables = {"KNRAWMS.TMS_PS_DISPATCH_H", "KNRAWMS.VHCMA", "KNRAWMS.TMS_DS_VEHICLE", "KNRAWMS.TMS_ROUTE_COST", "KNRAWMS.BZPTN_DETAIL"};
-        StringBuilder ok  = new StringBuilder();
-        StringBuilder err = new StringBuilder();
-
-        for (String tbl : checkTables) {
-            try (var stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM " + tbl)) {
-                if (rs.next()) {
-                    ok.append(tbl).append("(").append(rs.getLong(1)).append(") ");
-                }
-            } catch (SQLException e) {
-                err.append(tbl).append(" ");
-            }
-        }
-        if (ok.length() > 0)  log.info("[TMS-DB]   핵심테이블 ✅ : {}", ok.toString().trim());
-        if (err.length() > 0) log.warn("[TMS-DB]   핵심테이블 ❌ : {} — 접근 불가 (권한 또는 테이블 미존재)", err.toString().trim());
+        probeTableAccess(conn, checkTables, "TMS-DB");
     }
 
     // ── WMS 핵심 테이블 접근 가능 여부 확인 (Oracle KNRAWMS) ─────────────────
     private void verifyWmsTableAccess(Connection conn) {
-        // Oracle KNRAWMS 스키마 테이블 — 스키마명 접두어 필수
         String[] checkTables = {"KNRAWMS.CMCDM", "KNRAWMS.BZPTN", "KNRAWMS.TMS_SHPDH"};
+        probeTableAccess(conn, checkTables, "WMS-DB");
+    }
+
+    // ── 공통: 테이블 접근 가능 여부만 경량 확인(COUNT 금지, ROWNUM=1 로 1행만) ──
+    private void probeTableAccess(Connection conn, String[] checkTables, String tag) {
         StringBuilder ok  = new StringBuilder();
         StringBuilder err = new StringBuilder();
-
         for (String tbl : checkTables) {
             try (var stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM " + tbl)) {
-                if (rs.next()) {
-                    ok.append(tbl).append("(").append(rs.getLong(1)).append(") ");
-                }
+                 ResultSet rs = stmt.executeQuery("SELECT 1 FROM " + tbl + " WHERE ROWNUM = 1")) {
+                rs.next();                 // 접근 성공(행 유무와 무관)
+                ok.append(tbl).append(" ");
             } catch (SQLException e) {
                 err.append(tbl).append(" ");
             }
         }
-        if (ok.length() > 0)  log.info("[WMS-DB]   핵심테이블 ✅ : {}", ok.toString().trim());
-        if (err.length() > 0) log.warn("[WMS-DB]   핵심테이블 ❌ : {} — 접근 불가 (권한 또는 테이블 미존재)", err.toString().trim());
+        if (ok.length() > 0)  log.info("[{}]   핵심테이블 접근 ✅ : {}", tag, ok.toString().trim());
+        if (err.length() > 0) log.warn("[{}]   핵심테이블 접근 ❌ : {} — 접근 불가 (권한 또는 테이블 미존재)", tag, err.toString().trim());
     }
 
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────
