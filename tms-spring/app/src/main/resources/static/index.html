@@ -2136,9 +2136,13 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .ds-vhc-table-fixed thead tr:first-child th:last-child{box-shadow:inset 0 -2px 0 #93c5fd}
 .ds-vhc-table-fixed thead tr:nth-child(2) th:last-child{box-shadow:inset 0 -2px 0 #93c5fd}
 .ds-vhc-table-fixed thead th.ds-cartype{text-align:center;min-width:0}
-/* 2단 헤더(평량) 행 — 간결 텍스트 nowrap, sticky top은 1단 높이에 맞춰 CSS 변수로 통일 */
+/* 2단 헤더(평량) 행 — 간결 텍스트 nowrap, sticky top은 1단 높이에 맞춰 CSS 변수로 통일.
+   ★[틈 개선] JS 측정값(--ds-hdr1-h)의 반올림 오차(±1~2px)로 1단-2단 사이에 틈이 생기던 문제 해결:
+     · top 을 측정값보다 1px 작게(calc(... - 1px)) 두어 2단을 살짝 위로 당겨 틈을 원천 차단(겹침은 배경으로 가림).
+     · background 를 불투명(--ds-th-bg)으로 명시해 틈/비침 시 본문이 보이지 않도록 함. */
 .ds-vhc-table-fixed thead tr.ds-vhc-subhdr th{
-  position:sticky;top:var(--ds-hdr1-h,57px);z-index:2;
+  position:sticky;top:calc(var(--ds-hdr1-h,57px) - 1px);z-index:3;
+  background:var(--ds-th-bg);color:var(--ds-th-fg);
   white-space:nowrap;font-size:11px;font-weight:700;padding:5px 4px;
   box-shadow:inset -1px 0 0 #bcd2e8, inset 0 -2px 0 #93c5fd;
 }
@@ -10131,7 +10135,11 @@ function _dsBindVehicleEvents() {
 
 /* 1단 헤더 실제 렌더 높이를 측정해 --ds-hdr1-h 변수에 반영.
    2단 헤더가 1단 바로 아래에 정확히 붙어 스크롤 시 틈·겹침이 생기지 않도록 함.
-   폰트/줄간격/브라우저 차이에도 자동 대응(하드코딩 top 제거). */
+   폰트/줄간격/브라우저 차이에도 자동 대응(하드코딩 top 제거).
+   ★[틈 개선] 측정 기준은 colspan 헤더(1단 전용 셀)의 '스크롤 전' 높이로 유지한다.
+     (2단 헤더 offsetTop 기준은 sticky 적용 후 측정 시 왜곡되어 오히려 틈을 키움 → 사용 안 함)
+     반올림 오차(±1px)로 인한 틈은 CSS 의 top:calc(var - 1px) 1px 겹침으로 흡수한다.
+     타이밍 보강: rAF + 150/500ms + 폰트 로딩 완료 시 재측정. */
 function _dsSyncHeaderStickyTop() {
   const tbl = document.getElementById('ds-vhc-table');
   if (!tbl) return;
@@ -10145,9 +10153,14 @@ function _dsSyncHeaderStickyTop() {
     if (h > 0) tbl.style.setProperty('--ds-hdr1-h', h + 'px');
   };
   apply();
-  // 레이아웃 안정화 후 한 번 더(폰트 로딩/리플로우 대응)
+  // 레이아웃 안정화 후 반복 재측정(폰트 로딩/리플로우/줌 대응)
   requestAnimationFrame(apply);
   setTimeout(apply, 150);
+  setTimeout(apply, 500);
+  // 웹폰트 로딩 완료 후 재측정(폰트 교체로 헤더 높이가 바뀌는 경우 대응)
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(apply).catch(()=>{});
+  }
   // 리사이즈 시 재동기화(중복 바인딩 방지)
   if (!_dsSyncHeaderStickyTop._bound) {
     window.addEventListener('resize', () => {
