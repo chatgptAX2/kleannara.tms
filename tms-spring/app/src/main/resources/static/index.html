@@ -14628,6 +14628,7 @@ const psopState = {
   /* ── 검색조건 보존 (화면 이동 후 복원용) ── */
   savedForm: null,          // {dateFrom, dateTo, dptnky, shpoky, dispStat, shpmty:[]}
   initialized: false,       // 최초 렌더 여부
+  searched: false,          // ★[요청1] 조회(psopSearch) 실행 여부 — 조회 전엔 우측 선적목록/납품문서 비움
   activeTab: 'dispatch',    // 현재 활성 탭: 'vehicles' | 'dispatch' | 'sap'
   _pendingSeq: 0,           // 임시 배차 ID 시퀀스
   /* ── 우측 2-split 그리드 상태 ── */
@@ -16669,6 +16670,7 @@ async function renderPsDispatchOpt(scope) {
     const oldRoot = document.getElementById('psop-root');
     if (oldRoot && oldRoot.parentElement) oldRoot.parentElement.removeChild(oldRoot);
     psopState.initialized   = false;
+    psopState.searched      = false;   // ★[요청1] 스코프 전환 시 '조회 전' 상태로 복귀 → 우측 선적목록/납품문서 비움
     psopState.searchRows    = [];
     psopState.vehicles      = [];
     psopState.selectedVehicles.clear();
@@ -17360,6 +17362,9 @@ async function psopSearch() {
       console.error('[psopSearch] TEMP 공유 배차 병합 실패(무시):', tErr);
     }
 
+    // ★[요청1] 조회가 정상 완료되었으므로 '조회 실행됨' 플래그를 세워 우측 선적목록/납품문서 노출을 허용한다.
+    psopState.searched = true;
+
     // ★[성능개선] 모든 데이터 보정/복원 완료 후, 선적목록/납품문서/툴바를 '한 번만' 렌더.
     psopLoadVehicles();
     psopRenderDocTable();
@@ -17498,18 +17503,29 @@ function psopRenderDocTable(filterText) {
 
   const colspan = colCnt;
 
-  // ★[요청2] 우측 납품문서 목록은 'TEMP(배차저장 전) 또는 DRAFT(배차저장 완료) 배차가 있을 때만' 노출한다.
-  //   (기본 조회로 미배차 전체를 늘어놓지 않음 — 배차 작업 대상/진행 건이 있을 때만 목록 표시)
+  // ★[요청1] 조회 전(최초 시작/탭 진입)에는 납품문서 목록도 비운다.
+  //   (psopState.searched 는 psopSearch 정상완료 시에만 true — 조회 전엔 우측 영역 전부 비움)
+  if (!psopState.searched) {
+    tbody.innerHTML = `<tr><td colspan="${colspan}" class="psd-empty"><div class="psd-empty-icon" style="font-size:24px">🔍</div>`
+      + `<p>조회 후 납품문서가 표시됩니다.</p>`
+      + `<p style="font-size:11px;color:var(--text3);margin-top:4px">상단 검색조건을 입력하고 <b>조회</b> 버튼을 누르세요.</p></td></tr>`;
+    document.getElementById('psop-right-info').textContent = `총 0건`;
+    return;
+  }
+
+  // ★[요청2] 배차상태 '전체'(fStat==='') 또는 '미배차'(fStat==='N') 선택 시에는
+  //   미배차 납품문서를 포함한 전체를 그대로 노출한다.
+  //   (기존: TEMP/DRAFT 배차가 없으면 '전체'일 때도 통째로 숨겨져 미배차 문서가 안 보이던 문제 수정)
+  //   조건부 숨김은 '임시배차'(T) / '배차완료'(Y) / '배차저장'(S) 등 특정 상태만 선택한 경우에 한한다.
   //   · DRAFT 존재: 조회결과(searchRows) 중 IS_SAVED 또는 DISPATCHED(STDLNR 채번) 행이 있음
   //   · TEMP 존재:  선적목록(vehicles) 중 _tempNo 보유(STDLNR 없음) 배차가 있음
-  //   · 단, 배차상태 필터가 '미배차'(fStat==='N')로 명시된 경우는 사용자가 미배차 선택 의도이므로 예외적으로 노출.
   const _hasDraft = psopState.searchRows.some(r => r.IS_SAVED || r.DISPATCHED ||
                      (r.STDLNR && String(r.STDLNR).trim()));
   const _hasTemp  = (psopState.vehicles || []).some(v => !v.STDLNR && v._tempNo);
-  if (!_hasDraft && !_hasTemp && fStat !== 'N') {
+  if (!_hasDraft && !_hasTemp && fStat !== '' && fStat !== 'N') {
     tbody.innerHTML = `<tr><td colspan="${colspan}" class="psd-empty"><div class="psd-empty-icon" style="font-size:24px">📋</div>`
-      + `<p>배차(TEMP) 또는 배차저장(DRAFT) 내역이 없습니다.</p>`
-      + `<p style="font-size:11px;color:var(--text3);margin-top:4px">미배차 납품문서를 보려면 배차상태를 '미배차'로 선택하세요.</p></td></tr>`;
+      + `<p>선택한 배차상태에 해당하는 내역이 없습니다.</p>`
+      + `<p style="font-size:11px;color:var(--text3);margin-top:4px">전체 납품문서를 보려면 배차상태를 '전체' 또는 '미배차'로 선택하세요.</p></td></tr>`;
     document.getElementById('psop-right-info').textContent = `총 0건`;
     return;
   }
@@ -18193,6 +18209,31 @@ function psopLoadVehicles() {
 function psopRenderVehicleArea() {
   const area = document.getElementById('psop-vehicle-area');
   if (!area) return;
+
+  // ★[요청1] 조회 전(최초 시작/탭 진입)에는 우측 선적목록을 그리지 않는다.
+  //   원인: psopState.vehicles 에는 localStorage 복원(pending)/저장배차가 들어있어
+  //   조회(psopSearch) 전에도 선적목록 91건 등이 노출되던 문제가 있었다.
+  //   → '조회 실행 여부'(psopState.searched) 플래그로 게이트. 조회 전에는 빈 안내만 표시.
+  if (!psopState.searched) {
+    const info = document.getElementById('psop-left-info');
+    if (info) info.textContent = `배차 0건`;
+    const stVeh = document.getElementById('psop-stat-veh');
+    const stKg  = document.getElementById('psop-stat-kg');
+    const stDoc = document.getElementById('psop-stat-doc');
+    if (stVeh) stVeh.textContent = 0;
+    if (stKg)  stKg.textContent  = psopFmtNum(0) + ' KG';
+    if (stDoc) stDoc.textContent  = 0;
+    area.innerHTML = `
+      <div class="psd-empty" id="psop-vehicle-drop-zone"
+           ondragover="event.preventDefault()"
+           ondrop="psopDropToVehicleNew(event)">
+        <div class="psd-empty-icon">🔍</div>
+        <p>조회 후 선적목록이 표시됩니다.</p>
+        <p style="margin-top:6px;font-size:11px;color:var(--text3)">상단 검색조건을 입력하고 <b>조회</b> 버튼을 누르세요.</p>
+      </div>`;
+    _psopVehRenderDocs(null);
+    return;
+  }
 
   // ★[배차상태 정의] 우측 선적목록도 상단 배차상태에 맞춰 필터한다.
   //   · 배차완료(dispatched): 배차저장(STDLNR 채번) 된 선적만 노출(임시배차 TEMP 제외).
