@@ -39,6 +39,18 @@ public class ShipmentController {
     }
 
     /**
+     * [PR-C 출고실적] SAP 선적번호(STKNUM) 채번 완료분만 조회 (페이징).
+     * 검색조건은 출고예정정보(/schedule)와 동일하며, STKNUM 채번 고정조건만 추가된다.
+     */
+    @PostMapping("/actual")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getActual(
+            @Valid @RequestBody ShipmentSearchRequest req) {
+
+        Map<String, Object> result = shipmentService.getActual(req);
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    /**
      * 출고진행현황 검색 필터 옵션 조회
      * 반환: 창고목록, 출고상태목록, 품목그룹목록, 플랜트목록, 최대날짜
      */

@@ -3856,6 +3856,9 @@ thead th:hover .th-drag-handle{opacity:.8}
   <div class="nav-item" onclick="showPage('hlDispatchConstraint')" id="nav-hlDispatchConstraint">
     <span class="icon">🎯</span> HL제약조건관리
   </div>
+  <div class="nav-item" onclick="showPage('shipActual')" id="nav-shipActual">
+    <span class="icon">📦</span> 출고실적
+  </div>
   <div class="nav-item" onclick="showPage('shipAnalysis')" id="nav-shipAnalysis">
     <span class="icon">📈</span> 출고실적 분석
   </div>
@@ -5010,6 +5013,9 @@ function _doShowPage(p) {
   } else if (p === 'shipAnalysis') {
     srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
     renderShipAnalysis();
+  } else if (p === 'shipActual') {
+    srch.style.display = 'none'; psize.style.display = 'none'; toolbar.style.display = 'none';
+    renderShipActual();
   } else {
     state.table = p;
     srch.style.display = 'flex'; psize.style.display = 'flex'; toolbar.style.display = 'none';
@@ -21996,6 +22002,186 @@ function resetShipScheduleSearch() {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════
+   [PR-C] 출고실적(출고내역) 조회 — SAP 선적번호(STKNUM) 채번 완료분
+   · 검색조건은 출고예정정보(shipSchedule)와 동일 패턴(거점/출하요청일자/납품문서/출하유형/품목그룹).
+   · 표는 요청 13개 컬럼: 납품일/선적번호/납품문서번호/품목코드/품목명/품목수량/납품단위/
+     적재율/팔렛트수/차량번호/납품처코드/납품처명/출고처리시간.
+   · 백엔드 POST /api/shipment/actual (ShipmentService.getActual — STKNUM 채번 고정조건).
+═══════════════════════════════════════════════════════════ */
+const shipActualState = { page:1, size:200, total:0, optsLoaded:false, currentRows:[] };
+
+async function renderShipActual() {
+  const c = document.getElementById('content');
+  c.style.overflowY = 'hidden';
+
+  // 창고 고정 목록(출고예정정보와 동일)
+  const _WAREKY_LIST = [
+    {value:'1100', label:'청주공장창고'}, {value:'1500', label:'음성공장창고'},
+    {value:'4100', label:'용인물류센터'}, {value:'4400', label:'경북물류센터'},
+    {value:'4200', label:'경남물류센터'}, {value:'4300', label:'전라물류센터'},
+    {value:'4800', label:'제주물류센터'}, {value:'4600', label:'부산물류센터'},
+    {value:'4700', label:'광주물류센터'},
+  ];
+  const warekyOpts = _WAREKY_LIST.map(o => `<option value="${o.value}">${o.value} - ${o.label}</option>`).join('');
+
+  // 기본 날짜: 오늘 기준 FROM=-3일, TO=+1일 (출고예정정보와 동일)
+  const fmt8 = d => d.toISOString().slice(0,10).replace(/-/g,'');
+  const fmtH = d => d.toISOString().slice(0,10);
+  const today = new Date();
+  const fromD = new Date(today); fromD.setDate(fromD.getDate()-3);
+  const toD   = new Date(today); toD.setDate(toD.getDate()+1);
+  const defFrom = fmt8(fromD), defTo = fmt8(toD), defFromH = fmtH(fromD), defToH = fmtH(toD);
+
+  c.innerHTML = `
+<div id="sa2-root" style="flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">
+<div style="padding:8px 12px;box-sizing:border-box;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">
+  <!-- 검색 패널 -->
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-bottom:8px;flex-shrink:0;">
+    <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+      🔍 검색조건 <span style="font-weight:400;font-size:11px;color:var(--text3);">출고실적 — SAP 선적번호 채번 완료분 (출하요청일자 기준)</span>
+    </div>
+    <div style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;">
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:3px;">거점 <span style="font-weight:400;color:var(--text3);">(WAREKY)</span></label>
+        <select id="sa2-wareky" style="width:180px;height:30px;padding:0 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text);font-size:12px;">
+          <option value="">전체</option>${warekyOpts}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:3px;">출하요청일자 <span style="font-weight:400;color:var(--text3);">(RQSHPD)</span></label>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <input type="date" id="sa2-from" value="${defFromH}" style="height:30px;padding:0 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text);font-size:12px;">
+          <span style="color:var(--text3);font-weight:600;">~</span>
+          <input type="date" id="sa2-to" value="${defToH}" style="height:30px;padding:0 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text);font-size:12px;">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:3px;">납품문서 <span style="font-weight:400;color:var(--text3);">(SVBELN)</span></label>
+        <input id="sa2-svbeln" type="text" placeholder="납품문서번호" style="width:160px;height:30px;padding:0 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text);font-size:12px;">
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:3px;">품목(코드/명) <span style="font-weight:400;color:var(--text3);">(LIKE)</span></label>
+        <input id="sa2-keyword" type="text" placeholder="품목코드 또는 품목명" style="width:180px;height:30px;padding:0 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text);font-size:12px;"
+          onkeydown="if(event.key==='Enter')loadShipActual(1)">
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:3px;">납품처 <span style="font-weight:400;color:var(--text3);">(DPTNKY)</span></label>
+        <input id="sa2-ptnrky" type="text" placeholder="납품처코드" style="width:130px;height:30px;padding:0 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text);font-size:12px;">
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button class="psd-btn primary" style="height:30px;padding:0 16px;border-radius:5px;border:none;background:var(--primary);color:#fff;font-weight:700;font-size:12px;cursor:pointer;" onclick="loadShipActual(1)">🔍 조회</button>
+        <button style="height:30px;padding:0 12px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;cursor:pointer;" onclick="document.getElementById('sa2-svbeln').value='';document.getElementById('sa2-keyword').value='';document.getElementById('sa2-ptnrky').value='';">초기화</button>
+      </div>
+    </div>
+  </div>
+  <!-- 결과 영역 -->
+  <div id="sa2-result" style="flex:1;min-height:0;overflow:auto;border:1px solid var(--border);border-radius:8px;background:var(--surface);">
+    <div style="text-align:center;padding:40px;color:var(--text3);font-size:13px;">⬆ 검색 조건을 입력하고 조회 버튼을 클릭하세요.</div>
+  </div>
+</div>
+</div>`;
+}
+
+/* 출고실적 조회 실행 */
+async function loadShipActual(pg) {
+  pg = pg || 1;
+  shipActualState.page = pg;
+  const el = id => document.getElementById(id);
+  const area = el('sa2-result');
+  if (!area) return;
+
+  const dfH = el('sa2-from')?.value || '';   // YYYY-MM-DD
+  const dtH = el('sa2-to')?.value   || '';
+  const body = {
+    wareky:  el('sa2-wareky')?.value || '',
+    dateFrom: dfH.replace(/-/g,''),           // YYYYMMDD
+    dateTo:   dtH.replace(/-/g,''),
+    keyword: (el('sa2-keyword')?.value || '').trim(),
+    ptnrky:  (el('sa2-ptnrky')?.value || '').trim(),
+    page: pg, size: shipActualState.size,
+  };
+  const svb = (el('sa2-svbeln')?.value || '').trim();
+  if (svb) body.svbeln = svb.split(/[\s,]+/).filter(Boolean);
+
+  area.innerHTML = '<div style="text-align:center;padding:40px;"><div class="loading"><div class="spinner"></div>조회 중...</div></div>';
+  try {
+    const res  = await fetch('/api/shipment/actual', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error((json && json.message) || res.statusText);
+    const data = (json && json.data != null) ? json.data : json;
+    const rows = Array.isArray(data.rows) ? data.rows : [];
+    shipActualState.total = data.total || rows.length;
+    shipActualState.currentRows = rows;
+    renderShipActualResult(rows, area);
+  } catch(e) {
+    area.innerHTML = `<div style="color:var(--danger);text-align:center;padding:30px;">❌ 조회 실패: ${e.message}</div>`;
+  }
+}
+
+/* 출고실적 결과 표 렌더 (요청 13개 컬럼) */
+function renderShipActualResult(rows, area) {
+  if (!rows.length) {
+    area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3);font-size:13px;">조회 결과가 없습니다. (SAP 선적번호 채번 완료분 없음)</div>';
+    return;
+  }
+  const esc = s => String(s==null?'':s).replace(/[&<>"]/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+  // 날짜(YYYYMMDD)→YYYY-MM-DD, 시각(HHMMSS)→HH:MM:SS 포맷
+  const fmtDate = s => { s=String(s||'').trim(); return s.length===8 ? `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}` : (s||'-'); };
+  const fmtTime = s => { s=String(s||'').trim().padStart(6,'0'); return /^\d{6}$/.test(s) ? `${s.slice(0,2)}:${s.slice(2,4)}:${s.slice(4,6)}` : '-'; };
+  const fmtNum  = (n,d=0) => { const v=Number(n); return isNaN(v)?'-':v.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d}); };
+
+  const cols = [
+    {h:'납품일',       cls:'c', get:r=>fmtDate(r.rqshpd || r.RQSHPD || r.lota01 || r.LOTA01)},
+    {h:'선적번호',     cls:'l', get:r=>esc(r.stknum || r.STKNUM || '-')},
+    {h:'납품문서번호', cls:'l', get:r=>esc(r.svbeln || r.SVBELN || '-')},
+    {h:'품목코드',     cls:'l', get:r=>esc(r.skukey || r.SKUKEY || '-')},
+    {h:'품목명',       cls:'l', get:r=>esc(r.desc01 || r.DESC01 || '-')},
+    {h:'품목수량',     cls:'r', get:r=>fmtNum(r.qtshpo ?? r.QTSHPO, 0)},
+    {h:'납품단위',     cls:'c', get:r=>esc(r.uomkey || r.UOMKEY || '-')},
+    {h:'적재율',       cls:'r', get:r=>{ const v=r.fillRatio ?? r.FILL_RATIO ?? r.ratio; return (v==null||v==='')?'-':fmtNum(v,1)+'%'; }},
+    {h:'팔렛트수',     cls:'r', get:r=>{ const v=r.pltCnt ?? r.PLT_CNT ?? r.pltcnt; return (v==null||v==='')?'-':fmtNum(v,0); }},
+    {h:'차량번호',     cls:'c', get:r=>esc(r.vehino || r.VEHINO || '-')},
+    {h:'납품처코드',   cls:'c', get:r=>esc(r.dptnky || r.DPTNKY || '-')},
+    {h:'납품처명',     cls:'l', get:r=>esc(r.dptnm || r.DPTNM || '-')},
+    {h:'출고처리시간', cls:'c', get:r=>`${fmtDate(r.lmodat || r.LMODAT)} ${fmtTime(r.lmotim || r.LMOTIM)}`},
+  ];
+  const alignOf = cls => cls==='r' ? 'right' : (cls==='c' ? 'center' : 'left');
+  const thead = `<thead><tr>${cols.map(col=>`<th style="position:sticky;top:0;z-index:2;background:var(--th-bg,#dbeafe);color:var(--text);font-size:11px;font-weight:800;padding:8px 10px;border-bottom:2px solid var(--border);white-space:nowrap;text-align:${alignOf(col.cls)};">${col.h}</th>`).join('')}</tr></thead>`;
+  const tbody = `<tbody>${rows.map(r=>`<tr style="border-bottom:1px solid var(--tr-border,#eee);">${cols.map(col=>`<td style="font-size:12px;padding:6px 10px;white-space:nowrap;text-align:${alignOf(col.cls)};color:var(--text);">${col.get(r)}</td>`).join('')}</tr>`).join('')}</tbody>`;
+
+  area.innerHTML = `
+    <div style="padding:8px 12px;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:3;">
+      총 <b style="color:var(--primary)">${shipActualState.total.toLocaleString()}</b> 건
+      <button style="float:right;height:26px;padding:0 10px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px;cursor:pointer;" onclick="exportShipActualCsv()">📥 엑셀(CSV)</button>
+    </div>
+    <table style="width:100%;border-collapse:separate;border-spacing:0;table-layout:auto;">${thead}${tbody}</table>`;
+}
+
+/* 출고실적 CSV 다운로드 */
+function exportShipActualCsv() {
+  const rows = shipActualState.currentRows || [];
+  if (!rows.length) { showToast('내보낼 데이터가 없습니다'); return; }
+  const fmtDate = s => { s=String(s||'').trim(); return s.length===8 ? `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}` : (s||''); };
+  const fmtTime = s => { s=String(s||'').trim().padStart(6,'0'); return /^\d{6}$/.test(s) ? `${s.slice(0,2)}:${s.slice(2,4)}:${s.slice(4,6)}` : ''; };
+  const head = ['납품일','선적번호','납품문서번호','품목코드','품목명','품목수량','납품단위','적재율','팔렛트수','차량번호','납품처코드','납품처명','출고처리시간'];
+  const line = r => [
+    fmtDate(r.rqshpd||r.RQSHPD||r.lota01||r.LOTA01), r.stknum||r.STKNUM||'', r.svbeln||r.SVBELN||'',
+    r.skukey||r.SKUKEY||'', r.desc01||r.DESC01||'', (r.qtshpo??r.QTSHPO??''), r.uomkey||r.UOMKEY||'',
+    (r.fillRatio??r.FILL_RATIO??r.ratio??''), (r.pltCnt??r.PLT_CNT??r.pltcnt??''), r.vehino||r.VEHINO||'',
+    r.dptnky||r.DPTNKY||'', r.dptnm||r.DPTNM||'', `${fmtDate(r.lmodat||r.LMODAT)} ${fmtTime(r.lmotim||r.LMOTIM)}`.trim(),
+  ].map(v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`).join(',');
+  const csv = '\uFEFF' + head.map(h=>`"${h}"`).join(',') + '\n' + rows.map(line).join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url  = URL.createObjectURL(blob);
+  const ts   = new Date().toISOString().slice(0,19).replace(/[-:T]/g,'');
+  const a    = document.createElement('a');
+  a.href = url; a.download = `출고실적_${ts}.csv`; a.click();
+  URL.revokeObjectURL(url);
+}
+
 /* TMS_THICKNESS 코드맵 로드 보장 (판지 높이 계산용) — 재사용 헬퍼.
    · CMCDVL(6자리 지종/평량 코드) → CDESC1(두께 µm) 매핑
    · 최초 1회만 실제 fetch, 이후는 캐시(shipScheduleState.thicknessMap) 즉시 반환(지연 0).
@@ -23453,6 +23639,7 @@ function mmgrDefaultConfig() {
     { type:'item',    id:'nav-returnOut',  label:'반품출고',        icon:'↩️', page:'returnOut',     cnt:false },
     { type:'item',    id:'nav-dispatchConstraint', label:'PS제약조건관리', icon:'🎯', page:'dispatchConstraint', cnt:false },
     { type:'item',    id:'nav-hlDispatchConstraint', label:'HL제약조건관리', icon:'🎯', page:'hlDispatchConstraint', cnt:false },
+    { type:'item',    id:'nav-shipActual', label:'출고실적', icon:'📦', page:'shipActual', cnt:false },
     { type:'item',    id:'nav-shipAnalysis', label:'출고실적 분석', icon:'📈', page:'shipAnalysis', cnt:false },
     { type:'section', id:'sec-base',      label:'기준정보 관리' },
     { type:'item',    id:'nav-psDispatch',    label:'PS 배차',     icon:'🚚', page:'psDispatch',    cnt:false },
