@@ -2146,45 +2146,6 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 /* 차량 톤수 본문 셀도 가운데 정렬(뱃지 중앙 배치) */
 .ds-vhc-table-fixed tbody td.ds-cartype{text-align:center;background:transparent}
 
-/* ══════════════════════════════════════════════════════════
-   ★[요청] 좌측 고정 컬럼 — 가로 스크롤(마우스 드래그) 시 식별 컬럼 3개 고정
-     고정 대상: ① 차량코드(width 88) ② 차량 톤수(width 104) ③ 사용여부(width 60)
-     left offset = 누적너비 (col1:0 / col2:88 / col3:192)
-     - thead/tbody 모두 position:sticky; left 적용(헤더는 top+left 동시 고정).
-     - 가로 스크롤 시 뒤 컬럼이 비쳐 보이지 않도록 배경색 지정 + 우측 구분선(box-shadow).
-     - z-index: 헤더 고정컬럼(top+left 교차) > 본문 고정컬럼 > 일반 sticky top 헤더 순.
-══════════════════════════════════════════════════════════ */
-.ds-vhc-table-fixed thead th.ds-sticky-col,
-.ds-vhc-table-fixed tbody td.ds-sticky-col{
-  position:sticky;
-  background:var(--surface);           /* 기본 본문 배경(뒤 컬럼 가림) */
-}
-/* 고정 컬럼 좌측 위치 (colgroup 너비와 일치) */
-.ds-vhc-table-fixed thead th.ds-sticky-c1,
-.ds-vhc-table-fixed tbody td.ds-sticky-c1{ left:0;    }
-.ds-vhc-table-fixed thead th.ds-sticky-c2,
-.ds-vhc-table-fixed tbody td.ds-sticky-c2{ left:88px; }
-.ds-vhc-table-fixed thead th.ds-sticky-c3,
-.ds-vhc-table-fixed tbody td.ds-sticky-c3{ left:192px;}
-/* 본문 고정 컬럼 — 가로 스크롤 시 뒤 컬럼 위에 그려지도록 */
-.ds-vhc-table-fixed tbody td.ds-sticky-col{ z-index:1; }
-/* 헤더 고정 컬럼 — 세로(top) + 가로(left) 동시 고정이므로 최상위 */
-.ds-vhc-table-fixed thead th.ds-sticky-col{ z-index:4; background:var(--ds-th-bg); color:var(--ds-th-fg); }
-/* 마지막 고정 컬럼(사용여부 c3) 우측에 구분선 — 고정/비고정 경계 시각화 */
-.ds-vhc-table-fixed thead th.ds-sticky-c3{ box-shadow:inset -2px 0 0 #93c5fd, inset 0 -1px 0 #bcd2e8; }
-.ds-vhc-table-fixed tbody td.ds-sticky-c3{ box-shadow:inset -2px 0 0 #cbd5e1; }
-[data-theme="dark"] .ds-vhc-table-fixed thead th.ds-sticky-c3{ box-shadow:inset -2px 0 0 var(--primary-dark), inset 0 -1px 0 var(--border); }
-[data-theme="dark"] .ds-vhc-table-fixed tbody td.ds-sticky-c3{ box-shadow:inset -2px 0 0 var(--border); }
-/* ★ 고정 컬럼은 '불투명' 배경이 필수(반투명이면 뒤 컬럼이 비쳐 보임).
-     줄무늬(nth-child even)·신규행(ds-new-row) 배경을 불투명색으로 명시 지정하여
-     일반 셀의 반투명 줄무늬와 동일하게 보이도록 맞춘다(라이트/다크 각각). */
-.ds-vhc-table-fixed tbody tr:nth-child(even) td.ds-sticky-col{ background:#fafafa; }           /* #fff 위 rgba(0,0,0,.018) 합성 근사 */
-[data-theme="dark"] .ds-vhc-table-fixed tbody tr:nth-child(even) td.ds-sticky-col{ background:#121a2b; } /* #141c2e 위 rgba(0,0,0,.018) 근사 */
-/* 신규 추가 행(ds-new-row) — 고정 컬럼도 신규행 배경(불투명 근사)으로 */
-.ds-vhc-table-fixed tbody tr.ds-new-row td.ds-sticky-col{ background:#f2f8f2 !important; }        /* #fff 위 rgba(56,142,60,.05) 근사 */
-[data-theme="dark"] .ds-vhc-table-fixed tbody tr.ds-new-row td.ds-sticky-col{ background:#172636 !important; }
-/* 행 hover 시 고정 컬럼도 함께 하이라이트(비고정 셀과 톤 일치) */
-.ds-vhc-table-fixed tbody tr:hover td.ds-sticky-col{ background:var(--tr-hover); }
 /* ══════════════════════════════════════════════
    자동배차 시뮬레이션 패널
 ══════════════════════════════════════════════ */
@@ -10016,7 +9977,7 @@ function _dsBuildVehicleTableHTML() {
     </div>
 
     <div class="ds-vhc-desc">차량 치수·상차량으로 자동배차 차량을 결정합니다 &nbsp;|&nbsp; 평량: <b>LT300</b> = 300gsm 미만 &nbsp;·&nbsp; <b>GE300</b> = 300gsm 이상 &nbsp;|&nbsp; <b>사용여부 Y</b> = 공통코드 사용인자1 자동 반영</div>
-    <div style="padding:0 16px 16px;overflow-x:auto">
+    <div style="padding:0 16px 16px;overflow:visible">
       <table class="ds-table ds-vhc-table-fixed" id="ds-vhc-table">
         <colgroup>
           <col style="width:88px"><!-- 차량코드 -->
@@ -10037,9 +9998,9 @@ function _dsBuildVehicleTableHTML() {
         </colgroup>
         <thead>
           <tr>
-            <th rowspan="2" class="ds-sticky-col ds-sticky-c1" style="top:0;z-index:4;background:var(--ds-th-bg);color:var(--ds-th-fg);vertical-align:middle">차량코드</th>
-            <th class="ds-cartype ds-sticky-col ds-sticky-c2" rowspan="2" style="top:0;z-index:4;background:var(--ds-th-bg);color:var(--ds-th-fg);vertical-align:middle">차량 톤수</th>
-            <th rowspan="2" class="ds-sticky-col ds-sticky-c3" style="top:0;z-index:4;background:var(--ds-th-bg);color:var(--ds-th-fg);vertical-align:middle;font-weight:800">사용<br>여부</th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--ds-th-bg);color:var(--ds-th-fg);vertical-align:middle">차량코드</th>
+            <th class="ds-cartype" rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--ds-th-bg);color:var(--ds-th-fg);vertical-align:middle">차량 톤수</th>
+            <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--ds-th-bg);color:var(--ds-th-fg);vertical-align:middle;font-weight:800">사용<br>여부</th>
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--ds-th-bg);color:var(--ds-th-fg);vertical-align:middle">길이<br><small style="font-weight:400">(m)</small></th>
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--ds-th-bg);color:var(--ds-th-fg);vertical-align:middle">너비<br><small style="font-weight:400;color:var(--text3)">(m/범위)</small></th>
             <th rowspan="2" style="position:sticky;top:0;z-index:3;background:var(--ds-th-bg);color:var(--ds-th-fg);vertical-align:middle">높이<br><small style="font-weight:400">(m)</small></th>
@@ -10088,7 +10049,7 @@ function _dsVehicleRowHTML(r) {
     : 'background:var(--ds-use-n-bg);color:var(--ds-use-n-fg);border-color:var(--ds-use-n-border)';
 
   return `<tr class="${rowCls}" id="ds-vrow-${r._id}">
-    <td class="ds-sticky-col ds-sticky-c1" style="padding:3px 6px;text-align:center">
+    <td style="padding:3px 6px;text-align:center">
       ${isNew
         ? `<input class="ds-input" type="text" placeholder="차량코드" style="width:100%;box-sizing:border-box;font-size:11px;background:var(--ds-code-input-bg);border-color:var(--ds-code-border)"
              id="ds-vccd-${r._id}" value="${r.CARCLASS_CD||''}">`
@@ -10096,7 +10057,7 @@ function _dsVehicleRowHTML(r) {
            <input type="hidden" id="ds-vccd-${r._id}" value="${r.CARCLASS_CD||''}">`
       }
     </td>
-    <td class="ds-cartype ds-sticky-col ds-sticky-c2">
+    <td class="ds-cartype">
       ${isNew
         ? `<input class="ds-input" type="text" placeholder="예: 5톤" style="width:100%;box-sizing:border-box"
              id="ds-vct-${r._id}" value="${r.CARTYPE||''}">`
@@ -10105,7 +10066,7 @@ function _dsVehicleRowHTML(r) {
       }
     </td>
     <!-- 사용여부 컬럼 — 공통코드 USARG1 연동 -->
-    <td class="ds-sticky-col ds-sticky-c3" style="padding:3px 4px;text-align:center">
+    <td style="padding:3px 4px;text-align:center">
       <select class="ds-input" id="ds-vuyn-${r._id}"
         onchange="dsOnUseYnChange('${r._id}',this.value)"
         style="width:100%;box-sizing:border-box;font-size:12px;font-weight:700;padding:3px 2px;${useYnBg}">
