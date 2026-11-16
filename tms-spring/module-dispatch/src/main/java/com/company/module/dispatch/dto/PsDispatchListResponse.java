@@ -29,6 +29,7 @@ public class PsDispatchListResponse {
     private Integer rollCount;  // 원지 롤 수 합산
     private String carno;       // [PR-B] 차량번호 (TMS_SHPDH.CARNO — 고정차량 매칭 결과 저장값)
     private String fixYn;       // [PR-B] 고정차량 여부 (VHCMA.FIX_YN, 'Y'/'N'/공백)
+    private String dispatchMethod; // [배차방법] TMS_PS_DISPATCH_H.DISPATCH_METHOD (AUTO/MANUAL)
 
     /** 배차 아이템 상세 */
     private List<ItemDetail> items;
