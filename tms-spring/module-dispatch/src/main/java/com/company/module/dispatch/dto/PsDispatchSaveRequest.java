@@ -108,6 +108,11 @@ public class PsDispatchSaveRequest {
         @JsonAlias({"fix_yn", "FIX_YN", "fixYn"})
         private String fixYn;         // 고정차량 여부 (Y/N)
 
+        // [배차방법 저장] 이 배차의 생성 방법 — 배차단위로 TMS_PS_DISPATCH_H.DISPATCH_METHOD 에 저장.
+        //   'AUTO'(자동배차) / 'MANUAL'(수기배차). 조회 시 그대로 읽어 선적목록 '배차방법' 배지로 표시.
+        @JsonAlias({"dispatch_method", "DISPATCH_METHOD", "dispatchMethod"})
+        private String dispatchMethod;  // 배차방법 (AUTO/MANUAL)
+
         private Double totalKg;
         @JsonSetter("totalKg")
         @JsonAlias({"total_kg", "TOTAL_KG", "TOTALKG"})

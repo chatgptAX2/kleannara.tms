@@ -502,13 +502,16 @@ public class PsDispatchService {
             String fixYnForSave = "Y".equalsIgnoreCase(
                     veh.getFixYn() == null ? "" : veh.getFixYn().strip()) ? "Y" : "N";
             if (vehNoForNote == null) fixYnForSave = "N";
+            // [배차방법 저장] 프론트 전달값 정규화: 'MANUAL' 이면 MANUAL, 그 외(기본)는 AUTO.
+            String methodForSave = "MANUAL".equalsIgnoreCase(
+                    veh.getDispatchMethod() == null ? "" : veh.getDispatchMethod().strip()) ? "MANUAL" : "AUTO";
 
             // 헤더 INSERT — STATUS='TEMP'
             tmsEm.createNativeQuery("""
                 INSERT INTO KNRAWMS.TMS_PS_DISPATCH_H
                   (DISPATCH_NO, DISPATCH_DT, RQSHPD, DPTNKY, DPTNM,
-                   CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR, DISPATCH_TYPE, LOAD_LAYOUT, NOTE, FIX_YN)
-                VALUES (?,?,?,?,?,?,'TEMP',?,?,?,?,'GI',?,?,?)
+                   CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR, DISPATCH_TYPE, LOAD_LAYOUT, NOTE, FIX_YN, DISPATCH_METHOD)
+                VALUES (?,?,?,?,?,?,'TEMP',?,?,?,?,'GI',?,?,?,?)
                 """)
               .setParameter(1,  dispatchNo)
               .setParameter(2,  today)
@@ -523,6 +526,7 @@ public class PsDispatchService {
               .setParameter(11, loadLayoutJson)
               .setParameter(12, vehNoForNote)
               .setParameter(13, fixYnForSave)
+              .setParameter(14, methodForSave)
               .executeUpdate();
 
             // 디테일 INSERT — ★ TMS_SHPDI.STDLNR 은 건드리지 않는다(분할 선처리도 하지 않음)
@@ -686,11 +690,15 @@ public class PsDispatchService {
             String fixYnForSave = "Y".equalsIgnoreCase(
                     veh.getFixYn() == null ? "" : veh.getFixYn().strip()) ? "Y" : "N";
             if (vehNoForNote == null) fixYnForSave = "N";
+            // [배차방법 저장] 'MANUAL'(수기배차) 이면 MANUAL, 그 외(기본)는 AUTO 로 저장.
+            //   TEMP→DRAFT 전환 시에도 프론트가 보존한 배차방법 값이 payload 로 전달되어 그대로 유지된다.
+            String methodForSave = "MANUAL".equalsIgnoreCase(
+                    veh.getDispatchMethod() == null ? "" : veh.getDispatchMethod().strip()) ? "MANUAL" : "AUTO";
             tmsEm.createNativeQuery("""
                 INSERT INTO KNRAWMS.TMS_PS_DISPATCH_H
                   (DISPATCH_NO, DISPATCH_DT, RQSHPD, DPTNKY, DPTNM,
-                   CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR, DISPATCH_TYPE, LOAD_LAYOUT, NOTE, FIX_YN)
-                VALUES (?,?,?,?,?,?,'DRAFT',?,?,?,?,'GI',?,?,?)
+                   CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR, DISPATCH_TYPE, LOAD_LAYOUT, NOTE, FIX_YN, DISPATCH_METHOD)
+                VALUES (?,?,?,?,?,?,'DRAFT',?,?,?,?,'GI',?,?,?,?)
                 """)
               .setParameter(1,  dispatchNo)
               .setParameter(2,  today)
@@ -705,6 +713,7 @@ public class PsDispatchService {
               .setParameter(11, loadLayoutJson)   // null 이면 CLOB NULL 저장
               .setParameter(12, vehNoForNote)     // [PR-B] 배차단위 차량번호(없으면 NULL)
               .setParameter(13, fixYnForSave)     // [PR-D] 배차단위 고정차량 여부('Y'/'N')
+              .setParameter(14, methodForSave)    // [배차방법] AUTO/MANUAL
               .executeUpdate();
 
             // [고정차량저장진단] 각 배차(가선적번호/톤수)에 실제로 저장되는 차량번호(NOTE) 추적.
@@ -1126,7 +1135,9 @@ public class PsDispatchService {
         "SELECT h.DISPATCH_NO, h.DISPATCH_DT, h.RQSHPD," +
         "       h.DPTNKY, h.DPTNM, h.CARTYPE, h.STATUS," +
         "       h.TOTAL_KG, h.TOTAL_CNT, h.NOTE, h.CREDAT," +
-        "       COALESCE(v.LOAD_TON, 0) AS LOAD_TON" +
+        "       COALESCE(v.LOAD_TON, 0) AS LOAD_TON," +
+        // [배차방법 조회] r[12] = DISPATCH_METHOD(AUTO/MANUAL). loadForEdit/listTemp 복원 시 선적목록 배지로 사용.
+        "       TRIM(COALESCE(h.DISPATCH_METHOD,'')) AS DISPATCH_METHOD" +
         " FROM KNRAWMS.TMS_PS_DISPATCH_H h" +
         " LEFT JOIN KNRAWMS.TMS_DS_VEHICLE v ON v.CARTYPE = h.CARTYPE";
 
@@ -1293,6 +1304,7 @@ public class PsDispatchService {
                 .loadTon(loadTon)
                 .loadKg(loadKg)
                 .rollCount(totalRoll)
+                .dispatchMethod(str(r[12]))   // [배차방법] AUTO/MANUAL
                 .items(items)
                 .build());
         }
@@ -1435,6 +1447,10 @@ public class PsDispatchService {
             // [PR-B] 고정차량 복원 — 프론트가 v.vehicle_no / v.fix_yn 로 읽음
             v.put("vehicle_no",  carnoVal);
             v.put("fix_yn",      fixYnVal.isEmpty() ? "N" : fixYnVal);
+            // [배차방법 복원] 저장된 DISPATCH_METHOD(AUTO/MANUAL) 를 프론트가 v.dispatch_method 로 읽어
+            //   선적목록 '배차방법' 배지(자동/수기)로 표시. 값 없으면 기본 AUTO.
+            v.put("dispatch_method",
+                  (h.getDispatchMethod() == null || h.getDispatchMethod().isBlank()) ? "AUTO" : h.getDispatchMethod());
             v.put("items",       items);
             vehicles.add(v);
         }
