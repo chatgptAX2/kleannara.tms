@@ -167,6 +167,15 @@ public class ShipmentService {
      * IN 절(shpmty / ptnrky 다중선택)은 가변 목록이므로 리터럴로 직접 삽입한다.
      */
     private String buildScheduleWhere(ShipmentSearchRequest req, List<Object> params) {
+        return buildScheduleWhere(req, params, false);
+    }
+
+    /**
+     * 동적 WHERE 구성. onlyShipped=true 이면 '출고실적'(SAP 선적번호 STKNUM 채번 완료)만 조회한다.
+     *   · 출고실적(PR-C): SAP 전송되어 TMS_SHPDI.STKNUM 이 채번된 선적만 대상.
+     *     (STKNUM 은 NOT NULL DEFAULT ' ' — 공백이 아니면 채번된 것)
+     */
+    private String buildScheduleWhere(ShipmentSearchRequest req, List<Object> params, boolean onlyShipped) {
         String df = req.normalizedDateFrom();
         String dt = req.normalizedDateTo();
 
@@ -210,6 +219,11 @@ public class ShipmentService {
         where.append(where.length() == 0 ? " WHERE" : " AND")
              .append(" SI.STATIT <> 'FCO'")
              .append(" AND SH.STATDO <> 'OCN'");
+        // ── [PR-C 출고실적] SAP 선적번호(STKNUM) 채번 완료분만 조회 ──────────────
+        //   STKNUM 은 NOT NULL DEFAULT ' ' 이므로 공백이 아니면 SAP 선적 채번 완료.
+        if (onlyShipped) {
+            where.append(" AND SI.STKNUM IS NOT NULL AND TRIM(SI.STKNUM) <> ''");
+        }
         if (wareky != null) {
             where.append(where.length() == 0 ? " WHERE" : " AND").append(" SH.WAREKY = ?");
             params.add(wareky);
@@ -308,6 +322,47 @@ public class ShipmentService {
         for (Object[] r : rows) {
             result.add(mapRow(r));
         }
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("total", total);
+        response.put("page",  req.getPage());
+        response.put("size",  size);
+        response.put("rows",  result);
+        return response;
+    }
+
+    /**
+     * [PR-C 출고실적] SAP 선적번호(STKNUM) 채번 완료분만 조회.
+     *   검색조건/컬럼은 출고예정정보(getSchedule)와 동일하며, WHERE 에 'STKNUM 채번' 고정조건만 추가된다.
+     *   (기존 getSchedule 은 변경 없음 — 영향 없음)
+     */
+    public Map<String, Object> getActual(ShipmentSearchRequest req) {
+        List<Object> params = new ArrayList<>();
+        String whereSql = buildScheduleWhere(req, params, /*onlyShipped=*/true);
+
+        String countSql = SCHEDULE_COUNT_BASE_SQL + whereSql;
+        var countQuery = em.createNativeQuery(countSql);
+        for (int i = 0; i < params.size(); i++) countQuery.setParameter(i + 1, params.get(i));
+        long total = ((Number) countQuery.getSingleResult()).longValue();
+
+        int size   = Math.max(1, Math.min(req.getSize(), 99999));
+        int offset = (req.getPage() - 1) * size;
+
+        String dataSql = SCHEDULE_DATA_BASE_SQL + whereSql + SCHEDULE_DATA_ORDER_BY
+            + " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
+        var dataQuery = em.createNativeQuery(dataSql);
+        int bi = 0;
+        for (; bi < params.size(); bi++) dataQuery.setParameter(bi + 1, params.get(bi));
+        dataQuery.setParameter(bi + 1, offset);
+        dataQuery.setParameter(bi + 2, size);
+
+        logBoundQuery(dataSql, params, offset, size);
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = dataQuery.getResultList();
+
+        List<ShipmentRowResponse> result = new ArrayList<>();
+        for (Object[] r : rows) result.add(mapRow(r));
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("total", total);
