@@ -1266,6 +1266,8 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .vhc-spec-edit-btn:hover{background:var(--warning,#f59e0b);color:#fff}
 .vhc-spec-edit-btn.active{background:var(--warning,#f59e0b);color:#fff}
 .vhc-fixed-spec-edit{margin-top:10px;padding:12px 14px;border:1px dashed var(--primary);border-radius:8px;background:rgba(59,130,246,.05)}
+.vfs-auto-tag{font-size:9px;font-weight:700;color:#fff;background:var(--success,#10b981);border-radius:3px;padding:1px 4px;margin-left:4px}
+#vfs-CBM{background:var(--surface2,#f3f4f6);font-weight:700;color:var(--primary)}
 .vhc-fixed-spec-hint{font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.5}
 .vhc-fixed-spec-hint code{font-size:10px;background:var(--surface2);padding:1px 5px;border-radius:3px;color:var(--primary)}
 .vhc-spec-badge.spec-yn-n .spec-value{color:var(--text3)}
@@ -8415,22 +8417,31 @@ function buildVehicleForm() {
     <input type="hidden" id="vf-selected-carclass-cd" value="">
 
     <!-- 고정차량 사양 수정 폼 — 고정차량(FIX_YN='Y')일 때만 노출.
-         CMCDKY='TMS_CARCLASS10', CMCDVL=차량번호 로 저장. -->
+         CMCDKY='TMS_CARCLASS10', CMCDVL=차량번호 로 저장.
+         톤수별 차량사양 컬럼: 차량유형명/길이/너비/높이/상차량(ton)/장축여부/파렛트수 (+적재CBM 자동계산). -->
     <div id="vhc-fixed-spec-edit" class="vhc-fixed-spec-edit" style="display:none">
       <div class="vhc-fixed-spec-hint">
-        🔒 <b>고정차량 전용 사양</b> — 이 차량번호에만 적용되는 사양을 직접 입력/저장할 수 있습니다.
+        🔒 <b>고정차량 전용 사양</b> — 차량유형(톤수)별 기본 사양은 고정값이며, 고정차량에 한해 이 차량번호 전용 사양을 직접 수정/저장할 수 있습니다.
         (저장 키: <code>CMCDKY='TMS_CARCLASS10', CMCDVL=차량번호</code>)
       </div>
       <div class="vhc-form-grid">
         <div class="vhc-fg">
           <label>차량유형명</label>
-          <input id="vfs-CDESC1" type="text" placeholder="예) 11톤(고정)">
+          <input id="vfs-CDESC1" type="text" placeholder="예) 18톤(고정)">
         </div>
-        <div class="vhc-fg"><label id="vfs-lbl-1">인자1</label><input id="vfs-USARG1" type="text" placeholder=""></div>
-        <div class="vhc-fg"><label id="vfs-lbl-2">인자2</label><input id="vfs-USARG2" type="text" placeholder=""></div>
-        <div class="vhc-fg"><label id="vfs-lbl-3">인자3</label><input id="vfs-USARG3" type="text" placeholder=""></div>
-        <div class="vhc-fg"><label id="vfs-lbl-4">인자4</label><input id="vfs-USARG4" type="text" placeholder=""></div>
-        <div class="vhc-fg"><label id="vfs-lbl-5">인자5</label><input id="vfs-USARG5" type="text" placeholder=""></div>
+        <div class="vhc-fg"><label>길이 (m)</label><input id="vfs-LEN" type="number" step="0.1" min="0" placeholder="0.0" oninput="_vhcRecalcSpecCbm()"></div>
+        <div class="vhc-fg"><label>너비 (m)</label><input id="vfs-WID" type="number" step="0.1" min="0" placeholder="0.0" oninput="_vhcRecalcSpecCbm()"></div>
+        <div class="vhc-fg"><label>높이 (m)</label><input id="vfs-HGT" type="number" step="0.1" min="0" placeholder="0.0" oninput="_vhcRecalcSpecCbm()"></div>
+        <div class="vhc-fg"><label>상차량 (ton)</label><input id="vfs-TON" type="number" step="0.01" min="0" placeholder="0.00"></div>
+        <div class="vhc-fg">
+          <label>장축여부</label>
+          <select id="vfs-AXIS"><option value="N">N</option><option value="Y">Y</option></select>
+        </div>
+        <div class="vhc-fg">
+          <label>적재 CBM <span class="vfs-auto-tag">자동</span></label>
+          <input id="vfs-CBM" type="text" readonly placeholder="-" title="길이 × 너비 × 높이 자동 계산">
+        </div>
+        <div class="vhc-fg"><label>파렛트수</label><input id="vfs-PLT" type="number" step="1" min="0" placeholder="0"></div>
       </div>
     </div>
 
@@ -8559,53 +8570,48 @@ function _vhcLoadFixedSpecIntoForm() {
     .catch(() => {});
 }
 
-/* 고정차량 사양 입력 폼 라벨(USARG1~5)의 기본 사양 명칭.
-   차량유형 선택 팝업 그리드(_vhcBuildCCTable)의 컬럼 매핑과 동일하게 맞춘다:
-     USARG2=파렛트수, USARG3=적재중량(KG), USARG4=장축여부
-   (CMCDM USARL 라벨이 있으면 그 값을 우선 사용) */
-const _VHC_SPEC_DEFAULT_LABELS = {
-  USARG1: '사양1',
-  USARG2: '파렛트수',
-  USARG3: '적재중량(KG)',
-  USARG4: '장축여부',
-  USARG5: '사양5',
-};
+/* 고정차량 사양 입력폼 — 톤수별 차량사양 컬럼 매핑 (CMCDV TMS_CARCLASS10)
+     차량유형명  = CDESC1
+     길이 (m)   = USARG6
+     너비 (m)   = USARG7
+     높이 (m)   = USARG8
+     상차량(ton) = USARG3  (저장은 KG: ton × 1000)
+     장축여부    = USARG4  (Y/N)
+     파렛트수    = USARG2
+     적재 CBM    = 길이×너비×높이 자동계산 (저장 안 함, 표시 전용)
+   ※ USARG1(적용유무, 자동배차 사용여부)/USARG5 는 고정차량 사양 입력폼에서 다루지 않음
+     → 저장 시 기존 값 보존(덮어쓰지 않음)하여 자동배차 로직에 영향 없도록 함(현재기능 유지). */
 
-/* 고정차량 사양 입력 폼 라벨(USARG1~5) 적용
-   - 1순위: 서버가 준 header(CMCDM USARL1~5) 라벨
-   - 2순위: 팝업 그리드와 동일한 실제 사양 명칭(_VHC_SPEC_DEFAULT_LABELS)
-   @param headerOverride 서버 getVehicleSpec 응답의 header (있으면 즉시 사용) */
-function _vhcApplyFixedSpecLabels(headerOverride) {
-  const apply = (header) => {
-    header = header || [];
-    ['USARG1','USARG2','USARG3','USARG4','USARG5'].forEach((col, i) => {
-      const lblEl = document.getElementById(`vfs-lbl-${i+1}`);
-      if (!lblEl) return;
-      const h = header.find(x => x.col === col);
-      // CMCDM 라벨 우선 → 없으면 실제 사양 명칭 기본값(인자N 금지)
-      lblEl.textContent = (h && h.label) ? h.label : _VHC_SPEC_DEFAULT_LABELS[col];
-    });
-  };
-  // 서버가 함께 준 header 가 있으면 즉시 적용(추가 요청 불필요)
-  if (Array.isArray(headerOverride)) { apply(headerOverride); return; }
-
-  const prodGroup = _vhcGetCurrentProdGroup();
-  if (_vhcCCCache[prodGroup]) { apply((_vhcCCCache[prodGroup] || {}).header); return; }
-  fetch(`/api/carclass-by-product?product_group=${encodeURIComponent(prodGroup || '10')}`)
-    .then(r => r.json()).then(d => { if (d) { _vhcCCCache[prodGroup] = d; apply(d.header); } else apply(null); })
-    .catch(() => apply(null));
+/* 적재 CBM 자동 계산 (길이 × 너비 × 높이) → #vfs-CBM 갱신 */
+function _vhcRecalcSpecCbm() {
+  const num = id => parseFloat(document.getElementById(id)?.value) || 0;
+  const len = num('vfs-LEN'), wid = num('vfs-WID'), hgt = num('vfs-HGT');
+  const el  = document.getElementById('vfs-CBM');
+  if (!el) return;
+  el.value = (len > 0 && wid > 0 && hgt > 0) ? (len * wid * hgt).toFixed(2) + ' m³' : '-';
 }
 
-/* 고정차량 사양 입력 폼 값 채우기 (조회된 spec 반영) */
+/* 고정차량 사양 입력 폼 값 채우기 (조회된 spec 반영) — 톤수별 컬럼 */
 function _vhcFillFixedSpecForm(spec) {
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v == null ? '' : String(v)); };
   set('vfs-CDESC1', spec ? spec.CDESC1 : '');
-  set('vfs-USARG1', spec ? spec.USARG1 : '');
-  set('vfs-USARG2', spec ? spec.USARG2 : '');
-  set('vfs-USARG3', spec ? spec.USARG3 : '');
-  set('vfs-USARG4', spec ? spec.USARG4 : '');
-  set('vfs-USARG5', spec ? spec.USARG5 : '');
+  set('vfs-LEN', spec ? spec.USARG6 : '');     // 길이
+  set('vfs-WID', spec ? spec.USARG7 : '');     // 너비
+  set('vfs-HGT', spec ? spec.USARG8 : '');     // 높이
+  // 상차량(ton): 저장은 KG(USARG3) → 표시는 ÷1000 ton
+  const kg = spec ? (parseFloat(spec.USARG3) || 0) : 0;
+  set('vfs-TON', kg > 0 ? (kg / 1000) : '');
+  // 장축여부(select)
+  const axEl = document.getElementById('vfs-AXIS');
+  if (axEl) axEl.value = (spec && String(spec.USARG4 || '').trim() === 'Y') ? 'Y' : 'N';
+  set('vfs-PLT', spec ? spec.USARG2 : '');     // 파렛트수
+  // 보존 대상(USARG1 적용유무 / USARG5)은 숨은 상태로 유지 → 저장 시 재사용
+  _vhcFixedSpecPreserve = spec ? { USARG1: spec.USARG1 || '', USARG5: spec.USARG5 || '' } : { USARG1:'', USARG5:'' };
+  _vhcRecalcSpecCbm();
 }
+
+/* 고정차량 사양 저장 시 보존할 컬럼(USARG1 적용유무 / USARG5) — 조회값 재사용 */
+let _vhcFixedSpecPreserve = { USARG1:'', USARG5:'' };
 
 /* ─── 차량유형 팝업 (제품군별 TMS_CARCLASS10/20 공통코드 기반) ─── */
 let _vhcTypeCache    = null;  // TMS_DS_VEHICLE 캐시 (레거시 호환용)
@@ -9665,14 +9671,22 @@ async function vhcSave() {
     //   사용자가 입력한 값만 저장(확인1). 고정차량이 아니면 호출하지 않음 → 기존 동작 유지.
     if (vhcGetYN('FIX_YN') === 'Y') {
       try {
+        // 톤수별 차량사양 컬럼 → CMCDV 매핑
+        //   길이=USARG6, 너비=USARG7, 높이=USARG8, 상차량ton→USARG3(KG), 장축=USARG4, 파렛트수=USARG2
+        //   USARG1(적용유무)/USARG5 는 조회값 보존(자동배차 로직 영향 방지)
+        const tonVal = parseFloat(document.getElementById('vfs-TON')?.value) || 0;
+        const usarg3Kg = tonVal > 0 ? String(Math.round(tonVal * 1000)) : '';
         const specPayload = {
           cmcdvl: vno,                                 // = 차량번호
           cdesc1: getVal('vfs-CDESC1'),
-          usarg1: getVal('vfs-USARG1'),
-          usarg2: getVal('vfs-USARG2'),
-          usarg3: getVal('vfs-USARG3'),
-          usarg4: getVal('vfs-USARG4'),
-          usarg5: getVal('vfs-USARG5'),
+          usarg1: _vhcFixedSpecPreserve.USARG1 || '',  // 적용유무(보존)
+          usarg2: getVal('vfs-PLT'),                   // 파렛트수
+          usarg3: usarg3Kg,                            // 적재중량(KG) = 상차량ton×1000
+          usarg4: document.getElementById('vfs-AXIS')?.value || 'N', // 장축여부
+          usarg5: _vhcFixedSpecPreserve.USARG5 || '',  // 보존
+          usarg6: getVal('vfs-LEN'),                   // 길이(m)
+          usarg7: getVal('vfs-WID'),                   // 너비(m)
+          usarg8: getVal('vfs-HGT'),                   // 높이(m)
         };
         const specRes  = await fetch('/api/vehicle/spec/save', {
           method:'POST', headers:{'Content-Type':'application/json'},
