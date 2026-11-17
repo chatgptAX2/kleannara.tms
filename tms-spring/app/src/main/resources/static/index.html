@@ -1261,6 +1261,10 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .vhc-spec-badge.spec-cartype{border-color:var(--primary);background:rgba(59,130,246,.07)}
 .vhc-spec-badge.spec-cartype .spec-value{color:var(--primary);font-size:14px}
 .vhc-spec-badge.spec-yn-y .spec-value{color:var(--success)}
+/* 고정차량 전용 사양 수정 폼 */
+.vhc-fixed-spec-edit{margin-top:10px;padding:12px 14px;border:1px dashed var(--primary);border-radius:8px;background:rgba(59,130,246,.05)}
+.vhc-fixed-spec-hint{font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.5}
+.vhc-fixed-spec-hint code{font-size:10px;background:var(--surface2);padding:1px 5px;border-radius:3px;color:var(--primary)}
 .vhc-spec-badge.spec-yn-n .spec-value{color:var(--text3)}
 /* 차량유형 팝업 모달 — 테이블 리스트형 */
 .vhctype-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;display:flex;align-items:center;justify-content:center}
@@ -8402,6 +8406,27 @@ function buildVehicleForm() {
     </div>
     <input type="hidden" id="vf-selected-cartype" value="">
     <input type="hidden" id="vf-selected-carclass-cd" value="">
+
+    <!-- 고정차량 사양 수정 폼 — 고정차량(FIX_YN='Y')일 때만 노출.
+         CMCDKY='TMS_CARCLASS10', CMCDVL=차량번호 로 저장. -->
+    <div id="vhc-fixed-spec-edit" class="vhc-fixed-spec-edit" style="display:none">
+      <div class="vhc-fixed-spec-hint">
+        🔒 <b>고정차량 전용 사양</b> — 이 차량번호에만 적용되는 사양을 직접 입력/저장할 수 있습니다.
+        (저장 키: <code>CMCDKY='TMS_CARCLASS10', CMCDVL=차량번호</code>)
+      </div>
+      <div class="vhc-form-grid">
+        <div class="vhc-fg">
+          <label>차량유형명</label>
+          <input id="vfs-CDESC1" type="text" placeholder="예) 11톤(고정)">
+        </div>
+        <div class="vhc-fg"><label id="vfs-lbl-1">인자1</label><input id="vfs-USARG1" type="text" placeholder=""></div>
+        <div class="vhc-fg"><label id="vfs-lbl-2">인자2</label><input id="vfs-USARG2" type="text" placeholder=""></div>
+        <div class="vhc-fg"><label id="vfs-lbl-3">인자3</label><input id="vfs-USARG3" type="text" placeholder=""></div>
+        <div class="vhc-fg"><label id="vfs-lbl-4">인자4</label><input id="vfs-USARG4" type="text" placeholder=""></div>
+        <div class="vhc-fg"><label id="vfs-lbl-5">인자5</label><input id="vfs-USARG5" type="text" placeholder=""></div>
+      </div>
+    </div>
+
     <div class="vhc-form-grid" style="margin-top:8px">
       <div class="vhc-fg">
         <label>바닥형태</label>
@@ -8460,6 +8485,8 @@ function vhcSetYN(field, val, btn) {
     const bVal = (b.textContent.trim() === '유') ? 'Y' : (b.textContent.trim() === '무') ? 'N' : b.textContent.trim();
     if (bVal === actualVal) b.classList.add(`on-${actualVal}`);
   });
+  // 고정차량여부 변경 시 고정차량 사양 수정 폼 표시/숨김 토글
+  if (field === 'FIX_YN') _vhcToggleFixedSpecEdit(actualVal === 'Y');
 }
 function vhcGetYN(field) { return vhcState.ynVals[field] || null; }
 function vhcInitYN(field, val) {
@@ -8473,6 +8500,48 @@ function vhcInitYN(field, val) {
       if (bVal === val) b.classList.add(`on-${val}`);
     }
   });
+  // 고정차량여부 초기화 시 고정차량 사양 수정 폼 표시/숨김 토글
+  if (field === 'FIX_YN') _vhcToggleFixedSpecEdit(val === 'Y');
+}
+
+/* 고정차량 사양 수정 폼 표시/숨김 + USARG 라벨 세팅
+   - 고정차량(Y)일 때만 입력 폼 노출.
+   - 라벨은 제품군 공통코드(CMCDM USARL1~5)에서 가져온다. */
+function _vhcToggleFixedSpecEdit(show) {
+  const box = document.getElementById('vhc-fixed-spec-edit');
+  if (!box) return;
+  box.style.display = show ? 'block' : 'none';
+  if (show) _vhcApplyFixedSpecLabels();
+}
+
+/* 고정차량 사양 입력 폼 라벨(USARG1~5) 적용 — 제품군 공통코드 헤더 기반 */
+function _vhcApplyFixedSpecLabels() {
+  const prodGroup = _vhcGetCurrentProdGroup();
+  const apply = (ccData) => {
+    const header = (ccData && ccData.header) || [];
+    const defLbl = { USARG1:'인자1', USARG2:'인자2', USARG3:'인자3', USARG4:'인자4', USARG5:'인자5' };
+    ['USARG1','USARG2','USARG3','USARG4','USARG5'].forEach((col, i) => {
+      const lblEl = document.getElementById(`vfs-lbl-${i+1}`);
+      if (!lblEl) return;
+      const h = header.find(x => x.col === col);
+      lblEl.textContent = h ? h.label : defLbl[col];
+    });
+  };
+  if (_vhcCCCache[prodGroup]) { apply(_vhcCCCache[prodGroup]); return; }
+  fetch(`/api/carclass-by-product?product_group=${encodeURIComponent(prodGroup || '10')}`)
+    .then(r => r.json()).then(d => { if (d) { _vhcCCCache[prodGroup] = d; apply(d); } })
+    .catch(() => apply(null));
+}
+
+/* 고정차량 사양 입력 폼 값 채우기 (조회된 spec 반영) */
+function _vhcFillFixedSpecForm(spec) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v == null ? '' : String(v)); };
+  set('vfs-CDESC1', spec ? spec.CDESC1 : '');
+  set('vfs-USARG1', spec ? spec.USARG1 : '');
+  set('vfs-USARG2', spec ? spec.USARG2 : '');
+  set('vfs-USARG3', spec ? spec.USARG3 : '');
+  set('vfs-USARG4', spec ? spec.USARG4 : '');
+  set('vfs-USARG5', spec ? spec.USARG5 : '');
 }
 
 /* ─── 차량유형 팝업 (제품군별 TMS_CARCLASS10/20 공통코드 기반) ─── */
@@ -8876,6 +8945,44 @@ function _vhcRenderSpecDisplay(v) {
 }
 
 function _vhcRestoreSpecDisplay(row) {
+  const specEl = document.getElementById('vhc-spec-display');
+  if (!specEl) return;
+
+  // ── [신규] 차량 사양 조회: 1순위(차량번호) → 2순위(차량유형코드) ──────────────
+  //   서버가 1순위(CMCDVL=차량번호, 고정차량)/2순위(CMCDVL=차량유형코드, 기본차량)
+  //   순서로 조회하여 spec 을 반환한다. 조회 성공 시 그 값으로 배지를 렌더링하고,
+  //   고정차량 폼(고정차량일 때)에 값을 채운다. 실패 시 기존 캐시 로직으로 폴백.
+  const vno       = (row.VEHICLE_NO || '').trim();
+  const savedCodeForApi = (row.CARCLASS_CD || row.VEHICLE_CLASS || '').trim();
+  if (vno) {
+    fetch(`/api/vehicle/spec/${encodeURIComponent(vno)}?carclass_cd=${encodeURIComponent(savedCodeForApi)}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d && d.ok && d.spec) {
+          const spec = d.spec;
+          // hidden 필드 세팅 (저장용 코드 보존)
+          const hidCartype = document.getElementById('vf-selected-cartype');
+          const hidCode    = document.getElementById('vf-selected-carclass-cd');
+          if (hidCartype) hidCartype.value = spec.CDESC1 || spec.CMCDVL;
+          // 2순위(기본차량)일 때만 차량유형코드를 저장용 hidden 에 반영.
+          //   1순위(고정차량, SPEC_SOURCE='FIXED')는 CMCDVL=차량번호이므로 차량유형코드로 쓰지 않는다.
+          if (hidCode && spec.SPEC_SOURCE === 'BASE') hidCode.value = spec.CMCDVL;
+          _vhcRenderSpecDisplayCC(spec);
+          // 고정차량 폼이 열려 있으면(=고정차량) 입력값 채우기
+          _vhcFillFixedSpecForm(spec.SPEC_SOURCE === 'FIXED' ? spec : null);
+          return;
+        }
+        // spec 없음 → 기존 로직 폴백
+        _vhcRestoreSpecDisplayLegacy(row);
+      })
+      .catch(() => _vhcRestoreSpecDisplayLegacy(row));
+    return;
+  }
+  _vhcRestoreSpecDisplayLegacy(row);
+}
+
+/* 기존 캐시 기반 제원 복원 (레거시 폴백) */
+function _vhcRestoreSpecDisplayLegacy(row) {
   const specEl = document.getElementById('vhc-spec-display');
   if (!specEl) return;
 
@@ -9474,6 +9581,33 @@ async function vhcSave() {
     });
     const data = await res.json();
     if (data.error) { showToast('저장 실패: ' + data.error); return; }
+
+    // ── 고정차량(FIX_YN='Y')인 경우 차량 사양 저장 (CMCDVL=차량번호) ──────────────
+    //   사용자가 입력한 값만 저장(확인1). 고정차량이 아니면 호출하지 않음 → 기존 동작 유지.
+    if (vhcGetYN('FIX_YN') === 'Y') {
+      try {
+        const specPayload = {
+          cmcdvl: vno,                                 // = 차량번호
+          cdesc1: getVal('vfs-CDESC1'),
+          usarg1: getVal('vfs-USARG1'),
+          usarg2: getVal('vfs-USARG2'),
+          usarg3: getVal('vfs-USARG3'),
+          usarg4: getVal('vfs-USARG4'),
+          usarg5: getVal('vfs-USARG5'),
+        };
+        const specRes  = await fetch('/api/vehicle/spec/save', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(specPayload),
+        });
+        const specData = await specRes.json();
+        if (!specData || !specData.ok) {
+          showToast('⚠️ 차량은 저장됐으나 고정차량 사양 저장에 실패했습니다');
+        }
+      } catch (e) {
+        showToast('⚠️ 차량은 저장됐으나 고정차량 사양 저장 중 오류: ' + e);
+      }
+    }
+
     showToast(data.action==='created' ? '✅ 차량 등록 완료' : '✅ 차량 수정 완료');
     await searchVehicle();
     // 저장 후 해당 행 재선택

@@ -111,4 +111,27 @@ public class VehicleController {
         vehicleService.deleteVhcma(body.get("VEHICLE_NO"), body.getOrDefault("OWNRKY", "KN"));
         return ResponseEntity.ok(ApiResponse.success(Map.of("ok", true)));
     }
+
+    /**
+     * 차량 상세 — 차량 사양 조회 (고정차량 우선)
+     *   1순위) CMCDV WHERE CMCDKY='TMS_CARCLASS10' AND CMCDVL=차량번호 → 고정차량 사양
+     *   2순위) CMCDV WHERE CMCDKY='TMS_CARCLASS10' AND CMCDVL=차량유형코드 → 기본차량 사양
+     *   응답: { ok, spec: {CMCDVL, CDESC1, USARG1~8, SPEC_SOURCE:'FIXED'|'BASE'} | null }
+     */
+    @GetMapping("/vehicle/spec/{vehicleNo}")
+    public ResponseEntity<Map<String, Object>> getVehicleSpec(
+            @PathVariable String vehicleNo,
+            @RequestParam(name = "carclass_cd", required = false) String carclassCd) {
+        return ResponseEntity.ok(vehicleService.getVehicleSpec(vehicleNo, carclassCd));
+    }
+
+    /**
+     * 차량 상세 — 고정차량 사양 저장 (UPSERT)
+     *   CMCDKY='TMS_CARCLASS10', CMCDVL=차량번호 로 저장 (사용자 입력값만).
+     *   요청 바디는 {@link VehicleSaveRequest} (cmcdvl=차량번호, cdesc1, usarg1~5).
+     */
+    @PostMapping("/vehicle/spec/save")
+    public ResponseEntity<Map<String, Object>> saveVehicleSpec(@RequestBody VehicleSaveRequest req) {
+        return ResponseEntity.ok(vehicleService.saveVehicleSpec(req));
+    }
 }

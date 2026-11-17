@@ -2220,8 +2220,10 @@ public class AutoDispatchService {
             "WHERE rc.DATE_START<=? AND rc.DATE_END>=?", costDate, costDate
         );
         // Step 2: Oracle KNRAWMS.CMCDV — CARCLASS 코드 → 차종명 매핑
+        //   ※ CMCDVL LIKE 'Z%' : 차량유형(톤수) 코드만 조회.
+        //     고정차량 사양(CMCDVL=차량번호, Z로 시작 안 함)은 자동배차/엔진 로직에서 제외 → 현재기능 유지.
         List<Map<String, Object>> ccRows = wmsJdbc.queryForList(
-            "SELECT CMCDVL, CDESC1 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10'"
+            "SELECT CMCDVL, CDESC1 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10' AND CMCDVL LIKE 'Z%'"
         );
         Map<String, String> ccMap = new HashMap<>();
         for (Map<String, Object> r : ccRows) ccMap.put(str(r.get("CMCDVL")), str(r.get("CDESC1")));
@@ -2249,8 +2251,10 @@ public class AutoDispatchService {
             dptnkyList.toArray()
         );
         // CARCLASS10 코드명 매핑 (Oracle)
+        //   ※ CMCDVL LIKE 'Z%' : 차량유형(톤수) 코드만 조회.
+        //     고정차량 사양(CMCDVL=차량번호, Z로 시작 안 함)은 자동배차/엔진 로직에서 제외 → 현재기능 유지.
         List<Map<String, Object>> ccRows = wmsJdbc.queryForList(
-            "SELECT CMCDVL,CDESC1 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10'"
+            "SELECT CMCDVL,CDESC1 FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10' AND CMCDVL LIKE 'Z%'"
         );
         // 코드→라벨 맵 (방어적): 원본키 + 정규화키(trim/대문자) 동시 등록하여
         //   MAX_TON 값의 공백·대소문자 차이로 변환 실패하지 않도록 함.

@@ -100,9 +100,11 @@ public class VehicleService {
     public Map<String, Object> getCarclass() {
         // TMS_CARCLASS10 공통코드 (Oracle KNRAWMS.CMCDV → em)
         @SuppressWarnings("unchecked")
+        //   ※ CMCDVL LIKE 'Z%' : 차량유형(톤수) 코드만 조회.
+        //     고정차량 사양(CMCDVL=차량번호, Z로 시작 안 함)은 차량유형관리 목록에서 제외 → 현재기능 유지.
         List<Object[]> ccRows = em.createNativeQuery("""
             SELECT CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5
-            FROM KNRAWMS.CMCDV WHERE CMCDKY = 'TMS_CARCLASS10' ORDER BY CMCDVL
+            FROM KNRAWMS.CMCDV WHERE CMCDKY = 'TMS_CARCLASS10' AND CMCDVL LIKE 'Z%' ORDER BY CMCDVL
             """).getResultList();
 
         List<DsVehicle> vhcList = dsVehicleRepo.findAllByOrderBySortSeqAsc();
@@ -186,9 +188,11 @@ public class VehicleService {
         }
 
         // Oracle KNRAWMS.CMCDV → em
+        //   ※ CMCDVL LIKE 'Z%' : 차량유형(톤수) 코드만 조회(차량유형 선택 팝업 데이터 소스).
+        //     고정차량 사양(CMCDVL=차량번호, Z로 시작 안 함)은 팝업 목록에서 제외 → 현재기능 유지.
         @SuppressWarnings("unchecked")
         List<Object[]> vRows = em.createNativeQuery(
-            "SELECT CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5 FROM KNRAWMS.CMCDV WHERE CMCDKY=? ORDER BY CMCDVL")
+            "SELECT CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5 FROM KNRAWMS.CMCDV WHERE CMCDKY=? AND CMCDVL LIKE 'Z%' ORDER BY CMCDVL")
             .setParameter(1, cmcdky)
             .getResultList();
 
@@ -306,6 +310,135 @@ public class VehicleService {
         } else {
             throw new IllegalArgumentException("알 수 없는 table: " + req.getTable());
         }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 차량 상세 — 차량 사양 조회 (고정차량 우선)
+    //   요구사항:
+    //     1순위) CMCDV WHERE CMCDKY='TMS_CARCLASS10' AND CMCDVL=차량번호
+    //            → ROW 존재 시 고정차량 사양 우선 노출
+    //     2순위) CMCDV WHERE CMCDKY='TMS_CARCLASS10' AND CMCDVL=차량유형코드
+    //            → 기본차량(차량유형) 사양 노출
+    //   ※ 길이/너비/높이(USARG6~8)는 차량유형코드가 Z로 시작할 때에 한해 MariaDB TMS_DS_VEHICLE 로 보완.
+    //     (고정차량 ROW는 Z코드가 아니므로 DsVehicle 매칭이 없어 CMCDV 값만 사용)
+    // ──────────────────────────────────────────────────────────────────────────
+    public Map<String, Object> getVehicleSpec(String vehicleNo, String carclassCd) {
+        String vno = vehicleNo == null ? "" : vehicleNo.strip();
+        String ccd = carclassCd == null ? "" : carclassCd.strip();
+
+        // 1순위: 차량번호로 고정차량 사양 조회
+        if (!vno.isEmpty()) {
+            Map<String, Object> fixed = selectCarclassRow(vno);
+            if (fixed != null) {
+                fixed.put("SPEC_SOURCE", "FIXED"); // 고정차량 사양
+                return Map.of("ok", true, "spec", fixed);
+            }
+        }
+
+        // 2순위: 차량유형코드로 기본차량 사양 조회
+        if (!ccd.isEmpty()) {
+            Map<String, Object> base = selectCarclassRow(ccd);
+            if (base != null) {
+                base.put("SPEC_SOURCE", "BASE"); // 기본차량(차량유형) 사양
+                return Map.of("ok", true, "spec", base);
+            }
+        }
+
+        // 조회 결과 없음
+        return Map.of("ok", true, "spec", null);
+    }
+
+    /** CMCDV TMS_CARCLASS10 단건 조회 (CMCDVL 기준). 없으면 null.
+     *  Z코드(차량유형)인 경우 길이/너비/높이는 MariaDB DsVehicle 로 보완한다. */
+    private Map<String, Object> selectCarclassRow(String cmcdvl) {
+        @SuppressWarnings("unchecked")
+        Object[] r = (Object[]) em.createNativeQuery(
+            "SELECT CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5 " +
+            "FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10' AND CMCDVL=?")
+            .setParameter(1, cmcdvl)
+            .getResultStream().findFirst().orElse(null);
+        if (r == null) return null;
+
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("CMCDVL", str(r[0]));
+        m.put("CDESC1", str(r[1]));
+        m.put("USARG1", str(r[2]));
+        m.put("USARG2", str(r[3]));
+        m.put("USARG3", str(r[4]));
+        m.put("USARG4", str(r[5]));
+        m.put("USARG5", str(r[6]));
+
+        // 길이/너비/높이(USARG6~8): Z코드(차량유형)일 때만 DsVehicle 로 보완
+        DsVehicle vhc = dsVehicleRepo.findById(str(r[0])).orElse(null);
+        m.put("USARG6", vhc != null && vhc.getLengthM() != null ? vhc.getLengthM().toString() : "");
+        m.put("USARG7", vhc != null && vhc.getWidthM()  != null ? vhc.getWidthM()              : "");
+        m.put("USARG8", vhc != null && vhc.getHeightM() != null ? vhc.getHeightM().toString() : "");
+        return m;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 차량 상세 — 고정차량 사양 저장 (UPSERT)
+    //   요구사항: 고정차량인 경우 사용자가 수정/저장
+    //     → CMCDKY='TMS_CARCLASS10', CMCDVL=차량번호 값으로 저장
+    //   ※ 사용자가 입력한 값만 저장(확인1). 정보가 없는 값은 강제로 채우지 않는다.
+    //   ※ 기존 ROW 존재 시 UPDATE, 없으면 INSERT.
+    // ──────────────────────────────────────────────────────────────────────────
+    @Transactional(transactionManager = "wmsTransactionManager")
+    public Map<String, Object> saveVehicleSpec(VehicleSaveRequest req) {
+        String key = req.getCmcdvl(); // = 차량번호
+        if (key == null || key.isBlank())
+            throw new IllegalArgumentException("CMCDVL(차량번호) 필수");
+
+        String nowdt = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
+        String nowtm = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
+
+        // 기존 ROW 존재 여부
+        Long cnt = ((Number) em.createNativeQuery(
+            "SELECT COUNT(*) FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10' AND CMCDVL=?")
+            .setParameter(1, key)
+            .getSingleResult()).longValue();
+
+        String action;
+        if (cnt != null && cnt > 0) {
+            // UPDATE — 사용자 입력값만 반영(미입력 null 은 그대로 저장되어도 무방: 사용자 책임)
+            em.createNativeQuery("""
+                UPDATE KNRAWMS.CMCDV SET CDESC1=?, USARG1=?, USARG2=?, USARG3=?, USARG4=?, USARG5=?,
+                LMODAT=?, LMOTIM=?, LMOUSR=?
+                WHERE CMCDKY='TMS_CARCLASS10' AND CMCDVL=?
+                """)
+              .setParameter(1, req.getCdesc1())
+              .setParameter(2, req.getUsarg1())
+              .setParameter(3, req.getUsarg2())
+              .setParameter(4, req.getUsarg3())
+              .setParameter(5, req.getUsarg4())
+              .setParameter(6, req.getUsarg5())
+              .setParameter(7, nowdt).setParameter(8, nowtm).setParameter(9, "WEB")
+              .setParameter(10, key)
+              .executeUpdate();
+            action = "updated";
+        } else {
+            // INSERT — 사용자가 입력한 값만 등록(확인1). 미입력 컬럼은 빈 값으로 둔다.
+            em.createNativeQuery("""
+                INSERT INTO KNRAWMS.CMCDV
+                    (CMCDKY, CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5,
+                     CRTDAT, CRTTIM, CRTUSR, LMODAT, LMOTIM, LMOUSR)
+                VALUES
+                    ('TMS_CARCLASS10', ?, ?, ?, ?, ?, ?, ?,
+                     ?, ?, ?, ?, ?, ?)
+                """)
+              .setParameter(1, key)
+              .setParameter(2, req.getCdesc1())
+              .setParameter(3, req.getUsarg1())
+              .setParameter(4, req.getUsarg2())
+              .setParameter(5, req.getUsarg3())
+              .setParameter(6, req.getUsarg4())
+              .setParameter(7, req.getUsarg5())
+              .setParameter(8, nowdt).setParameter(9, nowtm).setParameter(10, "WEB")
+              .setParameter(11, nowdt).setParameter(12, nowtm).setParameter(13, "WEB")
+              .executeUpdate();
+            action = "created";
+        }
+        return Map.of("ok", true, "action", action, "cmcdvl", key);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
