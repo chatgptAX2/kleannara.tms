@@ -8541,7 +8541,7 @@ function vhcToggleSpecEditBtn() {
   }
 }
 
-/* 현재 차량번호 기준 고정차량 사양(1순위) 재조회 → 입력폼 채움 */
+/* 현재 차량번호 기준 고정차량 사양(1순위) 재조회 → 입력폼 채움 + 라벨 적용 */
 function _vhcLoadFixedSpecIntoForm() {
   const vno = (document.getElementById('vf-VEHICLE_NO')?.value || '').trim();
   if (!vno) return;
@@ -8549,6 +8549,8 @@ function _vhcLoadFixedSpecIntoForm() {
   fetch(`/api/vehicle/spec/${encodeURIComponent(vno)}?carclass_cd=${encodeURIComponent(ccd)}`)
     .then(r => r.json())
     .then(d => {
+      // 서버가 준 사양 명칭 라벨(CMCDM USARL1~5) 즉시 적용
+      if (d) _vhcApplyFixedSpecLabels(d.header);
       if (d && d.ok && d.spec && d.spec.SPEC_SOURCE === 'FIXED') {
         _vhcFillFixedSpecForm(d.spec);
       }
@@ -8557,22 +8559,40 @@ function _vhcLoadFixedSpecIntoForm() {
     .catch(() => {});
 }
 
-/* 고정차량 사양 입력 폼 라벨(USARG1~5) 적용 — 제품군 공통코드 헤더 기반 */
-function _vhcApplyFixedSpecLabels() {
-  const prodGroup = _vhcGetCurrentProdGroup();
-  const apply = (ccData) => {
-    const header = (ccData && ccData.header) || [];
-    const defLbl = { USARG1:'인자1', USARG2:'인자2', USARG3:'인자3', USARG4:'인자4', USARG5:'인자5' };
+/* 고정차량 사양 입력 폼 라벨(USARG1~5)의 기본 사양 명칭.
+   차량유형 선택 팝업 그리드(_vhcBuildCCTable)의 컬럼 매핑과 동일하게 맞춘다:
+     USARG2=파렛트수, USARG3=적재중량(KG), USARG4=장축여부
+   (CMCDM USARL 라벨이 있으면 그 값을 우선 사용) */
+const _VHC_SPEC_DEFAULT_LABELS = {
+  USARG1: '사양1',
+  USARG2: '파렛트수',
+  USARG3: '적재중량(KG)',
+  USARG4: '장축여부',
+  USARG5: '사양5',
+};
+
+/* 고정차량 사양 입력 폼 라벨(USARG1~5) 적용
+   - 1순위: 서버가 준 header(CMCDM USARL1~5) 라벨
+   - 2순위: 팝업 그리드와 동일한 실제 사양 명칭(_VHC_SPEC_DEFAULT_LABELS)
+   @param headerOverride 서버 getVehicleSpec 응답의 header (있으면 즉시 사용) */
+function _vhcApplyFixedSpecLabels(headerOverride) {
+  const apply = (header) => {
+    header = header || [];
     ['USARG1','USARG2','USARG3','USARG4','USARG5'].forEach((col, i) => {
       const lblEl = document.getElementById(`vfs-lbl-${i+1}`);
       if (!lblEl) return;
       const h = header.find(x => x.col === col);
-      lblEl.textContent = h ? h.label : defLbl[col];
+      // CMCDM 라벨 우선 → 없으면 실제 사양 명칭 기본값(인자N 금지)
+      lblEl.textContent = (h && h.label) ? h.label : _VHC_SPEC_DEFAULT_LABELS[col];
     });
   };
-  if (_vhcCCCache[prodGroup]) { apply(_vhcCCCache[prodGroup]); return; }
+  // 서버가 함께 준 header 가 있으면 즉시 적용(추가 요청 불필요)
+  if (Array.isArray(headerOverride)) { apply(headerOverride); return; }
+
+  const prodGroup = _vhcGetCurrentProdGroup();
+  if (_vhcCCCache[prodGroup]) { apply((_vhcCCCache[prodGroup] || {}).header); return; }
   fetch(`/api/carclass-by-product?product_group=${encodeURIComponent(prodGroup || '10')}`)
-    .then(r => r.json()).then(d => { if (d) { _vhcCCCache[prodGroup] = d; apply(d); } })
+    .then(r => r.json()).then(d => { if (d) { _vhcCCCache[prodGroup] = d; apply(d.header); } else apply(null); })
     .catch(() => apply(null));
 }
 
@@ -9011,6 +9031,8 @@ function _vhcRestoreSpecDisplay(row) {
           //   1순위(고정차량, SPEC_SOURCE='FIXED')는 CMCDVL=차량번호이므로 차량유형코드로 쓰지 않는다.
           if (hidCode && spec.SPEC_SOURCE === 'BASE') hidCode.value = spec.CMCDVL;
           _vhcRenderSpecDisplayCC(spec);
+          // 서버가 준 사양 명칭 라벨(CMCDM USARL1~5) 미리 적용(버튼 클릭 전에도 올바른 라벨)
+          _vhcApplyFixedSpecLabels(d.header);
           // 고정차량 폼이 열려 있으면(=고정차량) 입력값 채우기
           _vhcFillFixedSpecForm(spec.SPEC_SOURCE === 'FIXED' ? spec : null);
           // 고정차량 전용 사양이 이미 등록되어 있으면 [사양 수정] 버튼에 표식
