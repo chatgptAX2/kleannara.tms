@@ -10124,6 +10124,8 @@ async function renderDispatchStrategy() {
 
   window._dsData = data;  // 전역 보관
   _dsRender(data);
+  // 고정차량 목록(별도 섹션) 비동기 로드 — 조회 전용, 기존 톤별 목록과 독립
+  setTimeout(() => { try { loadFixedVehicles(); } catch (e) {} }, 0);
 }
 
 /* ── DS 전역 상태 ── */
@@ -10269,7 +10271,95 @@ function _dsBuildVehicleTableHTML() {
         <tbody id="ds-vhc-tbody">${tbodyRows}</tbody>
       </table>
     </div>
+  </div>
+
+  <!-- 🔒 고정차량 목록 (A안: 톤별 차량유형과 별도 섹션 / 조회 전용) -->
+  <div class="ds-section ds-vehicle-section" id="ds-fixed-vhc-section" style="margin-top:16px">
+    <div class="ds-sec-head" style="display:flex;align-items:center;gap:8px;padding:12px 16px">
+      <span style="font-size:15px;font-weight:800">🔒 고정차량 목록</span>
+      <span style="font-size:11px;color:var(--text3)">차량관리에서 고정차량(Y)으로 등록된 차량 — 차량번호별 전용 사양(톤별 제원·상차량) 표시</span>
+      <button type="button" class="ds-btn" onclick="loadFixedVehicles()" style="margin-left:auto;font-size:11px;padding:4px 10px">🔄 새로고침</button>
+    </div>
+    <div class="ds-vhc-scroll" style="padding:0 16px 16px">
+      <table class="ds-vhc-table" style="min-width:980px">
+        <colgroup>
+          <col style="width:110px"><!-- 차량번호 -->
+          <col style="width:70px"> <!-- 출하지점 -->
+          <col style="width:66px"> <!-- 제품군 -->
+          <col style="width:80px"> <!-- 차량유형코드 -->
+          <col style="width:120px"><!-- 차량유형명 -->
+          <col style="width:68px"> <!-- 길이 -->
+          <col style="width:68px"> <!-- 너비 -->
+          <col style="width:68px"> <!-- 높이 -->
+          <col style="width:76px"> <!-- 상차량 -->
+          <col style="width:66px"> <!-- 장축여부 -->
+          <col style="width:66px"> <!-- 파렛트수 -->
+          <col style="width:92px"> <!-- 사양등록 -->
+        </colgroup>
+        <thead>
+          <tr>
+            <th style="position:sticky;top:0;z-index:3;background:var(--ds-th-bg);color:var(--ds-th-fg)">차량번호</th>
+            <th style="position:sticky;top:0;z-index:3;background:var(--ds-th-bg);color:var(--ds-th-fg)">출하지점</th>
+            <th style="position:sticky;top:0;z-index:3;background:var(--ds-th-bg);color:var(--ds-th-fg)">제품군</th>
+            <th style="position:sticky;top:0;z-index:3;background:var(--ds-th-bg);color:var(--ds-th-fg)">차량유형<br>코드</th>
+            <th style="position:sticky;top:0;z-index:3;background:var(--ds-th-bg);color:var(--ds-th-fg)">차량유형명</th>
+            <th style="position:sticky;top:0;z-index:3;background:var(--ds-th-bg);color:var(--ds-th-fg)">길이<br>(m)</th>
+            <th style="position:sticky;top:0;z-index:3;background:var(--ds-th-bg);color:var(--ds-th-fg)">너비<br>(m)</th>
+            <th style="position:sticky;top:0;z-index:3;background:var(--ds-th-bg);color:var(--ds-th-fg)">높이<br>(m)</th>
+            <th style="position:sticky;top:0;z-index:3;background:var(--ds-th-bg);color:var(--ds-th-fg)">상차량<br><small style="font-weight:400;color:var(--success)">(ton)</small></th>
+            <th style="position:sticky;top:0;z-index:3;background:var(--ds-th-bg);color:var(--ds-th-fg)">장축<br>여부</th>
+            <th style="position:sticky;top:0;z-index:3;background:var(--ds-th-bg);color:var(--ds-th-fg)">파렛트<br>수</th>
+            <th style="position:sticky;top:0;z-index:3;background:var(--ds-th-bg);color:var(--ds-th-fg)">사양<br>등록</th>
+          </tr>
+        </thead>
+        <tbody id="ds-fixed-vhc-tbody">
+          <tr><td colspan="12" style="text-align:center;color:var(--text3);padding:16px">🔄 불러오는 중…</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>`;
+}
+
+/* 고정차량 목록 로드 → 별도 섹션 테이블 렌더링 (조회 전용) */
+async function loadFixedVehicles() {
+  const tbody = document.getElementById('ds-fixed-vhc-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--text3);padding:16px">🔄 불러오는 중…</td></tr>';
+  try {
+    const d = await fetch('/api/vehicle/fixed-specs').then(r => r.json());
+    const rows = (d && d.rows) || [];
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--text3);padding:16px">고정차량(FIX_YN=Y)으로 등록된 차량이 없습니다.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(_dsFixedVhcRowHTML).join('');
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--error);padding:16px">조회 실패: ' + e + '</td></tr>';
+  }
+}
+
+/* 고정차량 1행 HTML */
+function _dsFixedVhcRowHTML(r) {
+  const td = (v, extra) => `<td style="padding:4px 8px;text-align:center;font-size:12px;${extra||''}">${(v===null||v===undefined||v==='')?'-':v}</td>`;
+  const hasSpec = r.HAS_SPEC === true || r.HAS_SPEC === 'true';
+  const specBadge = hasSpec
+    ? '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:var(--ds-use-y-bg,#dcfce7);color:var(--ds-use-y-fg,#166534)">✅ 전용</span>'
+    : '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:var(--surface2,#f3f4f6);color:var(--text3,#999)">기본</span>';
+  const axY = String(r.LONG_AXIS_YN||'').trim().toUpperCase() === 'Y';
+  return `<tr>
+    ${td(`<b>${r.VEHICLE_NO||'-'}</b>`)}
+    ${td(r.SHIP_POINT)}
+    ${td(r.PRODUCT_GROUP)}
+    ${td(r.VEHICLE_CLASS)}
+    ${td(r.CDESC1)}
+    ${td(r.USARG6)}
+    ${td(r.USARG7)}
+    ${td(r.USARG8)}
+    ${td(r.LOAD_TON ? r.LOAD_TON + ' t' : '-', 'color:var(--success);font-weight:700')}
+    ${td(axY ? 'Y' : 'N', axY ? 'color:var(--success);font-weight:700' : '')}
+    ${td(r.PALLET_CNT)}
+    ${td(specBadge)}
+  </tr>`;
 }
 
 function _dsVehicleRowHTML(r) {

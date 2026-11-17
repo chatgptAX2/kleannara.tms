@@ -486,6 +486,61 @@ public class VehicleService {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
+    // 차량유형관리 — 고정차량(FIX_YN='Y') 사양 목록 (A안: 톤별 유형과 별도 섹션)
+    //   VHCMA(고정차량) + CMCDV(CMCDVL=차량번호, 고정차량 전용 사양) 조인.
+    //   ※ 조회 전용. 자동배차/엔진 로직 미변경(Z-filter 그대로 유지) → 현재기능 유지.
+    //   반환: [{VEHICLE_NO, SHIP_POINT, PRODUCT_GROUP, VEHICLE_CLASS, CARRIER, DRIVER_NAME,
+    //           CDESC1(차량유형명), USARG6/7/8(길이/너비/높이), LOAD_TON, LONG_AXIS_YN, PALLET_CNT,
+    //           HAS_SPEC(사양 등록 여부)}]
+    // ──────────────────────────────────────────────────────────────────────────
+    public Map<String, Object> getFixedVehicleSpecs() {
+        // 1) VHCMA 고정차량 목록 (FIX_YN='Y', 미삭제)
+        @SuppressWarnings("unchecked")
+        List<Object[]> vrows = em.createNativeQuery(
+            "SELECT VEHICLE_NO, SHIP_POINT, PRODUCT_GROUP, VEHICLE_CLASS, CARRIER, DRIVER_NAME " +
+            "FROM KNRAWMS.VHCMA WHERE FIX_YN='Y' AND (DEL_YN IS NULL OR DEL_YN <> 'Y') " +
+            "ORDER BY SHIP_POINT, VEHICLE_NO")
+            .getResultList();
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Object[] v : vrows) {
+            String vehicleNo = str(v[0]);
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("VEHICLE_NO",    vehicleNo);
+            m.put("SHIP_POINT",    str(v[1]));
+            m.put("PRODUCT_GROUP", str(v[2]));
+            m.put("VEHICLE_CLASS", str(v[3]));
+            m.put("CARRIER",       str(v[4]));
+            m.put("DRIVER_NAME",   str(v[5]));
+
+            // 2) 고정차량 전용 사양 조회 (CMCDV, CMCDVL=차량번호). 없으면 차량유형코드(2순위)로 폴백.
+            Map<String, Object> spec = selectCarclassRow(vehicleNo);
+            boolean hasSpec = spec != null;
+            if (spec == null) {
+                String ccd = str(v[3]); // VEHICLE_CLASS = 차량유형코드
+                if (!ccd.isEmpty()) spec = selectCarclassRow(ccd);
+            }
+            // 상차량(ton): USARG3(KG) → ton
+            String tonStr = "";
+            if (spec != null) {
+                double kg = 0;
+                try { kg = Double.parseDouble(str(spec.get("USARG3"))); } catch (Exception ignore) {}
+                if (kg > 0) tonStr = String.valueOf(Math.round(kg / 1000.0 * 100.0) / 100.0);
+            }
+            m.put("CDESC1",      spec != null ? spec.get("CDESC1") : "");
+            m.put("USARG6",      spec != null ? spec.get("USARG6") : ""); // 길이
+            m.put("USARG7",      spec != null ? spec.get("USARG7") : ""); // 너비
+            m.put("USARG8",      spec != null ? spec.get("USARG8") : ""); // 높이
+            m.put("LOAD_TON",    tonStr);                                 // 상차량(ton)
+            m.put("LONG_AXIS_YN", spec != null ? spec.get("USARG4") : ""); // 장축여부
+            m.put("PALLET_CNT",  spec != null ? spec.get("USARG2") : ""); // 파렛트수
+            m.put("HAS_SPEC",    hasSpec);                                // 고정차량 전용 사양 등록 여부
+            rows.add(m);
+        }
+        return Map.of("ok", true, "rows", rows, "total", rows.size());
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
     // VHCMA 차량 목록 (Flask api_vehicle_list)
     // VhcmaRepository.searchPage() → WmsJpaConfig → Oracle KNRAWMS 자동
     // WAHMA(창고) → Oracle em

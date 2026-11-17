@@ -134,4 +134,14 @@ public class VehicleController {
     public ResponseEntity<Map<String, Object>> saveVehicleSpec(@RequestBody VehicleSaveRequest req) {
         return ResponseEntity.ok(vehicleService.saveVehicleSpec(req));
     }
+
+    /**
+     * 차량유형관리 — 고정차량(FIX_YN='Y') 사양 목록 (A안: 톤별 유형과 별도 섹션)
+     *   VHCMA 고정차량 + CMCDV(CMCDVL=차량번호) 전용 사양 조인. 조회 전용.
+     *   응답: { ok, rows:[{VEHICLE_NO, ..., CDESC1, USARG6~8, LOAD_TON, HAS_SPEC}], total }
+     */
+    @GetMapping("/vehicle/fixed-specs")
+    public ResponseEntity<Map<String, Object>> getFixedVehicleSpecs() {
+        return ResponseEntity.ok(vehicleService.getFixedVehicleSpecs());
+    }
 }
