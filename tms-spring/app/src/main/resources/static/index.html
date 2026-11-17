@@ -25696,6 +25696,10 @@ const DCON_KEY_META = {
   BOARD_HEIGHT_VEH_LINK_YN:{ label:'[판지] 최대높이 차량연동', unit:'Y/N', op:'=', type:'BOARD_3D_VERIFY', hint:'Y=차량 가용높이와 연동 (기본 Y)' },
   BOARD_3D_CHECK_YN:{ label:'[판지] 3D 물리검증 활성', unit:'Y/N', op:'=', type:'BOARD_3D_VERIFY', hint:'Y=판지 3D 검증 / N=검증 스킵' },
   BOARD_3D_DEAD_SPACE_PCT:{ label:'[판지] 3D Dead Space 허용', unit:'%', op:'<=', type:'BOARD_3D_VERIFY', hint:'3D 검증 시 여유 마진 허용비율 (0=허용안함)' },
+  /* 판지④ 합짐(판지 위 속포장 적재) 제약 — BOARD_3D_VERIFY 탭 */
+  BOARD_INNER_STACK_YN:{ label:'[판지] 합짐 유무', unit:'Y/N', op:'=', type:'BOARD_3D_VERIFY', hint:'Y=판지 위에 속포장(속단위) 합짐 적재 허용 / N=합짐 금지' },
+  BOARD_INNER_MAX_ITEMS:{ label:'[판지] 합짐 속포장 최대 품목수', unit:'품목', op:'<=', type:'BOARD_3D_VERIFY', hint:'합짐 가능한 속포장 최대 품목수(품목코드 기준). 0/미설정=제한없음' },
+  BOARD_INNER_SIZE_RATIO:{ label:'[판지] 합짐 1단규격 대비 허용비율', unit:'%', op:'<=', type:'BOARD_3D_VERIFY', hint:'합짐 속포장의 바닥 면적이 판지 1단 규격(면적) 대비 허용 비율 이내여야 합짐(예: 5, 10). 면적 기준' },
   /* MIX_MATERIAL — 원지+판지 재질 혼적 */
   ALLOW_MATERIAL_MIX:{ label:'원지+판지 혼적 허용', unit:'Y/N', op:'=', type:'MIX_MATERIAL', hint:'Y=원지 차량의 여유공간(바닥 Y축)에 판지를 함께 적재하여 한 차량에 혼적 / N=재질별 차량 분리 배차(원지·판지 각각 별도 차량)' },
   MIX_UNIFIED_VEHICLE_YN:{ label:'원지+판지 합산중량 통합 단일차량', unit:'Y/N', op:'=', type:'MIX_MATERIAL', hint:'Y=같은 그룹의 원지 총중량+판지 총중량을 합산하여 그 합을 한 번에 실을 수 있는 더 큰 차량 1대로 통합 배차(2대→1대 효율화, 중량·높이 검증 통과 시) / N=재질별 개별 배차. ※ALLOW_MATERIAL_MIX=Y 선행 필요' },
@@ -27074,6 +27078,9 @@ const DCON_PARAM_META = {
   BOARD_3D_CHECK_YN:    { label:'3D 블록 검증 활성',         unit:'Y/N',  hint:'Y=판지 3D 검증 (Dead Space 포함)' },
   BOARD_3D_DEAD_SPACE_PCT:{ label:'Dead Space 허용비율',    unit:'%',    hint:'판지 혼합 적재 Dead Space 최대 허용 (%)' },
   BOARD_HEIGHT_MAX_M:   { label:'최대 적재 높이',            unit:'m',    hint:'판지 스택 최대 높이 (m, 기본 2.4)' },
+  BOARD_INNER_STACK_YN: { label:'합짐 유무',                 unit:'Y/N',  hint:'Y=판지 위 속포장 합짐 적재 허용 / N=합짐 금지' },
+  BOARD_INNER_MAX_ITEMS:{ label:'합짐 속포장 최대 품목수',   unit:'품목', hint:'합짐 가능한 속포장 최대 품목수(품목코드 기준). 0=제한없음' },
+  BOARD_INNER_SIZE_RATIO:{ label:'합짐 1단규격 대비 허용비율', unit:'%',  hint:'속포장 바닥 면적이 판지 1단 규격(면적) 대비 허용 비율 이내여야 합짐 (면적 기준)' },
   /* ── 혼합적재 파라미터 ── */
   ALLOW_MATERIAL_MIX:   { label:'원지+판지 혼적 허용',        unit:'Y/N',  hint:'Y=원지 차량 여유공간(바닥 Y축)에 판지 함께 적재하여 한 차량 혼적 / N=재질별 차량 분리 배차' },
   MIX_UNIFIED_VEHICLE_YN:{ label:'원지+판지 합산중량 통합 단일차량', unit:'Y/N', hint:'Y=원지+판지 총중량 합산 → 더 큰 차량 1대 통합 배차(2대→1대) / N=재질별 개별. ※ALLOW_MATERIAL_MIX=Y 선행 필요' },
@@ -29266,7 +29273,7 @@ const _DCON_BOARD_CBM_KEYS = ['BOARD_CBM_CHECK_YN', 'BOARD_MAX_TON_RATIO', 'BOAR
 /* 판지② 벌크·속포장 제약 키 — BOARD_BULK_SPLIT 탭으로 정규화. */
 const _DCON_BOARD_BULK_KEYS = ['BOARD_BULK_INTEGER_ONLY', 'BOARD_INNER_SPLIT_ALLOW'];
 /* 판지④ 3D 물리 검증 제약 키(최대높이/차량연동 포함) — BOARD_3D_VERIFY 탭으로 정규화. */
-const _DCON_BOARD_3D_KEYS = ['MAX_BOARD_HEIGHT_M', 'BOARD_HEIGHT_VEH_LINK_YN', 'BOARD_3D_CHECK_YN', 'BOARD_3D_DEAD_SPACE_PCT'];
+const _DCON_BOARD_3D_KEYS = ['MAX_BOARD_HEIGHT_M', 'BOARD_HEIGHT_VEH_LINK_YN', 'BOARD_3D_CHECK_YN', 'BOARD_3D_DEAD_SPACE_PCT', 'BOARD_INNER_STACK_YN', 'BOARD_INNER_MAX_ITEMS', 'BOARD_INNER_SIZE_RATIO'];
 function _dconNormalizeMixMaterialType(rows) {
   if (!Array.isArray(rows)) return rows;
   rows.forEach(r => {
