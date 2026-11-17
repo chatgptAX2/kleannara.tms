@@ -1262,6 +1262,9 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .vhc-spec-badge.spec-cartype .spec-value{color:var(--primary);font-size:14px}
 .vhc-spec-badge.spec-yn-y .spec-value{color:var(--success)}
 /* 고정차량 전용 사양 수정 폼 */
+.vhc-spec-edit-btn{margin-left:8px;padding:3px 10px;border-radius:5px;border:1px solid var(--warning,#f59e0b);background:#fff;color:var(--warning,#f59e0b);font-size:11px;font-weight:700;cursor:pointer;transition:.15s;white-space:nowrap}
+.vhc-spec-edit-btn:hover{background:var(--warning,#f59e0b);color:#fff}
+.vhc-spec-edit-btn.active{background:var(--warning,#f59e0b);color:#fff}
 .vhc-fixed-spec-edit{margin-top:10px;padding:12px 14px;border:1px dashed var(--primary);border-radius:8px;background:rgba(59,130,246,.05)}
 .vhc-fixed-spec-hint{font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.5}
 .vhc-fixed-spec-hint code{font-size:10px;background:var(--surface2);padding:1px 5px;border-radius:3px;color:var(--primary)}
@@ -8400,6 +8403,10 @@ function buildVehicleForm() {
               title="차량유형관리(TMS_DS_VEHICLE)에서 제원 자동 입력">
         🚛 차량유형 선택
       </button>
+      <button type="button" class="vhc-spec-edit-btn" id="vhc-spec-edit-btn" onclick="vhcToggleSpecEditBtn()"
+              title="이 차량번호 전용 사양을 직접 입력/수정 (고정차량)">
+        ✏️ 고정차량 사양 수정
+      </button>
     </div>
     <div class="vhc-spec-display" id="vhc-spec-display">
       <div class="vhc-spec-empty">← 차량유형을 선택하면 TMS_DS_VEHICLE 제원이 자동 표시됩니다</div>
@@ -8504,14 +8511,50 @@ function vhcInitYN(field, val) {
   if (field === 'FIX_YN') _vhcToggleFixedSpecEdit(val === 'Y');
 }
 
-/* 고정차량 사양 수정 폼 표시/숨김 + USARG 라벨 세팅
-   - 고정차량(Y)일 때만 입력 폼 노출.
-   - 라벨은 제품군 공통코드(CMCDM USARL1~5)에서 가져온다. */
+/* 고정차량 사양 수정 폼 표시/숨김 + USARG 라벨 세팅 + 버튼 active 동기화
+   - 입력 폼 노출 여부. 라벨은 제품군 공통코드(CMCDM USARL1~5)에서 가져온다. */
 function _vhcToggleFixedSpecEdit(show) {
   const box = document.getElementById('vhc-fixed-spec-edit');
-  if (!box) return;
-  box.style.display = show ? 'block' : 'none';
+  const btn = document.getElementById('vhc-spec-edit-btn');
+  if (box) box.style.display = show ? 'block' : 'none';
+  if (btn) {
+    btn.classList.toggle('active', !!show);
+    btn.textContent = show ? '✖ 사양 수정 닫기' : '✏️ 고정차량 사양 수정';
+  }
   if (show) _vhcApplyFixedSpecLabels();
+}
+
+/* [사양 수정] 버튼 클릭 — 입력폼 열기/닫기 토글.
+   - 열 때: 고정차량 사양이므로 고정차량여부(FIX_YN)를 자동으로 'Y'로 설정(논리적 일관성).
+   - 닫을 때: 폼만 숨김(FIX_YN 은 사용자가 운용설정에서 별도 제어). */
+function vhcToggleSpecEditBtn() {
+  const box = document.getElementById('vhc-fixed-spec-edit');
+  const willShow = !box || box.style.display === 'none';
+  if (willShow) {
+    // 고정차량 사양 입력 → 고정차량여부 Y 로 설정(버튼 상태도 함께 갱신)
+    if (vhcGetYN('FIX_YN') !== 'Y') vhcSetYN('FIX_YN', 'Y');
+    _vhcToggleFixedSpecEdit(true);
+    // 현재 입력폼이 비어있고 차량번호가 있으면 저장된 고정차량 사양을 재조회해 채움
+    _vhcLoadFixedSpecIntoForm();
+  } else {
+    _vhcToggleFixedSpecEdit(false);
+  }
+}
+
+/* 현재 차량번호 기준 고정차량 사양(1순위) 재조회 → 입력폼 채움 */
+function _vhcLoadFixedSpecIntoForm() {
+  const vno = (document.getElementById('vf-VEHICLE_NO')?.value || '').trim();
+  if (!vno) return;
+  const ccd = (document.getElementById('vf-selected-carclass-cd')?.value || '').trim();
+  fetch(`/api/vehicle/spec/${encodeURIComponent(vno)}?carclass_cd=${encodeURIComponent(ccd)}`)
+    .then(r => r.json())
+    .then(d => {
+      if (d && d.ok && d.spec && d.spec.SPEC_SOURCE === 'FIXED') {
+        _vhcFillFixedSpecForm(d.spec);
+      }
+      // 고정차량 사양이 아직 없으면(2순위/BASE 또는 null) 폼은 사용자가 신규 입력
+    })
+    .catch(() => {});
 }
 
 /* 고정차량 사양 입력 폼 라벨(USARG1~5) 적용 — 제품군 공통코드 헤더 기반 */
@@ -8970,6 +9013,18 @@ function _vhcRestoreSpecDisplay(row) {
           _vhcRenderSpecDisplayCC(spec);
           // 고정차량 폼이 열려 있으면(=고정차량) 입력값 채우기
           _vhcFillFixedSpecForm(spec.SPEC_SOURCE === 'FIXED' ? spec : null);
+          // 고정차량 전용 사양이 이미 등록되어 있으면 [사양 수정] 버튼에 표식
+          const editBtn = document.getElementById('vhc-spec-edit-btn');
+          if (editBtn) {
+            const hasFixed = spec.SPEC_SOURCE === 'FIXED';
+            editBtn.title = hasFixed
+              ? '이 차량 전용 사양이 등록되어 있습니다. 클릭하여 수정'
+              : '이 차량번호 전용 사양을 직접 입력/수정 (고정차량)';
+            // 폼이 닫혀 있을 때만 기본 라벨 유지(✅ 표식 추가)
+            const box = document.getElementById('vhc-fixed-spec-edit');
+            if (!box || box.style.display === 'none')
+              editBtn.textContent = hasFixed ? '✏️ 고정차량 사양 수정 ✅' : '✏️ 고정차량 사양 수정';
+          }
           return;
         }
         // spec 없음 → 기존 로직 폴백
@@ -9536,6 +9591,8 @@ function vhcNewForm() {
   if (hidCode) hidCode.value = '';
   const specEl = document.getElementById('vhc-spec-display');
   if (specEl) specEl.innerHTML = '<div class="vhc-spec-empty">← 차량유형을 선택하면 TMS_DS_VEHICLE 제원이 자동 표시됩니다</div>';
+  // 고정차량 사양 입력폼/버튼 초기화 (이전 차량 상태 잔존 방지)
+  _vhcFillFixedSpecForm(null);
   ['USE_YN','OPERABLE_YN','FIX_YN','DEL_YN'].forEach(f => vhcInitYN(f, null));
   document.querySelectorAll('.vhc-table tbody tr').forEach(r => r.classList.remove('selected'));
 }
