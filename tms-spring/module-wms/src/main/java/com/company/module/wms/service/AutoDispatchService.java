@@ -580,6 +580,12 @@ public class AutoDispatchService {
         appliedConstraints.put("ROLL_HEIGHT_MARGIN_M",  cp.rollHeightMarginM);
         appliedConstraints.put("ROLL_PALLET_APPLY_YN",  cp.rollPalletApply);
         appliedConstraints.put("ROLL_PALLET_DEDUCT_M",  cp.rollPalletDeductM);
+        // 판지 파레트 차감 + 합짐 제약 (3D뷰/미리보기 전달용)
+        appliedConstraints.put("BOARD_PALLET_APPLY_YN",  cp.boardPalletApply);
+        appliedConstraints.put("BOARD_PALLET_DEDUCT_M",  cp.boardPalletDeductM);
+        appliedConstraints.put("BOARD_INNER_STACK_YN",   cp.boardInnerStack);
+        appliedConstraints.put("BOARD_INNER_MAX_ITEMS",  cp.boardInnerMaxItems);
+        appliedConstraints.put("BOARD_INNER_SIZE_RATIO", cp.boardInnerSizeRatio);
         appliedConstraints.put("ALLOW_SPLIT_ITEM",      cp.allowSplit);  // SPLIT_ALLOWED 별칭 포함
         appliedConstraints.put("ROLL_SPLIT_ALLOWED",    cp.rollSplitAllowed);
         appliedConstraints.put("ROLL_INTEGER_ONLY",     cp.rollIntegerOnly);
@@ -1453,7 +1459,7 @@ public class AutoDispatchService {
             // ── 판지 3D 물리검증 (BOARD_3D_CHECK_YN=N 이면 스킵) ───────
             BoardPhysics3D bp3d;
             if (cp.board3dCheck) {
-                bp3d = verifyBoards3D(vb.items, skumaMap, vi, cp);
+                bp3d = verifyBoards3D(vb.items, skumaMap, vi, cp, pi.forkliftYn);
             } else {
                 bp3d = BoardPhysics3D.fail("[3D-판지검증] 비활성화(BOARD_3D_CHECK_YN=N) — 스킵");
                 bp3d.fits = true;  // 검증 스킵 시 업그레이드 로직 미동작하도록 통과 처리
@@ -1472,7 +1478,7 @@ public class AutoDispatchService {
                     if (pi.maxLoadKg > 0
                         && vehInfo.getOrDefault(ct, VehInfo.EMPTY).loadKg > pi.maxLoadKg) continue;
                     VehInfo cvi = vehInfo.getOrDefault(ct, VehInfo.EMPTY);
-                    BoardPhysics3D bp3dUp = verifyBoards3D(vb.items, skumaMap, cvi, cp);
+                    BoardPhysics3D bp3dUp = verifyBoards3D(vb.items, skumaMap, cvi, cp, pi.forkliftYn);
                     if (bp3dUp.fits) {
                         notesB.add(String.format("[3D-판지-업그레이드] %s→%s (3D 공간 부족 해소)", vehCar, ct));
                         vehCar = ct; vi = cvi; upgraded3d = true;
@@ -1517,7 +1523,7 @@ public class AutoDispatchService {
                     double cFill = ccap > 0 ? vehKg / ccap * 100 : 0;
                     if (minFillPct > 0 && cFill < minFillPct) continue;      // 하한 미달 금지
                     if (cp.board3dCheck) {                                    // 3D 배치 가능?
-                        BoardPhysics3D chk = verifyBoards3D(vb.items, skumaMap, cvi, cp);
+                        BoardPhysics3D chk = verifyBoards3D(vb.items, skumaMap, cvi, cp, pi.forkliftYn);
                         if (!chk.fits) continue;
                     }
                     // 더 작은(=적재율 더 높은) 차량 채택
@@ -3168,6 +3174,18 @@ public class AutoDispatchService {
         return h;
     }
 
+    /** 판지 유효높이(m) — 원지 rollEffH 와 동일 취지(판지 전용 파레트 차감).
+     *  포크리프트 보유 납품처: 전체 높이. 미보유 + BOARD_PALLET_APPLY_YN=Y: 파레트 차감값 적용. */
+    private double boardEffH(String cartype, String forkliftYn, Map<String, VehInfo> vehInfo, ConstraintParams cp) {
+        VehInfo vi = vehInfo.getOrDefault(cartype, VehInfo.EMPTY);
+        if ("Y".equals(forkliftYn)) return vi.heightM;
+        double h = vi.effectiveHeightM;
+        if (cp != null && cp.boardPalletApply) {
+            h = Math.max(0, vi.heightM - cp.boardPalletDeductM);
+        }
+        return h;
+    }
+
     private String boardQtyWarn(Map<String, Object> it, boolean boardInnerSplit) {
         String uom = str(it.get("UOMKEY"));
         double qty = dbl(it.get("QTSHPO"));
@@ -3262,6 +3280,14 @@ public class AutoDispatchService {
         // 파레트 차감 적용 여부 + 차감값(m) (ROLL §2-2): FORKLIFT_YN=N 납품처에 적용
         cp.rollPalletApply   = cbool(C, "ROLL_PALLET_APPLY_YN",    true);
         cp.rollPalletDeductM = cfloat(C, "ROLL_PALLET_DEDUCT_M",   0.15);
+        // ── 판지 파레트 차감 (BOARD §3-4): FORKLIFT_YN=N 납품처에 적용 (원지와 동일 취지) ──
+        cp.boardPalletApply   = cbool(C, "BOARD_PALLET_APPLY_YN",   true);
+        cp.boardPalletDeductM = cfloat(C, "BOARD_PALLET_DEDUCT_M",  0.15);
+        // ── 판지 합짐(판지 위 속포장 적재) 제약 (BOARD §3-4) ──
+        //  boardInnerStack=N(기본): 합짐 안 함(기존 동작 유지). Y: 합짐 허용.
+        cp.boardInnerStack    = cbool(C, "BOARD_INNER_STACK_YN",    false);
+        cp.boardInnerMaxItems = (int) cfloat(C, "BOARD_INNER_MAX_ITEMS", 0.0);   // 0=제한없음
+        cp.boardInnerSizeRatio = cfloat(C, "BOARD_INNER_SIZE_RATIO", 0.0);       // %(면적), 0=제한없음
 
         // ── 원지 다단 적재높이 상한(m) (ROLL §2-2) — 신규 ──
         //  0 = 미설정(차량 가용높이만 사용). 자동배차 시 차량 톤수별 높이와 min() 연동.
@@ -3480,6 +3506,17 @@ public class AutoDispatchService {
         double  rollHeightMarginM = 0.0;   // 원지 높이 안전 여유 마진(m)
         boolean rollPalletApply   = true;  // 파레트 차감 적용 여부
         double  rollPalletDeductM = 0.15;  // 파레트 차감값(m)
+        // ── 판지 파레트 차감 (BOARD_PALLET_APPLY_YN / BOARD_PALLET_DEDUCT_M) — 원지와 동일 취지 ──
+        //  Y = FORKLIFT_YN=N 납품처에 파레트 높이 차감 적용. 차감값(m, 기본 0.15).
+        boolean boardPalletApply   = true;
+        double  boardPalletDeductM = 0.15;
+        // ── 판지 합짐(판지 위 속포장 적재) 제약 (BOARD_INNER_*) ──
+        //  boardInnerStack    : Y=판지 1단 위에 속포장(속단위) 합짐 적재 허용 / N=합짐 금지
+        //  boardInnerMaxItems : 합짐 가능한 속포장 최대 품목수(품목코드 기준). 0=제한없음
+        //  boardInnerSizeRatio: 합짐 1단규격 대비 허용비율(%, 면적 기준). 0=제한없음
+        boolean boardInnerStack    = false;
+        int     boardInnerMaxItems = 0;
+        double  boardInnerSizeRatio = 0.0;
         // ── 원지 다단 적재높이 상한(m) (ROLL §2-2) ──
         //  0 = 미설정(차량 가용높이만 사용). >0 = 차량 가용높이와 min() 적용.
         //  실제 적용 시 차량유형관리(TMS_DS_VEHICLE) 톤수별 높이값과 연동(min)됨.
@@ -3911,12 +3948,26 @@ public class AutoDispatchService {
     private BoardPhysics3D verifyBoards3D(List<Map<String, Object>> items,
                                            Map<String, SkuInfo> skumaMap,
                                            VehInfo vi, ConstraintParams cp) {
+        return verifyBoards3D(items, skumaMap, vi, cp, null);
+    }
+
+    /** forkliftYn 오버로드 — 판지 파레트 차감(BOARD_PALLET_*)을 유효높이에 반영. */
+    private BoardPhysics3D verifyBoards3D(List<Map<String, Object>> items,
+                                           Map<String, SkuInfo> skumaMap,
+                                           VehInfo vi, ConstraintParams cp, String forkliftYn) {
         double carWmm = vi.widthM  * 1000.0;
         double carLmm = vi.lengthM * 1000.0;
         // ── 적재 가능 최고높이 = 차량 톤수별 가용높이(effectiveHeightM) ──
         //  PS제약조건관리 판지 3D 물리검증 최대높이(MAX_BOARD_HEIGHT_M/BOARD_HEIGHT_MAX_M)가
         //  설정되어 있고 차량연동(boardHeightVehLink)이 켜져 있으면 차량높이와 min() 연동.
+        //  판지 파레트 차감(BOARD_PALLET_APPLY_YN=Y, FORKLIFT_YN=N)이 있으면 boardEffH 로 재산출.
         double carHmm = vi.effectiveHeightM * 1000.0;
+        if (forkliftYn != null && cp != null && cp.boardPalletApply && !"Y".equals(forkliftYn)) {
+            // 차량유형 코드로 boardEffH 산출(파레트 차감값 반영). vehInfo 없이 vi 단건만 있으므로
+            //  vi.heightM 에서 직접 차감(= boardEffH 와 동일 산식).
+            double be = Math.max(0, vi.heightM - cp.boardPalletDeductM);
+            if (be > 0) carHmm = be * 1000.0;
+        }
         double heightCapMm = carHmm;
         if (cp.maxBoardHeightM > 0) {
             double cfgMm = cp.maxBoardHeightM * 1000.0;
@@ -3941,6 +3992,14 @@ public class AutoDispatchService {
         List<BoardBlock> blocks = new ArrayList<>();
         int totalBundles = 0;
         double totalVolMm3 = 0;
+
+        // ── [판지 합짐] 1단 판지 기준 바닥면적(mm²) 집계 — 합짐 면적비율(BOARD_INNER_SIZE_RATIO) 기준 ──
+        //  요구사항(Q4): "판지 파렛트 1단의 바닥 면적(가로×세로)" 을 기준으로, 합짐 속포장의
+        //  바닥면적이 (기준면적 × 허용비율%) 이내여야 합짐 허용. 기준면적 = 단(PLT) 블록들의 최대 바닥면적.
+        double maxDanAreaMm2 = 0.0;
+        // 합짐 적용 품목(품목코드) 집계 — 최대 품목수(BOARD_INNER_MAX_ITEMS) 제한용
+        java.util.Set<String> innerStackSkus = new java.util.LinkedHashSet<>();
+        List<String> boardInnerNotes = new ArrayList<>();
 
         for (Map<String, Object> it : items) {
             String sk = str(it.get("SKUKEY"));
@@ -4020,12 +4079,42 @@ public class AutoDispatchService {
                 totalBundles += danCount;
                 totalVolMm3  += wMm * lMm * hDanMm * danCount;
                 blocks.add(new BoardBlock(wMm, lMm, hDanMm, danCount, sk, true));
+                // 합짐 기준면적 집계: 단(PLT) 블록들의 최대 바닥면적을 '판지 1단 규격 면적'으로 사용
+                double danArea = wMm * lMm;
+                if (danArea > maxDanAreaMm2) maxDanAreaMm2 = danArea;
             }
             // 속(SOK) 블록 — isPlt=false (속포장은 PLT 단수 제약 미적용, 높이 상한까지 적층)
             if (sokCount > 0) {
                 totalBundles += sokCount;
                 totalVolMm3  += wMm * lMm * hSokMm * sokCount;
-                blocks.add(new BoardBlock(wMm, lMm, hSokMm, sokCount, sk, false));
+                BoardBlock sokBlock = new BoardBlock(wMm, lMm, hSokMm, sokCount, sk, false);
+
+                // ── [판지 합짐 판정] (BOARD_INNER_STACK_YN=Y) ───────────────────────────
+                //  대상: 재고유형=판지 & 속포장(SKUKEY 끝자리 A) & "납품처 속포장 납품수량 < PLT당 개수"
+                //        (= 온전 파렛트를 못 채운 잔여 속 → danCount 기준 remR 로 이미 분리됨)
+                //  검증: ① 면적 — 속포장 바닥면적 ≤ 판지 1단 바닥면적 × (BOARD_INNER_SIZE_RATIO%)
+                //        ② 품목수 — 누적 합짐 품목수(품목코드 기준) ≤ BOARD_INNER_MAX_ITEMS
+                //  통과 시: 합짐(판지 1단 위 + 파레트 끼움) 플래그. 실패 시: 별도(바닥) 적재(기존 동작).
+                if (cp.boardInnerStack && isInner && pltPerUnit > 0) {
+                    boolean belowPlt = qtyR < pltPerUnit;   // 납품수량 < PLT당 개수(잔여 속)
+                    double sokArea   = wMm * lMm;
+                    boolean areaOk   = cp.boardInnerSizeRatio <= 0
+                        || (maxDanAreaMm2 > 0 && sokArea <= maxDanAreaMm2 * (cp.boardInnerSizeRatio / 100.0));
+                    boolean itemsOk  = cp.boardInnerMaxItems <= 0
+                        || (innerStackSkus.contains(sk) || innerStackSkus.size() < cp.boardInnerMaxItems);
+                    if (belowPlt && areaOk && itemsOk) {
+                        sokBlock.isInnerStack = true;
+                        innerStackSkus.add(sk);
+                        boardInnerNotes.add(String.format(
+                            "[판지합짐] %s 속포장 %d속 합짐(판지1단 위, 파레트 %.2fm) — 면적%.0f/%.0fmm²",
+                            sk, sokCount, cp.boardPalletDeductM, sokArea, maxDanAreaMm2));
+                    } else if (belowPlt) {
+                        String why = !areaOk ? "면적초과" : (!itemsOk ? "품목수초과" : "조건불충족");
+                        boardInnerNotes.add(String.format(
+                            "[판지합짐-제외] %s 속포장 %s → 별도(바닥) 적재", sk, why));
+                    }
+                }
+                blocks.add(sokBlock);
             }
         }
 
@@ -4151,6 +4240,7 @@ public class AutoDispatchService {
         int    count;
         String skukey;
         boolean isPlt;   // true=단(파렛트/PLT) 블록, false=속(SOK) 블록
+        boolean isInnerStack; // true=판지 위 합짐(속포장) 블록 — 1단 위 파레트 끼워 적재
         BoardBlock(double w, double l, double h, int cnt, String sk) {
             this(w, l, h, cnt, sk, true);
         }
