@@ -22,6 +22,10 @@ public class VehicleSaveRequest {
     private String usarg3;
     private String usarg4;
     private String usarg5;
+    // 고정차량 사양(톤수별) 전용: 길이/너비/높이 (USARG6/7/8)
+    private String usarg6;   // 길이(m)
+    private String usarg7;   // 너비(m)
+    private String usarg8;   // 높이(m)
 
     // ── TMS_DS_VEHICLE 필드 (table='vehicle') ──
     private String  carclassCd;

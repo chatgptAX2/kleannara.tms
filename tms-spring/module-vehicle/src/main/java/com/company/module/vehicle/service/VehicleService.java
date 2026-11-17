@@ -373,11 +373,13 @@ public class VehicleService {
     }
 
     /** CMCDV TMS_CARCLASS10 단건 조회 (CMCDVL 기준). 없으면 null.
-     *  Z코드(차량유형)인 경우 길이/너비/높이는 MariaDB DsVehicle 로 보완한다. */
+     *  길이/너비/높이(USARG6~8):
+     *    - 고정차량 ROW(CMCDVL=차량번호)는 CMCDV 에 직접 저장되므로 그 값을 우선 사용.
+     *    - 비어 있으면(Z코드 차량유형 등) MariaDB DsVehicle 로 보완. */
     private Map<String, Object> selectCarclassRow(String cmcdvl) {
         @SuppressWarnings("unchecked")
         Object[] r = (Object[]) em.createNativeQuery(
-            "SELECT CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5 " +
+            "SELECT CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5, USARG6, USARG7, USARG8 " +
             "FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10' AND CMCDVL=?")
             .setParameter(1, cmcdvl)
             .getResultStream().findFirst().orElse(null);
@@ -392,11 +394,19 @@ public class VehicleService {
         m.put("USARG4", str(r[5]));
         m.put("USARG5", str(r[6]));
 
-        // 길이/너비/높이(USARG6~8): Z코드(차량유형)일 때만 DsVehicle 로 보완
-        DsVehicle vhc = dsVehicleRepo.findById(str(r[0])).orElse(null);
-        m.put("USARG6", vhc != null && vhc.getLengthM() != null ? vhc.getLengthM().toString() : "");
-        m.put("USARG7", vhc != null && vhc.getWidthM()  != null ? vhc.getWidthM()              : "");
-        m.put("USARG8", vhc != null && vhc.getHeightM() != null ? vhc.getHeightM().toString() : "");
+        // 길이/너비/높이(USARG6~8): CMCDV 직접값 우선 → 비면 DsVehicle 로 보완
+        String len = str(r[7]), wid = str(r[8]), hgt = str(r[9]);
+        if (len.isEmpty() || wid.isEmpty() || hgt.isEmpty()) {
+            DsVehicle vhc = dsVehicleRepo.findById(str(r[0])).orElse(null);
+            if (vhc != null) {
+                if (len.isEmpty() && vhc.getLengthM() != null) len = vhc.getLengthM().toString();
+                if (wid.isEmpty() && vhc.getWidthM()  != null) wid = vhc.getWidthM();
+                if (hgt.isEmpty() && vhc.getHeightM() != null) hgt = vhc.getHeightM().toString();
+            }
+        }
+        m.put("USARG6", len);
+        m.put("USARG7", wid);
+        m.put("USARG8", hgt);
         return m;
     }
 
@@ -424,9 +434,11 @@ public class VehicleService {
 
         String action;
         if (cnt != null && cnt > 0) {
-            // UPDATE — 사용자 입력값만 반영(미입력 null 은 그대로 저장되어도 무방: 사용자 책임)
+            // UPDATE — 톤수별 차량사양(USARG1~8) 반영.
+            //   USARG6/7/8 = 길이/너비/높이 (고정차량 사양 전용, CMCDV 직접 저장)
             em.createNativeQuery("""
                 UPDATE KNRAWMS.CMCDV SET CDESC1=?, USARG1=?, USARG2=?, USARG3=?, USARG4=?, USARG5=?,
+                USARG6=?, USARG7=?, USARG8=?,
                 LMODAT=?, LMOTIM=?, LMOUSR=?
                 WHERE CMCDKY='TMS_CARCLASS10' AND CMCDVL=?
                 """)
@@ -436,8 +448,11 @@ public class VehicleService {
               .setParameter(4, req.getUsarg3())
               .setParameter(5, req.getUsarg4())
               .setParameter(6, req.getUsarg5())
-              .setParameter(7, nowdt).setParameter(8, nowtm).setParameter(9, "WEB")
-              .setParameter(10, key)
+              .setParameter(7, req.getUsarg6())
+              .setParameter(8, req.getUsarg7())
+              .setParameter(9, req.getUsarg8())
+              .setParameter(10, nowdt).setParameter(11, nowtm).setParameter(12, "WEB")
+              .setParameter(13, key)
               .executeUpdate();
             action = "updated";
         } else {
@@ -445,9 +460,11 @@ public class VehicleService {
             em.createNativeQuery("""
                 INSERT INTO KNRAWMS.CMCDV
                     (CMCDKY, CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5,
+                     USARG6, USARG7, USARG8,
                      CRTDAT, CRTTIM, CRTUSR, LMODAT, LMOTIM, LMOUSR)
                 VALUES
                     ('TMS_CARCLASS10', ?, ?, ?, ?, ?, ?, ?,
+                     ?, ?, ?,
                      ?, ?, ?, ?, ?, ?)
                 """)
               .setParameter(1, key)
@@ -457,8 +474,11 @@ public class VehicleService {
               .setParameter(5, req.getUsarg3())
               .setParameter(6, req.getUsarg4())
               .setParameter(7, req.getUsarg5())
-              .setParameter(8, nowdt).setParameter(9, nowtm).setParameter(10, "WEB")
+              .setParameter(8, req.getUsarg6())
+              .setParameter(9, req.getUsarg7())
+              .setParameter(10, req.getUsarg8())
               .setParameter(11, nowdt).setParameter(12, nowtm).setParameter(13, "WEB")
+              .setParameter(14, nowdt).setParameter(15, nowtm).setParameter(16, "WEB")
               .executeUpdate();
             action = "created";
         }
