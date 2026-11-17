@@ -326,12 +326,15 @@ public class VehicleService {
         String vno = vehicleNo == null ? "" : vehicleNo.strip();
         String ccd = carclassCd == null ? "" : carclassCd.strip();
 
+        // 사양 컬럼 라벨(USARG1~5) — CMCDM USARL1~5 (사양 명칭 표시용)
+        List<Map<String, Object>> header = loadCarclassHeader("TMS_CARCLASS10");
+
         // 1순위: 차량번호로 고정차량 사양 조회
         if (!vno.isEmpty()) {
             Map<String, Object> fixed = selectCarclassRow(vno);
             if (fixed != null) {
                 fixed.put("SPEC_SOURCE", "FIXED"); // 고정차량 사양
-                return Map.of("ok", true, "spec", fixed);
+                return Map.of("ok", true, "spec", fixed, "header", header);
             }
         }
 
@@ -340,12 +343,33 @@ public class VehicleService {
             Map<String, Object> base = selectCarclassRow(ccd);
             if (base != null) {
                 base.put("SPEC_SOURCE", "BASE"); // 기본차량(차량유형) 사양
-                return Map.of("ok", true, "spec", base);
+                return Map.of("ok", true, "spec", base, "header", header);
             }
         }
 
         // 조회 결과 없음
-        return Map.of("ok", true, "spec", null);
+        return Map.of("ok", true, "spec", null, "header", header);
+    }
+
+    /** CMCDM USARL1~5 → 사양 컬럼 라벨 [{col:'USARG1', label:'...'}, ...].
+     *  라벨이 비어 있으면 해당 컬럼은 생략(프론트가 실제 사양 명칭으로 fallback). */
+    private List<Map<String, Object>> loadCarclassHeader(String cmcdky) {
+        List<Map<String, Object>> header = new ArrayList<>();
+        try {
+            @SuppressWarnings("unchecked")
+            Object[] mRow = (Object[]) em.createNativeQuery(
+                "SELECT USARL1, USARL2, USARL3, USARL4, USARL5 FROM KNRAWMS.CMCDM WHERE CMCDKY=?")
+                .setParameter(1, cmcdky)
+                .getResultStream().findFirst().orElse(null);
+            if (mRow != null) {
+                String[] argKeys = {"USARG1","USARG2","USARG3","USARG4","USARG5"};
+                for (int i = 0; i < argKeys.length; i++) {
+                    String lbl = str(mRow[i]);
+                    if (!lbl.isEmpty()) header.add(Map.of("col", argKeys[i], "label", lbl));
+                }
+            }
+        } catch (Exception ignore) { /* 라벨 조회 실패 시 빈 헤더 */ }
+        return header;
     }
 
     /** CMCDV TMS_CARCLASS10 단건 조회 (CMCDVL 기준). 없으면 null.
