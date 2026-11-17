@@ -486,11 +486,13 @@ public class DeliveryService {
     }
 
     // ── CMCDV TMS_CARCLASS10 → [{value, label}] ────────────────────────────
+    //   ※ CMCDVL LIKE 'Z%' : 차량유형(톤수) 코드만 조회(운송비 화면 차량톤수 select 옵션).
+    //     고정차량 사양(CMCDVL=차량번호, Z로 시작 안 함)은 옵션에서 제외 → 현재기능 유지.
     private List<Map<String, Object>> loadCarclasses() {
         try {
             List<Map<String, Object>> rows = wmsJdbc.queryForList(
                 "SELECT CMCDVL AS value, CDESC1 AS label " +
-                "FROM KNRAWMS.CMCDV WHERE CMCDKY = 'TMS_CARCLASS10' ORDER BY CMCDVL"
+                "FROM KNRAWMS.CMCDV WHERE CMCDKY = 'TMS_CARCLASS10' AND CMCDVL LIKE 'Z%' ORDER BY CMCDVL"
             );
             return rows;
         } catch (Exception e) {
