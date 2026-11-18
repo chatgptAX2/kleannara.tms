@@ -10359,7 +10359,9 @@ async function loadFixedVehicles() {
   tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--text3);padding:16px">🔄 불러오는 중…</td></tr>';
   try {
     const d = await fetch('/api/vehicle/fixed-specs').then(r => r.json());
-    const rows = (d && d.rows) || [];
+    // 응답 래퍼 호환: { rows } 직접 / ApiResponse { data:{ rows } } 모두 대응
+    const payload = (d && d.data && typeof d.data === 'object') ? d.data : d;
+    const rows = (payload && payload.rows) || (d && d.rows) || [];
     if (!rows.length) {
       tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--text3);padding:16px">고정차량(FIX_YN=Y)으로 등록된 차량이 없습니다.</td></tr>';
       return;
