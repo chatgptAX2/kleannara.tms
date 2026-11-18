@@ -292,8 +292,70 @@ public class SapRfcService {
                 stdoutLog("[shipment-create][사전진단-SKIP] 중복 SVBELN 조회 실패: " + preEx.getMessage());
             }
         }
+        // ════════════════════════════════════════════════════════════════
+        //  [A안] 사전 납품분할 (선적생성 루프 이전에 일괄 선행)
+        // ----------------------------------------------------------------
+        //  [개발의도] "납품분할 처리 우선 후 선적 생성".
+        //  [SAP 전제조건] Z_TMS_DELIVERY_SPLIT 는 '선적이 아직 생성되지 않은 납품문서'만
+        //    분할 가능. 선적이 걸린 뒤 분할하면 SAP 가 '수량변경 실패'로 거부한다.
+        //  [기존 문제] 선적생성 루프 안에서 '충돌이 난 뒤에야 사후 분할' 하는 구조라,
+        //    먼저 온 가선적이 공유 SVBELN 으로 선적을 선점해버린 뒤에 다음 가선적이
+        //    분할을 시도 → 이미 선적이 걸려 '수량변경 실패' 발생(가선적 3개 중 2개만 선적).
+        //  [해결] 선적을 1건도 만들기 전에, 하나의 SVBELN 을 2개 이상 가선적이 공유하는
+        //    경우(= svbelnToStdlnrs size>1) 첫 가선적은 원본 유지, 2번째부터 사전 분할하여
+        //    각 가선적이 고유 SVBELN 을 갖게 한다. 분할로 TMS_SHPDI.SVBELN 이 갱신되므로
+        //    아래 선적생성 루프의 'SELECT DISTINCT SVBELN' 이 자동으로 새 SVBELN 을 읽는다.
+        //  ※ SPLIT_QTY = 분리해 나갈 수량(해당 가선적의 QTSHPO). 2번째~N번째 가선적을
+        //    각각 분리하면 원본(첫 가선적)에는 나머지 수량이 남아 합계가 원본 총량과 일치.
+        // ════════════════════════════════════════════════════════════════
+        // SVBELN -> 사전분할 결과(가선적별 신규 SVBELN) 보관 (results 요약용)
+        List<Map<String, Object>> preSplitSummary = new ArrayList<>();
+        if (autoSplit && !svbelnToStdlnrs.isEmpty()) {
+            for (Map.Entry<String, java.util.LinkedHashSet<String>> e : svbelnToStdlnrs.entrySet()) {
+                String sharedSv = e.getKey();
+                // 입력된 가선적 순서(stknumsRaw)를 기준으로 공유 STDLNR 을 정렬 →
+                //   '첫 번째' 가선적은 원본 SVBELN 유지, 2번째부터 분할(결정적 처리 순서).
+                List<String> ownerStdlnrs = new ArrayList<>();
+                for (Object so : stknumsRaw) {
+                    String sd = str(so);
+                    if (!sd.isEmpty() && e.getValue().contains(sd) && !ownerStdlnrs.contains(sd)) {
+                        ownerStdlnrs.add(sd);
+                    }
+                }
+                if (ownerStdlnrs.size() <= 1) continue;   // 공유 아님 → 분할 불필요
+
+                stdoutLog("[shipment-create][사전분할] 공유 SVBELN=" + sharedSv
+                        + " 보유 가선적=" + ownerStdlnrs
+                        + " → 첫 가선적(" + ownerStdlnrs.get(0) + ") 원본유지, 나머지 사전분할");
+
+                // 2번째 가선적부터 사전 분할
+                for (int i = 1; i < ownerStdlnrs.size(); i++) {
+                    String splitStdlnr = ownerStdlnrs.get(i);
+                    Map<String, Object> sp = splitSharedSvbelnForStdlnr(splitStdlnr, sharedSv);
+                    Map<String, Object> summ = new LinkedHashMap<>();
+                    summ.put("stdlnr", splitStdlnr);
+                    summ.put("org_svbeln", sharedSv);
+                    summ.put("ok", sp.get("ok"));
+                    summ.put("new_svbeln", sp.get("newSvbeln"));
+                    summ.put("msg", sp.get("msg"));
+                    summ.put("mock", sp.get("mock"));
+                    preSplitSummary.add(summ);
+
+                    if (Boolean.TRUE.equals(sp.get("ok"))) {
+                        stdoutLog("[shipment-create][사전분할-성공] stdlnr=" + splitStdlnr
+                                + " " + sharedSv + " → " + str(sp.get("newSvbeln")));
+                    } else {
+                        stdoutLog("[shipment-create][사전분할-실패] stdlnr=" + splitStdlnr
+                                + " SVBELN=" + sharedSv + " msg=" + str(sp.get("msg")));
+                    }
+                }
+            }
+        }
+
         // 이번 호출 안에서 이미 선적이 "선점(생성 성공)"된 SVBELN 추적
         //  value = 선점한 STDLNR (진단 메시지에 어느 가선적번호가 먼저 가져갔는지 표시)
+        //  ※ [A안] 사전분할이 정상 수행되면 공유가 해소되어 이 선점/사후분할 경로는
+        //    거의 타지 않지만, 사전분할 실패/부분성공·동시성 대비 안전장치로 유지한다.
         Map<String, String> claimedSvbeln = new LinkedHashMap<>();
 
         for (Object o : stknumsRaw) {
@@ -483,6 +545,17 @@ public class SapRfcService {
         ret.put("ok", allOk);
         ret.put("results", results);
         ret.put("env", env);
+        // [A안] 선적생성 전에 수행한 사전 납품분할 요약 (성공/실패 가선적별)
+        if (!preSplitSummary.isEmpty()) {
+            ret.put("pre_split", preSplitSummary);
+            boolean preSplitAllOk = preSplitSummary.stream()
+                .allMatch(s -> Boolean.TRUE.equals(s.get("ok")));
+            if (!preSplitAllOk) {
+                ret.put("pre_split_notice",
+                    "일부 공유 납품문서의 사전 납품분할에 실패했습니다. 해당 가선적은 "
+                    + "선적생성이 거부될 수 있으니 SAP 납품분할 상태를 확인하세요.");
+            }
+        }
         if (!dupGroups.isEmpty()) {
             ret.put("dup_svbeln_groups", dupGroups);
             ret.put("dup_svbeln_notice",
