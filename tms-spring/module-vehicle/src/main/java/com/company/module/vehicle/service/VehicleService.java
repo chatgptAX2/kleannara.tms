@@ -376,12 +376,31 @@ public class VehicleService {
      *  길이/너비/높이(USARG6~8):
      *    - 고정차량 ROW(CMCDVL=차량번호)는 CMCDV 에 직접 저장되므로 그 값을 우선 사용.
      *    - 비어 있으면(Z코드 차량유형 등) MariaDB DsVehicle 로 보완. */
+    /* 제품군(PRODUCT_GROUP)에 맞는 차량유형 코드그룹에서 사양 조회.
+       - 생활('20') → TMS_CARCLASS20, 그 외(제지 등) → TMS_CARCLASS10.
+       - 제품군 그룹에서 못 찾으면 기본(TMS_CARCLASS10)으로 한번 더 폴백. */
+    private Map<String, Object> selectCarclassRowByGroup(String cmcdvl, String productGroup) {
+        String pg  = productGroup == null ? "" : productGroup.strip();
+        String grp = "20".equals(pg) ? "TMS_CARCLASS20" : "TMS_CARCLASS10";
+        Map<String, Object> m = selectCarclassRow(cmcdvl, grp);
+        if (m == null && !"TMS_CARCLASS10".equals(grp)) {
+            m = selectCarclassRow(cmcdvl, "TMS_CARCLASS10");   // 기본 그룹 폴백
+        }
+        return m;
+    }
+
+    /* 기존 호출 호환: TMS_CARCLASS10 기준 조회 */
     private Map<String, Object> selectCarclassRow(String cmcdvl) {
+        return selectCarclassRow(cmcdvl, "TMS_CARCLASS10");
+    }
+
+    private Map<String, Object> selectCarclassRow(String cmcdvl, String cmcdky) {
         @SuppressWarnings("unchecked")
         Object[] r = (Object[]) em.createNativeQuery(
             "SELECT CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5, USARG6, USARG7, USARG8 " +
-            "FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10' AND CMCDVL=?")
-            .setParameter(1, cmcdvl)
+            "FROM KNRAWMS.CMCDV WHERE CMCDKY=? AND CMCDVL=?")
+            .setParameter(1, cmcdky)
+            .setParameter(2, cmcdvl)
             .getResultStream().findFirst().orElse(null);
         if (r == null) return null;
 
@@ -495,12 +514,21 @@ public class VehicleService {
     // ──────────────────────────────────────────────────────────────────────────
     public Map<String, Object> getFixedVehicleSpecs() {
         // 1) VHCMA 고정차량 목록 (FIX_YN='Y', 미삭제)
+        //   [개선] FIX_YN 저장값에 공백/대소문자(' Y', 'y' 등) 가 섞여 있어도 매칭되도록
+        //          TRIM(UPPER(FIX_YN))='Y' 로 조건 완화. DEL_YN 도 동일하게 정규화.
+        //          (고정차량으로 등록했는데 목록이 비던 증상의 가장 유력한 원인 대응)
         @SuppressWarnings("unchecked")
         List<Object[]> vrows = em.createNativeQuery(
             "SELECT VEHICLE_NO, SHIP_POINT, PRODUCT_GROUP, VEHICLE_CLASS, CARRIER, DRIVER_NAME " +
-            "FROM KNRAWMS.VHCMA WHERE FIX_YN='Y' AND (DEL_YN IS NULL OR DEL_YN <> 'Y') " +
+            "FROM KNRAWMS.VHCMA " +
+            "WHERE TRIM(UPPER(FIX_YN))='Y' " +
+            "  AND (DEL_YN IS NULL OR TRIM(UPPER(DEL_YN)) <> 'Y') " +
             "ORDER BY SHIP_POINT, VEHICLE_NO")
             .getResultList();
+
+        // [진단] 운영 배포 후 원인 확정용 — 고정차량 건수 로그.
+        //   0 건이면 저장 자체(FIX_YN 미반영) 문제, >0 이면 조회/매핑 정상.
+        log.info("[getFixedVehicleSpecs] VHCMA FIX_YN='Y' 건수 = {}", vrows.size());
 
         List<Map<String, Object>> rows = new ArrayList<>();
         for (Object[] v : vrows) {
@@ -514,11 +542,14 @@ public class VehicleService {
             m.put("DRIVER_NAME",   str(v[5]));
 
             // 2) 고정차량 전용 사양 조회 (CMCDV, CMCDVL=차량번호). 없으면 차량유형코드(2순위)로 폴백.
-            Map<String, Object> spec = selectCarclassRow(vehicleNo);
+            //   [개선] 제품군(생활='20')은 TMS_CARCLASS20, 그 외(제지 등)는 TMS_CARCLASS10 에서 조회.
+            //          (사양이 매칭 안 돼도 고정차량 자체는 목록에 표시 — hasSpec=false 로)
+            String pg = str(v[2]); // PRODUCT_GROUP
+            Map<String, Object> spec = selectCarclassRowByGroup(vehicleNo, pg);
             boolean hasSpec = spec != null;
             if (spec == null) {
                 String ccd = str(v[3]); // VEHICLE_CLASS = 차량유형코드
-                if (!ccd.isEmpty()) spec = selectCarclassRow(ccd);
+                if (!ccd.isEmpty()) spec = selectCarclassRowByGroup(ccd, pg);
             }
             // 상차량(ton): USARG3(KG) → ton
             String tonStr = "";
