@@ -22966,15 +22966,18 @@ function _ssStripHtml(html){
   return s.replace(/<[^>]*>/g, '').replace(/&nbsp;/g,' ').replace(/&quot;/g,'"')
           .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').trim();
 }
-/* 현재 조회 rows 기준으로 컬럼별 자동폭을 계산해 _ssColW 에 반영.
-   - 사용자가 수동 리사이즈한 폭(_ssColWUser)은 존중(건드리지 않음). */
+/* 현재 조회 rows 기준으로 컬럼별 "데이터가 잘리지 않는 최소폭(need)"을 계산.
+   - need 는 ① 라벨 폭 과 ② 실제 조회 데이터 최대 폭 중 큰 값(+여유, 상한 cap).
+   - [중요] 사용자가 직접 드래그로 리사이즈한 폭(_ssColWUser)이라도, 그 폭이
+     need 보다 좁으면 need 로 "넓힌다"(자동폭을 하한=floor 으로 적용).
+     → 사용자가 '더 넓게' 늘린 경우만 그대로 존중되고, localStorage 에 남아있던
+       과거의 좁은 기본폭(예: 품목코드 105px)이 데이터를 잘리게 하는 문제를 해소.
+   - 반대로 need 보다 넓게 늘려둔 사용자 폭은 그대로 유지. */
 function _ssComputeAutoWidths(cols, rows){
   const CHROME_TH = 16 + 10 + 10 + 6;   // 핸들⠿ + 정렬아이콘 + 좌우패딩(5*2) + 여유
-  const CELL_PAD  = 8 + 8 + 4;          // td 좌우패딩(8*2) + 여유
+  const CELL_PAD  = 8 + 8 + 8;          // td 좌우패딩(8*2) + 여유(ellipsis 방지 넉넉히)
   const SAMPLE    = Math.min((rows||[]).length, 300);   // 성능: 최대 300행 샘플
   cols.forEach(c => {
-    /* 사용자가 직접 리사이즈한 컬럼은 자동폭 산출에서 제외 */
-    if (_ssColWUser[c.key]) return;
     /* ① 라벨 폭 */
     const labelPx = _ssTextPx(c.label) + CHROME_TH;
     /* ② 데이터 최대 폭 */
@@ -22988,10 +22991,12 @@ function _ssComputeAutoWidths(cols, rows){
       if (px > dataPx) dataPx = px;
     }
     dataPx += CELL_PAD;
-    /* 정의폭(c.w) 과 비교하여 더 넓은 값 채택, 컬럼별 상한 적용 */
-    const need = Math.ceil(Math.max(labelPx, dataPx));
+    /* 데이터/라벨이 잘리지 않는 최소폭(need): 정의폭·라벨·데이터 중 최댓값, 상한 적용 */
     const cap  = (c.key === 'DESC01' || c.key === 'DPTNKYNM') ? 320 : 240;
-    _ssColW[c.key] = Math.max(c.w, Math.min(cap, need));
+    const need = Math.min(cap, Math.ceil(Math.max(c.w, labelPx, dataPx)));
+    /* 사용자가 need 보다 넓게 늘려둔 폭은 존중, 그보다 좁으면 need 로 확장 */
+    const cur  = _ssColWUser[c.key] || _ssColW[c.key] || c.w;
+    _ssColW[c.key] = Math.max(cur, need);
   });
 }
 
