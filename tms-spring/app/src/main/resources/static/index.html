@@ -9452,18 +9452,21 @@ function renderVehicleList(data) {
     const tc      = tColor[row.VEHICLE_TYPE] || '#94a3b8';
     const vw = (id, def) => { const w = _vhcColW[id]||def; return `width:${w}px;max-width:${w}px;`; };
     // colOrder 순서대로 td 생성
+    // [요청] 차량 List 데이터 셀 글자색 검정(--text) + 폰트/크기 통일(tbody td 기본 12px).
+    //   기존의 개별 색상(주황/파랑/회색)·굵기(600/700)·monospace·개별 font-size 제거.
+    //   (상태 배지인 차량구분/삭제여부, 삭제버튼은 기능성 UI 라 유지)
     const _vhcTdMap = {
-      'vhc-cid': `<td style="${vw('vhc-cid',70)}font-family:monospace;color:var(--text3)" title="${row.VEHICLE_ID||''}">${row.VEHICLE_ID||'-'}</td>`,
-      'vhc-c0':  `<td style="${vw('vhc-c0',110)}font-family:monospace;font-weight:700;color:var(--warning)" title="${row.VEHICLE_NO||''}">${row.VEHICLE_NO||'-'}</td>`,
-      'vhc-c1':  `<td style="${vw('vhc-c1',80)}color:var(--text3)" title="${row.SHIP_POINT||''}">${_lbl(shipMap,row.SHIP_POINT)}</td>`,
+      'vhc-cid': `<td style="${vw('vhc-cid',70)}" title="${row.VEHICLE_ID||''}">${row.VEHICLE_ID||'-'}</td>`,
+      'vhc-c0':  `<td style="${vw('vhc-c0',110)}" title="${row.VEHICLE_NO||''}">${row.VEHICLE_NO||'-'}</td>`,
+      'vhc-c1':  `<td style="${vw('vhc-c1',80)}" title="${row.SHIP_POINT||''}">${_lbl(shipMap,row.SHIP_POINT)}</td>`,
       'vhc-c2':  `<td style="${vw('vhc-c2',90)}" title="${skuLbl}">${skuLbl}</td>`,
       'vhc-c3':  `<td style="${vw('vhc-c3',75)}">${row.DELIVERY_ZONE||'-'}</td>`,
       'vhc-c4':  `<td style="${vw('vhc-c4',110)}" title="${row.CARRIER||''}">${_lbl(carrierMap,row.CARRIER)}</td>`,
       'vhc-c5':  `<td style="${vw('vhc-c5',70)}" title="${row.VEHICLE_TYPE||''}"><span style="font-size:10px;font-weight:700;padding:2px 5px;border-radius:3px;background:var(--surface2);color:${tc}">${_lbl(vtypeMap,row.VEHICLE_TYPE)}</span></td>`,
       'vhc-c6':  `<td style="${vw('vhc-c6',70)}" title="${row.VEHICLE_KIND||''}">${_lbl(vkindMap,row.VEHICLE_KIND)}</td>`,
-      'vhc-c7':  `<td style="${vw('vhc-c7',60)}color:var(--primary);font-weight:600" title="${row.VEHICLE_CLASS||''}">${_classLbl(row.PRODUCT_GROUP,row.VEHICLE_CLASS)}</td>`,
-      'vhc-c8':  `<td style="${vw('vhc-c8',100)}font-weight:600" title="${row.DRIVER_NAME||''}">${row.DRIVER_NAME||'-'}</td>`,
-      'vhc-c9':  `<td style="${vw('vhc-c9',130)}color:var(--text3);font-family:monospace;font-size:11px">${row.CONTACT_NO||'-'}</td>`,
+      'vhc-c7':  `<td style="${vw('vhc-c7',60)}" title="${row.VEHICLE_CLASS||''}">${_classLbl(row.PRODUCT_GROUP,row.VEHICLE_CLASS)}</td>`,
+      'vhc-c8':  `<td style="${vw('vhc-c8',100)}" title="${row.DRIVER_NAME||''}">${row.DRIVER_NAME||'-'}</td>`,
+      'vhc-c9':  `<td style="${vw('vhc-c9',130)}">${row.CONTACT_NO||'-'}</td>`,
       // 삭제여부 컬럼: DEL_YN='Y' → '삭제', 그 외(NULL/'N') → '사용'
       'vhc-c10': `<td style="${vw('vhc-c10',55)}text-align:center">${row.DEL_YN==='Y'?'<span class="vhc-badge use-n">삭제</span>':'<span class="vhc-badge use-y">사용</span>'}</td>`,
       'vhc-c11': `<td style="${vw('vhc-c11',56)}text-align:center;padding:3px"><button class="row-del-btn" title="삭제" onclick="event.stopPropagation();vhcDeleteRow('${row.VEHICLE_NO}','${row.OWNRKY||'KN'}')">🗑</button></td>`,
