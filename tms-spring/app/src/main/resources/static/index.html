@@ -1200,7 +1200,8 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
   .vhc-search-grid{grid-template-columns:repeat(10,1fr)}
 }
 .vhc-sg{display:flex;flex-direction:column;gap:3px}
-.vhc-sg label{font-size:10px;font-weight:700;color:var(--warning);background:rgba(245,158,11,.08);padding:2px 5px;border-radius:3px;white-space:nowrap}
+/* [요청] 검색조건 라벨: 주황 배경 제거 + 글자색 검정(굵게) */
+.vhc-sg label{font-size:10px;font-weight:700;color:var(--text);background:none;padding:2px 0;white-space:nowrap}
 .vhc-sg input,.vhc-sg select{background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 7px;font-size:12px;width:100%}
 .vhc-sg input:focus,.vhc-sg select:focus{outline:none;border-color:var(--primary)}
 /* 차량 리스트 */
