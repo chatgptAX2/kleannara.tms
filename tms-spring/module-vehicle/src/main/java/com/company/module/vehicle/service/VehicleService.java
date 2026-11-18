@@ -7,9 +7,11 @@ import com.company.module.vehicle.repository.tms.DsVehicleRepository;
 import com.company.module.vehicle.repository.wms.VhcmaRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,12 +35,15 @@ import java.util.*;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 @Transactional(readOnly = true, transactionManager = "wmsTransactionManager")
 public class VehicleService {
 
     private final DsVehicleRepository dsVehicleRepo;
     private final VhcmaRepository     vhcmaRepo;
+    /** Oracle KNRAWMS 전용 JdbcTemplate — em 네이티브 쿼리가 KNRAWMS.VHCMA 를
+        인식하지 못해 ORA-00942 가 나므로, VHCMA 직접 조회는 이 JdbcTemplate 사용
+        (AutoDispatchService / DeliveryService 와 동일 패턴). */
+    private final JdbcTemplate        wmsJdbc;
 
     /** Oracle WMS — KNRAWMS.CMCDM / CMCDV / WAHMA / VHCMA */
     @PersistenceContext(unitName = "wmsPU")
@@ -47,6 +52,15 @@ public class VehicleService {
     /** MariaDB TMS — TMS_DS_VEHICLE (차종 직접 쿼리) */
     @PersistenceContext(unitName = "tmsPU")
     private EntityManager tmsEm;
+
+    public VehicleService(
+            DsVehicleRepository dsVehicleRepo,
+            VhcmaRepository     vhcmaRepo,
+            @Qualifier("wmsJdbcTemplate") JdbcTemplate wmsJdbc) {
+        this.dsVehicleRepo = dsVehicleRepo;
+        this.vhcmaRepo     = vhcmaRepo;
+        this.wmsJdbc       = wmsJdbc;
+    }
 
     // ──────────────────────────────────────────────────────────────────────────
     // TMS_DS_VEHICLE 목록 (Flask api_ds_vehicle)
@@ -514,41 +528,48 @@ public class VehicleService {
     // ──────────────────────────────────────────────────────────────────────────
     public Map<String, Object> getFixedVehicleSpecs() {
         // 1) VHCMA 고정차량 목록 (FIX_YN='Y', 미삭제)
-        //   [개선] FIX_YN 저장값에 공백/대소문자(' Y', 'y' 등) 가 섞여 있어도 매칭되도록
-        //          TRIM(UPPER(FIX_YN))='Y' 로 조건 완화. DEL_YN 도 동일하게 정규화.
-        //          (고정차량으로 등록했는데 목록이 비던 증상의 가장 유력한 원인 대응)
-        @SuppressWarnings("unchecked")
-        List<Object[]> vrows = em.createNativeQuery(
-            "SELECT VEHICLE_NO, SHIP_POINT, PRODUCT_GROUP, VEHICLE_CLASS, CARRIER, DRIVER_NAME " +
-            "FROM KNRAWMS.VHCMA " +
-            "WHERE TRIM(UPPER(FIX_YN))='Y' " +
-            "  AND (DEL_YN IS NULL OR TRIM(UPPER(DEL_YN)) <> 'Y') " +
-            "ORDER BY SHIP_POINT, VEHICLE_NO")
-            .getResultList();
+        //   [원인] em(JPA wmsPU) 네이티브 쿼리가 KNRAWMS.VHCMA 를 인식하지 못해
+        //          ORA-00942(테이블/뷰 없음) 발생 → 고정차량 목록이 항상 비었음.
+        //   [해결] AutoDispatchService / DeliveryService 와 동일하게 Oracle 전용
+        //          JdbcTemplate(wmsJdbc) 로 조회. FIX_YN/DEL_YN 은 NVL+TRIM+UPPER 로
+        //          공백/대소문자(' Y','y')까지 매칭(저장값 편차 방어).
+        List<Map<String, Object>> vrows;
+        try {
+            vrows = wmsJdbc.queryForList(
+                "SELECT VEHICLE_NO, SHIP_POINT, PRODUCT_GROUP, VEHICLE_CLASS, CARRIER, DRIVER_NAME " +
+                "FROM KNRAWMS.VHCMA " +
+                "WHERE TRIM(UPPER(NVL(FIX_YN,'N')))='Y' " +
+                "  AND TRIM(UPPER(NVL(DEL_YN,'N'))) <> 'Y' " +
+                "ORDER BY SHIP_POINT, VEHICLE_NO");
+        } catch (Exception e) {
+            log.warn("[getFixedVehicleSpecs] VHCMA 조회 실패: {}", e.getMessage());
+            return Map.of("ok", false, "rows", new ArrayList<>(), "total", 0,
+                          "error", String.valueOf(e.getMessage()));
+        }
 
         // [진단] 운영 배포 후 원인 확정용 — 고정차량 건수 로그.
         //   0 건이면 저장 자체(FIX_YN 미반영) 문제, >0 이면 조회/매핑 정상.
         log.info("[getFixedVehicleSpecs] VHCMA FIX_YN='Y' 건수 = {}", vrows.size());
 
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (Object[] v : vrows) {
-            String vehicleNo = str(v[0]);
+        for (Map<String, Object> v : vrows) {
+            String vehicleNo = str(v.get("VEHICLE_NO"));
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("VEHICLE_NO",    vehicleNo);
-            m.put("SHIP_POINT",    str(v[1]));
-            m.put("PRODUCT_GROUP", str(v[2]));
-            m.put("VEHICLE_CLASS", str(v[3]));
-            m.put("CARRIER",       str(v[4]));
-            m.put("DRIVER_NAME",   str(v[5]));
+            m.put("SHIP_POINT",    str(v.get("SHIP_POINT")));
+            m.put("PRODUCT_GROUP", str(v.get("PRODUCT_GROUP")));
+            m.put("VEHICLE_CLASS", str(v.get("VEHICLE_CLASS")));
+            m.put("CARRIER",       str(v.get("CARRIER")));
+            m.put("DRIVER_NAME",   str(v.get("DRIVER_NAME")));
 
             // 2) 고정차량 전용 사양 조회 (CMCDV, CMCDVL=차량번호). 없으면 차량유형코드(2순위)로 폴백.
             //   [개선] 제품군(생활='20')은 TMS_CARCLASS20, 그 외(제지 등)는 TMS_CARCLASS10 에서 조회.
             //          (사양이 매칭 안 돼도 고정차량 자체는 목록에 표시 — hasSpec=false 로)
-            String pg = str(v[2]); // PRODUCT_GROUP
+            String pg = str(v.get("PRODUCT_GROUP"));
             Map<String, Object> spec = selectCarclassRowByGroup(vehicleNo, pg);
             boolean hasSpec = spec != null;
             if (spec == null) {
-                String ccd = str(v[3]); // VEHICLE_CLASS = 차량유형코드
+                String ccd = str(v.get("VEHICLE_CLASS")); // 차량유형코드
                 if (!ccd.isEmpty()) spec = selectCarclassRowByGroup(ccd, pg);
             }
             // 상차량(ton): USARG3(KG) → ton
