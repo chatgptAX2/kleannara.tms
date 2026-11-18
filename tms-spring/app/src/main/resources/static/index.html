@@ -22941,9 +22941,31 @@ function _ssColDefs() {
    - chrome(헤더 핸들·정렬아이콘·좌우패딩) + 셀 좌우패딩을 가산.
    - 과도 확장 방지: 컬럼별 상한(cap) 적용.
    ─────────────────────────────────────────────────────────────── */
+/* 텍스트 렌더 폭(px) 측정.
+   - [정확도] Canvas measureText 로 '실제 폰트' 폭을 측정(폰트·글자종류 무관 정확).
+     기존 추정식(ASCII 6.0/한글 8.0)은 실제(영숫자 6.4~6.5px)보다 작게 나와
+     긴 품목코드(S0RW1300-...)가 잘렸음 → 실측으로 교체.
+   - [폴백] Canvas 미지원/오류 시 추정식(약간 상향: ASCII 6.6/한글 8.5)으로 대체.
+   - [성능] 측정 context 는 1회 생성 후 재사용. tbody td 폰트(11px) 기준. */
+let _ssMeasureCtx = null;
 function _ssTextPx(str){
+  const s = String(str == null ? '' : str);
+  try {
+    if (!_ssMeasureCtx) {
+      const cv = document.createElement('canvas');
+      _ssMeasureCtx = cv.getContext('2d');
+      /* .ss-table tbody td 와 동일 폰트(11px) — 실제 셀 렌더 폭과 일치시킴 */
+      const probe = document.createElement('span');
+      const cs = getComputedStyle(document.body);
+      const fam = cs.fontFamily || 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+      _ssMeasureCtx.font = `11px ${fam}`;
+    }
+    const w = _ssMeasureCtx.measureText(s).width;
+    if (w && isFinite(w) && w > 0) return w;
+  } catch(e) { /* 폴백으로 진행 */ }
+  /* 폴백: 추정식(실측 근사, 약간 상향) */
   let px = 0;
-  for (const ch of String(str)) px += /[\x00-\x7F]/.test(ch) ? 6.0 : 8.0;
+  for (const ch of s) px += /[\x00-\x7F]/.test(ch) ? 6.6 : 8.5;
   return px;
 }
 /* HTML 태그 제거 → 순수 텍스트 (fmt 가 badge/span 을 반환하는 컬럼 대응) */
