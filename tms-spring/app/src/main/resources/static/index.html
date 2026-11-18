@@ -5262,25 +5262,27 @@ function _thShortLabel(label, col){
 }
 
 /* 헤더 라벨 글자 길이에 맞춘 "잘리지 않는" 최소 컬럼 폭(px) 계산.
-   - 한글/전각은 약 13px, 영문/숫자/기호는 약 7px 로 가늠.
-   - 핸들(⠿ ~14px) + 정렬아이콘(~14px) + 좌우 패딩(16px) + 여유(6px) 가산.
+   - 한글/전각은 약 15px, 영문/숫자/기호는 약 8px 로 가늠(실측 보정: 기존 13/7 은
+     타이트하게 걸려 '너비(mm)/가로(mm)/세로(mm)' 등 첫 글자가 경계에 닿았음 → 상향).
+   - 헤더 그리드는 [핸들 ⠿ | 라벨(중앙) | 정렬아이콘 ⇅] 구조라, 라벨 양옆의
+     핸들·아이콘·간격이 라벨 가용폭을 잠식한다. 이를 chrome 로 넉넉히 가산.
    - 2행의 컬럼명(col)도 1행 라벨보다 길면 그 길이를 반영.
    → 반환값을 _colWidths 미지정 컬럼의 폴백 폭으로 사용(명시 지정폭은 존중). */
 function _thAutoWidth(label, col){
   const disp = _thShortLabel(label, col) || col || '';
-  const measure = (str) => {
+  const measure = (str, hanPx, asciiPx) => {
     let px = 0;
-    for (const ch of String(str)) px += /[\x00-\x7F]/.test(ch) ? 7.0 : 13.0;
+    for (const ch of String(str)) px += /[\x00-\x7F]/.test(ch) ? asciiPx : hanPx;
     return px;
   };
-  const labelPx = measure(disp);
-  const colPx   = measure(col) * 0.75; // 2행 컬럼명은 9.5px(약 0.75배)로 더 작음
+  const labelPx = measure(disp, 15.0, 8.0);        // 1행 라벨(12px, 굵게)
+  const colPx   = measure(col, 15.0, 8.0) * 0.70;  // 2행 컬럼명(9.5px, 약 0.70배)
   const textPx  = Math.max(labelPx, colPx);
-  // 핸들 + 정렬아이콘 + 패딩 + 여유
-  const chromePx = 14 + 14 + 16 + 6;
+  // 핸들(⠿ ~16) + 정렬아이콘(⇅ ~16) + 좌우 패딩(16) + column-gap(8) + 여유(12)
+  const chromePx = 16 + 16 + 16 + 8 + 12;
   const w = Math.ceil(textPx + chromePx);
-  // 하한 64 / 상한 260 (과도하게 넓어지지 않도록)
-  return Math.max(64, Math.min(260, w));
+  // 하한 76 / 상한 280 (과도하게 넓어지지 않도록)
+  return Math.max(76, Math.min(280, w));
 }
 
 /* ═══════════════════════════════════════════════════════════
