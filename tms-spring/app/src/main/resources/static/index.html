@@ -5642,6 +5642,7 @@ function colOrderDragEnd(e) {
 const _dlvColW    = {}; // 납품처 리스트 컬럼 너비 저장
 const _vhcColW    = {}; // 차량 리스트 컬럼 너비 저장
 const _ssColW     = {}; // 출고문서아이템 컬럼 너비 저장
+const _ssColWUser = {}; // 사용자가 직접 리사이즈한 출고예정정보 컬럼(자동폭 산출에서 제외)
 const _psopDocColW = {}; // PS배차(최적화) 납품문서 컬럼 너비 저장
 const _sapLeftColW = {}; // SAP 선적목록 컬럼 너비 저장
 const _sapDocColW  = {}; // SAP 납품문서 컬럼 너비 저장
@@ -5740,6 +5741,8 @@ function _psopBuildResizableHead(defs, store, colPrefix, tblSel){
 
     // ① store 갱신
     _store[_colId] = newW;
+    // 출고예정정보: 사용자가 직접 리사이즈한 컬럼은 자동폭 산출에서 제외하도록 기록
+    if (_tblSel === '.ss-table') _ssColWUser[_colId] = newW;
 
     // ② th: width / min-width / max-width 모두 고정
     const th = document.querySelector(`${_tblSel} thead th[data-rzid="${_colId}"]`);
@@ -22658,7 +22661,7 @@ function ssLoadColLayout() {
   const defKeys = _ssColDefs().map(c => c.key);
   shipScheduleState.colOrder   = (saved.order  || []).filter(k => defKeys.includes(k));
   shipScheduleState.hiddenCols = (saved.hidden || []).filter(k => defKeys.includes(k));
-  if (saved.widths) Object.keys(saved.widths).forEach(k => { if (defKeys.includes(k)) _ssColW[k] = saved.widths[k]; });
+  if (saved.widths) Object.keys(saved.widths).forEach(k => { if (defKeys.includes(k)) { _ssColW[k] = saved.widths[k]; _ssColWUser[k] = saved.widths[k]; } });
 }
 
 /* 레이아웃 모달 열기 */
@@ -22678,7 +22681,7 @@ function ssOpenColLayout() {
     applyState: (st) => {
       shipScheduleState.colOrder   = st.order.slice();
       shipScheduleState.hiddenCols = st.hidden.slice();
-      if (st.widths) Object.keys(st.widths).forEach(k => { _ssColW[k] = st.widths[k]; });
+      if (st.widths) Object.keys(st.widths).forEach(k => { _ssColW[k] = st.widths[k]; _ssColWUser[k] = st.widths[k]; });
       /* 현재 조회 결과가 있으면 재렌더 */
       const area = document.getElementById('ss-result-area');
       if (area && shipScheduleState.currentRows && shipScheduleState.currentRows.length) {
@@ -22835,8 +22838,7 @@ function _ssColDefs() {
         }
 
         return '';
-      }, w:70, align:'right',
-      thStyle:'font-size:10px' },
+      }, w:70, align:'right' },
     { key:'_HEIGHT_PER_SOK', label:'속당 높이(cm)',
       fmt:(v,r)=>{
         const u=String(r.UOMKEY||'').trim();
@@ -22878,8 +22880,7 @@ function _ssColDefs() {
 
         const rounded = Math.round(perSok * 100) / 100;
         return rounded.toLocaleString(undefined, {maximumFractionDigits:2});
-      }, w:88, align:'right',
-      thStyle:'font-size:10px' },
+      }, w:88, align:'right' },
     /* ── 판지 전용 치수 (SKUG05=10 + 재고유형=판지(R)일 때만 표시) ── */
     { key:'_BOARD_W',   label:'가로(mm)',
       fmt:(v,r)=>{
@@ -22927,8 +22928,7 @@ function _ssColDefs() {
         const n=Number(v);
         return isNaN(n)||n===0?'-':n.toLocaleString();
       },
-      w:110, align:'right',
-      thStyle:'font-size:10px' },
+      w:110, align:'right' },
     { key:'SOK',        label:'SOK',          fmt:fmtN,  w:55,  align:'right' },
     { key:'EA',         label:'EA',           fmt:fmtN,  w:62,  align:'right' },
     /* (기존 'KG'(TOT) 컬럼은 '중량'(납품수량 뒤) 컬럼으로 통합 — key 중복 방지 위해 제거) */
@@ -22941,6 +22941,58 @@ function _ssColDefs() {
     { key:'LOTA01NM',   label:'납품처유형',   fmt:v=>(v&&v.trim())||'-',               w:80  },
     { key:'LOTA03',      label:'포장Y/N',     fmt:v=>{const t=(v&&v.trim())||'';return t==='Y'?'<span class="badge-Y">Y</span>':t==='N'?'<span class="badge-N">N</span>':'-';},  w:60  },
   ];
+}
+
+/* ───────────────────────────────────────────────────────────────
+   출고예정정보 컬럼 자동폭 산출 (라벨 + 실제 데이터 최대 글자수 기반)
+   - 문제: 각 컬럼 폭이 고정값(c.w)이라 라벨('가로(mm)' 등)이나 조회
+     데이터(품목명 등)가 길면 잘렸음.
+   - 해결: 각 컬럼마다 ① 라벨 글자폭(px) 과 ② 현재 조회 rows 의
+     '렌더 결과에서 HTML 태그를 제거한 순수 텍스트' 최대 글자폭(px) 중
+     큰 값을 구해, 정의폭(c.w)과 비교하여 더 넓은 쪽을 폭으로 사용한다.
+   - 한글/전각 ≈ 8.0px, 영문/숫자/기호 ≈ 6.0px (td/th 폰트 11px 기준).
+   - chrome(헤더 핸들·정렬아이콘·좌우패딩) + 셀 좌우패딩을 가산.
+   - 과도 확장 방지: 컬럼별 상한(cap) 적용.
+   ─────────────────────────────────────────────────────────────── */
+function _ssTextPx(str){
+  let px = 0;
+  for (const ch of String(str)) px += /[\x00-\x7F]/.test(ch) ? 6.0 : 8.0;
+  return px;
+}
+/* HTML 태그 제거 → 순수 텍스트 (fmt 가 badge/span 을 반환하는 컬럼 대응) */
+function _ssStripHtml(html){
+  const s = String(html == null ? '' : html);
+  if (s.indexOf('<') === -1) return s;
+  return s.replace(/<[^>]*>/g, '').replace(/&nbsp;/g,' ').replace(/&quot;/g,'"')
+          .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').trim();
+}
+/* 현재 조회 rows 기준으로 컬럼별 자동폭을 계산해 _ssColW 에 반영.
+   - 사용자가 수동 리사이즈한 폭(_ssColWUser)은 존중(건드리지 않음). */
+function _ssComputeAutoWidths(cols, rows){
+  const CHROME_TH = 16 + 10 + 10 + 6;   // 핸들⠿ + 정렬아이콘 + 좌우패딩(5*2) + 여유
+  const CELL_PAD  = 8 + 8 + 4;          // td 좌우패딩(8*2) + 여유
+  const SAMPLE    = Math.min((rows||[]).length, 300);   // 성능: 최대 300행 샘플
+  cols.forEach(c => {
+    /* 사용자가 직접 리사이즈한 컬럼은 자동폭 산출에서 제외 */
+    if (_ssColWUser[c.key]) return;
+    /* ① 라벨 폭 */
+    const labelPx = _ssTextPx(c.label) + CHROME_TH;
+    /* ② 데이터 최대 폭 */
+    let dataPx = 0;
+    for (let i = 0; i < SAMPLE; i++){
+      const r = rows[i];
+      let rendered;
+      try { rendered = c.fmt(r[c.key], r); } catch(e) { rendered = r[c.key]; }
+      const txt = _ssStripHtml(rendered);
+      const px  = _ssTextPx(txt);
+      if (px > dataPx) dataPx = px;
+    }
+    dataPx += CELL_PAD;
+    /* 정의폭(c.w) 과 비교하여 더 넓은 값 채택, 컬럼별 상한 적용 */
+    const need = Math.ceil(Math.max(labelPx, dataPx));
+    const cap  = (c.key === 'DESC01' || c.key === 'DPTNKYNM') ? 320 : 240;
+    _ssColW[c.key] = Math.max(c.w, Math.min(cap, need));
+  });
 }
 
 function renderShipScheduleResult(data, area) {
@@ -22962,6 +23014,10 @@ function renderShipScheduleResult(data, area) {
 
   /* _ssColW 기본값 초기화 (최초 렌더 시) */
   cols.forEach(c => { if (!_ssColW[c.key]) _ssColW[c.key] = c.w; });
+
+  /* 컬럼 자동폭: 라벨 + 실제 조회 데이터 최대 글자수를 반영해 폭을 넓힘
+     (사용자가 직접 리사이즈한 컬럼 _ssColWUser 은 보존) */
+  _ssComputeAutoWidths(cols, rows);
 
   _ssBuildTable(area, cols, rows, total, page, totalPages, size);
 }
