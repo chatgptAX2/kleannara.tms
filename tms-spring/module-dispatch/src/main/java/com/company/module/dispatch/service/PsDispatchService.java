@@ -665,6 +665,17 @@ public class PsDispatchService {
             double totalKg     = veh.getTotalKg() == null ? 0.0 : veh.getTotalKg();
             int    totalCnt    = veh.getItems() == null ? 0 : veh.getItems().size();
 
+            // ── [대시보드 지표] 적재가능중량(LOAD_KG) 산출 ─────────────────────────
+            //   적재율(=TOTAL_KG/LOAD_KG) 계산의 분모. 차량유형관리(TMS_DS_VEHICLE)의
+            //   실제 적재가능중량(LOAD_TON, ton)을 CARTYPE 로 조회해 ×1000(KG) 저장.
+            //   (기존엔 미저장 → LOAD_KG NULL → 적재율/적재효율 지표가 '데이터없음'/0% 였음)
+            Double loadKg = resolveLoadKgByCartype(veh.getCartype());
+
+            // ── [대시보드 지표] 출하유형(MATERIAL_TYPE) 산출 ───────────────────────
+            //   품목(SKUKEY) 기준 ROLL(원지 롤)/BOARD(판지) 판정. 혼재/미상은 OTHER.
+            //   (출하유형별 집계용. 대시보드 '출하유형별 총물량' 은 CARTYPE 기준으로 별도 집계)
+            String materialType = resolveMaterialType(veh.getItems());
+
             // TMS_PS_DISPATCH_H INSERT → MariaDB tmsEm
             // DISPATCH_TYPE : PS(판매/이송) 배차 저장 시 'GI'(출고) 로 고정
             //   ─ 반품 배차(배차(반품) 탭)는 별도 저장 경로에서 'GR' 로 저장한다.
@@ -697,8 +708,9 @@ public class PsDispatchService {
             tmsEm.createNativeQuery("""
                 INSERT INTO KNRAWMS.TMS_PS_DISPATCH_H
                   (DISPATCH_NO, DISPATCH_DT, RQSHPD, DPTNKY, DPTNM,
-                   CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR, DISPATCH_TYPE, LOAD_LAYOUT, NOTE, FIX_YN, DISPATCH_METHOD)
-                VALUES (?,?,?,?,?,?,'DRAFT',?,?,?,?,'GI',?,?,?,?)
+                   CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR, DISPATCH_TYPE, LOAD_LAYOUT, NOTE, FIX_YN, DISPATCH_METHOD,
+                   LOAD_KG, MATERIAL_TYPE)
+                VALUES (?,?,?,?,?,?,'DRAFT',?,?,?,?,'GI',?,?,?,?,?,?)
                 """)
               .setParameter(1,  dispatchNo)
               .setParameter(2,  today)
@@ -714,6 +726,8 @@ public class PsDispatchService {
               .setParameter(12, vehNoForNote)     // [PR-B] 배차단위 차량번호(없으면 NULL)
               .setParameter(13, fixYnForSave)     // [PR-D] 배차단위 고정차량 여부('Y'/'N')
               .setParameter(14, methodForSave)    // [배차방법] AUTO/MANUAL
+              .setParameter(15, loadKg)           // [대시보드] 적재가능중량(KG)=차량 LOAD_TON×1000
+              .setParameter(16, materialType)     // [대시보드] 출하유형(ROLL/BOARD/OTHER)
               .executeUpdate();
 
             // [고정차량저장진단] 각 배차(가선적번호/톤수)에 실제로 저장되는 차량번호(NOTE) 추적.
@@ -1620,5 +1634,55 @@ public class PsDispatchService {
         if (o == null) return null;
         try { return Long.parseLong(o.toString()); }
         catch (Exception e) { return null; }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // [대시보드 지표] 배차 저장 시 LOAD_KG / MATERIAL_TYPE 산출 헬퍼
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /** 차종(CARTYPE)별 적재가능중량(KG) 조회.
+     *  차량유형관리(TMS_DS_VEHICLE)의 실제 적재가능중량(LOAD_TON, ton)을 CARTYPE 로
+     *  조회해 ×1000 → KG 반환. 미조회/0 이면 null(= 적재율 계산 제외, '데이터없음').
+     *  ※ 적재율 지표(TOTAL_KG/LOAD_KG)의 분모. (사용자 확인: B안 = 차량유형관리 실제값) */
+    private Double resolveLoadKgByCartype(String cartype) {
+        String ct = (cartype == null) ? "" : cartype.strip();
+        if (ct.isEmpty()) return null;
+        try {
+            // TMS_DS_VEHICLE.CARTYPE = 차종명(예: '11톤'). LOAD_TON(ton) → ×1000(KG).
+            @SuppressWarnings("unchecked")
+            List<Object> rs = tmsEm.createNativeQuery(
+                    "SELECT LOAD_TON FROM KNRAWMS.TMS_DS_VEHICLE WHERE CARTYPE = ?")
+                .setParameter(1, ct)
+                .setMaxResults(1)
+                .getResultList();
+            if (rs == null || rs.isEmpty() || rs.get(0) == null) return null;
+            double loadTon = toDouble(rs.get(0));
+            if (loadTon <= 0) return null;
+            return Math.round(loadTon * 1000.0 * 10.0) / 10.0;   // KG (소수 1자리)
+        } catch (Exception e) {
+            log.warn("[대시보드] LOAD_KG 조회 실패 cartype={}: {}", ct, e.getMessage());
+            return null;
+        }
+    }
+
+    /** 배차 품목(SKUKEY)으로 출하유형(MATERIAL_TYPE) 판정.
+     *  - 롤(원지): SKUKEY 17자 이상 & [8]='-' & slice(13,17)='0000' → ROLL
+     *  - 판지    : SKUKEY 17자 이상 & [8]='-' & slice(13,17) 숫자4자리(≠0000) → BOARD
+     *  - 혼재/미상: OTHER
+     *  (대시보드 '출하유형별 총물량' 은 CARTYPE 기준으로 집계하므로 적재율엔 무영향,
+     *   출하유형 분류/확장용으로 저장) */
+    private String resolveMaterialType(List<PsDispatchSaveRequest.ItemBlock> items) {
+        if (items == null || items.isEmpty()) return "OTHER";
+        boolean hasRoll = false, hasBoard = false;
+        for (PsDispatchSaveRequest.ItemBlock it : items) {
+            String sk = it.getSkukey() == null ? "" : it.getSkukey().strip();
+            if (sk.length() < 17 || sk.charAt(8) != '-') continue;
+            String lp = sk.substring(13, 17);
+            if ("0000".equals(lp)) hasRoll = true;
+            else if (lp.matches("\\d{4}")) hasBoard = true;
+        }
+        if (hasRoll && !hasBoard) return "ROLL";
+        if (hasBoard && !hasRoll) return "BOARD";
+        return "OTHER";   // 혼재 또는 미상
     }
 }

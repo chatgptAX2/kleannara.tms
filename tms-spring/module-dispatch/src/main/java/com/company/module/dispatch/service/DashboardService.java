@@ -69,37 +69,51 @@ public class DashboardService {
     public Map<String, Object> getTransportStatus(String dateFrom, String dateTo, String productGroup) {
         String[] range = resolveRange(dateFrom, dateTo, 7);
         // [제품군 필터] PS/HL 지정 시 TMS_SHPDI.SKUG05 조인 EXISTS 조건. ALL/미지정이면 "".
-        String pgf = productGroupFilter(productGroup, "");
+        //   pgf  : 별칭 없는 쿼리용(typeSql), pgfH : h 별칭 쿼리용(dailySql 완료율 조인).
+        String pgf  = productGroupFilter(productGroup, "");
+        String pgfH = productGroupFilter(productGroup, "h.");
 
         // 1-1. 일자별 배차대기/배차완료 차량대수
-        //  ※ 실제 상태 컬럼은 STATUS(DRAFT/CONFIRMED). 삭제는 물리삭제로 처리되어
-        //    배차 삭제 시 자동으로 집계에서 제외된다. (기존 STAT_CD 는 미사용 컬럼)
+        //  [배차완료 정의] 사용자 확인: (B) SAP 선적생성 완료 = STKNUM 채번 기준.
+        //    SAP 선적번호는 TMS_SHPDI.STKNUM 에 기록되므로, 해당 배차(DISPATCH_NO=STDLNR)의
+        //    TMS_SHPDI 에 STKNUM 이 채워졌는지로 '선적생성 완료' 를 판정한다.
+        //    (기존엔 STATUS='CONFIRMED' 로만 판정 → 선적생성해도 완료율 0% 였음)
+        //  · 배차완료(CONFIRMED_CNT) = STKNUM 채번된 배차
+        //  · 배차대기(PENDING_CNT)   = STKNUM 미채번 배차
+        //  · 삭제는 물리삭제 + STATUS<>'CANCELLED' 로 제외.
         String dailySql =
-            "SELECT RQSHPD,\n" +
-            "       SUM(CASE WHEN STATUS = 'DRAFT'     THEN 1 ELSE 0 END) AS PENDING_CNT,\n" +
-            "       SUM(CASE WHEN STATUS = 'CONFIRMED' THEN 1 ELSE 0 END) AS CONFIRMED_CNT,\n" +
+            "SELECT h.RQSHPD AS RQSHPD,\n" +
+            "       SUM(CASE WHEN sc.HAS_STKNUM = 1 THEN 0 ELSE 1 END) AS PENDING_CNT,\n" +
+            "       SUM(CASE WHEN sc.HAS_STKNUM = 1 THEN 1 ELSE 0 END) AS CONFIRMED_CNT,\n" +
             "       COUNT(*) AS TOTAL_CNT\n" +
-            "FROM KNRAWMS.TMS_PS_DISPATCH_H\n" +
-            "WHERE RQSHPD >= ? AND RQSHPD <= ?\n" +
-            "  AND NVL(STATUS, 'DRAFT') <> 'CANCELLED'" + pgf + "\n" +
-            "GROUP BY RQSHPD\n" +
-            "ORDER BY RQSHPD";
+            "FROM KNRAWMS.TMS_PS_DISPATCH_H h\n" +
+            "LEFT JOIN (\n" +
+            "    SELECT STDLNR, MAX(CASE WHEN STKNUM IS NOT NULL AND TRIM(STKNUM) <> '' THEN 1 ELSE 0 END) AS HAS_STKNUM\n" +
+            "    FROM KNRAWMS.TMS_SHPDI GROUP BY STDLNR\n" +
+            ") sc ON sc.STDLNR = h.DISPATCH_NO\n" +
+            "WHERE h.RQSHPD >= ? AND h.RQSHPD <= ?\n" +
+            "  AND NVL(h.STATUS, 'DRAFT') <> 'CANCELLED'" + pgfH + "\n" +
+            "GROUP BY h.RQSHPD\n" +
+            "ORDER BY h.RQSHPD";
         List<Map<String, Object>> dailyRows = jdbcTemplate.queryForList(dailySql, range[0], range[1]);
 
-        // 1-2. 출하유형별 차량대수 및 물량(KG) 분포
+        // 1-2. [출하유형별 총물량] 사용자 확인: '차량 톤수(CARTYPE)' 별 총 물량(톤) 집계.
+        //   (기존엔 MATERIAL_TYPE 기준이라 미저장 시 전부 '기타' 로만 표시됨 → CARTYPE 기준 변경)
+        //   MAT_TYPE 키에 CARTYPE 값(예: '11톤','15톤')을 담아 반환 → 프론트가 톤수 라벨로 표시.
+        //   CARTYPE 미상(NULL/공백)만 '기타'.
         String typeSql =
             "SELECT\n" +
-            "    CASE WHEN MATERIAL_TYPE IS NULL OR MATERIAL_TYPE = '' THEN 'OTHER'\n" +
-            "         ELSE MATERIAL_TYPE END AS MAT_TYPE,\n" +
+            "    CASE WHEN CARTYPE IS NULL OR TRIM(CARTYPE) = '' THEN '기타'\n" +
+            "         ELSE CARTYPE END AS MAT_TYPE,\n" +
             "    COUNT(*) AS CAR_CNT,\n" +
             "    ROUND(SUM(TOTAL_KG) / 1000, 2) AS TOTAL_TON\n" +
             "FROM KNRAWMS.TMS_PS_DISPATCH_H\n" +
             "WHERE RQSHPD >= ? AND RQSHPD <= ?\n" +
             "  AND NVL(STATUS, 'DRAFT') <> 'CANCELLED'" + pgf + "\n" +
             "GROUP BY\n" +
-            "    CASE WHEN MATERIAL_TYPE IS NULL OR MATERIAL_TYPE = '' THEN 'OTHER'\n" +
-            "         ELSE MATERIAL_TYPE END\n" +
-            "ORDER BY CAR_CNT DESC";
+            "    CASE WHEN CARTYPE IS NULL OR TRIM(CARTYPE) = '' THEN '기타'\n" +
+            "         ELSE CARTYPE END\n" +
+            "ORDER BY TOTAL_TON DESC";
         List<Map<String, Object>> typeRows = jdbcTemplate.queryForList(typeSql, range[0], range[1]);
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -152,16 +166,26 @@ public class DashboardService {
             "        ELSE 5 END)";
         List<Map<String, Object>> loadRateRows = jdbcTemplate.queryForList(loadRateSql, range[0], range[1]);
 
-        // 2-2. 권역별 물량 분포 (납품처코드 앞 2자리 = 권역)
+        // 2-2. [권역별 물량] 사용자 확인: 납품처(BZPTN_DETAIL)에 등록된 권역(AREA_CD) 기준.
+        //   (기존엔 납품처코드 앞2자리라 'P2','10' 같은 코드조각이 권역으로 표시됨 → AREA_CD 조인)
+        //   배차헤더 DPTNKY(납품처코드) = BZPTN_DETAIL.PTNRKY 로 조인해 AREA_CD 취득.
+        //   납품처당 여러 창고(WAREKY)로 복합키가 나뉠 수 있으므로, 서브쿼리로 PTNRKY별
+        //   대표 AREA_CD(MIN) 1건만 뽑아 조인(중복 증식 방지). AREA_CD 미등록은 '미지정'.
         String regionSql =
             "SELECT\n" +
-            "    NVL(SUBSTR(h.DPTNKY, 1, 2), '기타') AS REGION,\n" +
+            "    NVL(ba.AREA_CD, '미지정') AS REGION,\n" +
             "    COUNT(*) AS CAR_CNT,\n" +
             "    ROUND(SUM(h.TOTAL_KG) / 1000, 2) AS TOTAL_TON\n" +
             "FROM KNRAWMS.TMS_PS_DISPATCH_H h\n" +
+            "LEFT JOIN (\n" +
+            "    SELECT PTNRKY, MIN(AREA_CD) AS AREA_CD\n" +
+            "    FROM KNRAWMS.BZPTN_DETAIL\n" +
+            "    WHERE AREA_CD IS NOT NULL AND TRIM(AREA_CD) <> ''\n" +
+            "    GROUP BY PTNRKY\n" +
+            ") ba ON ba.PTNRKY = h.DPTNKY\n" +
             "WHERE h.RQSHPD >= ? AND h.RQSHPD <= ?\n" +
             "  AND NVL(h.STATUS, 'DRAFT') <> 'CANCELLED'" + pgfH + "\n" +
-            "GROUP BY NVL(SUBSTR(h.DPTNKY, 1, 2), '기타')\n" +
+            "GROUP BY NVL(ba.AREA_CD, '미지정')\n" +
             "ORDER BY TOTAL_TON DESC\n" +
             "FETCH FIRST 10 ROWS ONLY";
         List<Map<String, Object>> regionRows = jdbcTemplate.queryForList(regionSql, range[0], range[1]);
