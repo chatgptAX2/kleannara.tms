@@ -18901,24 +18901,24 @@ function _psopVehRenderDocs(pid) {
       title="맨 앞 ⠿ 핸들을 드래그하면 납품문서 목록으로 환원 · 더블클릭으로도 환원 · 셀 내용은 마우스로 드래그하여 복사 가능"
       ondragstart="psopDragStartVehDocRow(event,'${pid}','${shpokyEsc}','${shpoitEsc}')"
       ondblclick="psopRemoveItemFromVehicleConfirm('${pid}','${shpokyEsc}','${shpoitEsc}')">
-      <td style="font-family:monospace;font-size:10px;white-space:nowrap;user-select:text" title="출하문서키(SHPOKY): ${it.SHPOKY||''}">
+      <td style="font-family:monospace;font-size:12px;white-space:nowrap;user-select:text" title="출하문서키(SHPOKY): ${it.SHPOKY||''}">
         <span class="psop-vdoc-drag-handle" draggable="true"
               style="color:var(--text3);margin-right:4px;cursor:grab;user-select:none;display:inline-block"
               title="드래그하여 납품문서 목록으로 환원"
               ondragstart="psopDragStartVehDocRow(event,'${pid}','${shpokyEsc}','${shpoitEsc}')">⠿</span>${it.SVBELN||it.SHPOKY||'-'}
       </td>
-      <td style="font-size:10px;max-width:110px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${dptnm}">${dptnm}</td>
-      <td style="font-size:10px;font-family:monospace;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${sk}">${sk||'-'}</td>
-      <td style="font-size:10px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${it.DESC01||''}">${it.DESC01||'-'}</td>
-      <td class="num" style="font-size:10px">${qty}</td>
-      <td class="center" style="font-size:10px">${uom}</td>
-      <td class="center" style="font-size:10px;white-space:nowrap">${skuType}</td>
-      <td class="center" style="font-size:10px;white-space:nowrap">${inchTxt}</td>
-      <td class="num" style="font-size:10px">${wgtVal}</td>
-      <td class="num" style="font-size:10px;font-weight:600;color:${isRollDoc?'var(--primary)':'var(--text3)'}">${rollCntVal}</td>
-      <td class="num" style="font-size:10px">${cbm}</td>
-      <td class="center" style="font-size:10px;white-space:nowrap">${rqshpd}</td>
-      <td class="center" style="font-size:10px;white-space:nowrap">${shpmtyNm}</td>
+      <td style="font-size:12px;max-width:110px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${dptnm}">${dptnm}</td>
+      <td style="font-size:12px;font-family:monospace;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${sk}">${sk||'-'}</td>
+      <td style="font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${it.DESC01||''}">${it.DESC01||'-'}</td>
+      <td class="num" style="font-size:12px">${qty}</td>
+      <td class="center" style="font-size:12px">${uom}</td>
+      <td class="center" style="font-size:12px;white-space:nowrap">${skuType}</td>
+      <td class="center" style="font-size:12px;white-space:nowrap">${inchTxt}</td>
+      <td class="num" style="font-size:12px">${wgtVal}</td>
+      <td class="num" style="font-size:12px;font-weight:600;color:${isRollDoc?'var(--primary)':'var(--text3)'}">${rollCntVal}</td>
+      <td class="num" style="font-size:12px">${cbm}</td>
+      <td class="center" style="font-size:12px;white-space:nowrap">${rqshpd}</td>
+      <td class="center" style="font-size:12px;white-space:nowrap">${shpmtyNm}</td>
     </tr>`;
   }).join('');
 
@@ -18944,16 +18944,16 @@ function _psopVehRenderDocs(pid) {
   const _fmt = n => (Math.round(n * 100) / 100).toLocaleString();
   // 합계행: 납품문서/납품처명/품목코드/품목명(4열)은 '합계(N건)' 안내, 나머지는 각 합계.
   const _sumRow = `<tr class="psop-vdoc-sum-row">
-      <td colspan="4" style="font-size:10px;font-weight:700;color:var(--text2);text-align:center">합계 (${items.length}건)</td>
-      <td class="num" style="font-size:10px;font-weight:700;color:var(--primary-navy)">${_fmt(_sumQty)}</td>
-      <td class="center" style="font-size:10px;color:var(--text3)">-</td>
-      <td class="center" style="font-size:10px;color:var(--text3)">-</td>
-      <td class="center" style="font-size:10px;color:var(--text3)">-</td>
-      <td class="num" style="font-size:10px;font-weight:700;color:var(--primary-navy)">${_fmt(_sumKg)}kg</td>
-      <td class="num" style="font-size:10px;font-weight:700;color:var(--primary)">${_sumRoll > 0 ? _fmt(_sumRoll) : '-'}</td>
-      <td class="num" style="font-size:10px;font-weight:700;color:var(--primary-navy)">${_sumCbm > 0 ? _sumCbm.toFixed(3) : '-'}</td>
-      <td class="center" style="font-size:10px;color:var(--text3)">-</td>
-      <td class="center" style="font-size:10px;color:var(--text3)">-</td>
+      <td colspan="4" style="font-size:12px;font-weight:700;color:var(--text2);text-align:center">합계 (${items.length}건)</td>
+      <td class="num" style="font-size:12px;font-weight:700;color:var(--primary-navy)">${_fmt(_sumQty)}</td>
+      <td class="center" style="font-size:12px;color:var(--text3)">-</td>
+      <td class="center" style="font-size:12px;color:var(--text3)">-</td>
+      <td class="center" style="font-size:12px;color:var(--text3)">-</td>
+      <td class="num" style="font-size:12px;font-weight:700;color:var(--primary-navy)">${_fmt(_sumKg)}kg</td>
+      <td class="num" style="font-size:12px;font-weight:700;color:var(--primary)">${_sumRoll > 0 ? _fmt(_sumRoll) : '-'}</td>
+      <td class="num" style="font-size:12px;font-weight:700;color:var(--primary-navy)">${_sumCbm > 0 ? _sumCbm.toFixed(3) : '-'}</td>
+      <td class="center" style="font-size:12px;color:var(--text3)">-</td>
+      <td class="center" style="font-size:12px;color:var(--text3)">-</td>
     </tr>`;
 
   const _vd = _psopBuildResizableHead(_psopVdocColDefs, _psopVdocColW, 'psop-vdoccol', '#psop-vdoc-tbl');
