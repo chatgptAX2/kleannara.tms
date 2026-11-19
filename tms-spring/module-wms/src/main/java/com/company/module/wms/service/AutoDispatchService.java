@@ -858,12 +858,20 @@ public class AutoDispatchService {
                     int remain = totalRolls, idx = 1;
                     while (remain > 0) {
                         int cr = Math.min(chunkRolls, remain);   // 각 차량 롤 수(정수)
-                        double ckKg = round4(cr * perRollKg);
+                        double ckKg = round4(cr * perRollKg);     // 이 청크의 KG 중량(롤수×1롤중량)
                         Map<String, Object> chunk = new HashMap<>(it);
-                        chunk.put("QTSHPO", cr);
+                        // ── [버그수정] QTSHPO(납품수량) 단위 = KG (롤수 아님) ─────────────────
+                        //   TMS_SHPDI.QTSHPO 는 KG 단위 컬럼이다. 과거엔 여기에 '롤 개수(cr)'를
+                        //   넣어, 배차저장(splitTmsShpdiRow)에서 원본 KG 수량(예:9,280)에서
+                        //   롤수(예:9)만 차감 → 원본이 9,280→9 로 '쪼개지는' 데이터 파손이
+                        //   발생했다(수량/중량 불일치, 미리보기 "9 KG" 오표기). 롤의 분할수량은
+                        //   KG(ckKg)로 저장하여 KG 단위 일관성을 확보한다(롤수는 KG_WEIGHT/롤수
+                        //   표기용 별도 산출로 커버).
+                        chunk.put("QTSHPO", ckKg);
                         chunk.put("KG_WEIGHT", ckKg);
                         chunk.put("_SPLIT_FROM", it.get("SHPOIT"));
                         chunk.put("_SPLIT_IDX",  idx);
+                        chunk.put("_SPLIT_ROLLS", cr);            // 참고용 롤 개수(표기/로그용)
                         // ── SAP 납품분할 RFC 적용을 위한 표준 분할 메타 ──
                         //   자동배차 결과 확정(배차저장) 시, 이 메타로 /api/ps-dispatch/split
                         //   과 동일하게 Z_TMS_DELIVERY_SPLIT RFC 를 호출한다.
@@ -871,7 +879,7 @@ public class AutoDispatchService {
                         chunk.put("SVBELN",     str(it.get("SHPOKY")));   // 분할 대상(원본) 납품문서
                         chunk.put("SPOSNR",     str(it.get("SHPOIT")));   // 품목순번
                         chunk.put("SKUKEY",     str(it.get("SKUKEY")));
-                        chunk.put("SPLIT_QTY",  cr);                       // 분할수량(롤 수)
+                        chunk.put("SPLIT_QTY",  ckKg);                     // 분할수량(KG) — QTSHPO 와 동일 단위
                         chunk.put("ORG_SHPOKY", str(it.get("SHPOKY")));
                         chunk.put("ORG_SHPOIT", str(it.get("SHPOIT")));
                         splitItems.add(chunk);
@@ -3050,6 +3058,13 @@ public class AutoDispatchService {
     private int itemRollCount(Map<String, Object> it, Map<String, SkuInfo> skumaMap, double rollSingleKg) {
         String sk  = str(it.get("SKUKEY"));
         String uom = str(it.get("UOMKEY"));
+        // ── [버그수정 연계] 원지 롤 분할청크는 QTSHPO 가 'KG 단위'로 저장된다 ──────────
+        //   (롤 분할 시 QTSHPO=롤수 → QTSHPO=KG 로 변경. 원본 TMS_SHPDI 데이터 파손 방지)
+        //   따라서 분할청크에 한해 QTSHPO 를 '롤 개수'로 읽으면 KG(수천)를 롤수로 오인해
+        //   Y축점유·총롤수가 폭증한다. 분할 시 보관해 둔 정확한 롤수(_SPLIT_ROLLS)를 최우선
+        //   사용하고, 그 외에는 기존 산식(UOMKEY='R'→QTSHPO, 아니면 KG/1롤중량 역산)을 유지.
+        double splitRolls = dbl(it.get("_SPLIT_ROLLS"));
+        if (splitRolls > 0) return (int) Math.round(splitRolls);
         if ("R".equals(uom) && isRoll(sk)) return (int) dbl(it.get("QTSHPO"));
         double unitW = dbl(it.get("UNIT_WEIGHT"));
         double single = unitW > 0 ? unitW : rollSingleKg;
