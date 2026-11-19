@@ -2635,23 +2635,25 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 /* [요청] 선적목록(차량)·선적별 납품문서 상세 테이블 헤더 배경색을
    '납품문서 목록'(#psop-left .psd-doc-tbl) 기준으로 통일 — 밝은 회색(#eef0f2) */
 /* 선적목록(차량) 테이블 헤더 */
+/* [요청] 헤더 글자 확대(10→12px)로 가독성↑. 굵게(weight800)·글자색(#374151)·
+   배경색(#eef0f2)은 유지(요청 조건). letter-spacing 은 글자 커짐에 맞춰 소폭 축소. */
 #psop-vehicle-area .psd-sap-tbl thead th,
 #psop-car-wrap .psd-sap-tbl thead th{
   background:#eef0f2 !important;
   color:#374151 !important;
   border-bottom:2px solid #cbd2da !important;
-  font-size:10px !important;
+  font-size:12px !important;
   font-weight:800 !important;
-  letter-spacing:.4px !important;
+  letter-spacing:.2px !important;
 }
 /* 선적별 납품문서 상세 테이블 헤더 */
 #psop-veh-doc-area .psd-sap-tbl thead th{
   background:#eef0f2 !important;
   color:#374151 !important;
   border-bottom:2px solid #cbd2da !important;
-  font-size:10px !important;
+  font-size:12px !important;
   font-weight:800 !important;
-  letter-spacing:.4px !important;
+  letter-spacing:.2px !important;
 }
 /* ── PS배차(최적화) 배차탭 우측 선적목록/납품문서 — 컬럼 좌우 간격 조정 ── */
 /* 헤더/셀 좌우 여백을 넉넉·통일하여 컬럼 항목 간 좌우측 간격을 균형있게 표시 */
@@ -18692,7 +18694,7 @@ function psopRenderVehicleArea() {
     } else if (dm === 'MANUAL') {
       methodCell = `<span style="display:inline-block;font-size:9px;font-weight:700;color:#15803d;background:#dcfce7;border:1px solid #86efac;border-radius:4px;padding:1px 6px">수기</span>`;
     } else {
-      methodCell = `<span style="color:var(--text3);font-size:10px">-</span>`;
+      methodCell = `<span style="color:var(--text3);font-size:12px">-</span>`;
     }
 
     // 납품처
@@ -18719,7 +18721,7 @@ function psopRenderVehicleArea() {
     const barW     = ratioVal != null ? Math.min(ratioVal, 100) : 0;
     const ratioCell = `<div style="display:flex;flex-direction:column;gap:2px">
         <div style="display:flex;justify-content:space-between;font-size:9px">
-          <span class="psd-car-load-val ${ratioCls}" style="font-size:10px;font-weight:600">${ratioTxt}</span>
+          <span class="psd-car-load-val ${ratioCls}" style="font-size:12px;font-weight:700">${ratioTxt}</span>
         </div>
         <div class="psd-car-prog-wrap" style="height:3px">
           <div class="psd-car-prog-bar" style="width:${barW}%;background:${barColor};height:100%"></div>
@@ -18738,7 +18740,7 @@ function psopRenderVehicleArea() {
       // 차량번호: 인라인 input (blur/Enter 시 반영). 고정차량: 체크박스 토글.
       carnoCell = `<input type="text" value="${_carno.replace(/"/g,'&quot;')}" placeholder="차량번호"
           title="차량번호 입력/수정 (비우면 삭제)"
-          style="width:82px;font-size:10px;padding:2px 4px;border:1px solid var(--border,#d1d5db);border-radius:4px"
+          style="width:82px;font-size:12px;padding:2px 4px;border:1px solid var(--border,#d1d5db);border-radius:4px"
           onclick="event.stopPropagation()"
           onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
           onchange="psopEditCarno('${pid}',this.value)">`;
@@ -18751,11 +18753,11 @@ function psopRenderVehicleArea() {
         </label>`;
     } else {
       carnoCell = _carno
-        ? `<span style="font-size:10px;font-weight:600;color:var(--text)">${_carno}</span>`
-        : `<span style="color:var(--text3);font-size:10px">-</span>`;
+        ? `<span style="font-size:12px;font-weight:600;color:var(--text)">${_carno}</span>`
+        : `<span style="color:var(--text3);font-size:12px">-</span>`;
       fixCell = _isFix
-        ? `<span style="display:inline-block;font-size:9px;font-weight:700;color:#b45309;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;padding:1px 6px">고정</span>`
-        : `<span style="color:var(--text3);font-size:10px">-</span>`;
+        ? `<span style="display:inline-block;font-size:11px;font-weight:700;color:#b45309;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;padding:1px 6px">고정</span>`
+        : `<span style="color:var(--text3);font-size:12px">-</span>`;
     }
 
     return `<tr class="${selCls}" data-pid="${pid}" onclick="_psopVehSelectRow('${pid}',event)"
@@ -18768,14 +18770,14 @@ function psopRenderVehicleArea() {
       <td style="padding:4px 4px;white-space:nowrap">${shpnrTxt}${loadViewBtn}</td>
       <td style="padding:4px 4px;white-space:nowrap">${methodCell}</td>
       <td style="padding:4px 4px">
-        <span class="psd-car-badge ${ccls}" style="font-size:10px">🚛 ${cartype}</span>
+        <span class="psd-car-badge ${ccls}" style="font-size:11px">🚛 ${cartype}</span>
       </td>
       <td style="padding:4px 4px;text-align:center;white-space:nowrap">${carnoCell}</td>
       <td style="padding:4px 4px;text-align:center;white-space:nowrap">${fixCell}</td>
-      <td style="padding:4px 6px;font-size:10px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:120px" title="${dptnm}">${dptnm}</td>
-      <td style="padding:4px 4px;text-align:center;font-size:10px;white-space:nowrap;color:var(--primary);font-weight:600">${psopFmtDate(v.rqshpd||v.RQSHPD)||'-'}</td>
-      <td class="num" style="padding:4px 4px;font-size:10px;white-space:nowrap">${loadTxt}</td>
-      <td class="num" style="padding:4px 4px;font-size:10px;white-space:nowrap">${usedTxt}</td>
+      <td style="padding:4px 6px;font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:120px" title="${dptnm}">${dptnm}</td>
+      <td style="padding:4px 4px;text-align:center;font-size:12px;white-space:nowrap;color:var(--primary);font-weight:600">${psopFmtDate(v.rqshpd||v.RQSHPD)||'-'}</td>
+      <td class="num" style="padding:4px 4px;font-size:12px;white-space:nowrap">${loadTxt}</td>
+      <td class="num" style="padding:4px 4px;font-size:12px;white-space:nowrap">${usedTxt}</td>
       <td style="padding:4px 6px;min-width:70px">${ratioCell}</td>
     </tr>`;
   }).join('');
