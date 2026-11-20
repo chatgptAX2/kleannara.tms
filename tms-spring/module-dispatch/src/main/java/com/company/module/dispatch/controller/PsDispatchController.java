@@ -62,7 +62,13 @@ public class PsDispatchController {
     public ResponseEntity<ApiResponse<Object>> save(
             @Valid @RequestBody PsDispatchSaveRequest req) {
 
-        List<String> saved = psDispatchService.saveDispatch(req);
+        // ── [PR② 배차저장 시 SAP 납품분할] 저장과 '동일 쓰기 트랜잭션' 내부에서 분할 대상 수집 ──
+        //   과거엔 저장 후 별도 readOnly 트랜잭션으로 조회했으나, 커밋 타이밍/격리로 0건이 되어
+        //   SAP 분할이 통째로 누락됐다(운영 로그 '분할대상 0건' 확인). → saveDispatch 가 분할
+        //   발생 시점에 sapSplitTargets 에 직접 담아 반환하도록 교정(트랜잭션 경계 문제 원천 제거).
+        //   프론트가 이 목록을 SVBELN(원본 납품문서) 단위로 /api/ps-dispatch/split 순차 호출한다.
+        java.util.List<java.util.Map<String, Object>> sapSplitTargets = new java.util.ArrayList<>();
+        List<String> saved = psDispatchService.saveDispatch(req, sapSplitTargets);
 
         // ★ 커밋 후 검증 — SAP선적탭 미조회 근본원인 진단/방어
         //   saveDispatch(tms 트랜잭션) 리턴 시점에는 이미 커밋 완료.
@@ -73,18 +79,6 @@ public class PsDispatchController {
             wmsVisible = psDispatchService.verifyStdlnrViaWms(saved);
         } catch (Exception e) {
             // 검증 실패는 저장 자체를 실패로 만들지 않는다(로그만 남김)
-        }
-
-        // ── [PR② 배차저장 시 SAP 납품분할] 저장된 분할 대상 수집 → 응답 포함 ──────────
-        //   배차저장은 TMS 로컬 분할만 수행하므로, SAP 납품분할(Z_TMS_DELIVERY_SPLIT)이
-        //   필요한 대상(IS_SPLIT=1, 원본 SVBELN 보유)을 함께 반환한다. 프론트가 이 목록을
-        //   SVBELN(원본 납품문서) 단위로 /api/ps-dispatch/split 순차 호출하여 SAP 분할을
-        //   반영한다. (조회 실패는 저장 성공에 영향 주지 않음 — 빈 목록 반환)
-        java.util.List<java.util.Map<String, Object>> sapSplitTargets = java.util.Collections.emptyList();
-        try {
-            sapSplitTargets = psDispatchService.collectSapSplitTargets(saved);
-        } catch (Exception e) {
-            // 분할대상 조회 실패는 저장 자체를 실패로 만들지 않는다(로그만 남김 — 서비스 내부에서 처리)
         }
 
         java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
