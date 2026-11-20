@@ -788,13 +788,24 @@ public class PsDispatchService {
                         //   분할 청크(IS_SPLIT=1)는 '같은 SAP 납품문서(SVBELN)를 여러 가선적이
                         //   공유'하는 상태다(로컬 분할이 SVBELN 을 복제함). 이 상태로는 SAP 선적생성이
                         //   거부되므로, SAP 납품분할(Z_TMS_DELIVERY_SPLIT)로 떼어낼 대상을 수집한다.
-                        //   ※ 과거엔 저장 후 별도 readOnly 트랜잭션으로 조회했으나, 커밋 타이밍/격리로
-                        //     0건이 되어 SAP 분할이 통째로 누락됐다 → 쓰기 트랜잭션 내부 수집으로 교정.
+                        //
+                        //   ★[핵심] SAP 납품분할은 '원본에서 일부를 떼어내 신규 문서 생성'이다.
+                        //     N대로 나눠 실으려면 '1대는 원본 유지, N-1대만 분할'해야 한다.
+                        //     (예: 20376KG 원본을 12735+7641 2대로 → 7641만 분할, 원본엔 12735 잔류)
+                        //     로컬 분할 splitTmsShpdiRow 는 '원본에서 떼어낸 조각'일 때만 신규행을
+                        //     만들어 newKey!=null 을 반환하고, '원본 전량(마지막 잔량)' 청크는
+                        //     분할 불필요라 newKey==null(원본 그대로 사용) 이다.
+                        //     ⇒ newKey!=null 인 청크(=실제로 떼어낸 조각)만 SAP 분할 대상에 담으면
+                        //       정확히 N-1건이 되어 '원본 유지분 1건'은 SAP 분할에서 제외된다.
+                        //     [버그] 과거엔 IS_SPLIT=1 '모든' 청크를 담아, 같은 원본 품목(SPOSNR)을
+                        //       2번(합계=원본 전량) 분할 요청 → SAP 'E: 대상 품목을 찾을 수 없습니다'.
+                        //
                         //   · SVBELN   : 원본 납품문서(=ORG_SHPOKY)
                         //   · SPOSNR   : 원본 품목순번(=ORG_SHPOIT)
                         //   · SKUKEY   : 자재코드
                         //   · split_qty: 떼어낼 수량(KG) = 이 청크 QTSHPO (PR#569 로 KG 단위 정정)
-                        if (sapSplitTargetsOut != null && !isBlank(orgSk) && !isBlank(orgSi)) {
+                        if (sapSplitTargetsOut != null && newKey != null
+                                && !isBlank(orgSk) && !isBlank(orgSi)) {
                             Map<String, Object> tgt = new LinkedHashMap<>();
                             tgt.put("SVBELN",      orgSk.strip());
                             tgt.put("SPOSNR",      orgSi.strip());
