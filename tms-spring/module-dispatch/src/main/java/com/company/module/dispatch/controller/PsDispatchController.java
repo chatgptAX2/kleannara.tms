@@ -75,13 +75,24 @@ public class PsDispatchController {
             // 검증 실패는 저장 자체를 실패로 만들지 않는다(로그만 남김)
         }
 
-        return ResponseEntity.ok(ApiResponse.created(
-            java.util.Map.of(
-                "saved", saved.size(),
-                "dispatch_nos", saved,
-                "wms_visible_stdlnr", wmsVisible
-            )
-        ));
+        // ── [PR② 배차저장 시 SAP 납품분할] 저장된 분할 대상 수집 → 응답 포함 ──────────
+        //   배차저장은 TMS 로컬 분할만 수행하므로, SAP 납품분할(Z_TMS_DELIVERY_SPLIT)이
+        //   필요한 대상(IS_SPLIT=1, 원본 SVBELN 보유)을 함께 반환한다. 프론트가 이 목록을
+        //   SVBELN(원본 납품문서) 단위로 /api/ps-dispatch/split 순차 호출하여 SAP 분할을
+        //   반영한다. (조회 실패는 저장 성공에 영향 주지 않음 — 빈 목록 반환)
+        java.util.List<java.util.Map<String, Object>> sapSplitTargets = java.util.Collections.emptyList();
+        try {
+            sapSplitTargets = psDispatchService.collectSapSplitTargets(saved);
+        } catch (Exception e) {
+            // 분할대상 조회 실패는 저장 자체를 실패로 만들지 않는다(로그만 남김 — 서비스 내부에서 처리)
+        }
+
+        java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("saved", saved.size());
+        payload.put("dispatch_nos", saved);
+        payload.put("wms_visible_stdlnr", wmsVisible);
+        payload.put("sap_split_targets", sapSplitTargets);   // [PR②] SAP 납품분할 대상(SVBELN 단위 그룹핑은 프론트)
+        return ResponseEntity.ok(ApiResponse.created(payload));
     }
 
     /**
