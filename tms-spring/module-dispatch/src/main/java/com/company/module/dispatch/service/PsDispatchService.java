@@ -1016,6 +1016,65 @@ public class PsDispatchService {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
+    // [PR② 배차저장 시 SAP 납품분할] 저장된 분할 대상(SAP 납품분할 필요 행) 조회
+    //
+    // ■ 배경
+    //   배차저장(saveDispatch)은 원지 롤/판지 분할 청크(IS_SPLIT=1)를 TMS_SHPDI 에
+    //   '로컬 분할'(신규 SHPOIT 채번, SVBELN 원본 복제)만 수행한다. 이 상태로는 SAP 에
+    //   납품분할이 반영되지 않아, 하나의 SAP 납품문서(SVBELN)를 여러 가선적이 공유해
+    //   선적생성이 거부된다. (사용자 요청: 배차저장 시점에 SAP 까지 납품분할 수행)
+    //
+    // ■ 역할
+    //   방금 저장된 가선적(dispatchNos)에 속한 분할행(IS_SPLIT=1) 중, '아직 SAP 분할이
+    //   반영되지 않은' 행을 원본 납품문서(ORG_SHPOKY=원본 SVBELN) 기준으로 조회하여
+    //   프론트가 SVBELN 단위로 /api/ps-dispatch/split(Z_TMS_DELIVERY_SPLIT)을 순차
+    //   호출할 수 있도록 입력(SVBELN/SPOSNR/SKUKEY/split_qty)을 구성해 반환한다.
+    //
+    //   · SVBELN   : 분할 대상(원본) 납품문서번호 = ORG_SHPOKY
+    //   · SPOSNR   : 원본 품목순번 = ORG_SHPOIT
+    //   · SKUKEY   : 자재코드
+    //   · split_qty: 떼어낼 수량(KG) = 분할행 QTSHPO (PR#569 로 KG 단위 정정됨)
+    //
+    //   ※ TMS_PS_DISPATCH_D 는 MariaDB(tmsEm) 이므로 tms 트랜잭션으로 조회한다.
+    //     (saveDispatch 커밋 완료 후 호출되므로 최신 상태가 보인다)
+    // ──────────────────────────────────────────────────────────────────────────
+    @Transactional(transactionManager = "tmsTransactionManager", readOnly = true)
+    public List<Map<String, Object>> collectSapSplitTargets(List<String> dispatchNos) {
+        List<Map<String, Object>> targets = new ArrayList<>();
+        if (dispatchNos == null || dispatchNos.isEmpty()) return targets;
+
+        for (String no : dispatchNos) {
+            if (no == null || no.isBlank()) continue;
+            try {
+                @SuppressWarnings("unchecked")
+                List<Object[]> rows = tmsEm.createNativeQuery(
+                        "SELECT ORG_SHPOKY, ORG_SHPOIT, SKUKEY, QTSHPO " +
+                        "  FROM KNRAWMS.TMS_PS_DISPATCH_D " +
+                        " WHERE DISPATCH_NO = ? AND IS_SPLIT = 1 " +
+                        "   AND ORG_SHPOKY IS NOT NULL AND TRIM(ORG_SHPOKY) <> '' " +
+                        "   AND ORG_SHPOIT IS NOT NULL AND TRIM(ORG_SHPOIT) <> ''")
+                    .setParameter(1, no.strip())
+                    .getResultList();
+                for (Object[] r : rows) {
+                    Map<String, Object> t = new LinkedHashMap<>();
+                    t.put("SVBELN",    str(r[0]));                    // 원본 납품문서(=ORG_SHPOKY)
+                    t.put("SPOSNR",    str(r[1]));                    // 원본 품목순번(=ORG_SHPOIT)
+                    t.put("SKUKEY",    str(r[2]));
+                    t.put("split_qty", r[3] == null ? 0L
+                                       : (long) Math.floor(Double.parseDouble(r[3].toString())));
+                    t.put("dispatch_no", no.strip());                // 어느 가선적 소속인지(진단용)
+                    targets.add(t);
+                }
+            } catch (Exception e) {
+                log.warn("[PsDispatch] SAP 분할대상 조회 실패 dispatchNo={} : {}", no, e.getMessage());
+            }
+        }
+        log.info("[PsDispatch] SAP 분할대상 수집 — 가선적 {}건 → 분할대상 {}건",
+                 dispatchNos.size(), targets.size());
+        return targets;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
     // 배차 삭제 (배차대기/대시보드 물량 실시간 반영)
     //
     // ■ 문제
