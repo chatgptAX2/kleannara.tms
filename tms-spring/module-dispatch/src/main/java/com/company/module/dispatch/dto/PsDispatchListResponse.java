@@ -40,6 +40,7 @@ public class PsDispatchListResponse {
         private Long   itemId;
         private Integer seq;
         private String shpoky;
+        private String svbeln;   // SAP 납품문서번호(TMS_SHPDI.SVBELN) — 배차탭 '납품문서' 컬럼 표시용
         private String shpoit;
         private String skukey;
         private String desc01;

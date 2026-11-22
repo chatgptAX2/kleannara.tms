@@ -876,7 +876,14 @@ public class AutoDispatchService {
                         //   자동배차 결과 확정(배차저장) 시, 이 메타로 /api/ps-dispatch/split
                         //   과 동일하게 Z_TMS_DELIVERY_SPLIT RFC 를 호출한다.
                         chunk.put("IS_SPLIT",   1);
-                        chunk.put("SVBELN",     str(it.get("SHPOKY")));   // 분할 대상(원본) 납품문서
+                        // ★[버그수정] SAP 납품분할(Z_TMS_DELIVERY_SPLIT) 대상은 'SAP 납품문서번호(SVBELN)'다.
+                        //   과거엔 SHPOKY(출하문서번호)를 SVBELN 자리에 넣어, SAP 에 출하문서번호가
+                        //   전송돼 'E: 대상 품목을 찾을 수 없습니다' 오류 발생.
+                        //   원본 아이템(it)에는 SVBELN(납품문서)과 SHPOKY(출하문서)가 별개로 존재하므로
+                        //   SVBELN 은 반드시 it.SVBELN 을 사용한다(없으면 SHPOKY 폴백).
+                        //   ※ ORG_SHPOKY/ORG_SHPOIT 는 로컬 TMS_SHPDI(SHPOKY+SHPOIT) 분할 키이므로 SHPOKY 유지.
+                        chunk.put("SVBELN",     !str(it.get("SVBELN")).isEmpty()
+                                                ? str(it.get("SVBELN")) : str(it.get("SHPOKY")));   // SAP 납품문서번호
                         chunk.put("SPOSNR",     str(it.get("SHPOIT")));   // 품목순번
                         chunk.put("SKUKEY",     str(it.get("SKUKEY")));
                         chunk.put("SPLIT_QTY",  ckKg);                     // 분할수량(KG) — QTSHPO 와 동일 단위
@@ -1383,7 +1390,10 @@ public class AutoDispatchService {
                         chunk.put("_SPLIT_IDX",  idx);
                         // ── SAP 납품분할 RFC(Z_TMS_DELIVERY_SPLIT) 적용용 표준 분할 메타 ──
                         chunk.put("IS_SPLIT",   1);
-                        chunk.put("SVBELN",     str(it.get("SHPOKY")));   // 분할 대상(원본) 납품문서
+                        // ★[버그수정] SAP 납품분할 대상은 'SAP 납품문서번호(SVBELN)' — SHPOKY(출하문서) 아님.
+                        //   it 에는 SVBELN/SHPOKY 가 별개로 존재 → SVBELN 사용(없으면 SHPOKY 폴백). (원지 경로와 동일)
+                        chunk.put("SVBELN",     !str(it.get("SVBELN")).isEmpty()
+                                                ? str(it.get("SVBELN")) : str(it.get("SHPOKY")));   // SAP 납품문서번호
                         chunk.put("SPOSNR",     str(it.get("SHPOIT")));   // 품목순번
                         chunk.put("SKUKEY",     str(it.get("SKUKEY")));
                         chunk.put("SPLIT_QTY",  cq);                       // 분할수량(번들/연)
