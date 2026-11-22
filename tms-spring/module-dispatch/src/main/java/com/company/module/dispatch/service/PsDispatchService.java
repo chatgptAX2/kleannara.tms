@@ -800,20 +800,27 @@ public class PsDispatchService {
                         //     [버그] 과거엔 IS_SPLIT=1 '모든' 청크를 담아, 같은 원본 품목(SPOSNR)을
                         //       2번(합계=원본 전량) 분할 요청 → SAP 'E: 대상 품목을 찾을 수 없습니다'.
                         //
-                        //   · SVBELN   : 원본 납품문서(=ORG_SHPOKY)
+                        //   ★[버그수정] SVBELN 은 'SAP 납품문서번호'(it.getSvbeln, 예:0062360825)여야 한다.
+                        //     과거엔 orgSk(=ORG_SHPOKY=출하문서번호, 예:2004724442)를 보내 SAP 에
+                        //     출하문서번호가 전송돼 'E: 대상 품목을 찾을 수 없습니다' 오류 발생.
+                        //     SHPOKY(출하문서)와 SVBELN(납품문서)은 TMS_SHPDI 의 별개 컬럼이다.
+                        //   · SVBELN   : SAP 납품문서번호(it.svbeln) — 없으면 orgSk(출하문서) 폴백
                         //   · SPOSNR   : 원본 품목순번(=ORG_SHPOIT)
                         //   · SKUKEY   : 자재코드
                         //   · split_qty: 떼어낼 수량(KG) = 이 청크 QTSHPO (PR#569 로 KG 단위 정정)
                         if (sapSplitTargetsOut != null && newKey != null
-                                && !isBlank(orgSk) && !isBlank(orgSi)) {
-                            Map<String, Object> tgt = new LinkedHashMap<>();
-                            tgt.put("SVBELN",      orgSk.strip());
-                            tgt.put("SPOSNR",      orgSi.strip());
-                            tgt.put("SKUKEY",      str(it.getSkukey()));
-                            tgt.put("split_qty",   it.getQtshpo() == null
-                                                   ? 0L : (long) Math.floor(it.getQtshpo()));
-                            tgt.put("dispatch_no", dispatchNo);
-                            sapSplitTargetsOut.add(tgt);
+                                && !isBlank(orgSi)) {
+                            String svbelnForSap = firstNonBlank(it.getSvbeln(), orgSk);
+                            if (!isBlank(svbelnForSap)) {
+                                Map<String, Object> tgt = new LinkedHashMap<>();
+                                tgt.put("SVBELN",      svbelnForSap.strip());
+                                tgt.put("SPOSNR",      orgSi.strip());
+                                tgt.put("SKUKEY",      str(it.getSkukey()));
+                                tgt.put("split_qty",   it.getQtshpo() == null
+                                                       ? 0L : (long) Math.floor(it.getQtshpo()));
+                                tgt.put("dispatch_no", dispatchNo);
+                                sapSplitTargetsOut.add(tgt);
+                            }
                         }
                     }
 
@@ -1309,6 +1316,43 @@ public class PsDispatchService {
                 }
             }
 
+            // ── Step 2.5: SHPOKY+SHPOIT → Oracle KNRAWMS.TMS_SHPDI.SVBELN 별도 조회 ──
+            //   [버그수정] 배차탭 '납품문서' 컬럼에 SHPOKY(출하문서번호)가 표시되던 문제.
+            //     저장 테이블 TMS_PS_DISPATCH_D 에는 SVBELN(납품문서번호) 컬럼이 없어
+            //     재조회 시 프론트가 SHPOKY 로 폴백(it.SVBELN||it.SHPOKY)해 출하문서번호가 보였다.
+            //     SVBELN 은 TMS_SHPDI(SHPOKY+SHPOIT)의 별개 컬럼이므로 여기서 복원한다.
+            //   ※ 로컬 분할행(IS_SPLIT=1)은 splitTmsShpdiRow 가 신규 SHPOIT 로 TMS_SHPDI 에
+            //     원본 SVBELN 을 복제 INSERT 하므로, 저장된 SHPOKY+SHPOIT 로 동일하게 조회된다.
+            Map<String, String> svbelnMap = new HashMap<>();   // key = SHPOKY|SHPOIT
+            if (!details.isEmpty()) {
+                Set<String> shpokys = new LinkedHashSet<>();
+                for (Object[] d : details) {
+                    String sko = str(d[2]);
+                    if (!sko.isEmpty()) shpokys.add(sko);
+                }
+                if (!shpokys.isEmpty()) {
+                    final int CHUNK = 1000;   // Oracle IN 절 1,000개 제한(ORA-01795) 회피
+                    List<String> skoList = new ArrayList<>(shpokys);
+                    for (int from = 0; from < skoList.size(); from += CHUNK) {
+                        List<String> chunk = skoList.subList(from, Math.min(from + CHUNK, skoList.size()));
+                        String ph = chunk.stream().map(x -> "?").collect(Collectors.joining(","));
+                        var svQ = em.createNativeQuery(
+                            "SELECT i.SHPOKY, i.SHPOIT, i.SVBELN" +
+                            "  FROM KNRAWMS.TMS_SHPDI i" +
+                            "  WHERE i.SHPOKY IN (" + ph + ")"
+                        );
+                        int pi = 1;
+                        for (String sko : chunk) svQ.setParameter(pi++, sko);
+                        @SuppressWarnings("unchecked")
+                        List<Object[]> svRows = svQ.getResultList();
+                        for (Object[] sv : svRows) {
+                            String key = str(sv[0]) + "|" + str(sv[1]);
+                            svbelnMap.put(key, str(sv[2]));
+                        }
+                    }
+                }
+            }
+
             // ── Step 3: 결과 조립 ──
             int totalRoll = 0;
             List<PsDispatchListResponse.ItemDetail> items = new ArrayList<>();
@@ -1330,6 +1374,7 @@ public class PsDispatchService {
                     .itemId(toLong(d[0]))
                     .seq(toInt(d[1]))
                     .shpoky(str(d[2]))
+                    .svbeln(svbelnMap.getOrDefault(str(d[2]) + "|" + str(d[3]), ""))   // TMS_SHPDI.SVBELN 복원
                     .shpoit(str(d[3]))
                     .skukey(sk)
                     .desc01(str(d[5]))
