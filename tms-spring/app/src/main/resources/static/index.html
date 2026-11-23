@@ -20589,6 +20589,34 @@ function _psopRestorePendingState() {
   }
 }
 
+/* ── [버그수정] load-for-edit 복원 items 대문자 정규화 ──────────────────
+ *   백엔드 load-for-edit 는 상세 아이템을 소문자(svbeln/shpoky…)로 반환하는데,
+ *   배차탭 렌더(_psopVehRenderDocs)·차량카드는 대문자 키(it.SVBELN/it.SHPOKY…)를
+ *   참조한다. 과거 psop 복원 경로(psopMergeRestoredVehicles/psopMergeSavedVehicles)는
+ *   정규화 없이 v.items 를 그대로 넣어, it.SVBELN 이 undefined → '납품문서' 컬럼이
+ *   SHPOKY(출하문서번호)로 폴백 표시됐다. (psd 탭은 L11783 에서 이미 정규화함)
+ *   → 여기서 대문자 키를 보강한다. 원본 소문자 키도 ...it 로 함께 보존.
+ */
+function _psopNormalizeItems(items) {
+  return (items || []).map(it => ({
+    ...it,   // 원본(소문자 포함) 보존
+    SHPOKY:    it.SHPOKY    ?? it.shpoky,
+    SHPOIT:    it.SHPOIT    ?? it.shpoit,
+    SVBELN:    it.SVBELN    ?? it.svbeln,     // SAP 납품문서번호(없으면 렌더에서 SHPOKY 폴백)
+    SKUKEY:    it.SKUKEY    ?? it.skukey,
+    DESC01:    it.DESC01    ?? it.desc01,
+    QTSHPO:    it.QTSHPO    ?? it.qtshpo,
+    UOMKEY:    it.UOMKEY    ?? it.uomkey,
+    DPTNKY:    it.DPTNKY    ?? it.dptnky,
+    DPTNM:     it.DPTNM     ?? it.dptnm,
+    GRSWGT:    it.GRSWGT    ?? it.grswgt,
+    KG_WEIGHT: it.KG_WEIGHT ?? it.kgWeight,
+    IS_SPLIT:  it.IS_SPLIT  ?? it.isSplit,
+    ORG_SHPOKY:it.ORG_SHPOKY?? it.orgShpoky,
+    ORG_SHPOIT:it.ORG_SHPOIT?? it.orgShpoit,
+  }));
+}
+
 /* ── 복원된 vehicles → psopState에 병합 (SAP삭제 복원 / 불러오기 공통) ── */
 function psopMergeRestoredVehicles(vehicles, searchRows) {
   // 1. searchRows 병합 (searchRows에 없는 아이템 추가)
@@ -20617,7 +20645,7 @@ function psopMergeRestoredVehicles(vehicles, searchRows) {
     psopState._pendingSeq = (psopState._pendingSeq || 0) + 1;
     const pid = `_pending_${psopState._pendingSeq}`;
 
-    const items = v.items || [];
+    const items = _psopNormalizeItems(v.items);   // [버그수정] 대문자 키 정규화(SVBELN 등)
     // items에 DISPATCHED 플래그 기반으로 searchRows 업데이트
     items.forEach(it => {
       const shpoky = it.SHPOKY ?? it.shpoky;
@@ -20694,7 +20722,7 @@ function psopMergeSavedVehicles(vehicles, searchRows, markAutoBySel) {
     psopState._pendingSeq = (psopState._pendingSeq || 0) + 1;
     const pid = `_saved_${psopState._pendingSeq}`;
 
-    const items = v.items || [];
+    const items = _psopNormalizeItems(v.items);   // [버그수정] 대문자 키 정규화(SVBELN 등)
     // items → searchRows 를 배차완료로 갱신 + savedKeys 등록
     items.forEach(it => {
       const shpoky = it.SHPOKY ?? it.shpoky;
