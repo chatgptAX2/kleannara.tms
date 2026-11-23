@@ -847,8 +847,39 @@ public class AutoDispatchService {
                 double perRollKg = totalRolls > 0 ? totalKgIt / totalRolls : cp.rollSingleKg; // 1롤 중량
                 // 한 차량 수용 가능 롤 수 = floor(차량한도 / 1롤중량) — 롤 '개수' 단위(정수)
                 int rollsByKg    = perRollKg > 0 ? (int) Math.floor(bigCap / perRollKg) : totalRolls;
-                // 1단 적재 가능 개수(maxRc)와 중량 기준 롤수 중 작은 값 → 한 차량 청크 롤수
-                int chunkRolls   = Math.min(Math.min(maxRc > 0 ? maxRc : totalRolls, rollsByKg), totalRolls);
+
+                // ── [보완된 옵션A] 분할 단위(chunkRolls) 산정 ─────────────────────────
+                //  (기존) chunkRolls = min(maxRc(1단정원), rollsByKg) → 1단 정원만 상한으로
+                //         써서, 다단(최대 cp.maxStack 단) 적재가 가능한데도 25롤이 1단 15롤로
+                //         조기 분할되던 문제. (예: 18톤 3인치 1단 15롤 → 무조건 15+10)
+                //  (개선) ① 다단 반영: maxRc × '높이 허용 단수(effStack)' 로 1차 상한 확대.
+                //              effStack = min(maxStack, floor((차량유효높이+간격)/(원지폭+간격)))
+                //              — 사용자 요구("단수 3단 반영, 단 물리검증 시 차량 높이 이하로만").
+                //         ② 3D 실수용량 반영: 실제 검증기(verifyRolls3D)를 bigCar(최대차)에
+                //              대해 이분탐색 호출하여 '중량·길이(Y축)·높이(Z축) 모두' 담기는
+                //              최대 롤수(fit3d)를 측정 → 추정 괴리 없이 3D 판정과 100% 일치.
+                //              (ROLL_3D_CHECK_YN=N 이면 중량 기준 상한만 사용)
+                //  ※ 최종 분할단위는 위 상한들과 totalRolls 중 최솟값. 조각이 그래도 3D에
+                //    안 담기면 뒤단(차량선정)에서 업그레이드/재분할로 최종 방어한다.
+                final double TIER_GAP_M_SPLIT = 0.030; // 단 사이 물리 간격(3D 검증과 동일 30mm)
+                double rollWmSplit = rollWidthMm(it, skumaMap, sk) / 1000.0;
+                double effHSplit   = rollEffH(bigCar, pi.forkliftYn, vehInfo, cp);
+                if (cp.rollMaxHeightM > 0) effHSplit = Math.min(effHSplit, cp.rollMaxHeightM);
+                int effStack = Math.max(1, Math.min(cp.maxStack,
+                        rollWmSplit > 0 ? (int)((effHSplit + TIER_GAP_M_SPLIT) / (rollWmSplit + TIER_GAP_M_SPLIT)) : 1));
+                // 1차 상한: 다단 1단정원(maxRc×effStack) 과 중량기준 중 작은 값
+                int maxRcStacked = maxRc > 0 ? maxRc * effStack : totalRolls;
+                int chunkRolls   = Math.min(Math.min(maxRcStacked, rollsByKg), totalRolls);
+                // 2차 상한: bigCar 3D 실수용량(중량+길이+높이) 으로 보정 — 3D 검증 활성 시
+                if (cp.roll3dCheck && chunkRolls > 1) {
+                    int fit3d = maxRollsFitOnCar(it, chunkRolls, perRollKg, bigCar, vehInfo, cp, inchMaps, skumaMap);
+                    if (fit3d > 0 && fit3d < chunkRolls) {
+                        splitNotesPre.add(String.format(
+                            "[분할-3D반영] %s#%s — 최대차 %s 3D 실수용 %d롤(≤%d단) 기준으로 분할단위 %d→%d롤 보정",
+                            str(it.get("SHPOKY")), str(it.get("SHPOIT")), bigCar, fit3d, effStack, chunkRolls, fit3d));
+                        chunkRolls = fit3d;
+                    }
+                }
                 // 최소 배차 롤수(ROLL_MIN_QTY) 하한 보정 — 단, 전체 롤수를 넘지 않음
                 chunkRolls = Math.min(totalRolls, Math.max(chunkRolls, cp.rollMinQty));
                 // 정수 롤 단위 강제(rollIntegerOnly): chunkRolls 는 이미 정수. 최소 1롤 보장.
@@ -856,8 +887,24 @@ public class AutoDispatchService {
 
                 if (chunkRolls > 0 && chunkRolls < totalRolls) {
                     int remain = totalRolls, idx = 1;
-                    while (remain > 0) {
+                    int guard = totalRolls + 5; // 무한루프 방지(최악 1롤씩 → totalRolls 회)
+                    while (remain > 0 && guard-- > 0) {
                         int cr = Math.min(chunkRolls, remain);   // 각 차량 롤 수(정수)
+                        // ── [3D 초과 시 차량 추가 분할] ────────────────────────────────
+                        //  이 조각(cr롤)이 최대차(bigCar)에 3D(중량+길이+높이)로 담기지 않으면,
+                        //  담기는 최대 롤수까지 cr 을 낮춰 '한 대 더'로 쪼갠다(추가 분할).
+                        //  (ROLL_3D_CHECK_YN=Y 일 때만. 담을 수 있는 최대치는 이분탐색으로 측정.)
+                        if (cp.roll3dCheck && cr > 1
+                            && !rolls3DFitsOnCar(it, cr, perRollKg, bigCar, vehInfo, cp, inchMaps, skumaMap)) {
+                            int fitNow = maxRollsFitOnCar(it, cr - 1, perRollKg, bigCar, vehInfo, cp, inchMaps, skumaMap);
+                            int crAdj  = Math.max(1, fitNow); // 최소 1롤은 보장(1롤도 불가면 뒤단 차단/업그레이드가 처리)
+                            if (crAdj < cr) {
+                                splitNotesPre.add(String.format(
+                                    "[분할-3D추가분할] %s#%s 조각#%d — 최대차 %s 3D 적재불가 → %d→%d롤로 축소(차량 추가 분할)",
+                                    str(it.get("SHPOKY")), str(it.get("SHPOIT")), idx, bigCar, cr, crAdj));
+                                cr = crAdj;
+                            }
+                        }
                         double ckKg = round4(cr * perRollKg);     // 이 청크의 KG 중량(롤수×1롤중량)
                         Map<String, Object> chunk = new HashMap<>(it);
                         // ── [버그수정] QTSHPO(납품수량) 단위 = KG (롤수 아님) ─────────────────
@@ -3914,6 +3961,68 @@ public class AutoDispatchService {
                 result.stackHeightM, heightCapMm / 1000.0));
         }
         return result;
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  [보완된 옵션A] 분할 단계 3D 실수용량 측정 헬퍼
+    //  - 분할(chunkRolls) 상한을 '1단 정원(maxRc)' 대신 '다단+길이(Y축)까지
+    //    반영한 실제 3D 수용 롤수'로 넓히기 위한 보조 메서드.
+    //  - 추정식 재구현 대신 실제 검증기(verifyRolls3D)를 그대로 호출해
+    //    3D 판정과 100% 일치시킨다(과분할/과적 괴리 제거).
+    // ════════════════════════════════════════════════════════════════
+
+    /**
+     * 주어진 원지 아이템(it)을 'rolls 개'로 구성한 가상 아이템을 만들어
+     * 지정 차량(cartype)에 3D로 적재 가능한지(fits) 검증한다.
+     * (verifyRolls3D 를 분할 단계에서 재사용하기 위한 래퍼)
+     */
+    private boolean rolls3DFitsOnCar(Map<String, Object> baseItem, int rolls, double perRollKg,
+                                      String cartype, Map<String, VehInfo> vehInfo,
+                                      ConstraintParams cp, InchMaps inchMaps,
+                                      Map<String, SkuInfo> skumaMap) {
+        if (rolls <= 0) return true;
+        VehInfo vi = vehInfo.getOrDefault(cartype, VehInfo.EMPTY);
+        if (vi == VehInfo.EMPTY || vi.lengthM <= 0 || vi.widthM <= 0) return true; // 치수불명 → 3D 스킵(기존 동작 유지)
+        Map<String, Object> probe = new HashMap<>(baseItem);
+        // UOMKEY='R' + QTSHPO=롤수 로 구성 → itemRollCount 가 정확히 rolls 를 반환하도록.
+        probe.put("UOMKEY", "R");
+        probe.put("QTSHPO", (double) rolls);
+        probe.put("KG_WEIGHT", round4(rolls * perRollKg));
+        RollPhysics3D rp = verifyRolls3D(java.util.Collections.singletonList(probe),
+                skumaMap, vi, cp, inchMaps, cartype);
+        return rp.fits;
+    }
+
+    /**
+     * 지정 차량(cartype)에 이 원지 아이템이 '중량·3D(길이+높이) 모두' 담기는
+     * 최대 롤수를 이분탐색으로 측정한다. (1..hiCap 범위, 중량한도 선적용)
+     *  - roll3dCheck=N 이면 3D 검증을 건너뛰고 중량 기준 상한만 반환.
+     *  - 담을 수 있는 롤이 하나도 없으면 0 반환(호출측에서 1롤 보장 처리).
+     */
+    private int maxRollsFitOnCar(Map<String, Object> baseItem, int hiCap, double perRollKg,
+                                  String cartype, Map<String, VehInfo> vehInfo,
+                                  ConstraintParams cp, InchMaps inchMaps,
+                                  Map<String, SkuInfo> skumaMap) {
+        if (hiCap <= 0) return 0;
+        // 1) 중량 한도 선적용
+        VehInfo vi = vehInfo.getOrDefault(cartype, VehInfo.EMPTY);
+        double cap = vi.loadKg > 0 ? vi.loadKg : 99_999_999.0;
+        int byKg = perRollKg > 0 ? (int) Math.floor(cap / perRollKg) : hiCap;
+        int hi = Math.min(hiCap, Math.max(0, byKg));
+        if (hi <= 0) return 0;
+        // 2) 3D 비활성 시 중량 기준 상한 그대로
+        if (!cp.roll3dCheck) return hi;
+        // 3) 이분탐색: fits(mid) 를 만족하는 최대값
+        int lo = 1, best = 0;
+        while (lo <= hi) {
+            int mid = (lo + hi) >>> 1;
+            if (rolls3DFitsOnCar(baseItem, mid, perRollKg, cartype, vehInfo, cp, inchMaps, skumaMap)) {
+                best = mid; lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        return best;
     }
 
     /** 원지 레이어 그룹 보조 클래스 */
