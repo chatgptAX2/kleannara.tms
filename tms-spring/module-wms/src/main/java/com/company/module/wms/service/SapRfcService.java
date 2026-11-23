@@ -1998,7 +1998,18 @@ public class SapRfcService {
             if (svbelnO.isBlank()) continue;               // 채번 실패행 skip
             if (!"S".equalsIgnoreCase(str(p.get("MSGTY")))) continue;
             try {
-                // 원본 문서(ORG_SHPOKY) + 품목순번(SHPOIT) 로 분할행 식별
+                // ── 1) 갱신 대상 분할행의 실제 TMS 키(SHPOKY, SHPOIT) 조회 ─────────────
+                //   배차저장(splitTmsShpdiRow)이 만든 '신규 분할행'은 TMS_PS_DISPATCH_D 에
+                //   ORG_SHPOKY=원본출하문서, SVBELN=원본납품문서(orgSvbeln), SHPOIT=신규채번,
+                //   IS_SPLIT=1 로 저장돼 있다. TMS_SHPDI 갱신(2단계)에 쓸 실제 키를 먼저 확보.
+                //   (SHPOKY=TMS_SHPDI 출하문서키, SHPOIT=TMS_SHPDI 신규 분할행 순번)
+                List<Map<String, Object>> rows = tmsJdbc.queryForList(
+                    "SELECT SHPOKY, SHPOIT FROM KNRAWMS.TMS_PS_DISPATCH_D " +
+                    " WHERE ORG_SHPOKY=? AND SHPOIT=? AND IS_SPLIT=1 " +
+                    "   AND (SHPOKY IS NULL OR SHPOKY <> ?)",
+                    orgSvbeln, posnr, svbelnO);
+
+                // ── 2) TMS_PS_DISPATCH_D 의 분할행 납품문서번호를 SAP 채번(SVBELN_O)으로 갱신 ──
                 int n = tmsJdbc.update(
                     "UPDATE KNRAWMS.TMS_PS_DISPATCH_D " +
                     "   SET SHPOKY=?, SVBELN=? " +
@@ -2009,6 +2020,39 @@ public class SapRfcService {
                 if (n > 0) {
                     stdoutLog("[납품분할][TMS갱신] ORG_SHPOKY=" + orgSvbeln
                             + ", SHPOIT=" + posnr + " → SHPOKY=" + svbelnO + " (" + n + "건)");
+                }
+
+                // ── 3) ★[요청] TMS_SHPDI 납품문서번호/배차상태 반영 ────────────────────
+                //   납품문서 목록 화면은 TMS_SHPDI 를 원천으로 조회하며, '납품문서' 컬럼은
+                //   SHPOKY/SVBELN, '배차상태'는 STDLNR(가선적번호) 채번 여부로 판정한다.
+                //   (요청1) 분할된 신규 납품문서가 '미배차'로 남던 문제 →
+                //           분할행의 SHPOKY/SVBELN 만 SVBELN_O 로 갱신하고 STDLNR(배차상태)은
+                //           '그대로 둬서' 배차저장 때 기록된 가선적번호를 승계 → 배차/배차저장 유지.
+                //   (요청2) '납품문서' 컬럼이 구 번호로 남던 문제 → SHPOKY/SVBELN 을 신규번호로 갱신.
+                //   ※ STDLNR 은 UPDATE SET 절에 넣지 않아 기존값 보존(배차상태 유지).
+                //   ※ 매칭은 1)에서 확보한 실제 (SHPOKY, SHPOIT). 조회 0건이면(배차저장 전 등)
+                //      원본 SVBELN + 신규채번과 매칭되는 TMS_SHPDI 행이 없으므로 안전하게 skip.
+                for (Map<String, Object> r : rows) {
+                    String tShpoky = str(r.get("SHPOKY"));   // 분할 당시 TMS_SHPDI 실제 출하문서키(원본과 동일)
+                    String tShpoit = str(r.get("SHPOIT"));   // 신규 채번 품목순번
+                    if (tShpoky.isBlank() || tShpoit.isBlank()) continue;
+                    try {
+                        int m = tmsJdbc.update(
+                            "UPDATE KNRAWMS.TMS_SHPDI " +
+                            "   SET SVBELN=?, " +
+                            "       LMODAT=TO_CHAR(SYSDATE,'YYYYMMDD'), " +
+                            "       LMOTIM=TO_CHAR(SYSDATE,'HH24MISS'), LMOUSR='WEB' " +
+                            " WHERE SHPOKY=? AND SHPOIT=? AND SVBELN=?",   // 아직 원본 SVBELN 인 분할행만
+                            svbelnO, tShpoky, tShpoit, orgSvbeln);
+                        if (m > 0) {
+                            stdoutLog("[납품분할][TMS_SHPDI갱신] SHPOKY=" + tShpoky
+                                    + ", SHPOIT=" + tShpoit + " SVBELN " + orgSvbeln + "→" + svbelnO
+                                    + " (" + m + "건, STDLNR/배차상태 유지)");
+                        }
+                    } catch (Exception ex2) {
+                        stdoutLog("[납품분할][TMS_SHPDI갱신-오류] SHPOKY=" + tShpoky
+                                + ", SHPOIT=" + tShpoit + " → " + ex2.getMessage());
+                    }
                 }
             } catch (Exception ex) {
                 // 갱신 실패는 흐름을 막지 않되 로그 남김
