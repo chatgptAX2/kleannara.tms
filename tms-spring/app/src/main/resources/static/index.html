@@ -15688,6 +15688,10 @@ async function _sapShowLoadImage(stknum, cartype, carclassCd) {
           const rows = d2.rows || d2.items;
           items = rows.map(r => ({
             SHPOKY:  r.SHPOKY || r.SVBELN || '',
+            // [버그수정] SVBELN(SAP 납품문서번호)을 SHPOKY 로 흡수시키지 않고 별도 보존한다.
+            //   배차탭 '납품문서' 컬럼은 SVBELN 우선 표시(없으면 SHPOKY 폴백)이므로
+            //   SVBELN 을 유지해야 출하문서번호(SHPOKY)로 잘못 표시되지 않는다.
+            SVBELN:  r.SVBELN || '',
             SHPOIT:  r.SHPOIT || '',
             SKUKEY:  r.SKUKEY || '',
             DESC01:  r.DESC01 || r.SKUKEY || '',
@@ -21217,6 +21221,10 @@ async function psopSaveAutoResult(vehicles, autoMeta) {
         dptnm:       v.dptnm,
         total_kg:    v.total_kg,
         items:       (v.items || []).map(it => ({ SHPOKY: it.SHPOKY, SHPOIT: it.SHPOIT,
+                       // [버그수정] SVBELN(SAP 납품문서번호)을 TEMP 저장 payload 에 포함한다.
+                       //   과거엔 누락돼, 저장→재조회 시 배차탭 '납품문서' 컬럼이 SHPOKY(출하문서)로
+                       //   폴백 표시되고 SAP 분할 대상 SVBELN 도 복원되지 않았다.
+                       SVBELN: it.SVBELN,
                        SKUKEY: it.SKUKEY, DESC01: it.DESC01, QTSHPO: it.QTSHPO, UOMKEY: it.UOMKEY,
                        DPTNKY: it.DPTNKY, DPTNM: it.DPTNM, KG_WEIGHT: it.KG_WEIGHT })),
       })) })
