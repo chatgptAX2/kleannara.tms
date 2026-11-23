@@ -121,11 +121,14 @@ public class SapRfcService {
 
     /**
      * WMS 공통처리 API(WMS_IFC301 / TMS_IFC3012) 응답대기(read/response) 타임아웃.
-     *   연결(connect)은 HttpClient.connectTimeout=5초, 응답대기는 이 값(20초)을 적용한다.
-     *   [요청] 응답지연 발생시간 체크기준을 20초로 변경. (10초 → 20초)
+     *   연결(connect)은 HttpClient.connectTimeout=90초, 응답대기는 이 값(90초)을 적용한다.
+     *   [요청] WMS API TIMEOUT 을 모두 90초로 변경. (read: 20초 → 90초)
+     *     사유: SAP RFC 납품분할(TMS_IFC3012)은 WMS 에서 SAP RFC 정상 처리됐으나
+     *           응답 반환까지 20초를 초과해 TMS 측 read timeout(HttpTimeoutException)이
+     *           발생함 → 응답대기 한도를 90초로 상향.
      *   초과 시 HttpTimeout → '연결은 됐으나 WMS 서버 응답이 지연/무응답(read timeout)' 진단 반환.
      */
-    private static final Duration WMS_API_READ_TIMEOUT = Duration.ofSeconds(20);
+    private static final Duration WMS_API_READ_TIMEOUT = Duration.ofSeconds(90);
 
     /** 자체서명 인증서 허용(verify=False 상당) HTTP 클라이언트 생성 */
     private static HttpClient buildInsecureHttpClient() {
@@ -142,7 +145,8 @@ public class SapRfcService {
             // 호스트네임 검증도 완화 (사내 IP 접속 대응)
             System.setProperty("jdk.internal.httpclient.disableHostnameVerification", "true");
             return HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(5))
+                // [요청] WMS API TIMEOUT 을 모두 90초로 변경. (connect: 5초 → 90초)
+                .connectTimeout(Duration.ofSeconds(90))
                 // 리다이렉트(3xx) 를 클라이언트가 자동 추종하면 POST → GET 으로 바뀌어
                 // WMS 측에 'GET not supported' 오류가 발생하므로 자동 추종 금지.
                 .followRedirects(HttpClient.Redirect.NEVER)
@@ -151,7 +155,8 @@ public class SapRfcService {
         } catch (Exception e) {
             // SSLContext 구성 실패 시 기본 클라이언트로 폴백
             return HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(5))
+                // [요청] WMS API TIMEOUT 을 모두 90초로 변경. (connect: 5초 → 90초)
+                .connectTimeout(Duration.ofSeconds(90))
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
         }
