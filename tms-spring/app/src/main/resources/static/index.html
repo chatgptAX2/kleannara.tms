@@ -12296,11 +12296,16 @@ function _lvComputePlacement(items, veh, ROLL_MAX_STACK, ROLL_MAX_HEIGHT_M, BOAR
     const heightMm = sdims.widthMm || footMm;                      // 높이(=높이(cm) 원천 mm)
     const lo       = _lvFindRollLayout(rollLayout, sk);            // 백엔드 레이어 layout
 
-    // 바닥 배치 피치(pitchMm): 세워 적재 시 바닥에 닿는 footprint = 실제 원 직경.
-    //  백엔드 verifyRolls3D 가 열(cols)·Y점유를 '실제 직경(diam_mm)' 기준으로 산출하므로,
-    //  프런트도 동일하게 lo.diam_mm 을 바닥 배치 피치로 사용해야 3D/2D 뷰가 2열로 정확히
-    //  그려진다. (lo 없으면 footMm fallback — 기존 동작 유지)
-    const pitchMm  = (lo && lo.diam_mm > 0) ? lo.diam_mm : footMm;
+    // 바닥 배치 피치(pitchMm): 세워 적재 시 바닥에 닿는 footprint = 출고예정정보 '너비(mm)'.
+    //  [버그수정] 백엔드(AutoDispatchService)가 PR#583 부터 열(cols)·Y점유 피치를 '실제
+    //   너비(foot_mm)' 우선으로 산출하도록 바뀌었다(예: 3인치/평량300 = 1100mm). 그런데
+    //   프런트는 아직 lo.diam_mm(평량·중량 역산 직경, 예 1290mm)을 피치로 써서, 백엔드는
+    //   1100 기준 2열을 결정했는데 프런트는 1290 크기로 롤을 그려 '차폭 초과(2×1290>2400)'
+    //   로 삐져나오는 불일치가 발생했다. → 백엔드와 동일하게 foot_mm 우선(없으면 diam_mm,
+    //   그것도 없으면 footMm) 으로 통일한다.
+    const pitchMm  = (lo && lo.foot_mm > 0) ? lo.foot_mm
+                   : (lo && lo.diam_mm > 0) ? lo.diam_mm
+                   : footMm;
 
     // 레이어 버킷 키: 바닥 피치(pitchMm) 50mm 반올림 — 같은 규격 원지끼리 묶음.
     const bucket = Math.round(pitchMm / 50) * 50;
