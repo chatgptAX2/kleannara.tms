@@ -800,17 +800,24 @@ public class PsDispatchService {
                         //     [버그] 과거엔 IS_SPLIT=1 '모든' 청크를 담아, 같은 원본 품목(SPOSNR)을
                         //       2번(합계=원본 전량) 분할 요청 → SAP 'E: 대상 품목을 찾을 수 없습니다'.
                         //
-                        //   ★[버그수정] SVBELN 은 'SAP 납품문서번호'(it.getSvbeln, 예:0062360825)여야 한다.
+                        //   ★[버그수정] SVBELN 은 'SAP 납품문서번호'(예:0062360825)여야 한다.
                         //     과거엔 orgSk(=ORG_SHPOKY=출하문서번호, 예:2004724442)를 보내 SAP 에
                         //     출하문서번호가 전송돼 'E: 대상 품목을 찾을 수 없습니다' 오류 발생.
                         //     SHPOKY(출하문서)와 SVBELN(납품문서)은 TMS_SHPDI 의 별개 컬럼이다.
-                        //   · SVBELN   : SAP 납품문서번호(it.svbeln) — 없으면 orgSk(출하문서) 폴백
+                        //   ★[근본수정] SVBELN 우선순위:
+                        //        ① newKey[2] = splitTmsShpdiRow 가 원본 TMS_SHPDI 에서 DB 직조회한 SVBELN
+                        //           (가장 신뢰 가능 — 저장 payload 의 it.svbeln 이 프론트 경로에서
+                        //            유실돼도 DB 원본값이라 항상 정확)
+                        //        ② it.getSvbeln() = 저장 payload 로 넘어온 SVBELN
+                        //        ③ (폴백 금지) 출하문서번호(orgSk)는 SAP 에 보내면 100% 오류이므로
+                        //           SVBELN 을 끝내 못 구하면 '대상에서 제외'하고 경고 로그만 남긴다.
                         //   · SPOSNR   : 원본 품목순번(=ORG_SHPOIT)
                         //   · SKUKEY   : 자재코드
                         //   · split_qty: 떼어낼 수량(KG) = 이 청크 QTSHPO (PR#569 로 KG 단위 정정)
                         if (sapSplitTargetsOut != null && newKey != null
                                 && !isBlank(orgSi)) {
-                            String svbelnForSap = firstNonBlank(it.getSvbeln(), orgSk);
+                            String svbelnFromDb  = (newKey.length > 2) ? newKey[2] : null;   // ① DB 직조회
+                            String svbelnForSap  = firstNonBlank(svbelnFromDb, it.getSvbeln());  // ①→②
                             if (!isBlank(svbelnForSap)) {
                                 Map<String, Object> tgt = new LinkedHashMap<>();
                                 tgt.put("SVBELN",      svbelnForSap.strip());
@@ -820,6 +827,13 @@ public class PsDispatchService {
                                                        ? 0L : (long) Math.floor(it.getQtshpo()));
                                 tgt.put("dispatch_no", dispatchNo);
                                 sapSplitTargetsOut.add(tgt);
+                            } else {
+                                // ③ SVBELN(납품문서번호)을 끝내 확보하지 못함 → 출하문서번호로 폴백하면
+                                //    SAP 가 반드시 오류를 내므로, 요청 대상에서 제외하고 경고만 남긴다.
+                                log.warn("[PsDispatch] SAP 분할대상 제외 — SVBELN(납품문서번호) 확보 실패 "
+                                        + "(dispatch_no={}, ORG_SHPOKY={}, ORG_SHPOIT={}, SKUKEY={}). "
+                                        + "출하문서번호 폴백은 SAP 오류를 유발하므로 전송하지 않음.",
+                                        dispatchNo, orgSk, orgSi, str(it.getSkukey()));
                             }
                         }
                     }
@@ -1618,8 +1632,13 @@ public class PsDispatchService {
      *   [해결] 분할 청크마다 UPDATE 전에 신규 TMS_SHPDI 행(고유 SHPOIT)을 먼저 만들어,
      *     각 차량이 '자기 전용 행'에 STDLNR 을 기록하게 한다.
      *
-     *   @return 신규 분할 행의 {SHPOKY, SHPOIT}. 원본 미존재/수량초과 등으로 분할 불가 시 null
+     *   @return 신규 분할 행의 {SHPOKY, SHPOIT, SVBELN}. 원본 미존재/수량초과 등으로 분할 불가 시 null
      *           (호출측은 null 이면 원본 키로 fallback).
+     *           ※ [버그수정] index[2]=SVBELN(원본 TMS_SHPDI 의 SAP 납품문서번호)을 함께 반환한다.
+     *             SAP 납품분할(Z_TMS_DELIVERY_SPLIT)은 SVBELN(납품문서, 예 0062360825)을 받아야
+     *             하는데, 저장 payload 의 it.svbeln 이 유실되면 출하문서번호로 폴백돼 SAP 오류가
+     *             났다. 로컬 분할의 기준이 되는 '원본 행'의 SVBELN 을 DB 에서 직접 가져와 호출측에
+     *             제공하면, payload 유실과 무관하게 정확한 납품문서번호를 SAP 로 보낼 수 있다.
      */
     private String[] splitTmsShpdiRow(String orgShpoky, String orgShpoit, double splitQty, String linkMark) {
         if (isBlank(orgShpoky) || isBlank(orgShpoit) || splitQty <= 0) return null;
@@ -1627,13 +1646,14 @@ public class PsDispatchService {
         String shpoitT = orgShpoit.strip();
 
         // 1) 원본 행 조회 (정확 매칭 → 실패 시 SHPOIT 숫자 매칭)
+        //    ※ SVBELN(SAP 납품문서번호)도 함께 조회 → 호출측 SAP 분할대상 SVBELN 보강용.
         List<?> orgRows = tmsEm.createNativeQuery(
-                "SELECT SHPOKY, SHPOIT, QTSHPO FROM KNRAWMS.TMS_SHPDI WHERE SHPOKY=? AND SHPOIT=?")
+                "SELECT SHPOKY, SHPOIT, QTSHPO, TRIM(COALESCE(SVBELN,'')) FROM KNRAWMS.TMS_SHPDI WHERE SHPOKY=? AND SHPOIT=?")
             .setParameter(1, shpokyT).setParameter(2, shpoitT)
             .getResultList();
         if (orgRows.isEmpty()) {
             orgRows = tmsEm.createNativeQuery(
-                    "SELECT SHPOKY, SHPOIT, QTSHPO FROM KNRAWMS.TMS_SHPDI " +
+                    "SELECT SHPOKY, SHPOIT, QTSHPO, TRIM(COALESCE(SVBELN,'')) FROM KNRAWMS.TMS_SHPDI " +
                     " WHERE SHPOKY=? AND REGEXP_LIKE(SHPOIT,'^[0-9]+$') AND REGEXP_LIKE(?,'^[0-9]+$') " +
                     "   AND TO_NUMBER(SHPOIT)=TO_NUMBER(?)")
                 .setParameter(1, shpokyT).setParameter(2, shpoitT).setParameter(3, shpoitT)
@@ -1647,6 +1667,7 @@ public class PsDispatchService {
         Object[] row = (Object[]) orgRows.get(0);
         String realShpoky = str(row[0]);
         String realShpoit = str(row[1]);
+        String realSvbeln = row.length > 3 ? str(row[3]) : "";   // 원본 SVBELN(DB 직조회)
         long   orgQty     = row[2] == null ? 0L : (long) Math.floor(Double.parseDouble(row[2].toString()));
         long   splitQtyL  = (long) Math.floor(splitQty);
         if (splitQtyL >= orgQty) {
@@ -1700,10 +1721,11 @@ public class PsDispatchService {
             .setParameter(3, realShpoit)
             .executeUpdate();
 
-        log.info("[PsDispatch] 분할 선처리 — 원본({}/{}, {}) → 신규({}/{}, {}) INSERT={}건, 원본잔량={}",
-                 realShpoky, realShpoit, orgQty, realShpoky, newShpoit, splitQtyL, ins, (orgQty - splitQtyL));
+        log.info("[PsDispatch] 분할 선처리 — 원본({}/{}, {}) → 신규({}/{}, {}) INSERT={}건, 원본잔량={}, SVBELN={}",
+                 realShpoky, realShpoit, orgQty, realShpoky, newShpoit, splitQtyL, ins, (orgQty - splitQtyL), realSvbeln);
         if (ins == 0) return null;
-        return new String[]{realShpoky, newShpoit};
+        // index[2]=SVBELN(원본 TMS_SHPDI 의 SAP 납품문서번호) — 호출측 SAP 분할대상 SVBELN 보강용.
+        return new String[]{realShpoky, newShpoit, realSvbeln};
     }
 
     private double toDouble(Object o) {
