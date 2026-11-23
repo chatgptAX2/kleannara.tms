@@ -3836,17 +3836,20 @@ public class AutoDispatchService {
             double widthMm = layer.repWidthMm;                 // 높이(=높이(cm) 원천)
             double footMm  = layer.repFootMm > 0 ? layer.repFootMm : diamMm; // 가로폭(=너비)
 
-            // 세워 적재(수직 원통) 바닥 배치: 바닥 점유 폭(X/Y)은 '실제 원 직경(diamMm)'이다.
-            //  [버그수정] 기존에는 footMm(원지 너비=축 길이, 세워놓으면 '높이')로 열(X)을
-            //   판정하여, 3인치(footMm≈1400mm)는 2×1400=2800 > 차폭2400 → 1열로 잘못 떨어졌다.
-            //   세워 적재 시 바닥에 닿는 footprint 는 원의 지름(diamMm)이므로, 열 판정과 Y축
-            //   점유는 diamMm 기준이어야 물리적으로 맞다. (예: Ø1000mm → 2×1000=2000 ≤ 2400 ⇒ 2열)
+            // 세워 적재(수직 원통) 바닥 배치: 바닥에 닿는 footprint(가로폭)은 출고예정정보
+            //  '너비(mm)'(rollFootprintWidthMm → repFootMm, 예: 3인치/GE300=1100mm)이다.
+            //  [버그수정] 기존에는 열(X)·Y축 피치로 '계산 직경(diamMm, 평량·중량 역산)'을 썼다.
+            //   이 품목(3인치/평량300/폭545)은 실제 너비 1100mm 인데 diamMm 이 1290mm 로 계산돼
+            //   2×1290=2580 > 차폭2400 → 1열로 떨어졌다. 실제 바닥 가로폭은 footMm(1100)이므로
+            //   2×1100=2200 ≤ 2400 ⇒ 평행 2열이 물리적으로 가능하다.
+            //   ⇒ 열 판정과 Y축(길이) 점유 피치를 footMm 우선(판정 불가 시 diamMm fallback)으로
+            //     사용한다. (repFootMm=0 이면 L3837 에서 이미 diamMm 으로 폴백되어 있음)
             //  ── 열(X) 배치 판정 ──────────────────────────────────────
-            //  ① 실제 직경(diamMm) 기준: 2×diamMm ≤ carWmm → 평행 2열(밀착).
+            //  ① 실제 너비(footMm) 기준: 2×footMm ≤ carWmm → 평행 2열(밀착).
             //  ② 평행 2열 불가 → 지그재그(√3/2 네스팅)로 2열 이상 가능한지 기하 판정.
-            //  ③ DS_INCH(차량유형관리) 매핑이 있으면(useInch 아래), 3인치 등 2열 표준 적재를
-            //     물리적으로 2열이 실제 들어갈 때(2×diamMm ≤ carWmm)에 한해 2열을 보장한다.
-            double colPitchMm = diamMm;   // 바닥 배치 피치(열 간격·행 간격) = 실제 직경
+            //  ③ DS_INCH(차량유형관리) 매핑이 있으면(useInch 아래), 2열 표준 적재를
+            //     물리적으로 2열이 실제 들어갈 때(2×footMm ≤ carWmm)에 한해 보장한다.
+            double colPitchMm = footMm > 0 ? footMm : diamMm;   // 바닥 배치 피치 = 실제 너비(없으면 직경)
             int cols;
             boolean zz;
             boolean straight2 = (colPitchMm * 2.0 <= carWmm);        // 평행 2열(밀착) 가능?
