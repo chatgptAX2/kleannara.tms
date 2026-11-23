@@ -977,8 +977,10 @@ public class AutoDispatchService {
                     .collect(Collectors.toList());
             }
 
+            // [다단 반영] 이 품목의 최대차(bigCar) 기준 적재 단수 → 빈 정원 상한을 다단으로.
+            int effStackBin = rollEffStack(bigCar, it, str(it.get("SKUKEY")), skumaMap, vehInfo, cp, pi.forkliftYn);
             for (RollBin b : searchBins) {
-                if (canFitRollBin(b, qtyKg, inch, grm, rc, bigCap, bI12, bI3)) {
+                if (canFitRollBin(b, qtyKg, inch, grm, rc, bigCap, bI12, bI3, effStackBin)) {
                     b.items.add(it); b.totalKg += qtyKg;
                     if ("12인치".equals(inch)) b.v12.merge(grm, rc, Integer::sum);
                     else if ("3인치".equals(inch)) b.v3.merge(grm, rc, Integer::sum);
@@ -1085,6 +1087,15 @@ public class AutoDispatchService {
                 for (int si = 0; si < bins.size(); si++) {
                     RollBin small = bins.get(si);
                     if (small == null || small.items.isEmpty()) continue;
+                    // [다단 반영] small(src) 원지 품목 기준 최대차 적재 단수 → 흡수 정원 상한을 다단으로.
+                    int effStackAbsorb = 1;
+                    for (Map<String, Object> si0 : small.items) {
+                        String sk0 = str(si0.get("SKUKEY"));
+                        if (isRoll(sk0)) {
+                            effStackAbsorb = Math.max(effStackAbsorb,
+                                rollEffStack(bigCar, si0, sk0, skumaMap, vehInfo, cp, pi.forkliftYn));
+                        }
+                    }
                     // 흡수 대상(target): 자기 자신 제외, 적재량 큰 빈부터 시도(큰 빈에 합쳐 잔여빈 소멸)
                     RollBin target = null;
                     double bestTargetKg = -1;
@@ -1092,8 +1103,8 @@ public class AutoDispatchService {
                         if (ti == si) continue;
                         RollBin cand = bins.get(ti);
                         if (cand == null || cand.items.isEmpty()) continue;
-                        // small 의 '모든 롤'을 cand 에 넣을 수 있는지(중량+인치×평량 정원) 검사
-                        if (canAbsorbRollBin(cand, small, bigCap, bI12, bI3)) {
+                        // small 의 '모든 롤'을 cand 에 넣을 수 있는지(중량+인치×평량 다단정원) 검사
+                        if (canAbsorbRollBin(cand, small, bigCap, bI12, bI3, effStackAbsorb)) {
                             if (cand.totalKg > bestTargetKg) { bestTargetKg = cand.totalKg; target = cand; }
                         }
                     }
@@ -3147,12 +3158,29 @@ public class AutoDispatchService {
     private boolean canFitRollBin(RollBin b, double itemKg, String inch, String grm,
                                    int rc, double bigCap,
                                    Map<String, Integer> bI12, Map<String, Integer> bI3) {
+        return canFitRollBin(b, itemKg, inch, grm, rc, bigCap, bI12, bI3, 1);
+    }
+
+    /**
+     * [다단 반영 오버로드] 빈(차량)에 롤을 추가로 담을 수 있는지 검사.
+     *  정원(MAX_COUNT) 상한을 '1단 정원' 이 아니라 '다단 정원(MAX_COUNT × effStack)' 으로
+     *  적용한다 — 분할단계(chunkRolls)와 동일 기준.
+     *  (버그수정) 기존엔 1단 정원만 상한으로 써서, 분할단계에서 다단(예:최대차 45롤)을
+     *  반영해 조각을 크게 만들어도 빈패킹 재병합이 1단 정원(예:15롤)에 막혀 다시
+     *  여러 대로 쪼개졌다(예: 25롤 → 9+8+8=3대). effStack 배수로 상한을 넓혀 해소.
+     *  ※ 최종 높이/길이 적합성은 이후 verifyRolls3D(차량선정 루프)가 정밀 검증한다.
+     */
+    private boolean canFitRollBin(RollBin b, double itemKg, String inch, String grm,
+                                   int rc, double bigCap,
+                                   Map<String, Integer> bI12, Map<String, Integer> bI3,
+                                   int effStack) {
         if (b.totalKg + itemKg > bigCap) return false;
+        int st = Math.max(1, effStack);
         if ("12인치".equals(inch)) {
-            int mc = bI12.getOrDefault(grm, 0);
+            int mc = bI12.getOrDefault(grm, 0) * st;   // 다단 정원
             if (mc > 0 && b.v12.getOrDefault(grm, 0) + rc > mc) return false;
         } else if ("3인치".equals(inch)) {
-            int mc = bI3.getOrDefault(grm, 0);
+            int mc = bI3.getOrDefault(grm, 0) * st;     // 다단 정원
             if (mc > 0 && b.v3.getOrDefault(grm, 0) + rc > mc) return false;
         }
         return true;
@@ -3167,16 +3195,29 @@ public class AutoDispatchService {
      */
     private boolean canAbsorbRollBin(RollBin dst, RollBin src, double bigCap,
                                      Map<String, Integer> bI12, Map<String, Integer> bI3) {
+        return canAbsorbRollBin(dst, src, bigCap, bI12, bI3, 1);
+    }
+
+    /**
+     * [다단 반영 오버로드] 작은 빈(src)의 모든 롤을 대상 빈(dst)에 흡수 가능한지 검사.
+     *  정원(MAX_COUNT) 상한을 '다단 정원(MAX_COUNT × effStack)' 으로 적용한다.
+     *  (canFitRollBin 과 동일한 버그수정 취지 — 1단 정원 상한 때문에 합칠 수 있는
+     *   빈이 합쳐지지 않아 분할대수가 과다해지던 문제 해소. 3D 적합성은 이후 검증.)
+     */
+    private boolean canAbsorbRollBin(RollBin dst, RollBin src, double bigCap,
+                                     Map<String, Integer> bI12, Map<String, Integer> bI3,
+                                     int effStack) {
+        int st = Math.max(1, effStack);
         // ① 중량
         if (dst.totalKg + src.totalKg > bigCap) return false;
-        // ② 12인치 평량별 정원
+        // ② 12인치 평량별 다단 정원
         for (Map.Entry<String, Integer> e : src.v12.entrySet()) {
-            int mc = bI12.getOrDefault(e.getKey(), 0);
+            int mc = bI12.getOrDefault(e.getKey(), 0) * st;
             if (mc > 0 && dst.v12.getOrDefault(e.getKey(), 0) + e.getValue() > mc) return false;
         }
-        // ② 3인치 평량별 정원
+        // ② 3인치 평량별 다단 정원
         for (Map.Entry<String, Integer> e : src.v3.entrySet()) {
-            int mc = bI3.getOrDefault(e.getKey(), 0);
+            int mc = bI3.getOrDefault(e.getKey(), 0) * st;
             if (mc > 0 && dst.v3.getOrDefault(e.getKey(), 0) + e.getValue() > mc) return false;
         }
         return true;
@@ -3970,6 +4011,24 @@ public class AutoDispatchService {
     //  - 추정식 재구현 대신 실제 검증기(verifyRolls3D)를 그대로 호출해
     //    3D 판정과 100% 일치시킨다(과분할/과적 괴리 제거).
     // ════════════════════════════════════════════════════════════════
+
+    /**
+     * 차량 유효높이가 허용하는 원지 적재 단수(effStack) 계산.
+     *  effStack = min(maxStack, floor((유효높이 + 단간격) / (원지폭 + 단간격)))  (최소 1단)
+     *  — 사용자 요구: 단수(최대 MAX_ROLL_STACK_TIER) 반영하되 '물리검증 시 차량 높이 이하로만'.
+     *  분할단계와 빈패킹(정원 상한)에서 동일 기준을 쓰기 위한 공용 헬퍼.
+     */
+    private int rollEffStack(String cartype, Map<String, Object> it, String sk,
+                             Map<String, SkuInfo> skumaMap, Map<String, VehInfo> vehInfo,
+                             ConstraintParams cp, String forkliftYn) {
+        final double TIER_GAP_M = 0.030; // 3D 검증과 동일한 단 사이 물리 간격(30mm)
+        double rollWm = rollWidthMm(it, skumaMap, sk) / 1000.0;
+        double effH   = rollEffH(cartype, forkliftYn, vehInfo, cp);
+        if (cp.rollMaxHeightM > 0) effH = Math.min(effH, cp.rollMaxHeightM);
+        if (rollWm <= 0) return 1;
+        return Math.max(1, Math.min(cp.maxStack,
+                (int)((effH + TIER_GAP_M) / (rollWm + TIER_GAP_M))));
+    }
 
     /**
      * 주어진 원지 아이템(it)을 'rolls 개'로 구성한 가상 아이템을 만들어
