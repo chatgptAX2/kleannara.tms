@@ -606,7 +606,7 @@ public class PsDispatchService {
     //     (vehicles + search_rows + 각 vehicle 의 items)로 반환 → 프론트가 선적목록에 복원.
     //   · getList 는 LIKE/status 필터를 지원하므로 재활용(단, 여기서는 날짜·TEMP 로만 선별).
     // ──────────────────────────────────────────────────────────────────────────
-    @Transactional(transactionManager = "tmsTransactionManager", readOnly = true)
+    @Transactional(transactionManager = "tmsTransactionManager")
     public Map<String, Object> listTempDispatch(String dateFrom, String dateTo) {
         PsDispatchListRequest req = new PsDispatchListRequest();
         if (dateFrom != null && !dateFrom.isBlank()) req.setDateFrom(dateFrom.replace("-", "").strip());
@@ -614,14 +614,67 @@ public class PsDispatchService {
         req.setStatus("TEMP");                       // STATUS='TEMP' 만
         List<PsDispatchListResponse> found = getList(req);
 
-        List<String> nos = found.stream()
-            .map(PsDispatchListResponse::getDispatchNo)
-            .filter(n -> n != null && !n.isBlank())
-            .distinct().collect(Collectors.toList());
-        // loadForEdit 재활용 — vehicles/search_rows/items 를 동일 포맷으로 구성
-        Map<String, Object> out = loadForEdit(nos);
+        // ── [고아 TEMP 자동 정리] 멀티유저 공유 화면에서 '죽은 임시배차'를 제거 ──────────
+        //   [문제] 자동배차는 결과를 TEMP(STATUS='TEMP')로 임시저장해 모든 사용자가 공유 열람한다.
+        //     그런데 그 TEMP 의 품목이 '다른 가선적번호로 배차저장(STDLNR 채번)' 되거나
+        //     배차삭제되면, 해당 TEMP 는 더 이상 유효하지 않은 '고아'가 된다. 하지만 배차삭제는
+        //     DRAFT/CONFIRMED 만 지우고 TEMP 는 건드리지 않아, 고아 TEMP 가 배차탭에 '(편집중)'으로
+        //     계속 부활하며 모든 사용자 화면에 유령 배차로 남았다(예: 261124001T).
+        //   [판정] 한 납품문서는 '한 TEMP 에만' 속하도록 자동배차가 미배차 품목만 대상으로 하므로
+        //     (이미 배차/TEMP 에 든 품목은 DISPATCHED 표시로 제외), TEMP 품목의 TMS_SHPDI.STDLNR 이
+        //     '비어있지 않고 && 그 TEMP 자신의 번호가 아닌' 다른 번호면 = 이미 다른 배차로 확정된
+        //     고아다. (편집 중인 정상 TEMP 는 STDLNR 미채번이라 안전하게 보호됨)
+        //   [처리] 고아 TEMP 는 ① 공유 복원 목록에서 제외 + ② deleteTempDispatch 로 DB 정리.
+        //     → 한 명이 조회하면 모든 사용자 화면에서 유령이 사라진다(공유 일관성).
+        List<String> liveNos  = new ArrayList<>();
+        List<String> orphanNos = new ArrayList<>();
+        for (PsDispatchListResponse d : found) {
+            String tempNo = d.getDispatchNo();
+            if (tempNo == null || tempNo.isBlank()) continue;
+            boolean orphan = false;
+            if (d.getItems() != null) {
+                for (PsDispatchListResponse.ItemDetail it : d.getItems()) {
+                    String sko = it.getShpoky() == null ? "" : it.getShpoky().strip();
+                    String sit = it.getShpoit() == null ? "" : it.getShpoit().strip();
+                    if (sko.isEmpty() || sit.isEmpty()) continue;
+                    try {
+                        // 이 품목(SHPOKY+SHPOIT)이 '이 TEMP 번호가 아닌' 다른 STDLNR 로 채번됐는가?
+                        //   (STDLNR 공백/자기번호 = 유효, 다른 번호 = 이미 다른 배차로 확정 → 고아)
+                        List<?> rs = tmsEm.createNativeQuery(
+                                "SELECT 1 FROM KNRAWMS.TMS_SHPDI " +
+                                " WHERE SHPOKY=? AND SHPOIT=? " +
+                                "   AND TRIM(COALESCE(STDLNR,'')) <> '' " +
+                                "   AND TRIM(STDLNR) <> ? " +
+                                " FETCH FIRST 1 ROWS ONLY")
+                            .setParameter(1, sko).setParameter(2, sit).setParameter(3, tempNo.strip())
+                            .getResultList();
+                        if (!rs.isEmpty()) { orphan = true; break; }
+                    } catch (Exception ex) {
+                        // 조회 실패 시 보수적으로 '유효'로 간주(정상 TEMP 를 실수로 지우지 않음)
+                        log.warn("[TEMP고아판정] 조회 실패(유효로 간주) tempNo={}, SHPOKY={}, SHPOIT={} → {}",
+                                 tempNo, sko, sit, ex.getMessage());
+                    }
+                }
+            }
+            if (orphan) orphanNos.add(tempNo); else liveNos.add(tempNo);
+        }
+
+        // 고아 TEMP 실제 DB 정리(STATUS='TEMP' 인 것만 삭제 — DRAFT/CONFIRMED 보호)
+        if (!orphanNos.isEmpty()) {
+            try {
+                int cleared = deleteTempDispatch(orphanNos);
+                log.info("[TEMP고아정리] 유효 TEMP {}건 / 고아 TEMP {}건 정리완료({}건 삭제) — 고아={}",
+                         liveNos.size(), orphanNos.size(), cleared, orphanNos);
+            } catch (Exception ex) {
+                log.warn("[TEMP고아정리] 삭제 실패(복원에서만 제외하고 진행): {}", ex.getMessage());
+            }
+        }
+
+        // loadForEdit 재활용 — '유효 TEMP' 만 vehicles/search_rows/items 동일 포맷으로 구성
+        Map<String, Object> out = loadForEdit(liveNos);
         out.put("temp", true);
-        out.put("count", nos.size());
+        out.put("count", liveNos.size());
+        out.put("orphan_cleared", orphanNos.size());
         return out;
     }
 
