@@ -3876,7 +3876,17 @@ public class AutoDispatchService {
             //     · DS_INCH 있으면 tier1Count (차량/인치/평량별 1단 최대 개수)
             //     · 없으면 cols × (차량길이에 깔 수 있는 최대 행수) 기하 추정
             //   필요 최소 단수 = ceil(전체롤 / 바닥정원), 단 [1 .. heightTierCap] 로 clamp.
-            int maxTiers = heightTierCap;
+            // ── [용량/배치 분리] 차량최소화 우선 + 다단불필요 시 1단 안정적재 ──────────
+            //  (목적) 차량 대수 최소화를 위해 '적재 가능 여부(fits)·수용량'은 항상 '최대 단수
+            //   (capTiers=heightTierCap)' 기준으로 판정한다(다단으로 한 대에 최대한 채움).
+            //   단수최소화(ROLL_STACK_MINIMIZE_YN=Y)는 '실제 배치 단수(placeTiers)'에만 적용하되,
+            //   그마저도 '그 낮춘 단수로도 이 차량에 길이상 담길 때만' 낮춘다. 즉 1단으로 충분한
+            //   물량이면 1단으로 깔아 안정성을 높이고, 1단/저단으로는 길이초과가 나는 물량이면
+            //   단수를 낮추지 않아(다단 유지) 불필요한 추가 차량 분할을 막는다.
+            //  (기존 버그) maxTiers 를 단수최소화로 낮춘 값 하나로 'fits 판정 길이'까지 계산 →
+            //   롤수가 조금만 많아도 1단 깔기로 Y축(길이)이 늘어 OVERFLOW → 과다 분할(예: 8롤씩).
+            final int capTiers = Math.max(1, heightTierCap);     // 용량/fits 판정용(최대 단수)
+            int placeTiers = capTiers;                            // 실제 배치/표시용 단수
             if (cp.rollStackMinimize) {
                 int floorCapacity;
                 if (useInch) {
@@ -3886,16 +3896,35 @@ public class AutoDispatchService {
                     floorCapacity = Math.max(1, cols * maxRows);
                 }
                 int neededTiers = (int) Math.ceil((double) layer.totalRolls / floorCapacity);
-                int minimized   = Math.max(1, Math.min(heightTierCap, neededTiers));
-                if (minimized < maxTiers) {
+                int minimized   = Math.max(1, Math.min(capTiers, neededTiers));
+                // 낮춘 배치단수(minimized)로도 이 차량에 '길이상' 담기는지 선검사 → 담길 때만 낮춤.
+                //  (담지 못하면 다단 유지 = 차량최소화 우선, 뒤단 fits 판정은 capTiers 기준으로 수행)
+                int rowsMin, floorRollsMin, floorGroupsMin;
+                if (useInch) {
+                    floorRollsMin  = Math.min((int)Math.ceil((double)layer.totalRolls/Math.max(1,minimized)), Math.max(1,tier1Count));
+                    floorGroupsMin = (int)Math.ceil((double)layer.totalRolls/Math.max(1,tier1Count*minimized));
+                    rowsMin = (int)Math.ceil((double)floorRollsMin/Math.max(1,cols))*Math.max(1,floorGroupsMin);
+                } else {
+                    rowsMin = (int)Math.ceil((double)layer.totalRolls/Math.max(1,cols*minimized));
+                }
+                double lenMin = rowsMin * colPitchMm + (zz && rowsMin > 0 ? colPitchMm/2.0 : 0.0);
+                boolean minimizedFits = lenMin <= carLmm * (1.02 + cp.rollDeadSpacePct/100.0);
+                if (minimized < placeTiers && minimizedFits) {
                     result.layerNotes.add(String.format(
                         "[3D-원지(단수최소화)] 바닥우선 적재 ON(ROLL_STACK_MINIMIZE_YN=Y): "
-                        + "바닥정원%d개/롤%d개 → 필요단수%d단 (높이상한%d단) ⇒ %d단으로 낮춤(안정성↑)",
-                        floorCapacity, layer.totalRolls, neededTiers, heightTierCap, minimized));
+                        + "바닥정원%d개/롤%d개 → 필요단수%d단 (높이상한%d단) ⇒ %d단으로 낮춤(1단충분시 안정성↑)",
+                        floorCapacity, layer.totalRolls, neededTiers, capTiers, minimized));
+                    placeTiers = minimized;
+                } else if (minimized < capTiers && !minimizedFits) {
+                    result.layerNotes.add(String.format(
+                        "[3D-원지(단수최소화-보류)] 단수 하향 시 길이초과(%.0fmm>%.0fmm) → 차량최소화 우선으로 다단(%d단) 유지",
+                        lenMin, carLmm, capTiers));
                 }
-                maxTiers = minimized;
             }
 
+            // ── 용량/fits 판정은 capTiers(최대 단수) 기준, 실제 배치 단수는 placeTiers ──
+            //  usedLengthMm/totalCap(fits·수용량)에는 capTiers 를, 표시/높이에는 placeTiers 사용.
+            int maxTiers = capTiers;   // 아래 길이·수용량 계산은 '용량판정용(최대 단수)'
             int perSlice, rows;
             double layerLengthMm;
             if (useInch) {
@@ -3931,15 +3960,17 @@ public class AutoDispatchService {
                 totalCap += rows * perSlice;
             }
 
+            // 용량판정(capTiers)과 실제 배치단수(placeTiers)를 구분 표기.
             result.layerNotes.add(String.format(
-                "[3D-원지(세워적재)] 직경그룹%dmm/가로폭(너비)%dmm/높이%dmm: 롤%d개 / %s / 배치=%d열%s×%d단(높이기준)×%d행 / Y축점유=%.0fmm",
+                "[3D-원지(세워적재)] 직경그룹%dmm/가로폭(너비)%dmm/높이%dmm: 롤%d개 / %s / 배치=%d열%s×%d단(실배치)×%d행(용량%d단기준) / Y축점유=%.0fmm",
                 (int)diamMm, (int)footMm, (int)widthMm, layer.totalRolls,
                 useInch ? String.format("1단수량(DS_INCH %s/%s)=%d개", layer.inchLabel, layer.grmCond, tier1Count)
                         : "1단수량(기하추정)",
-                cols, zz ? "(지그재그)" : "(평행)", maxTiers, rows, layerLengthMm));
+                cols, zz ? "(지그재그)" : "(평행)", placeTiers, rows, capTiers, layerLengthMm));
 
-            // 이 레이어에 최종 확정된 단수를 저장(stackHeightM 계산이 동일 값을 쓰도록)
-            layer.chosenTiers = maxTiers;
+            // 이 레이어 실제 배치 단수(placeTiers)를 저장 → stackHeightM(높이)은 '실배치 단수' 기준.
+            //  (fits·수용량은 위에서 capTiers(최대 단수)로 이미 계산됨 — 차량최소화 우선)
+            layer.chosenTiers = placeTiers;
 
             // ── 프런트 시각화 동기화용 레이아웃 정보 저장 ──
             Map<String, Object> lo = new LinkedHashMap<>();
@@ -3948,7 +3979,7 @@ public class AutoDispatchService {
             lo.put("width_mm",    round2(widthMm));
             lo.put("cols",        cols);
             lo.put("zigzag",      zz);
-            lo.put("max_tiers",   maxTiers);
+            lo.put("max_tiers",   placeTiers);
             lo.put("tier1_count", tier1Count);   // DS_INCH 1단 총 개수(0=기하추정)
             lo.put("use_inch",    useInch);
             lo.put("rolls",       layer.totalRolls);
