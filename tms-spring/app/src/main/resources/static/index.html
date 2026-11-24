@@ -8632,7 +8632,12 @@ function _vhcRecalcSpecCbm() {
 
 /* 고정차량 사양 입력 폼 값 채우기 (조회된 spec 반영) — 톤수별 컬럼 */
 function _vhcFillFixedSpecForm(spec) {
-  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v == null ? '' : String(v)); };
+  try { console.log('[FIXSPEC] _vhcFillFixedSpecForm 호출. spec=', spec); } catch(e){}
+  const set = (id, v) => {
+    const el = document.getElementById(id);
+    if (el) el.value = (v == null ? '' : String(v));
+    try { console.log('[FIXSPEC] set', id, '=', (v==null?'':String(v)), 'elExists=', !!el); } catch(e){}
+  };
   set('vfs-CDESC1', spec ? spec.CDESC1 : '');
   set('vfs-LEN', spec ? spec.USARG6 : '');     // 길이
   set('vfs-WID', spec ? spec.USARG7 : '');     // 너비
@@ -9079,6 +9084,7 @@ function _vhcRestoreSpecDisplay(row) {
           // 서버가 준 사양 명칭 라벨(CMCDM USARL1~5) 미리 적용(버튼 클릭 전에도 올바른 라벨)
           _vhcApplyFixedSpecLabels(d.header);
           // 고정차량 폼이 열려 있으면(=고정차량) 입력값 채우기
+          try { console.log('[FIXSPEC] _vhcRestoreSpecDisplay fetch 콜백 → fill. SPEC_SOURCE=', spec.SPEC_SOURCE); } catch(e){}
           _vhcFillFixedSpecForm(spec.SPEC_SOURCE === 'FIXED' ? spec : null);
           // 고정차량 전용 사양이 이미 등록되어 있으면 [사양 수정] 버튼에 표식
           const editBtn = document.getElementById('vhc-spec-edit-btn');
