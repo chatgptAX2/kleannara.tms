@@ -1988,15 +1988,38 @@ public class AutoDispatchService {
         double effH = rollEffH(vehCar, pi.forkliftYn, vehInfo, cp);
         if (cp.rollMaxHeightM > 0) effH = Math.min(effH, cp.rollMaxHeightM);
 
-        // 원지 다단 높이(최대 원지폭 × 단수 + 안전마진)
+        // 원지 다단 높이 산정.
+        //  [개선] 기존엔 단수를 min(maxStack,3) 로 '고정'해 원지폭×최대단수 로 계산 →
+        //    실제 3D 배치(단수최소화 ROLL_STACK_MINIMIZE_YN=Y 등)에서는 1단(예:0.94m)으로
+        //    담기는데도 사전판정이 3.0m 로 과대평가되어, 통합 가능한 물량이 '높이초과'로
+        //    재질분리(차량 2대) 되는 문제가 있었다.
+        //  [수정] 3D 검증 활성 시, 실제 3D 검증기(verifyRolls3D)의 확정 적재높이(stackHeightM)를
+        //    그대로 사용 → 두 로직의 단수 산정이 100% 일치. (검증 불가/비활성 시 기존 고정
+        //    단수 계산으로 폴백 → 무영향)
         double rollStackH = 0.0;
-        int actualStack = Math.min(cp.maxStack, 3);
-        for (Map<String, Object> it : rollItems) {
-            String sk = str(it.get("SKUKEY"));
-            if (!isRoll(sk)) continue;
-            double rollWmm = rollWidthMm(it, skumaMap, sk);
-            double h = rollWmm / 1000.0 * actualStack + cp.rollHeightMarginM;
-            if (h > rollStackH) rollStackH = h;
+        boolean rollStackHByG3D = false;
+        if (cp.roll3dCheck && !rollItems.isEmpty()) {
+            try {
+                RollPhysics3D up3d = verifyRolls3D(rollItems, skumaMap, vi, cp, inchMaps, vehCar);
+                // 실제 3D 로 담기고(fits) 높이가 산출됐을 때만 그 높이 사용.
+                if (up3d != null && up3d.fits && up3d.stackHeightM > 0) {
+                    rollStackH = up3d.stackHeightM + cp.rollHeightMarginM;
+                    rollStackHByG3D = true;
+                }
+            } catch (Exception e) {
+                log.warn("[통합배차] 원지 3D 높이 산정 실패(기존 고정단수로 폴백): {}", e.getMessage());
+            }
+        }
+        if (!rollStackHByG3D) {
+            // 폴백: 기존 방식(원지폭 × 고정 단수 + 안전마진)
+            int actualStack = Math.min(cp.maxStack, 3);
+            for (Map<String, Object> it : rollItems) {
+                String sk = str(it.get("SKUKEY"));
+                if (!isRoll(sk)) continue;
+                double rollWmm = rollWidthMm(it, skumaMap, sk);
+                double h = rollWmm / 1000.0 * actualStack + cp.rollHeightMarginM;
+                if (h > rollStackH) rollStackH = h;
+            }
         }
         // 판지 높이: 단일단(1단) 강제 시 1개 두께만, 아니면 계산 높이
         double boardH = 0.0;
