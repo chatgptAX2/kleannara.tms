@@ -461,6 +461,10 @@ public class VehicleService {
         m.put("USARG6", len);
         m.put("USARG7", wid);
         m.put("USARG8", hgt);
+        // [진단] 반환되는 사양 원천값(raw) vs 정규화 후 값 비교용.
+        log.info("[selectCarclassRow] cmcdky={}, cmcdvl={} → raw USARG6/7/8='{}'/'{}'/'{}', 반환 len/wid/hgt='{}'/'{}'/'{}', USARG2={}, USARG3={}, USARG4={}",
+                cmcdky, cmcdvl, str(r.get("USARG6")), str(r.get("USARG7")), str(r.get("USARG8")),
+                len, wid, hgt, m.get("USARG2"), m.get("USARG3"), m.get("USARG4"));
         return m;
     }
 
