@@ -494,7 +494,7 @@ public class VehicleService {
                 INSERT INTO KNRAWMS.CMCDV
                     (CMCDKY, CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5,
                      USARG6, USARG7, USARG8,
-                     CRTDAT, CRTTIM, CRTUSR, LMODAT, LMOTIM, LMOUSR)
+                     CREDAT, CRETIM, CREUSR, LMODAT, LMOTIM, LMOUSR)
                 VALUES
                     ('TMS_CARCLASS10', ?, ?, ?, ?, ?, ?, ?,
                      ?, ?, ?,
