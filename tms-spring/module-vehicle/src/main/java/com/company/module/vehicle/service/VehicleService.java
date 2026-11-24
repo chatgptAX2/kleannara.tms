@@ -470,6 +470,20 @@ public class VehicleService {
                 key, cnt, (cnt != null && cnt > 0) ? "UPDATE" : "INSERT",
                 req.getCdesc1(), req.getUsarg3(), req.getUsarg6(), req.getUsarg7(), req.getUsarg8());
 
+        // [ORA-01400 방어] CMCDV 의 USARG1~8/CDESC1 은 NOT NULL 제약이 걸려 있어
+        //   NULL 바인딩 시 ORA-01400 발생(특히 신규 INSERT 에서 보존대상 USARG1/5 가
+        //   비어 있을 때). 값이 없으면 빈 문자열('')로 바인딩 → 제약 위반 방지.
+        //   사용자가 입력한 값은 그대로 전달되므로 기존 동작/저장값은 유지.
+        String vCdesc1 = str(req.getCdesc1());
+        String vUsarg1 = str(req.getUsarg1());
+        String vUsarg2 = str(req.getUsarg2());
+        String vUsarg3 = str(req.getUsarg3());
+        String vUsarg4 = str(req.getUsarg4());
+        String vUsarg5 = str(req.getUsarg5());
+        String vUsarg6 = str(req.getUsarg6());
+        String vUsarg7 = str(req.getUsarg7());
+        String vUsarg8 = str(req.getUsarg8());
+
         String action;
         int affected;
         if (cnt != null && cnt > 0) {
@@ -481,15 +495,15 @@ public class VehicleService {
                 LMODAT=?, LMOTIM=?, LMOUSR=?
                 WHERE CMCDKY='TMS_CARCLASS10' AND CMCDVL=?
                 """)
-              .setParameter(1, req.getCdesc1())
-              .setParameter(2, req.getUsarg1())
-              .setParameter(3, req.getUsarg2())
-              .setParameter(4, req.getUsarg3())
-              .setParameter(5, req.getUsarg4())
-              .setParameter(6, req.getUsarg5())
-              .setParameter(7, req.getUsarg6())
-              .setParameter(8, req.getUsarg7())
-              .setParameter(9, req.getUsarg8())
+              .setParameter(1, vCdesc1)
+              .setParameter(2, vUsarg1)
+              .setParameter(3, vUsarg2)
+              .setParameter(4, vUsarg3)
+              .setParameter(5, vUsarg4)
+              .setParameter(6, vUsarg5)
+              .setParameter(7, vUsarg6)
+              .setParameter(8, vUsarg7)
+              .setParameter(9, vUsarg8)
               .setParameter(10, nowdt).setParameter(11, nowtm).setParameter(12, "WEB")
               .setParameter(13, key)
               .executeUpdate();
@@ -507,15 +521,15 @@ public class VehicleService {
                      ?, ?, ?, ?, ?, ?)
                 """)
               .setParameter(1, key)
-              .setParameter(2, req.getCdesc1())
-              .setParameter(3, req.getUsarg1())
-              .setParameter(4, req.getUsarg2())
-              .setParameter(5, req.getUsarg3())
-              .setParameter(6, req.getUsarg4())
-              .setParameter(7, req.getUsarg5())
-              .setParameter(8, req.getUsarg6())
-              .setParameter(9, req.getUsarg7())
-              .setParameter(10, req.getUsarg8())
+              .setParameter(2, vCdesc1)
+              .setParameter(3, vUsarg1)
+              .setParameter(4, vUsarg2)
+              .setParameter(5, vUsarg3)
+              .setParameter(6, vUsarg4)
+              .setParameter(7, vUsarg5)
+              .setParameter(8, vUsarg6)
+              .setParameter(9, vUsarg7)
+              .setParameter(10, vUsarg8)
               .setParameter(11, nowdt).setParameter(12, nowtm).setParameter(13, "WEB")
               .setParameter(14, nowdt).setParameter(15, nowtm).setParameter(16, "WEB")
               .executeUpdate();
