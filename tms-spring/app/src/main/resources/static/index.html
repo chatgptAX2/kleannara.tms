@@ -8563,7 +8563,15 @@ function _vhcToggleFixedSpecEdit(show) {
     btn.classList.toggle('active', !!show);
     btn.textContent = show ? '✖ 사양 수정 닫기' : '✏️ 고정차량 사양 수정';
   }
-  if (show) _vhcApplyFixedSpecLabels();
+  if (show) {
+    _vhcApplyFixedSpecLabels();
+    // [수정] 고정차량 폼이 (FIX_YN='Y' 자동/수동으로) 열릴 때, 현재 차량번호 기준
+    //   저장된 고정차량 전용사양(1순위/FIXED)을 재조회해 입력폼에 채운다.
+    //   - 차량 선택 시 _vhcRestoreSpecDisplay 의 비동기 fetch 와 폼 자동노출 타이밍이
+    //     어긋나 저장값이 폼에 반영되지 않던 문제를 근본 해소.
+    //   - 차량번호가 없으면(신규 입력) no-op, FIXED 미등록이면 폼은 사용자 신규 입력.
+    _vhcLoadFixedSpecIntoForm();
+  }
 }
 
 /* [사양 수정] 버튼 클릭 — 입력폼 열기/닫기 토글.
