@@ -877,6 +877,12 @@ public class AutoDispatchService {
         boolean isDynBlocked, PtnrInfo pi,
         List<Map<String, Object>> allVehicles
     ) {
+        // [옵션 B-1 — 근본] 혼적 그룹이라도 '이 원지 물량 전체가 단일 납품처' 이면,
+        //   그 납품처 단독 진입톤수(MAX_TON) 기준 validCars 로 교체한다. 이렇게 해야
+        //   bigCar/bigCap/분할상한(사전분할·빈패킹)이 교집합(1.4톤)이 아니라 납품처
+        //   최대차(예:18톤) 기준으로 계산되어, 큰 차 1대로 묶인다.
+        //   (혼합 물량/단독 그룹/MAX_TON 미설정/확장여지 없음 → 기존 validCars 그대로 → 무영향)
+        validCars = binValidCars(isMixedGroup, rollItems, validCars, carOrder, vehInfo, ptnrInfoMap);
         String bigCar = validCars.isEmpty() ? "판별불가" : str(validCars.get(0).get("CARTYPE"));
         double bigCap = vehInfo.getOrDefault(bigCar, VehInfo.EMPTY).loadKg;
         if (bigCap <= 0) bigCap = 99_999_999.0;
@@ -1462,6 +1468,12 @@ public class AutoDispatchService {
         boolean isDynBlocked, PtnrInfo pi,
         List<Map<String, Object>> allVehicles
     ) {
+        // [옵션 B-1 — 근본] 혼적 그룹이라도 '이 판지 물량 전체가 단일 납품처' 이면,
+        //   그 납품처 단독 진입톤수(MAX_TON) 기준 validCars 로 교체 → bigCar/bigCap/
+        //   capKgThreshold(사전분할·빈패킹 상한)가 교집합(1.4톤)이 아니라 납품처
+        //   최대차(예:18톤) 기준으로 계산되어 큰 차 1대로 묶인다.
+        //   (혼합 물량/단독 그룹/MAX_TON 미설정/확장여지 없음 → 기존 validCars 그대로 → 무영향)
+        validCars = binValidCars(isMixedGroup, boardItems, validCars, carOrder, vehInfo, ptnrInfoMap);
         String bigCar = validCars.isEmpty() ? "판별불가" : str(validCars.get(0).get("CARTYPE"));
         VehInfo bigVi = vehInfo.getOrDefault(bigCar, VehInfo.EMPTY);
         double bigCap = bigVi.loadKg > 0 ? bigVi.loadKg : 99_999_999.0;
