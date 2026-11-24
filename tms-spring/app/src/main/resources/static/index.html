@@ -8630,6 +8630,35 @@ function _vhcRecalcSpecCbm() {
   el.value = (len > 0 && wid > 0 && hgt > 0) ? (len * wid * hgt).toFixed(2) + ' m³' : '-';
 }
 
+/* 고정차량 사양 입력폼의 컬럼 라벨 적용 (CMCDM USARL1~5 → 폼 label).
+   - header: getVehicleSpec 응답의 header [{col:'USARG6',label:'길이'},...] (없으면 기본 라벨 유지).
+   - 라벨 DOM 구조: <div class="vhc-fg"><label>길이 (m)</label><input id="vfs-LEN" ...></div>
+     → input id 로 형제 label 을 찾아 텍스트를 교체(입력/계산 로직에는 영향 없음).
+   ※ 이 함수가 '정의되지 않음(ReferenceError)' 상태였어서, fetch 콜백 중간에서 예외가 터져
+     그 다음 줄의 _vhcFillFixedSpecForm(spec) 가 실행되지 못해 폼이 안 채워졌다. → 정의 추가. */
+function _vhcApplyFixedSpecLabels(header) {
+  try {
+    if (!Array.isArray(header) || header.length === 0) return; // 라벨 정보 없으면 기본 라벨 유지
+    const labelMap = {};
+    header.forEach(h => { if (h && h.col) labelMap[h.col] = h.label; });
+    // USARG 컬럼 → 폼 input id 매핑 (단위 표기는 기존 라벨 규칙 유지)
+    const colToInput = {
+      USARG6: { id: 'vfs-LEN', suffix: ' (m)' },
+      USARG7: { id: 'vfs-WID', suffix: ' (m)' },
+      USARG8: { id: 'vfs-HGT', suffix: ' (m)' },
+      USARG2: { id: 'vfs-PLT', suffix: ''     },
+    };
+    Object.keys(colToInput).forEach(col => {
+      const lbl = labelMap[col];
+      if (!lbl) return;
+      const conf = colToInput[col];
+      const inp  = document.getElementById(conf.id);
+      const lblEl = inp ? inp.parentElement?.querySelector('label') : null;
+      if (lblEl) lblEl.textContent = String(lbl).trim() + conf.suffix;
+    });
+  } catch (e) { /* 라벨 적용 실패는 무시(폼 값 채움에는 영향 없음) */ }
+}
+
 /* 고정차량 사양 입력 폼 값 채우기 (조회된 spec 반영) — 톤수별 컬럼 */
 function _vhcFillFixedSpecForm(spec) {
   try { console.log('[FIXSPEC] _vhcFillFixedSpecForm 호출. spec=', spec); } catch(e){}
