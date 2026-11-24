@@ -427,17 +427,30 @@ public class VehicleService {
         m.put("USARG4", str(r.get("USARG4")));
         m.put("USARG5", str(r.get("USARG5")));
 
-        // 길이/너비/높이(USARG6~8): CMCDV 직접값 우선 → 비면 DsVehicle 로 보완
+        // 길이/너비/높이(USARG6~8): CMCDV 직접값 우선 → 비면 DsVehicle(차종마스터) 로 보완.
         //   ※ 저장 시 미입력 수치는 '0' 으로 들어가므로, '0' 도 미입력으로 간주하여 보완.
         String len = normSpec(str(r.get("USARG6")));
         String wid = normSpec(str(r.get("USARG7")));
         String hgt = normSpec(str(r.get("USARG8")));
-        if (len.isEmpty() || wid.isEmpty() || hgt.isEmpty()) {
-            DsVehicle vhc = dsVehicleRepo.findById(str(r.get("CMCDVL"))).orElse(null);
-            if (vhc != null) {
-                if (len.isEmpty() && vhc.getLengthM() != null) len = vhc.getLengthM().toString();
-                if (wid.isEmpty() && vhc.getWidthM()  != null) wid = vhc.getWidthM();
-                if (hgt.isEmpty() && vhc.getHeightM() != null) hgt = vhc.getHeightM().toString();
+        String cv  = str(r.get("CMCDVL"));
+        // [ORA-00942 방어 + 불필요 조회 제거]
+        //   DsVehicle(TMS_DS_VEHICLE)의 PK 는 차종코드(CARCLASS_CD, 예: 'Z010').
+        //   고정차량 전용사양 ROW 는 CMCDVL = '차량번호'(예: '서울84사3514') 이므로
+        //   findById(차량번호) 는 절대 매칭되지 않는 무의미한 조회이고, 이 JPA 조회가
+        //   ORA-00942 를 유발해 고정차량 목록/사양 조회 전체를 실패시켰다.
+        //   → 'Z' 로 시작하는 차종코드일 때만(=톤수 유형 ROW) DsVehicle 보완을 시도하고,
+        //     그 조회도 예외가 전체 흐름을 깨지 않도록 try-catch 로 격리한다.
+        if ((len.isEmpty() || wid.isEmpty() || hgt.isEmpty())
+                && cv.toUpperCase().startsWith("Z")) {
+            try {
+                DsVehicle vhc = dsVehicleRepo.findById(cv).orElse(null);
+                if (vhc != null) {
+                    if (len.isEmpty() && vhc.getLengthM() != null) len = vhc.getLengthM().toString();
+                    if (wid.isEmpty() && vhc.getWidthM()  != null) wid = vhc.getWidthM();
+                    if (hgt.isEmpty() && vhc.getHeightM() != null) hgt = vhc.getHeightM().toString();
+                }
+            } catch (Exception e) {
+                log.warn("[selectCarclassRow] DsVehicle 보완 조회 실패(무시): cmcdvl={}, {}", cv, e.getMessage());
             }
         }
         m.put("USARG6", len);
