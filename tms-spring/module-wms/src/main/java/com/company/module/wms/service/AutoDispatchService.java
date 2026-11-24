@@ -797,6 +797,67 @@ public class AutoDispatchService {
     }
 
     // ════════════════════════════════════════════════════════════════
+    //  [옵션 B-1] 혼적 그룹 — 차량(빈)별 진입톤수 제약 분리 적용 헬퍼
+    //    문제: 동적 혼적 그룹(_DYN_)에서 validCars 는 그룹 내 모든 납품처의 '교집합'
+    //         이라, 진입톤수가 작은 납품처(예:101027=1.4톤)와 묶이면 큰 납품처
+    //         (예:470185=18톤)의 단독 물량 차량까지 1.4톤으로 끌려 내려가 과분할됨.
+    //    해결: '실제로 한 차에 함께 싣는 차량(여러 납품처 혼합 빈)'에만 교집합(공통)
+    //         제약을 적용하고, '단일 납품처 물량만 실린 차량'은 그 납품처의 단독
+    //         진입톤수(MAX_TON)를 적용한다.
+    //    적용 범위: 혼적 그룹(isMixedGroup=true)에서, 빈의 고유 DPTNKY 가 정확히 1개일 때만.
+    //              그 외(단독 그룹 / 혼합 빈)는 null 반환 → 기존 동작 100% 유지(무영향).
+    // ════════════════════════════════════════════════════════════════
+    /** 빈(차량)에 적재된 품목들의 고유 DPTNKY 가 1개면 그 납품처키, 아니면 null. */
+    private String singleDptnkyOfItems(List<Map<String, Object>> items) {
+        if (items == null || items.isEmpty()) return null;
+        String only = null;
+        for (Map<String, Object> it : items) {
+            String dk = str(it.get("DPTNKY"));
+            if (dk.isEmpty()) return null;            // DPTNKY 미상 → 판정 불가(혼합 취급)
+            if (only == null) only = dk;
+            else if (!only.equals(dk)) return null;   // 2개 이상 → 혼합
+        }
+        return only;
+    }
+
+    /** [B-1] 혼적 그룹의 '단일 납품처 빈'에 적용할 납품처별 단독 validCars 를 반환.
+     *  적용 조건을 모두 만족할 때만 그 납품처 기준 validCars 를, 아니면 기존 groupValidCars 를 그대로 반환.
+     *   · isMixedGroup=true (혼적/동적 그룹)
+     *   · 빈이 단일 납품처(singleDptnky != null)
+     *   · 그 납품처 MAX_TON(maxLoadKg)이 설정돼 있고, 그룹 교집합 최대차보다 커서 '확장 여지'가 있음
+     *  단독 validCars = carOrder 중 적재가능 + (MAX_TON 이내) 차량. (getValidCars 의 톤수 필터와 동일 취지,
+     *  단 FORCE_CARTYPE/ENTRY_TON_LIMIT 등 그룹에 이미 반영된 전역 제약은 groupValidCars 교집합을 상한으로 유지) */
+    private List<Map<String, Object>> binValidCars(
+            boolean isMixedGroup,
+            List<Map<String, Object>> binItems,
+            List<Map<String, Object>> groupValidCars,
+            List<Map<String, Object>> carOrder,
+            Map<String, VehInfo> vehInfo,
+            Map<String, PtnrInfo> ptnrInfoMap) {
+        if (!isMixedGroup) return groupValidCars;              // 단독 그룹 → 기존 그대로
+        String dk = singleDptnkyOfItems(binItems);
+        if (dk == null) return groupValidCars;                 // 혼합 빈 → 교집합(공통) 유지
+        PtnrInfo bpi = ptnrInfoMap.getOrDefault(dk, PtnrInfo.EMPTY);
+        if (bpi.maxLoadKg <= 0) return groupValidCars;         // 납품처 MAX_TON 미설정 → 기존 유지
+
+        // 그룹 교집합 최대차 한도
+        double groupMaxCap = groupValidCars.stream()
+                .mapToDouble(c -> vehInfo.getOrDefault(str(c.get("CARTYPE")), VehInfo.EMPTY).loadKg)
+                .max().orElse(0);
+        // 납품처 단독 한도가 그룹 교집합보다 크지 않으면 확장 여지 없음 → 기존 유지(무변화)
+        if (bpi.maxLoadKg <= groupMaxCap) return groupValidCars;
+
+        // 납품처 단독 validCars = carOrder 중 적재가능 + MAX_TON 이내 (carOrder 순서=sortKey 유지)
+        List<Map<String, Object>> cars = carOrder.stream()
+            .filter(c -> {
+                double cap = vehInfo.getOrDefault(str(c.get("CARTYPE")), VehInfo.EMPTY).loadKg;
+                return cap > 0 && cap <= bpi.maxLoadKg;
+            })
+            .collect(Collectors.toList());
+        return cars.isEmpty() ? groupValidCars : cars;
+    }
+
+    // ════════════════════════════════════════════════════════════════
     //  원지 배차 (FFD/BFD BinPacking)
     // ════════════════════════════════════════════════════════════════
 
@@ -1154,7 +1215,13 @@ public class AutoDispatchService {
 
             String inchCar   = cands.isEmpty() ? bigCar
                 : cands.stream().min(Comparator.comparingInt(ct -> sortKey(ct, carOrder))).orElse(bigCar);
-            String costCar   = selectCar(vehKg, validCars, vehInfo, dptnky, objective, cp, routeCostMap);
+            // [옵션 B-1] 혼적 그룹에서 '이 빈이 단일 납품처' 이면 그 납품처 단독 validCars/MAX_TON 적용.
+            //   (단독 그룹/혼합 빈/미설정은 기존 그룹 validCars·pi.maxLoadKg 그대로 → 무영향)
+            List<Map<String, Object>> binCars = binValidCars(isMixedGroup, b.items, validCars, carOrder, vehInfo, ptnrInfoMap);
+            String binDk = (binCars != validCars) ? singleDptnkyOfItems(b.items) : null;  // B-1 적용된 경우에만 납품처키
+            double binMaxLoadKg = (binDk != null)
+                ? ptnrInfoMap.getOrDefault(binDk, PtnrInfo.EMPTY).maxLoadKg : pi.maxLoadKg;
+            String costCar   = selectCar(vehKg, binCars, vehInfo, dptnky, objective, cp, routeCostMap);
             String vehCar    = sortKey(inchCar, carOrder) <= sortKey(costCar, carOrder) ? inchCar : costCar;
 
             // 높이 검사 + 차량 업그레이드 (기존 단순 높이 검사)
@@ -1205,8 +1272,9 @@ public class AutoDispatchService {
                         if (sortKey(ct, carOrder) >= sortKey(vehCar, carOrder)) continue;
                         // ★ [납품처 최대톤수 준수] 업그레이드 후보가 납품처 MAX_TON(maxLoadKg)
                         //   한도를 초과하면 제외 — 한도 초과 차량으로 업그레이드되던 버그 수정.
-                        if (pi.maxLoadKg > 0
-                            && vehInfo.getOrDefault(ct, VehInfo.EMPTY).loadKg > pi.maxLoadKg) continue;
+                        //   [B-1] 혼적 그룹 단일납품처 빈은 그 납품처 상한(binMaxLoadKg) 적용.
+                        if (binMaxLoadKg > 0
+                            && vehInfo.getOrDefault(ct, VehInfo.EMPTY).loadKg > binMaxLoadKg) continue;
                         if (rollEffH(ct, pi.forkliftYn, vehInfo, cp) >= stackH) {
                             notes.add("[높이업그레이드] " + vehCar + "→" + ct);
                             vehCar = ct; upgraded = true; break;
@@ -1242,8 +1310,9 @@ public class AutoDispatchService {
                     if (sortKey(ct, carOrder) >= sortKey(vehCar, carOrder)) continue;
                     // ★ [납품처 최대톤수 준수] MAX_TON(maxLoadKg) 한도 초과 차량으로
                     //   3D 업그레이드되던 버그 수정 — 한도 초과 후보 제외.
-                    if (pi.maxLoadKg > 0
-                        && vehInfo.getOrDefault(ct, VehInfo.EMPTY).loadKg > pi.maxLoadKg) continue;
+                    //   [B-1] 혼적 그룹 단일납품처 빈은 그 납품처 상한(binMaxLoadKg) 적용.
+                    if (binMaxLoadKg > 0
+                        && vehInfo.getOrDefault(ct, VehInfo.EMPTY).loadKg > binMaxLoadKg) continue;
                     VehInfo cvi = vehInfo.getOrDefault(ct, VehInfo.EMPTY);
                     RollPhysics3D rp3dUp = verifyRolls3D(b.items, skumaMap, cvi, cp, inchMaps, ct);
                     if (rp3dUp.fits) {
@@ -1495,8 +1564,14 @@ public class AutoDispatchService {
         for (int vbIdx = 0; vbIdx < vehListB.size(); vbIdx++) {
             BoardBin vb = vehListB.get(vbIdx);
             double vehKg = vb.totalKg;
+            // [옵션 B-1] 혼적 그룹에서 '이 빈이 단일 납품처' 이면 그 납품처 단독 validCars/MAX_TON 적용.
+            //   (단독 그룹/혼합 빈/미설정은 기존 그룹 validCars·pi.maxLoadKg 그대로 → 무영향)
+            List<Map<String, Object>> binCars = binValidCars(isMixedGroup, vb.items, validCars, carOrder, vehInfo, ptnrInfoMap);
+            String binDk = (binCars != validCars) ? singleDptnkyOfItems(vb.items) : null;
+            double binMaxLoadKg = (binDk != null)
+                ? ptnrInfoMap.getOrDefault(binDk, PtnrInfo.EMPTY).maxLoadKg : pi.maxLoadKg;
             // BOARD 재질: BOARD_MIN_FILL_RATIO 하한 적용 (Flask material_type='BOARD' 동일)
-            String vehCar = selectCar(vehKg, validCars, vehInfo, dptnky, objective, cp, routeCostMap, true);
+            String vehCar = selectCar(vehKg, binCars, vehInfo, dptnky, objective, cp, routeCostMap, true);
             VehInfo vi    = vehInfo.getOrDefault(vehCar, VehInfo.EMPTY);
             double cap    = vi.loadKg;
             double fill   = cap > 0 ? vehKg / cap * 100 : 0;
@@ -1551,8 +1626,9 @@ public class AutoDispatchService {
                     if (sortKey(ct, carOrder) >= sortKey(vehCar, carOrder)) continue;
                     // ★ [납품처 최대톤수 준수] MAX_TON(maxLoadKg) 한도 초과 차량으로
                     //   3D 업그레이드되던 버그 수정 — 한도 초과 후보 제외.
-                    if (pi.maxLoadKg > 0
-                        && vehInfo.getOrDefault(ct, VehInfo.EMPTY).loadKg > pi.maxLoadKg) continue;
+                    //   [B-1] 혼적 그룹 단일납품처 빈은 그 납품처 상한(binMaxLoadKg) 적용.
+                    if (binMaxLoadKg > 0
+                        && vehInfo.getOrDefault(ct, VehInfo.EMPTY).loadKg > binMaxLoadKg) continue;
                     VehInfo cvi = vehInfo.getOrDefault(ct, VehInfo.EMPTY);
                     BoardPhysics3D bp3dUp = verifyBoards3D(vb.items, skumaMap, cvi, cp, pi.forkliftYn);
                     if (bp3dUp.fits) {
