@@ -465,11 +465,17 @@ public class VehicleService {
             .setParameter(1, key)
             .getSingleResult()).longValue();
 
+        // [진단] 배포 후 원인 확정용 — 어떤 경로를 타는지/입력값 로그.
+        log.info("[saveVehicleSpec] CMCDVL={}, 기존ROW건수={} → {} 경로. cdesc1={}, usarg3(KG)={}, usarg6/7/8={}/{}/{}",
+                key, cnt, (cnt != null && cnt > 0) ? "UPDATE" : "INSERT",
+                req.getCdesc1(), req.getUsarg3(), req.getUsarg6(), req.getUsarg7(), req.getUsarg8());
+
         String action;
+        int affected;
         if (cnt != null && cnt > 0) {
             // UPDATE — 톤수별 차량사양(USARG1~8) 반영.
             //   USARG6/7/8 = 길이/너비/높이 (고정차량 사양 전용, CMCDV 직접 저장)
-            em.createNativeQuery("""
+            affected = em.createNativeQuery("""
                 UPDATE KNRAWMS.CMCDV SET CDESC1=?, USARG1=?, USARG2=?, USARG3=?, USARG4=?, USARG5=?,
                 USARG6=?, USARG7=?, USARG8=?,
                 LMODAT=?, LMOTIM=?, LMOUSR=?
@@ -490,7 +496,7 @@ public class VehicleService {
             action = "updated";
         } else {
             // INSERT — 사용자가 입력한 값만 등록(확인1). 미입력 컬럼은 빈 값으로 둔다.
-            em.createNativeQuery("""
+            affected = em.createNativeQuery("""
                 INSERT INTO KNRAWMS.CMCDV
                     (CMCDKY, CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5,
                      USARG6, USARG7, USARG8,
@@ -515,7 +521,9 @@ public class VehicleService {
               .executeUpdate();
             action = "created";
         }
-        return Map.of("ok", true, "action", action, "cmcdvl", key);
+        // [진단] 실제 반영 건수 — 0 이면 커밋돼도 데이터가 안 들어간 것.
+        log.info("[saveVehicleSpec] 완료 action={}, 반영건수={}, CMCDVL={}", action, affected, key);
+        return Map.of("ok", true, "action", action, "cmcdvl", key, "affected", affected);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
