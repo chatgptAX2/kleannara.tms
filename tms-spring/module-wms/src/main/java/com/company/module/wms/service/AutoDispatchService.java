@@ -1473,7 +1473,17 @@ public class AutoDispatchService {
         //   capKgThreshold(사전분할·빈패킹 상한)가 교집합(1.4톤)이 아니라 납품처
         //   최대차(예:18톤) 기준으로 계산되어 큰 차 1대로 묶인다.
         //   (혼합 물량/단독 그룹/MAX_TON 미설정/확장여지 없음 → 기존 validCars 그대로 → 무영향)
-        validCars = binValidCars(isMixedGroup, boardItems, validCars, carOrder, vehInfo, ptnrInfoMap);
+        {
+            List<Map<String, Object>> _vcBefore = validCars;
+            validCars = binValidCars(isMixedGroup, boardItems, validCars, carOrder, vehInfo, ptnrInfoMap);
+            // [B-1 진단] 혼적그룹 판지 진입 시 납품처 구성/교체 여부 — 왜 교체 안 되는지 확정용.
+            java.util.Set<String> _dks = boardItems.stream().map(it -> str(it.get("DPTNKY")))
+                .filter(s -> !s.isEmpty()).collect(Collectors.toSet());
+            log.info("[B1진단-판지] isMixedGroup={}, 판지품목 납품처={}, singleDk={}, validCars교체={}, bigCar후보={}",
+                isMixedGroup, _dks, singleDptnkyOfItems(boardItems),
+                (validCars != _vcBefore) ? "YES" : "NO",
+                validCars.isEmpty() ? "?" : str(validCars.get(0).get("CARTYPE")));
+        }
         String bigCar = validCars.isEmpty() ? "판별불가" : str(validCars.get(0).get("CARTYPE"));
         VehInfo bigVi = vehInfo.getOrDefault(bigCar, VehInfo.EMPTY);
         double bigCap = bigVi.loadKg > 0 ? bigVi.loadKg : 99_999_999.0;
@@ -1551,25 +1561,48 @@ public class AutoDispatchService {
         boardItems = boardItemsSplit;
         // ────────────────────────────────────────────────────────────────────
 
+        // [옵션 B-1 — 빈패킹 상한 납품처별 적용]
+        //   혼적 그룹에서 판지 품목을 '납품처별로 정렬'해 같은 납품처끼리 인접시킨 뒤,
+        //   빈패킹 분할 임계치(capKgThreshold)를 '현재 빈에 담긴 납품처' 기준으로 동적 산정한다.
+        //   같은 납품처(예:470185=18톤) 품목끼리는 그 납품처 MAX_TON 까지 한 빈에 묶여,
+        //   교집합(1.4톤)으로 조기 분할되던 문제를 해소. (단독 그룹/미혼적은 기존 순서·상한 그대로)
+        if (isMixedGroup) {
+            boardItems = new ArrayList<>(boardItems);
+            boardItems.sort(Comparator.comparing(it -> str(it.get("DPTNKY"))));
+        }
         List<BoardBin> vehListB = new ArrayList<>();
         List<Map<String, Object>> curB = new ArrayList<>();
         double curKg = 0, curH = 0, curCbm = 0;
+        String curDk = null;   // 현재 빈이 단일 납품처면 그 키(혼적 상한 산정용)
 
         for (Map<String, Object> it : boardItems) {
             double qtyKg  = boardKg(it, skumaMap);
             double itemH  = Math.min(calcBoardHeight(it, skumaMap), cp.maxBoardHeightM);
             double itemCbm = getItemCbm(it, skumaMap);
+            String itDk   = str(it.get("DPTNKY"));
 
-            boolean ko = !curB.isEmpty() && (curKg + qtyKg > capKgThreshold);
+            // [B-1] 현재 빈이 단일 납품처이고 새 품목도 같은 납품처면, 그 납품처 MAX_TON 으로 상한 확장.
+            //   (혼적 그룹에서만. 빈이 비었으면 이 품목 납품처 기준. 납품처가 바뀌면 교집합 기본값.)
+            double effCapKg = capKgThreshold;
+            if (isMixedGroup) {
+                String binDk = curB.isEmpty() ? itDk : (itDk.equals(curDk) ? itDk : null);
+                if (binDk != null && !binDk.isEmpty()) {
+                    double binMax = ptnrInfoMap.getOrDefault(binDk, PtnrInfo.EMPTY).maxLoadKg;
+                    if (binMax > effCapKg) effCapKg = binMax;   // 납품처 단독 상한이 더 크면 확장
+                }
+            }
+
+            boolean ko = !curB.isEmpty() && (curKg + qtyKg > effCapKg);
             boolean co = cp.boardCbmCheck && !curB.isEmpty() && itemCbm > 0 && capCbmThreshold > 0
                          && (curCbm + itemCbm > capCbmThreshold);
             if (ko || co) {
                 vehListB.add(new BoardBin(new ArrayList<>(curB), curKg, curH, curCbm, ko ? "중량초과" : "CBM초과"));
-                curB.clear(); curKg = 0; curH = 0; curCbm = 0;
+                curB.clear(); curKg = 0; curH = 0; curCbm = 0; curDk = null;
             }
             curB.add(it); curKg += qtyKg;
             curH = Math.max(curH, itemH);
             curCbm += itemCbm;
+            curDk = curB.size() == 1 ? itDk : (itDk.equals(curDk) ? curDk : null);  // 혼합되면 null
         }
         if (!curB.isEmpty()) vehListB.add(new BoardBin(new ArrayList<>(curB), curKg, curH, curCbm, ""));
 
