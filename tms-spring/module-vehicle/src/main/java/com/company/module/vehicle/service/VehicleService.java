@@ -409,28 +409,31 @@ public class VehicleService {
     }
 
     private Map<String, Object> selectCarclassRow(String cmcdvl, String cmcdky) {
-        @SuppressWarnings("unchecked")
-        Object[] r = (Object[]) em.createNativeQuery(
+        // [중요] em(JPA) 네이티브 쿼리는 KNRAWMS.CMCDV 를 인식 못 해 ORA-00942 발생
+        //   → wmsJdbc(Oracle 전용 JdbcTemplate)로 조회(다른 서비스와 동일 패턴).
+        List<Map<String, Object>> rows = wmsJdbc.queryForList(
             "SELECT CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5, USARG6, USARG7, USARG8 " +
-            "FROM KNRAWMS.CMCDV WHERE CMCDKY=? AND CMCDVL=?")
-            .setParameter(1, cmcdky)
-            .setParameter(2, cmcdvl)
-            .getResultStream().findFirst().orElse(null);
-        if (r == null) return null;
+            "FROM KNRAWMS.CMCDV WHERE CMCDKY=? AND CMCDVL=?",
+            cmcdky, cmcdvl);
+        if (rows.isEmpty()) return null;
+        Map<String, Object> r = rows.get(0);
 
         Map<String, Object> m = new LinkedHashMap<>();
-        m.put("CMCDVL", str(r[0]));
-        m.put("CDESC1", str(r[1]));
-        m.put("USARG1", str(r[2]));
-        m.put("USARG2", str(r[3]));
-        m.put("USARG3", str(r[4]));
-        m.put("USARG4", str(r[5]));
-        m.put("USARG5", str(r[6]));
+        m.put("CMCDVL", str(r.get("CMCDVL")));
+        m.put("CDESC1", str(r.get("CDESC1")));
+        m.put("USARG1", str(r.get("USARG1")));
+        m.put("USARG2", str(r.get("USARG2")));
+        m.put("USARG3", str(r.get("USARG3")));
+        m.put("USARG4", str(r.get("USARG4")));
+        m.put("USARG5", str(r.get("USARG5")));
 
         // 길이/너비/높이(USARG6~8): CMCDV 직접값 우선 → 비면 DsVehicle 로 보완
-        String len = str(r[7]), wid = str(r[8]), hgt = str(r[9]);
+        //   ※ 저장 시 미입력 수치는 '0' 으로 들어가므로, '0' 도 미입력으로 간주하여 보완.
+        String len = normSpec(str(r.get("USARG6")));
+        String wid = normSpec(str(r.get("USARG7")));
+        String hgt = normSpec(str(r.get("USARG8")));
         if (len.isEmpty() || wid.isEmpty() || hgt.isEmpty()) {
-            DsVehicle vhc = dsVehicleRepo.findById(str(r[0])).orElse(null);
+            DsVehicle vhc = dsVehicleRepo.findById(str(r.get("CMCDVL"))).orElse(null);
             if (vhc != null) {
                 if (len.isEmpty() && vhc.getLengthM() != null) len = vhc.getLengthM().toString();
                 if (wid.isEmpty() && vhc.getWidthM()  != null) wid = vhc.getWidthM();
@@ -441,6 +444,14 @@ public class VehicleService {
         m.put("USARG7", wid);
         m.put("USARG8", hgt);
         return m;
+    }
+
+    /** 사양 수치 정규화: 빈값 또는 '0'(저장 시 미입력 기본값)은 미입력으로 간주 → '' 반환 */
+    private String normSpec(String s) {
+        if (s == null) return "";
+        s = s.strip();
+        if (s.isEmpty() || "0".equals(s) || "0.0".equals(s)) return "";
+        return s;
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -459,58 +470,58 @@ public class VehicleService {
         String nowdt = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
         String nowtm = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmmss"));
 
+        // [중요] CMCDV 저장/조회는 wmsJdbc(Oracle 전용 JdbcTemplate) 사용.
+        //   em(JPA wmsPU) 네이티브 쿼리는 KNRAWMS.CMCDV 를 인식하지 못해 ORA-00942/불안정.
+        //   (AutoDispatchService / DispatchConfigApiService 등 다른 서비스와 동일 패턴)
+        //
         // 기존 ROW 존재 여부
-        Long cnt = ((Number) em.createNativeQuery(
-            "SELECT COUNT(*) FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10' AND CMCDVL=?")
-            .setParameter(1, key)
-            .getSingleResult()).longValue();
+        Long cnt = wmsJdbc.queryForObject(
+            "SELECT COUNT(*) FROM KNRAWMS.CMCDV WHERE CMCDKY='TMS_CARCLASS10' AND CMCDVL=?",
+            Long.class, key);
 
         // [진단] 배포 후 원인 확정용 — 어떤 경로를 타는지/입력값 로그.
         log.info("[saveVehicleSpec] CMCDVL={}, 기존ROW건수={} → {} 경로. cdesc1={}, usarg3(KG)={}, usarg6/7/8={}/{}/{}",
                 key, cnt, (cnt != null && cnt > 0) ? "UPDATE" : "INSERT",
                 req.getCdesc1(), req.getUsarg3(), req.getUsarg6(), req.getUsarg7(), req.getUsarg8());
 
-        // [ORA-01400 방어] CMCDV 의 USARG1~8/CDESC1 은 NOT NULL 제약이 걸려 있어
-        //   NULL 바인딩 시 ORA-01400 발생(특히 신규 INSERT 에서 보존대상 USARG1/5 가
-        //   비어 있을 때). 값이 없으면 빈 문자열('')로 바인딩 → 제약 위반 방지.
-        //   사용자가 입력한 값은 그대로 전달되므로 기존 동작/저장값은 유지.
-        String vCdesc1 = str(req.getCdesc1());
-        String vUsarg1 = str(req.getUsarg1());
-        String vUsarg2 = str(req.getUsarg2());
-        String vUsarg3 = str(req.getUsarg3());
-        String vUsarg4 = str(req.getUsarg4());
-        String vUsarg5 = str(req.getUsarg5());
-        String vUsarg6 = str(req.getUsarg6());
-        String vUsarg7 = str(req.getUsarg7());
-        String vUsarg8 = str(req.getUsarg8());
+        // [ORA-01400 방어] CMCDV 의 USARG1~8/CDESC1 은 NOT NULL 제약.
+        //   ※ Oracle 은 빈 문자열('')도 NULL 로 취급하므로 '' 로는 NOT NULL 을 통과할 수 없다.
+        //     → 미입력 컬럼은 의미 있는 기본값(코드성 'N' / 수치성 '0')으로 채운다.
+        //   USARG1 = 적용유무 코드('Y'/'N') → 신규 고정차량 전용사양은 기본 'N'
+        //     (자동배차 USE_YN 필터는 'Y' 또는 빈값만 포함하므로, 고정차량 '차량번호' 코드가
+        //      톤수유형 자동배차 후보에 섞여 들어가는 것을 막아 기존 로직 영향 없음)
+        //   USARG5 = 보존 코드 → 기본 'N'. USARG2/3/4/6/7/8 수치성 → 비면 '0'.
+        String vCdesc1 = defStr(req.getCdesc1(), "");
+        String vUsarg1 = defStr(req.getUsarg1(), "N"); // 적용유무
+        String vUsarg2 = defStr(req.getUsarg2(), "0"); // 파렛트수
+        String vUsarg3 = defStr(req.getUsarg3(), "0"); // 적재중량(KG)
+        String vUsarg4 = defStr(req.getUsarg4(), "N"); // 장축여부
+        String vUsarg5 = defStr(req.getUsarg5(), "N"); // 보존
+        String vUsarg6 = defStr(req.getUsarg6(), "0"); // 길이
+        String vUsarg7 = defStr(req.getUsarg7(), "0"); // 너비
+        String vUsarg8 = defStr(req.getUsarg8(), "0"); // 높이
+        // CDESC1 도 NOT NULL 대비: 비면 차량번호로 대체
+        if (vCdesc1.isEmpty()) vCdesc1 = key;
 
         String action;
         int affected;
         if (cnt != null && cnt > 0) {
             // UPDATE — 톤수별 차량사양(USARG1~8) 반영.
             //   USARG6/7/8 = 길이/너비/높이 (고정차량 사양 전용, CMCDV 직접 저장)
-            affected = em.createNativeQuery("""
+            affected = wmsJdbc.update("""
                 UPDATE KNRAWMS.CMCDV SET CDESC1=?, USARG1=?, USARG2=?, USARG3=?, USARG4=?, USARG5=?,
                 USARG6=?, USARG7=?, USARG8=?,
                 LMODAT=?, LMOTIM=?, LMOUSR=?
                 WHERE CMCDKY='TMS_CARCLASS10' AND CMCDVL=?
-                """)
-              .setParameter(1, vCdesc1)
-              .setParameter(2, vUsarg1)
-              .setParameter(3, vUsarg2)
-              .setParameter(4, vUsarg3)
-              .setParameter(5, vUsarg4)
-              .setParameter(6, vUsarg5)
-              .setParameter(7, vUsarg6)
-              .setParameter(8, vUsarg7)
-              .setParameter(9, vUsarg8)
-              .setParameter(10, nowdt).setParameter(11, nowtm).setParameter(12, "WEB")
-              .setParameter(13, key)
-              .executeUpdate();
+                """,
+                vCdesc1, vUsarg1, vUsarg2, vUsarg3, vUsarg4, vUsarg5,
+                vUsarg6, vUsarg7, vUsarg8,
+                nowdt, nowtm, "WEB",
+                key);
             action = "updated";
         } else {
-            // INSERT — 사용자가 입력한 값만 등록(확인1). 미입력 컬럼은 빈 값으로 둔다.
-            affected = em.createNativeQuery("""
+            // INSERT — 사용자 입력값 + NOT NULL 기본값.
+            affected = wmsJdbc.update("""
                 INSERT INTO KNRAWMS.CMCDV
                     (CMCDKY, CMCDVL, CDESC1, USARG1, USARG2, USARG3, USARG4, USARG5,
                      USARG6, USARG7, USARG8,
@@ -519,25 +530,22 @@ public class VehicleService {
                     ('TMS_CARCLASS10', ?, ?, ?, ?, ?, ?, ?,
                      ?, ?, ?,
                      ?, ?, ?, ?, ?, ?)
-                """)
-              .setParameter(1, key)
-              .setParameter(2, vCdesc1)
-              .setParameter(3, vUsarg1)
-              .setParameter(4, vUsarg2)
-              .setParameter(5, vUsarg3)
-              .setParameter(6, vUsarg4)
-              .setParameter(7, vUsarg5)
-              .setParameter(8, vUsarg6)
-              .setParameter(9, vUsarg7)
-              .setParameter(10, vUsarg8)
-              .setParameter(11, nowdt).setParameter(12, nowtm).setParameter(13, "WEB")
-              .setParameter(14, nowdt).setParameter(15, nowtm).setParameter(16, "WEB")
-              .executeUpdate();
+                """,
+                key, vCdesc1, vUsarg1, vUsarg2, vUsarg3, vUsarg4, vUsarg5,
+                vUsarg6, vUsarg7, vUsarg8,
+                nowdt, nowtm, "WEB", nowdt, nowtm, "WEB");
             action = "created";
         }
         // [진단] 실제 반영 건수 — 0 이면 커밋돼도 데이터가 안 들어간 것.
         log.info("[saveVehicleSpec] 완료 action={}, 반영건수={}, CMCDVL={}", action, affected, key);
         return Map.of("ok", true, "action", action, "cmcdvl", key, "affected", affected);
+    }
+
+    /** NULL/빈문자열이면 기본값, 아니면 trim 한 원래 값.
+     *  (Oracle 은 '' 를 NULL 로 취급 → NOT NULL 컬럼 방어에 사용) */
+    private String defStr(Object o, String def) {
+        String s = (o == null) ? "" : o.toString().strip();
+        return s.isEmpty() ? def : s;
     }
 
     // ──────────────────────────────────────────────────────────────────────────
