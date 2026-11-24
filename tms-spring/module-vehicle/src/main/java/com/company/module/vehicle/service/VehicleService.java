@@ -343,9 +343,11 @@ public class VehicleService {
         // 사양 컬럼 라벨(USARG1~5) — CMCDM USARL1~5 (사양 명칭 표시용)
         List<Map<String, Object>> header = loadCarclassHeader("TMS_CARCLASS10");
 
-        // 1순위: 차량번호로 고정차량 사양 조회
+        // 1순위: 차량번호로 고정차량 사양 조회 (CMCDKY='TMS_CARCLASS10', CMCDVL=차량번호)
         if (!vno.isEmpty()) {
             Map<String, Object> fixed = selectCarclassRow(vno);
+            log.info("[getVehicleSpec] 1순위(고정차량) 조회: vno={}, 결과={}",
+                    vno, fixed == null ? "NULL(미등록)" : "FIXED hit");
             if (fixed != null) {
                 fixed.put("SPEC_SOURCE", "FIXED"); // 고정차량 사양
                 return Map.of("ok", true, "spec", fixed, "header", header);
@@ -355,6 +357,8 @@ public class VehicleService {
         // 2순위: 차량유형코드로 기본차량 사양 조회
         if (!ccd.isEmpty()) {
             Map<String, Object> base = selectCarclassRow(ccd);
+            log.info("[getVehicleSpec] 2순위(기본차량) 조회: ccd={}, 결과={}",
+                    ccd, base == null ? "NULL" : "BASE hit");
             if (base != null) {
                 base.put("SPEC_SOURCE", "BASE"); // 기본차량(차량유형) 사양
                 return Map.of("ok", true, "spec", base, "header", header);
@@ -362,6 +366,7 @@ public class VehicleService {
         }
 
         // 조회 결과 없음
+        log.info("[getVehicleSpec] 사양 없음: vno={}, ccd={}", vno, ccd);
         return Map.of("ok", true, "spec", null, "header", header);
     }
 
