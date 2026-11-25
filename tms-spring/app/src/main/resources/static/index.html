@@ -21489,11 +21489,21 @@ async function psopSaveAutoResult(vehicles, autoMeta) {
     //   (콘솔진단: "[배차차단진단] 전체 N행 중 BLOCKED_YN='Y' = 0건" 으로 확정)
     //   → 미리보기와 동일 기준(v.dispatch_blocked)으로, 이 차량의 납품문서 행에 'Y' 를 세팅한다.
     const _vBlocked = (v.dispatch_blocked === true || String(v._blocked || v.blocked_yn || v.BLOCKED_YN || '').toUpperCase() === 'Y');
+    // [혼적 번짐방지] 배차차단은 '그 차량의 배차차단 사유 납품처(v.dptnky)' 품목에만 해당한다.
+    //   혼적(동적그룹) 차량은 items 에 여러 납품처 품목이 섞여 있어, 차량 items 전체에 BLOCKED_YN
+    //   을 칠하면 같은 차에 실린 다른 납품처(예: 해담페이퍼) 행까지 주황색이 번지는 버그가 있었다.
+    //   → item.DPTNKY 가 차량 대표 납품처(v.dptnky, 배차차단 사유 납품처)와 일치하는 행에만 세팅.
+    //   (단일 납품처 차량은 모든 품목의 DPTNKY 가 v.dptnky 와 같아 기존과 동일하게 동작)
+    const _blockDk = String(v.dptnky ?? '').trim();
     (v.items || []).forEach(it => {
       const row = psopState.searchRows.find(r => r.SHPOKY===it.SHPOKY && r.SHPOIT===it.SHPOIT);
       if (row) {
         row.DISPATCHED = true;
-        if (_vBlocked) row.BLOCKED_YN = 'Y';   // 높이초과 배차차단 → 목록 행 주황색 표시
+        if (_vBlocked) {
+          const _itDk = String(it.DPTNKY ?? it.dptnky ?? row.DPTNKY ?? '').trim();
+          // 차량 대표 납품처키가 없으면(단일 납품처 등) 기존처럼 전체 적용, 있으면 일치 품목만.
+          if (!_blockDk || !_itDk || _itDk === _blockDk) row.BLOCKED_YN = 'Y';
+        }
       }
     });
   });
