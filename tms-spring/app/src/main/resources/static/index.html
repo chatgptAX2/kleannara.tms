@@ -2967,6 +2967,11 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psd-saved-badge{padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700;background:#eff6ff;color:#1d4ed8;border:1px solid #3b82f6}
 .psd-undisp-badge{padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700;background:var(--pastel-gray-bg);color:var(--pastel-gray-fg);border:1px solid var(--border)}
 .psd-stdlnr-cell{font-family:monospace;font-size:10px;color:#1d4ed8;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
+/* [배차차단 색구분] 높이초과 배차차단(BLOCKED_YN='Y') 상태로 저장된 납품처 행 — 연한 적색 배경 + 좌측 적색 바 */
+.psd-doc-tbl tbody tr.psd-blocked-row{background:rgba(185,28,28,.10)!important;border-left:3px solid #b91c1c}
+.psd-doc-tbl tbody tr.psd-blocked-row td:first-child{border-left:3px solid #b91c1c}
+.psd-doc-tbl tbody tr.psd-blocked-row.selected-row{background:rgba(185,28,28,.20)!important}
+.psd-blocked-badge{display:inline-block;padding:1px 5px;border-radius:6px;font-size:9px;font-weight:700;background:#fef2f2;color:#b91c1c;border:1px solid #b91c1c;margin-left:4px;vertical-align:middle}
 /* 수동배차 드롭 안내 */
 .psd-drop-hint{padding:20px;text-align:center;color:var(--text3);font-size:12px;border:2px dashed var(--border);border-radius:8px;margin:12px}
 .psd-drop-active .psd-drop-hint{border-color:#10b981;color:#10b981;background:rgba(16,185,129,.04)}
@@ -11651,7 +11656,14 @@ function psdRenderDocTable(filterText) {
       ? `<span style="display:inline-block;padding:1px 5px;border-radius:6px;font-size:10px;font-weight:700;background:#059669;color:#fff">판지</span>`
       : `<span style="display:inline-block;padding:1px 5px;border-radius:6px;font-size:10px;font-weight:700;background:#6b7280;color:#fff">기타</span>`;
 
-    return `<tr class="${r.DISPATCHED?'dispatched':''} ${sel?'selected-row':''}"
+    // [배차차단 색구분] 저장 시 BLOCKED_YN='Y'(높이초과 배차차단 그대로 저장)인 납품처 행을 색으로 구분 표시.
+    //   · 행 전체에 'psd-blocked-row' 클래스 부여(연한 적색 배경) + 납품처명 옆에 ⛔ 배지.
+    const isBlocked   = String(r.BLOCKED_YN||'').toUpperCase() === 'Y';
+    const blockedBadge = isBlocked
+      ? `<span class="psd-blocked-badge" title="높이초과 배차차단 상태로 저장된 납품처">⛔ 배차차단</span>`
+      : '';
+
+    return `<tr class="${r.DISPATCHED?'dispatched':''} ${sel?'selected-row':''} ${isBlocked?'psd-blocked-row':''}"
       id="psd-row-${key.replace(/\|/g,'_')}"
       draggable="true"
       ondragstart="psdDragStartDoc(event,'${r.SHPOKY}','${r.SHPOIT}')"
@@ -11665,7 +11677,7 @@ function psdRenderDocTable(filterText) {
       <td style="font-family:monospace;color:var(--primary);font-weight:600" title="출하문서: ${r.SHPOKY||''}">${r.SVBELN||r.SHPOKY}${splitBadge}</td>
       <td style="text-align:center">${r.SHPOIT}</td>
       <td title="${r.DPTNKY||''}">${r.DPTNKY||''}</td>
-      <td class="col-nm" title="${r.DPTNM||''}">${r.DPTNM||''}</td>
+      <td class="col-nm" title="${r.DPTNM||''}">${r.DPTNM||''}${blockedBadge}</td>
       <td style="font-family:monospace;font-size:10px" title="${r.SKUKEY||''}">${r.SKUKEY||''}</td>
       <td class="col-nm" title="${r.DESC01||''}">${r.DESC01||''}</td>
       <td style="text-align:right;font-weight:600">${psdFmtNum(r.QTSHPO)}</td>

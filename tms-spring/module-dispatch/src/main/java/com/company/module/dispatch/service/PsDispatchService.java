@@ -243,7 +243,10 @@ public class PsDispatchService {
         //   · 배차저장 시 TMS_PS_DISPATCH_H.FIX_YN 에 기록된 Y/N 이 1차 소스(수기 고정차량도 유지됨).
         //   · 저장값이 공백/없음(레거시 배차)일 때만 기존 VHCMA 조인값(vh.FIX_YN)으로 폴백.
         "       CASE WHEN TRIM(COALESCE(pd.FIX_YN,'')) IN ('Y','N') THEN TRIM(pd.FIX_YN)" +
-        "            ELSE TRIM(COALESCE(vh.FIX_YN,'')) END AS FIX_YN" +
+        "            ELSE TRIM(COALESCE(vh.FIX_YN,'')) END AS FIX_YN," +
+        // [배차차단 색구분] 배차단위 저장값(pd.BLOCKED_YN) 그대로 반환 — 'Y' 이면 프런트 목록에서 해당 납품처 행을 색표시.
+        //   저장 없음/레거시 배차는 NULL → COALESCE 로 'N' 처리(무영향).
+        "       TRIM(COALESCE(pd.BLOCKED_YN,'N')) AS BLOCKED_YN" +
         " FROM KNRAWMS.TMS_SHPDI i" +
         " JOIN KNRAWMS.TMS_SHPDH h ON i.SHPOKY = h.SHPOKY" +
         " LEFT JOIN KNRAWMS.BZPTN b ON b.PTNRKY = h.DPTNKY AND b.PTNRTY = 'CT'" +
@@ -469,6 +472,7 @@ public class PsDispatchService {
                 .linkYn(str(r[18]))                  // 연동구분(DESC02): 'OFFLINE'=미연동, 'ONLINE'=연동
                 .carno(str(r[26]))                   // [PR-B] 차량번호(TMS_SHPDH.CARNO)
                 .fixYn(str(r[27]))                   // [PR-B] 고정차량 여부(VHCMA.FIX_YN)
+                .blockedYn(str(r[28]))               // [배차차단] 높이초과 배차차단 여부('Y'/'N') → 프런트 행 색표시
                 .build());
         }
         return result;
@@ -505,13 +509,16 @@ public class PsDispatchService {
             // [배차방법 저장] 프론트 전달값 정규화: 'MANUAL' 이면 MANUAL, 그 외(기본)는 AUTO.
             String methodForSave = "MANUAL".equalsIgnoreCase(
                     veh.getDispatchMethod() == null ? "" : veh.getDispatchMethod().strip()) ? "MANUAL" : "AUTO";
+            // [배차차단 저장] 프론트 전달값 정규화: 'Y' 이면 Y, 그 외(기본)는 N. (Oracle 빈문자='' = NULL 방지)
+            String blockedYnForSave = "Y".equalsIgnoreCase(
+                    veh.getBlockedYn() == null ? "" : veh.getBlockedYn().strip()) ? "Y" : "N";
 
             // 헤더 INSERT — STATUS='TEMP'
             tmsEm.createNativeQuery("""
                 INSERT INTO KNRAWMS.TMS_PS_DISPATCH_H
                   (DISPATCH_NO, DISPATCH_DT, RQSHPD, DPTNKY, DPTNM,
-                   CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR, DISPATCH_TYPE, LOAD_LAYOUT, NOTE, FIX_YN, DISPATCH_METHOD)
-                VALUES (?,?,?,?,?,?,'TEMP',?,?,?,?,'GI',?,?,?,?)
+                   CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR, DISPATCH_TYPE, LOAD_LAYOUT, NOTE, FIX_YN, DISPATCH_METHOD, BLOCKED_YN)
+                VALUES (?,?,?,?,?,?,'TEMP',?,?,?,?,'GI',?,?,?,?,?)
                 """)
               .setParameter(1,  dispatchNo)
               .setParameter(2,  today)
@@ -527,6 +534,7 @@ public class PsDispatchService {
               .setParameter(12, vehNoForNote)
               .setParameter(13, fixYnForSave)
               .setParameter(14, methodForSave)
+              .setParameter(15, blockedYnForSave)
               .executeUpdate();
 
             // 디테일 INSERT — ★ TMS_SHPDI.STDLNR 은 건드리지 않는다(분할 선처리도 하지 않음)
@@ -769,12 +777,16 @@ public class PsDispatchService {
             //   TEMP→DRAFT 전환 시에도 프론트가 보존한 배차방법 값이 payload 로 전달되어 그대로 유지된다.
             String methodForSave = "MANUAL".equalsIgnoreCase(
                     veh.getDispatchMethod() == null ? "" : veh.getDispatchMethod().strip()) ? "MANUAL" : "AUTO";
+            // [배차차단 저장] 프론트 전달값 정규화: 'Y' 이면 Y, 그 외(기본)는 N. (Oracle 빈문자='' = NULL 방지)
+            //   TEMP→DRAFT 전환(삭제+재저장)시에도 프론트가 보존한 dispatch_blocked 값이 payload 로 전달돼 그대로 유지.
+            String blockedYnForSave = "Y".equalsIgnoreCase(
+                    veh.getBlockedYn() == null ? "" : veh.getBlockedYn().strip()) ? "Y" : "N";
             tmsEm.createNativeQuery("""
                 INSERT INTO KNRAWMS.TMS_PS_DISPATCH_H
                   (DISPATCH_NO, DISPATCH_DT, RQSHPD, DPTNKY, DPTNM,
                    CARTYPE, STATUS, TOTAL_KG, TOTAL_CNT, CREDAT, CREUSR, DISPATCH_TYPE, LOAD_LAYOUT, NOTE, FIX_YN, DISPATCH_METHOD,
-                   LOAD_KG, MATERIAL_TYPE)
-                VALUES (?,?,?,?,?,?,'DRAFT',?,?,?,?,'GI',?,?,?,?,?,?)
+                   LOAD_KG, MATERIAL_TYPE, BLOCKED_YN)
+                VALUES (?,?,?,?,?,?,'DRAFT',?,?,?,?,'GI',?,?,?,?,?,?,?)
                 """)
               .setParameter(1,  dispatchNo)
               .setParameter(2,  today)
@@ -792,6 +804,7 @@ public class PsDispatchService {
               .setParameter(14, methodForSave)    // [배차방법] AUTO/MANUAL
               .setParameter(15, loadKg)           // [대시보드] 적재가능중량(KG)=차량 LOAD_TON×1000
               .setParameter(16, materialType)     // [대시보드] 출하유형(ROLL/BOARD/OTHER)
+              .setParameter(17, blockedYnForSave) // [배차차단] 높이초과 배차차단 여부('Y'/'N')
               .executeUpdate();
 
             // [고정차량저장진단] 각 배차(가선적번호/톤수)에 실제로 저장되는 차량번호(NOTE) 추적.
