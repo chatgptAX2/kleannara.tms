@@ -17914,11 +17914,32 @@ async function psopSearch() {
       const tVehicles = (tData && (tData.vehicles || (tData.data && tData.data.vehicles))) || [];
       if (tVehicles.length) {
         const _haveTemp = new Set(psopState.vehicles.map(v => v._tempNo || '').filter(Boolean));
+        // [이중 중복방지] _tempNo 뿐 아니라, 이미 선적목록(vehicles)에 올라간 '납품문서 키(SHPOKY|SHPOIT)'
+        //   집합도 만들어 둔다. 레거시 localStorage(_tempNo 미보존) 복원건이 섞여 있어도,
+        //   같은 납품문서를 담은 TEMP 를 다시 병합하지 않도록 방어 → 선적목록 2배 중복 원천 차단.
+        const _haveDocKeys = new Set();
+        (psopState.vehicles || []).forEach(v => {
+          (v.items || []).forEach(it => {
+            const sk = it.SHPOKY ?? it.shpoky, si = it.SHPOIT ?? it.shpoit;
+            if (sk != null && si != null) _haveDocKeys.add(`${sk}|${si}`);
+          });
+        });
         tVehicles.forEach(tv => {
           const no = tv.DISPATCH_NO ?? tv.dispatchNo ?? tv.dispatch_no;
-          if (!no || _haveTemp.has(no)) return;       // 내가 이미 들고 있는 TEMP 는 스킵
-          psopState._pendingSeq = (psopState._pendingSeq || 0) + 1;
+          if (!no || _haveTemp.has(no)) return;       // 내가 이미 들고 있는 TEMP 는 스킵(_tempNo 기준)
           const items = tv.items || [];
+          // [이중 중복방지] 이 TEMP 의 납품문서 중 하나라도 이미 선적목록에 있으면 중복으로 보고 스킵.
+          const _dupByDoc = items.some(it => {
+            const sk = it.SHPOKY ?? it.shpoky, si = it.SHPOIT ?? it.shpoit;
+            return sk != null && si != null && _haveDocKeys.has(`${sk}|${si}`);
+          });
+          if (_dupByDoc) return;
+          // 이 TEMP 를 채택 → 이후 같은 조회 내에서 또 겹치지 않도록 docKey 집합에 등록
+          items.forEach(it => {
+            const sk = it.SHPOKY ?? it.shpoky, si = it.SHPOIT ?? it.shpoit;
+            if (sk != null && si != null) _haveDocKeys.add(`${sk}|${si}`);
+          });
+          psopState._pendingSeq = (psopState._pendingSeq || 0) + 1;
           psopState.vehicles.push({
             _pendingId:  `_temp_${psopState._pendingSeq}`,
             _tempNo:     no,               // 서버 TEMP 번호 — 배차저장 시 DRAFT 전환에 사용
@@ -20581,6 +20602,15 @@ function _psopSavePendingState() {
       .map(v => ({
         _pendingId:      v._pendingId,
         _origDispatchNo: v._origDispatchNo || null,
+        // ★[중복방지] 서버 TEMP 번호(_tempNo)를 반드시 영속화한다.
+        //   미포함 시: 자동배차 TEMP → 재조회(localStorage 복원) 왕복에서 _tempNo 가 유실되어,
+        //   list-temp 공유 병합의 중복스킵(_haveTemp = Set(v._tempNo))에 걸리지 않고 같은 TEMP 가
+        //   한 번 더 push → 선적목록이 정확히 2배(예: 84→168)로 중복되는 버그의 근본원인.
+        _tempNo:         v._tempNo || null,
+        _shared:         v._shared || false,
+        // [배차차단] 배차차단 플래그도 보존(배차저장 재전달/색표시 유지용)
+        _blocked:        v._blocked || (v.dispatch_blocked ? 'Y' : 'N'),
+        dispatch_blocked: v.dispatch_blocked === true,
         cartype:         v.cartype      || '',
         carclass_cd:     v.carclass_cd  || '',
         rqshpd:          v.rqshpd       || '',
@@ -20589,6 +20619,8 @@ function _psopSavePendingState() {
         total_kg:        v.total_kg     || 0,
         total_cnt:       v.total_cnt    || 0,
         load_kg:         v.load_kg      || null,
+        // [배차방법] 배지 유지용
+        _dispatchMethod: v._dispatchMethod || null,
         // ★[PR-B21] 고정차량 차량번호/고정여부도 영속화한다.
         //   미포함 시: 자동배차(pending) → 날짜변경 → 재조회(localStorage 복원) 왕복에서
         //   vehicle_no/fix_yn 이 유실되어 차량번호/고정차량 표시가 사라졌다(이번 증상의 근본원인).
@@ -20639,6 +20671,14 @@ function _psopRestorePendingState() {
       psopState.vehicles.push({
         _pendingId:      v._pendingId,
         _origDispatchNo: v._origDispatchNo || null,
+        // ★[중복방지] 저장 시 담은 _tempNo 를 반드시 복원한다.
+        //   이게 없으면 list-temp 공유 병합의 중복스킵(_haveTemp=Set(v._tempNo))에 안 걸려
+        //   같은 TEMP 가 또 push → 선적목록 정확히 2배 중복(84→168) 발생.
+        _tempNo:         v._tempNo || null,
+        _shared:         v._shared || false,
+        _blocked:        v._blocked || (v.dispatch_blocked ? 'Y' : 'N'),
+        dispatch_blocked: v.dispatch_blocked === true,
+        _dispatchMethod: v._dispatchMethod || null,
         STDLNR:          null,
         cartype:         v.cartype      || '',
         carclass_cd:     v.carclass_cd  || '',
