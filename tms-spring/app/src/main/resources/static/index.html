@@ -2967,11 +2967,11 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psd-saved-badge{padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700;background:#eff6ff;color:#1d4ed8;border:1px solid #3b82f6}
 .psd-undisp-badge{padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700;background:var(--pastel-gray-bg);color:var(--pastel-gray-fg);border:1px solid var(--border)}
 .psd-stdlnr-cell{font-family:monospace;font-size:10px;color:#1d4ed8;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
-/* [배차차단 색구분] 높이초과 배차차단(BLOCKED_YN='Y') 상태로 저장된 납품처 행 — 연한 적색 배경 + 좌측 적색 바 */
-.psd-doc-tbl tbody tr.psd-blocked-row{background:rgba(185,28,28,.10)!important;border-left:3px solid #b91c1c}
-.psd-doc-tbl tbody tr.psd-blocked-row td:first-child{border-left:3px solid #b91c1c}
-.psd-doc-tbl tbody tr.psd-blocked-row.selected-row{background:rgba(185,28,28,.20)!important}
-.psd-blocked-badge{display:inline-block;padding:1px 5px;border-radius:6px;font-size:9px;font-weight:700;background:#fef2f2;color:#b91c1c;border:1px solid #b91c1c;margin-left:4px;vertical-align:middle}
+/* [배차차단 색구분] 높이초과 배차차단(BLOCKED_YN='Y') 상태로 저장된 납품처 행 — 주황색(주의) 배경 + 좌측 주황 바 */
+.psd-doc-tbl tbody tr.psd-blocked-row{background:rgba(245,158,11,.18)!important;border-left:3px solid #f59e0b}
+.psd-doc-tbl tbody tr.psd-blocked-row td:first-child{border-left:3px solid #f59e0b}
+.psd-doc-tbl tbody tr.psd-blocked-row.selected-row{background:rgba(245,158,11,.32)!important}
+.psd-blocked-badge{display:inline-block;padding:1px 5px;border-radius:6px;font-size:9px;font-weight:700;background:#fffbeb;color:#b45309;border:1px solid #f59e0b;margin-left:4px;vertical-align:middle}
 /* 수동배차 드롭 안내 */
 .psd-drop-hint{padding:20px;text-align:center;color:var(--text3);font-size:12px;border:2px dashed var(--border);border-radius:8px;margin:12px}
 .psd-drop-active .psd-drop-hint{border-color:#10b981;color:#10b981;background:rgba(16,185,129,.04)}
@@ -21304,6 +21304,8 @@ async function psopSaveAutoResult(vehicles, autoMeta) {
         fix_yn:      String(v.fix_yn || v.FIX_YN || 'N').toUpperCase() === 'Y' ? 'Y' : 'N',
         // [배차방법] 자동배차 결과 저장이므로 기본 AUTO (수기배차는 별도 경로에서 MANUAL 저장).
         dispatch_method: (String(v._dispatchMethod || v.dispatch_method || '').toUpperCase() === 'MANUAL') ? 'MANUAL' : 'AUTO',
+        // [배차차단] 미리보기 높이초과 배차차단(dispatch_blocked) 여부를 TEMP 저장에 보존 → TEMP→DRAFT 전환 후 목록 색표시.
+        blocked_yn:  (v.dispatch_blocked === true || String(v.blocked_yn || v.BLOCKED_YN || '').toUpperCase() === 'Y') ? 'Y' : 'N',
         rqshpd:      v.rqshpd,
         dptnky:      v.dptnky,
         dptnm:       v.dptnm,
@@ -21361,6 +21363,9 @@ async function psopSaveAutoResult(vehicles, autoMeta) {
       // 배차방법(자동) + 제약조건 메타 (선적목록 배지/제약조건 확인용)
       _dispatchMethod: 'AUTO',
       _autoMeta:       autoMeta || { method: 'AUTO' },
+      // [배차차단] 미리보기 높이초과 배차차단 여부 보존 → 배차저장(TEMP→DRAFT) payload 로 전달해 BLOCKED_YN 저장.
+      _blocked:        (v.dispatch_blocked === true) ? 'Y' : 'N',
+      dispatch_blocked: (v.dispatch_blocked === true),
       // ★[PR-G TEMP공유] 서버 임시저장(TEMP)에서 발급된 배차번호. 배차저장 시 payload.dispatch_no 로
       //   보내 TEMP→DRAFT 전환에 사용. (STDLNR 은 아직 미채번이므로 STDLNR 로 두지 않는다)
       _tempNo:         _tempNos[_vi] || null,
@@ -22002,6 +22007,10 @@ async function psopSaveDispatch() {
         dispatch_no: v._tempNo || null,
         // [배차방법] 자동/수기 구분 — 서버가 TMS_PS_DISPATCH_H.DISPATCH_METHOD 에 저장.
         dispatch_method: (String(v._dispatchMethod || v.dispatch_method || '').toUpperCase() === 'MANUAL') ? 'MANUAL' : 'AUTO',
+        // [배차차단] 높이초과 배차차단 여부 — 서버가 TMS_PS_DISPATCH_H.BLOCKED_YN 에 저장.
+        //   TEMP→DRAFT 전환은 'TEMP 삭제 + DRAFT 재저장' 이라 이 payload 에 blocked 가 없으면 DRAFT 가 'N' 으로 재저장됨.
+        //   _blocked(미리보기 보존값) 또는 dispatch_blocked 를 우선 사용.
+        blocked_yn:  (v._blocked === 'Y' || v.dispatch_blocked === true || String(v.blocked_yn || v.BLOCKED_YN || '').toUpperCase() === 'Y') ? 'Y' : 'N',
         rqshpd:      v.rqshpd,
         dptnky:      v.dptnky,
         dptnm:       v.dptnm,
