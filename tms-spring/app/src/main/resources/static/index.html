@@ -18164,6 +18164,13 @@ function psopRenderDocTable(filterText) {
       ? `<span style="display:inline-block;padding:1px 5px;border-radius:6px;font-size:10px;font-weight:700;background:#059669;color:#fff">판지</span>`
       : `<span style="display:inline-block;padding:1px 5px;border-radius:6px;font-size:10px;font-weight:700;background:#6b7280;color:#fff">기타</span>`;
 
+    // [배차차단 색구분] 저장값 BLOCKED_YN='Y'(높이초과 배차차단) 납품처 행을 주황색(주의)으로 구분 표시.
+    //   · 행 전체에 'psd-blocked-row' 클래스 부여 + 납품처명 옆에 ⛔ 배지.
+    const isBlocked    = String(r.BLOCKED_YN||'').toUpperCase() === 'Y';
+    const blockedBadge = isBlocked
+      ? `<span class="psd-blocked-badge" title="높이초과 배차차단 상태로 저장된 납품처">⛔ 배차차단</span>`
+      : '';
+
     /* 컬럼별 TD 셀 맵 — 전체 font-size:11px / font-weight:400 통일 */
     const cellMap = {
       chk:     `<td class="drag-handle-cell psop-chk-cell" onclick="event.stopPropagation()" onmousedown="psopDragSelStart('${key}',event)" onmouseenter="psopDragSelEnter('${key}',event)" ondragstart="if(psopState._dragSel.pending||psopState._dragSel.active){event.preventDefault();return false;}" title="드래그하여 여러 행 체크/해제"><input type="checkbox" class="psd-doc-chk" data-key="${key}" ${sel?'checked':''} onclick="event.stopPropagation()" onchange="psopChkDoc('${key}',this.checked)"></td>`,
@@ -18171,7 +18178,7 @@ function psopRenderDocTable(filterText) {
       shpoit:  `<td style="text-align:center">${r.SHPOIT}</td>`,
       rqshpd:  `<td style="text-align:center;white-space:nowrap;color:var(--primary);font-weight:500">${psopFmtDate(r.RQSHPD)}</td>`,
       dptnky:  `<td title="${r.DPTNKY||''}">${r.DPTNKY||''}</td>`,
-      dptnm:   `<td class="col-nm" title="${r.DPTNM||''}">${r.DPTNM||''}</td>`,
+      dptnm:   `<td class="col-nm" title="${r.DPTNM||''}">${r.DPTNM||''}${blockedBadge}</td>`,
       skukey:  `<td title="${r.SKUKEY||''}">${r.SKUKEY||''}</td>`,
       desc01:  `<td class="col-nm" title="${r.DESC01||''}">${r.DESC01||''}</td>`,
       qtshpo:  `<td style="text-align:right;font-weight:600">${psopFmtNum(r.QTSHPO)}</td>`,
@@ -18192,7 +18199,7 @@ function psopRenderDocTable(filterText) {
     };
 
     const tds = order.map(id => cellMap[id] || `<td></td>`).join('');
-    return `<tr class="${r.IS_SAVED?'dispatched':r.DISPATCHED?'dispatched':''} ${sel?'selected-row':''}"
+    return `<tr class="${r.IS_SAVED?'dispatched':r.DISPATCHED?'dispatched':''} ${sel?'selected-row':''} ${isBlocked?'psd-blocked-row':''}"
       id="psop-row-${key.replace(/\|/g,'_')}"
       draggable="true"
       ondragstart="psopDragStartDoc(event,'${r.SHPOKY}','${r.SHPOIT}')"
