@@ -140,4 +140,9 @@ public class PsDispatchDocResponse {
     // [PR-B 고정차량 조회] 고정차량 여부(VHCMA.FIX_YN, 'Y'/'N'/공백) — CARNO 로 VHCMA 조인 결과.
     @JsonProperty("FIX_YN")
     private String fixYn;
+
+    // [배차차단 색구분] 높이초과 배차차단 여부(TMS_PS_DISPATCH_H.BLOCKED_YN, 'Y'/'N') — 배차단위 저장값.
+    //   'Y' 이면 프런트 배차탭 납품문서 목록에서 해당 납품처 행을 색으로 구분 표시.
+    @JsonProperty("BLOCKED_YN")
+    private String blockedYn;
 }

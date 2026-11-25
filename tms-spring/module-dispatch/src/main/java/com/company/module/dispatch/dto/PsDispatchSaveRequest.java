@@ -113,6 +113,13 @@ public class PsDispatchSaveRequest {
         @JsonAlias({"dispatch_method", "DISPATCH_METHOD", "dispatchMethod"})
         private String dispatchMethod;  // 배차방법 (AUTO/MANUAL)
 
+        // [배차차단 저장] 이 배차가 '높이초과 배차차단' 대상인지 — 배차단위로 TMS_PS_DISPATCH_H.BLOCKED_YN 에 저장.
+        //   자동배차 미리보기의 dispatch_blocked(원지 적재높이 상한 초과로 자동배차 차단) 값을 전달.
+        //   조회 시 그대로 읽어 배차탭 납품문서 목록에서 해당 납품처 행을 색으로 구분 표시.
+        //   값이 없으면(수기배차/차단아님) 'N'(기본) 저장 → 기존 동작 무영향.
+        @JsonAlias({"blocked_yn", "BLOCKED_YN", "blockedYn", "dispatch_blocked", "DISPATCH_BLOCKED"})
+        private String blockedYn;       // 배차차단(높이초과) 여부 (Y/N)
+
         private Double totalKg;
         @JsonSetter("totalKg")
         @JsonAlias({"total_kg", "TOTAL_KG", "TOTALKG"})
