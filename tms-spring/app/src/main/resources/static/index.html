@@ -2967,10 +2967,17 @@ textarea.sql-input{width:100%;min-height:110px;padding:14px;background:var(--bg)
 .psd-saved-badge{padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700;background:#eff6ff;color:#1d4ed8;border:1px solid #3b82f6}
 .psd-undisp-badge{padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700;background:var(--pastel-gray-bg);color:var(--pastel-gray-fg);border:1px solid var(--border)}
 .psd-stdlnr-cell{font-family:monospace;font-size:10px;color:#1d4ed8;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
-/* [배차차단 색구분] 높이초과 배차차단(BLOCKED_YN='Y') 상태로 저장된 납품처 행 — 주황색(주의) 배경 + 좌측 주황 바 */
-.psd-doc-tbl tbody tr.psd-blocked-row{background:rgba(245,158,11,.18)!important;border-left:3px solid #f59e0b}
-.psd-doc-tbl tbody tr.psd-blocked-row td:first-child{border-left:3px solid #f59e0b}
-.psd-doc-tbl tbody tr.psd-blocked-row.selected-row{background:rgba(245,158,11,.32)!important}
+/* [배차차단 색구분] 높이초과 배차차단(BLOCKED_YN='Y') 상태로 저장된 납품처 행 — 주황색(주의) 배경 + 좌측 주황 바.
+   ★특정성 최우선: .dispatched / :nth-child(even) / :hover / .selected-row 등 어떤 조합과 겹쳐도 주황색이 이기도록
+     선택자를 강하게(.psd-doc-tbl tbody tr.psd-blocked-row + td까지) 지정하고 전부 !important. */
+.psd-doc-tbl tbody tr.psd-blocked-row,
+.psd-doc-tbl tbody tr.psd-blocked-row.dispatched,
+.psd-doc-tbl tbody tr.psd-blocked-row:nth-child(even),
+.psd-doc-tbl tbody tr.psd-blocked-row:hover{background:rgba(245,158,11,.22)!important;border-left:3px solid #f59e0b!important}
+.psd-doc-tbl tbody tr.psd-blocked-row td{background:rgba(245,158,11,.22)!important}
+.psd-doc-tbl tbody tr.psd-blocked-row td:first-child{border-left:3px solid #f59e0b!important}
+.psd-doc-tbl tbody tr.psd-blocked-row.selected-row,
+.psd-doc-tbl tbody tr.psd-blocked-row.selected-row td{background:rgba(245,158,11,.36)!important}
 .psd-blocked-badge{display:inline-block;padding:1px 5px;border-radius:6px;font-size:9px;font-weight:700;background:#fffbeb;color:#b45309;border:1px solid #f59e0b;margin-left:4px;vertical-align:middle}
 /* 수동배차 드롭 안내 */
 .psd-drop-hint{padding:20px;text-align:center;color:var(--text3);font-size:12px;border:2px dashed var(--border);border-radius:8px;margin:12px}
@@ -18155,6 +18162,14 @@ function psopRenderDocTable(filterText) {
     tbody.innerHTML = `<tr><td colspan="${colspan}" class="psd-empty"><div class="psd-empty-icon" style="font-size:24px">📋</div><p>조회 결과가 없습니다</p></td></tr>`;
     return;
   }
+
+  // [배차차단진단] 렌더 직전 — BLOCKED_YN='Y' 행이 실제로 몇 건 들어와 있는지 콘솔 확인용.
+  //   (운영에서 주황색 미표시 원인 특정: 0건이면 데이터 미유입, >0인데 색 없으면 CSS/캐시 문제)
+  try {
+    const _bk = rows.filter(r => String(r.BLOCKED_YN||'').toUpperCase() === 'Y');
+    console.log(`[배차차단진단] 전체 ${rows.length}행 중 BLOCKED_YN='Y' = ${_bk.length}건`,
+      _bk.slice(0,5).map(r => `${r.DPTNM||r.DPTNKY}(${r.SHPOKY}|${r.SHPOIT})`));
+  } catch(_e){}
 
   tbody.innerHTML = rows.map(r => {
     const key  = `${r.SHPOKY}|${r.SHPOIT}`;
