@@ -1588,6 +1588,7 @@ public class PsDispatchService {
             //   · NOTE(차량번호)로 VHCMA.FIX_YN 을 조인해 고정여부 복원. (조회 전용 — 저장/엔진 무영향)
             String carnoVal = "";
             String fixYnVal  = "";
+            String blockedYnVal = "N";   // [배차차단] 기본 'N' (조회 실패/레거시 무영향)
             try {
                 @SuppressWarnings("unchecked")
                 // [PR-B22] 폴백 제거 — 오직 '배차단위' pd.NOTE 만 사용(h.CARNO/sh.CARNO 폴백 완전 제거).
@@ -1595,10 +1596,13 @@ public class PsDispatchService {
                 //   1.4톤 배차(고정 미배정 정상)에도 18톤 차량번호가 복원되어 중복 표시됐다.
                 //   pd.NOTE 는 배차 1건당 1행이라 번짐이 원천 차단된다. 레거시(NOTE 공백)는 재배차 시 정상화.
                 // [PR-D 고정차량 영구저장] 고정여부는 저장값(pd.FIX_YN) 우선, 레거시(공백)만 VHCMA 폴백.
+                // [배차차단] BLOCKED_YN 도 함께 조회 — TEMP/DRAFT 공통으로 DISPATCH_NO 로 직접 읽는다.
+                //   (searchDocs 는 i.STDLNR 조인이라 STDLNR 미채번 TEMP 는 BLOCKED_YN 을 못 가져옴 → 여기서 보강)
                 List<Object[]> cf = tmsEm.createNativeQuery(
                     "SELECT TRIM(COALESCE(pd.NOTE,'')) AS CARNO, " +
                     "       CASE WHEN TRIM(COALESCE(pd.FIX_YN,'')) IN ('Y','N') THEN TRIM(pd.FIX_YN) " +
-                    "            ELSE TRIM(COALESCE(vh.FIX_YN,'')) END AS FIX_YN " +
+                    "            ELSE TRIM(COALESCE(vh.FIX_YN,'')) END AS FIX_YN, " +
+                    "       TRIM(COALESCE(pd.BLOCKED_YN,'N')) AS BLOCKED_YN " +
                     "FROM KNRAWMS.TMS_PS_DISPATCH_H pd " +
                     "LEFT JOIN KNRAWMS.VHCMA vh ON TRIM(vh.VEHICLE_NO) = TRIM(pd.NOTE) " +
                     "     AND TRIM(COALESCE(pd.NOTE,'')) <> '' " +
@@ -1608,10 +1612,20 @@ public class PsDispatchService {
                 if (cf != null && !cf.isEmpty()) {
                     carnoVal = str(cf.get(0)[0]);
                     fixYnVal = str(cf.get(0)[1]);
+                    blockedYnVal = "Y".equalsIgnoreCase(str(cf.get(0)[2])) ? "Y" : "N";
                 }
             } catch (Exception cfEx) {
-                log.warn("[PsDispatch] loadForEdit CARNO/FIX_YN 조회 실패(무시) dispatchNo={} : {}",
+                log.warn("[PsDispatch] loadForEdit CARNO/FIX_YN/BLOCKED_YN 조회 실패(무시) dispatchNo={} : {}",
                          no, cfEx.getMessage());
+            }
+
+            // [배차차단] 이 배차의 BLOCKED_YN 을 각 search_row 에 소급 반영 →
+            //   프런트 목록(psopRenderDocTable)이 r.BLOCKED_YN='Y' 행을 주황색으로 표시.
+            //   (sr 생성은 items 루프 안(위)에서 끝났으므로, 이 배차가 만든 행들에 지금 채운다)
+            if ("Y".equals(blockedYnVal)) {
+                for (Map<String, Object> srRow : searchRows) {
+                    srRow.putIfAbsent("BLOCKED_YN", "Y");
+                }
             }
 
             // ── vehicle 헤더 → UPPERCASE 키 Map ──
@@ -1633,6 +1647,9 @@ public class PsDispatchService {
             //   선적목록 '배차방법' 배지(자동/수기)로 표시. 값 없으면 기본 AUTO.
             v.put("dispatch_method",
                   (h.getDispatchMethod() == null || h.getDispatchMethod().isBlank()) ? "AUTO" : h.getDispatchMethod());
+            // [배차차단] 복원 vehicle 에 BLOCKED_YN 포함 → 프런트가 TEMP 복원 시 searchRows 행에 세팅.
+            v.put("blocked_yn",  blockedYnVal);
+            v.put("BLOCKED_YN",  blockedYnVal);
             v.put("items",       items);
             vehicles.add(v);
         }

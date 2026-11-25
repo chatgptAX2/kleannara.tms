@@ -17937,14 +17937,24 @@ async function psopSearch() {
             _dispatchMethod: (tv.dispatch_method ?? tv.DISPATCH_METHOD ?? 'AUTO').toString().toUpperCase() || 'AUTO',
             _autoMeta:   { method: (tv.dispatch_method ?? tv.DISPATCH_METHOD ?? 'AUTO').toString().toUpperCase() || 'AUTO' },
             _shared:     true,             // 공유 TEMP(다른 사용자 포함) 표식
+            // [배차차단] 서버 복원값(blocked_yn) 보존 → 배차저장(TEMP→DRAFT) payload 로 재전달.
+            _blocked:    (String(tv.blocked_yn ?? tv.BLOCKED_YN ?? 'N').toUpperCase() === 'Y') ? 'Y' : 'N',
+            dispatch_blocked: (String(tv.blocked_yn ?? tv.BLOCKED_YN ?? 'N').toUpperCase() === 'Y'),
             items:       items,
           });
           // 납품문서 행을 '배차'(DISPATCHED) 로 표시(저장 전 공유)
+          //   [배차차단 색표시] TEMP 는 STDLNR 미채번이라 /search 로는 BLOCKED_YN 을 못 가져옴.
+          //   list-temp 복원값(tv.blocked_yn)을 이 배차의 납품문서 행(searchRows)에 직접 세팅 →
+          //   psopRenderDocTable 이 r.BLOCKED_YN='Y' 행을 주황색으로 표시한다.
+          const _tvBlocked = (String(tv.blocked_yn ?? tv.BLOCKED_YN ?? 'N').toUpperCase() === 'Y');
           items.forEach(it => {
             const row = psopState.searchRows.find(r =>
               (r.SHPOKY ?? r.shpoky) === (it.SHPOKY ?? it.shpoky) &&
               (r.SHPOIT ?? r.shpoit) === (it.SHPOIT ?? it.shpoit));
-            if (row) row.DISPATCHED = true;
+            if (row) {
+              row.DISPATCHED = true;
+              if (_tvBlocked) row.BLOCKED_YN = 'Y';
+            }
           });
         });
       }
