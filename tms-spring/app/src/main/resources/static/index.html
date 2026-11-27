@@ -32860,44 +32860,46 @@ function _dbResizeAllCharts() {
     Object.values(_dbCharts).forEach(ch => { if (ch && typeof ch.resize === 'function') ch.resize(); });
   } catch (_e) {}
 }
+
+/* [듀얼모니터 — 진짜해결] DPR 폴링 방식
+   ───────────────────────────────────────────────────────────
+   이전(이벤트 방식: matchMedia change / focus / visibilitychange)은 '창을 드래그로
+   다른 모니터에 옮기는' 동작에서 어떤 이벤트도 안 터져 작동하지 않았다.
+   → requestAnimationFrame 루프로 window.devicePixelRatio 를 '직접' 지속 비교해,
+     드래그 이동으로 배율이 바뀌는 순간(또는 창 크기 변화)을 잡아 차트를 재렌더한다.
+   · 대시보드 화면이 떠 있을 때만 돌고(#tms-dashboard 없으면 자동 정지) 가볍다.
+   · 매 프레임이 아니라 ~250ms 간격 샘플링 + 값이 바뀔 때만 resize 호출(부하 최소). */
 let _dbLastDpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
-let _dbDprMql  = null;
-function _dbWatchDprChange() {
-  if (typeof window === 'undefined' || !window.matchMedia) return;
-  // 기존 리스너 정리(대시보드 재렌더 시 중복 방지)
-  if (_dbDprMql) {
-    try { _dbDprMql.removeEventListener ? _dbDprMql.removeEventListener('change', _dbOnDprChange)
-                                        : _dbDprMql.removeListener(_dbOnDprChange); } catch(_e){}
-    _dbDprMql = null;
+let _dbLastInnerW = (typeof window !== 'undefined' && window.innerWidth) || 0;
+let _dbLastInnerH = (typeof window !== 'undefined' && window.innerHeight) || 0;
+let _dbDprRafId = 0;
+let _dbDprPollTs = 0;
+function _dbDprPollTick(ts) {
+  // 대시보드를 벗어나면 루프 종료(다음 대시보드 진입 시 _dbStartDprWatch 가 재가동)
+  if (!document.getElementById('tms-dashboard')) { _dbDprRafId = 0; return; }
+  if (!_dbDprPollTs || (ts - _dbDprPollTs) >= 250) {
+    _dbDprPollTs = ts;
+    const dpr = window.devicePixelRatio || 1;
+    const w   = window.innerWidth  || 0;
+    const h   = window.innerHeight || 0;
+    // 배율(DPR) 변화 = 다른 배율 모니터로 이동 / 창크기 변화 = 모니터 간 해상도 차이·리사이즈
+    if (dpr !== _dbLastDpr || w !== _dbLastInnerW || h !== _dbLastInnerH) {
+      _dbLastDpr = dpr; _dbLastInnerW = w; _dbLastInnerH = h;
+      _dbResizeAllCharts();
+    }
   }
-  const dpr = window.devicePixelRatio || 1;
-  _dbLastDpr = dpr;
-  // 현재 DPR 에 정확히 반응하는 미디어쿼리 — DPR 이 바뀌면 change 발생(모니터 이동 포함)
-  _dbDprMql = window.matchMedia(`(resolution: ${dpr}dppx)`);
-  try { _dbDprMql.addEventListener ? _dbDprMql.addEventListener('change', _dbOnDprChange)
-                                   : _dbDprMql.addListener(_dbOnDprChange); } catch(_e){}
+  _dbDprRafId = window.requestAnimationFrame(_dbDprPollTick);
 }
-function _dbOnDprChange() {
-  // DPR 이 실제로 바뀐 경우에만 차트 재렌더 + 다음 변화를 위해 미디어쿼리 재설정
-  const now = window.devicePixelRatio || 1;
-  if (now !== _dbLastDpr) {
-    _dbResizeAllCharts();
-    _dbWatchDprChange();   // 새 DPR 기준으로 리스너 재등록(연속 이동 대응)
-  }
+function _dbStartDprWatch() {
+  if (typeof window === 'undefined' || !window.requestAnimationFrame) return;
+  // 현재값 기준으로 초기화 후 루프 시작(중복 가동 방지)
+  _dbLastDpr    = window.devicePixelRatio || 1;
+  _dbLastInnerW = window.innerWidth  || 0;
+  _dbLastInnerH = window.innerHeight || 0;
+  if (!_dbDprRafId) _dbDprRafId = window.requestAnimationFrame(_dbDprPollTick);
 }
-// 창이 다른 모니터로 옮겨진 뒤 포커스/표시가 복귀할 때도 1회 재동기화
-//   (DPR 이 동일한 모니터 간 이동이어도 안전하게 비율 재계산)
-if (typeof window !== 'undefined' && !window._dbMonitorMoveHooked) {
-  window._dbMonitorMoveHooked = true;
-  const _dbSync = () => {
-    if (!document.getElementById('tms-dashboard')) return;   // 대시보드 화면일 때만
-    const now = window.devicePixelRatio || 1;
-    _dbResizeAllCharts();
-    if (now !== _dbLastDpr) { _dbLastDpr = now; _dbWatchDprChange(); }
-  };
-  window.addEventListener('focus', _dbSync);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) _dbSync(); });
-}
+// (구) 이름 호환 — 기존 호출부가 남아 있어도 폴링을 시작하도록 별칭 제공
+function _dbWatchDprChange() { _dbStartDprWatch(); }
 </script>
 </body>
 </html>
