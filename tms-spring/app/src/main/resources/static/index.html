@@ -756,6 +756,17 @@ body.dc-dragging{user-select:none !important;-webkit-user-select:none !important
   display:grid;grid-template-columns:repeat(5,1fr);gap:12px;
   padding:16px 20px 0;
 }
+/* ── [반응형] KPI 카드 5개 — 화면이 좁아지면 열 수를 단계적으로 줄여 카드가
+      찌그러지지 않도록 자동 줄바꿈한다. (넓은 화면은 기존 5열 유지) ── */
+@media (max-width:1280px){
+  .db-kpi-row{grid-template-columns:repeat(3,1fr)}   /* 5열 → 3열 */
+}
+@media (max-width:760px){
+  .db-kpi-row{grid-template-columns:repeat(2,1fr)}   /* → 2열 */
+}
+@media (max-width:460px){
+  .db-kpi-row{grid-template-columns:1fr}             /* → 1열 */
+}
 .db-kpi{
   background:var(--surface);border:1px solid var(--border);
   border-radius:12px;padding:14px 16px;
@@ -829,6 +840,14 @@ body.dc-dragging{user-select:none !important;-webkit-user-select:none !important
 .db-grid-2{grid-template-columns:1fr 1fr}
 .db-grid-3{grid-template-columns:2fr 1fr 1fr}
 .db-grid-21{grid-template-columns:2fr 1fr}
+/* ── [반응형] 대시보드 차트 그리드 — 화면 비율이 좁아지면 컬럼을 단계적으로 줄여
+      레이아웃이 찌그러지거나 겹치지 않도록 자동 재배치한다. (넓은 화면은 기존 유지) ── */
+@media (max-width:1280px){
+  .db-grid-3{grid-template-columns:1fr 1fr}      /* 3열 → 2열 */
+}
+@media (max-width:960px){
+  .db-grid-2,.db-grid-3,.db-grid-21{grid-template-columns:1fr}  /* 모두 1열(세로 적층) */
+}
 /* 차트 카드 */
 .db-card{
   background:var(--surface);border:1px solid var(--border);
