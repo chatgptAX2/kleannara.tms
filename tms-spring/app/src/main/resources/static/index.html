@@ -32857,7 +32857,19 @@ function _dbDestroyChart(key) {
    (대시보드 화면에서만 동작 — 차트가 없으면 아무 일도 안 함, 무영향) */
 function _dbResizeAllCharts() {
   try {
-    Object.values(_dbCharts).forEach(ch => { if (ch && typeof ch.resize === 'function') ch.resize(); });
+    Object.values(_dbCharts).forEach(ch => {
+      if (!ch || typeof ch.resize !== 'function') return;
+      // [축소 버그 해결] Chart.js 는 maintainAspectRatio:false 에서 인자 없는 resize() 로는
+      //   컨테이너가 '작아질 때'(큰 화면→작은 화면 이동) 캔버스를 제대로 줄이지 못해 큰 상태로
+      //   고정되는 경우가 있다. → 부모 컨테이너(db-chart-wrap)의 '실제 CSS 크기'를 직접 측정해
+      //   resize(width,height) 로 명시 전달하면 확대·축소 양방향 모두 정확히 맞춰진다.
+      const parent = ch.canvas && ch.canvas.parentNode;
+      if (parent) {
+        const r = parent.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) { ch.resize(r.width, r.height); return; }
+      }
+      ch.resize();   // 컨테이너 측정 실패 시 기본 동작으로 폴백
+    });
   } catch (_e) {}
 }
 
