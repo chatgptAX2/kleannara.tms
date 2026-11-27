@@ -32891,18 +32891,39 @@ let _dbLastInnerW = (typeof window !== 'undefined' && window.innerWidth) || 0;
 let _dbLastInnerH = (typeof window !== 'undefined' && window.innerHeight) || 0;
 let _dbDprRafId = 0;
 let _dbDprPollTs = 0;
+// [진단+보강] 차트 카드 컨테이너의 현재 실제 폭(첫 차트 기준) — 폴링 비교에 추가.
+//   DPR/innerWidth 가 안 바뀌는 모니터 이동이라도, 레이아웃(컨테이너 폭)이 바뀌면 감지한다.
+function _dbFirstWrapW() {
+  try {
+    const any = Object.values(_dbCharts)[0];
+    const p = any && any.canvas && any.canvas.parentNode;
+    return p ? Math.round(p.getBoundingClientRect().width) : 0;
+  } catch(_e){ return 0; }
+}
+let _dbLastWrapW = 0;
 function _dbDprPollTick(ts) {
   // 대시보드를 벗어나면 루프 종료(다음 대시보드 진입 시 _dbStartDprWatch 가 재가동)
   if (!document.getElementById('tms-dashboard')) { _dbDprRafId = 0; return; }
-  if (!_dbDprPollTs || (ts - _dbDprPollTs) >= 250) {
+  if (!_dbDprPollTs || (ts - _dbDprPollTs) >= 200) {
     _dbDprPollTs = ts;
     const dpr = window.devicePixelRatio || 1;
     const w   = window.innerWidth  || 0;
     const h   = window.innerHeight || 0;
-    // 배율(DPR) 변화 = 다른 배율 모니터로 이동 / 창크기 변화 = 모니터 간 해상도 차이·리사이즈
-    if (dpr !== _dbLastDpr || w !== _dbLastInnerW || h !== _dbLastInnerH) {
-      _dbLastDpr = dpr; _dbLastInnerW = w; _dbLastInnerH = h;
+    const ww  = _dbFirstWrapW();   // 차트 컨테이너 실제 폭(레이아웃 변화 감지용)
+    // 배율(DPR)/창크기/컨테이너폭 중 하나라도 바뀌면 = 모니터 이동·리사이즈·배율변경
+    if (dpr !== _dbLastDpr || w !== _dbLastInnerW || h !== _dbLastInnerH || ww !== _dbLastWrapW) {
+      // [배차/대시보드진단] 모니터 이동 시 '실제로 무엇이 바뀌는가' 콘솔 확인용.
+      //   · 이동해도 이 로그가 안 찍히면 → 브라우저가 변화를 전혀 노출 안 함(브라우저 레벨 한계)
+      //   · 찍히는데 차트가 그대로면 → resize 타이밍/레이아웃 문제(아래 지연 재시도로 보강)
+      try {
+        console.log(`[대시보드DPR진단] 변화감지 dpr:${_dbLastDpr}->${dpr} innerW:${_dbLastInnerW}->${w} innerH:${_dbLastInnerH}->${h} wrapW:${_dbLastWrapW}->${ww}`);
+      } catch(_e){}
+      _dbLastDpr = dpr; _dbLastInnerW = w; _dbLastInnerH = h; _dbLastWrapW = ww;
+      // 즉시 + 지연(레이아웃 반영 후) 재시도 — 모니터 이동 직후 컨테이너 폭이 아직
+      //   안 줄어든 프레임에 resize 가 호출되면 축소가 안 되므로, 지연 재시도로 보강.
       _dbResizeAllCharts();
+      setTimeout(_dbResizeAllCharts, 120);
+      setTimeout(() => { _dbLastWrapW = _dbFirstWrapW(); _dbResizeAllCharts(); }, 400);
     }
   }
   _dbDprRafId = window.requestAnimationFrame(_dbDprPollTick);
